@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="system">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#06b6d4">
+    <title>Setup - Nova</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <style>
+        .setup-container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .setup-step {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .setup-step.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .step-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: all 0.3s ease;
+        }
+        .step-dot.active {
+            background: var(--primary);
+            transform: scale(1.2);
+        }
+        .step-dot.completed {
+            background: var(--success);
+        }
+        .help-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="setup-container">
+    <div style="text-align: center; margin-bottom: 30px;">
+        <img src="assets/church-logo.svg" alt="Logo" style="width: 60px; height: 60px; margin-bottom: 10px;">
+        <h1 style="font-size: 2rem; font-weight: 800;">Ersteinrichtung</h1>
+        <p style="color: var(--text-secondary);">Nova richtet PocketBase automatisch im Docker-Container ein.</p>
+    </div>
+
+    <div class="step-indicator" id="stepIndicator">
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+    </div>
+
+    <form id="setupForm" novalidate onsubmit="event.preventDefault(); nextStep();">
+        <div class="setup-step active" id="step1">
+            <h2 style="margin-bottom: 20px;">1. Allgemeine Informationen</h2>
+
+            <div class="form-group">
+                <label class="form-label" for="appName">Name der Anwendung</label>
+                <input type="text" id="appName" class="form-input" placeholder="z.B. Nova..." required>
+                <div class="help-text">Dieser Name wird in der App und in E-Mails angezeigt.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="setupLogo">Eigenes Logo (SVG, optional)</label>
+                <input type="file" id="setupLogo" class="form-input" accept=".svg,image/svg+xml">
+                <div class="help-text">Optional können Sie direkt in der Ersteinrichtung ein eigenes SVG-Logo speichern.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 30px;">Weiter</button>
+        </div>
+
+        <div class="setup-step" id="step2">
+            <h2 style="margin-bottom: 20px;">2. E-Mail Einstellungen (Optional)</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">Diese Einstellungen werden für Benachrichtigungen benötigt. Sie können diesen Schritt überspringen.</p>
+
+            <div class="form-group">
+                <label class="form-label" for="smtpHost">SMTP Server</label>
+                <input type="text" id="smtpHost" class="form-input" placeholder="z.B. smtp.gmail.com">
+            </div>
+
+            <div style="display: flex; gap: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label" for="smtpPort">Port</label>
+                    <input type="number" id="smtpPort" class="form-input" placeholder="z.B. 465">
+                </div>
+                <div class="form-group" style="flex: 1; display: flex; align-items: flex-end; padding-bottom: 10px;">
+                    <label class="switch" style="margin-right: 10px;">
+                        <input type="checkbox" id="smtpSecure" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <label for="smtpSecure" style="margin:0; font-weight:600; cursor:pointer">SSL/TLS</label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="smtpUser">Benutzername (E-Mail)</label>
+                <input type="email" id="smtpUser" class="form-input" placeholder="z.B. no-reply@example.com" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="smtpPass">Passwort</label>
+                <input type="password" id="smtpPass" class="form-input" placeholder="App-Passwort" autocomplete="off">
+                <div class="help-text">Bei Gmail wird dringend ein App-Passwort empfohlen.</div>
+            </div>
+
+            <div id="errorMsg" style="color: var(--danger); font-weight: bold; margin-top: 15px; display: none; text-align: center;"></div>
+
+            <div style="display: flex; gap: 10px; margin-top: 30px;">
+                <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="prevStep()">Zurück</button>
+                <button type="button" class="btn btn-primary" style="flex: 2;" id="btnSubmit" onclick="submitSetup()">Speichern & Starten</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    let currentStep = 1;
+    const totalSteps = 2;
+
+    fetch('/api/status').then(res => res.json()).then(data => {
+        if (!data.setupMode) {
+            window.location.href = '/';
+        }
+    }).catch(() => {});
+
+    function updateDots() {
+        const dots = document.querySelectorAll('.step-dot');
+        dots.forEach((dot, index) => {
+            dot.className = 'step-dot';
+            if (index + 1 === currentStep) dot.classList.add('active');
+            else if (index + 1 < currentStep) dot.classList.add('completed');
+        });
+    }
+
+    function showStep(step) {
+        document.querySelectorAll('.setup-step').forEach(el => el.classList.remove('active'));
+        document.getElementById(`step${step}`).classList.add('active');
+        updateDots();
+    }
+
+    function validateAppName(onError) {
+        const appNameInput = document.getElementById('appName');
+        const appName = appNameInput.value.trim();
+        appNameInput.setCustomValidity('');
+        if (!appName) {
+            onError('Bitte geben Sie einen Namen für die Anwendung ein.');
+            return null;
+        }
+        return appName;
+    }
+
+    async function readOptionalLogoSvg() {
+        const fileInput = document.getElementById('setupLogo');
+        const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+        if (!file) return null;
+        const name = (file.name || '').toLowerCase();
+        const type = (file.type || '').toLowerCase();
+        if (!(name.endsWith('.svg') || type === 'image/svg+xml')) {
+            throw new Error('Bitte nur SVG-Dateien hochladen.');
+        }
+        return file.text();
+    }
+
+    function nextStep() {
+        if (currentStep === 1) {
+            if (!validateAppName((message) => {
+                const appNameInput = document.getElementById('appName');
+                appNameInput.setCustomValidity(message);
+                appNameInput.reportValidity();
+            })) {
+                return;
+            }
+        }
+        if (currentStep < totalSteps) {
+            currentStep++;
+            showStep(currentStep);
+        }
+    }
+
+    function prevStep() {
+        if (currentStep > 1) {
+            currentStep--;
+            showStep(currentStep);
+            document.getElementById('errorMsg').style.display = 'none';
+        }
+    }
+
+    async function submitSetup() {
+        const btn = document.getElementById('btnSubmit');
+        const errorMsg = document.getElementById('errorMsg');
+        const appName = validateAppName((message) => {
+            errorMsg.innerText = message;
+            errorMsg.style.display = 'block';
+        });
+
+        if (!appName) return;
+
+        let smtp = null;
+        const smtpHost = document.getElementById('smtpHost').value.trim();
+        if (smtpHost) {
+            smtp = {
+                host: smtpHost,
+                port: parseInt(document.getElementById('smtpPort').value || '465', 10),
+                secure: document.getElementById('smtpSecure').checked,
+                user: document.getElementById('smtpUser').value.trim(),
+                pass: document.getElementById('smtpPass').value.trim()
+            };
+        }
+
+        btn.innerText = 'Speichert...';
+        btn.disabled = true;
+        errorMsg.style.display = 'none';
+
+        try {
+            const logoSvg = await readOptionalLogoSvg();
+            const res = await fetch('/api/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ appName, smtp, logoSvg })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                window.location.href = '/';
+                return;
+            }
+            throw new Error(data.error || 'Ein unbekannter Fehler ist aufgetreten.');
+        } catch (err) {
+            errorMsg.innerText = err.message || 'Netzwerkfehler beim Speichern.';
+            errorMsg.style.display = 'block';
+            btn.innerText = 'Speichern & Starten';
+            btn.disabled = false;
+        }
+    }
+
+    const actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', actualTheme);
+</script>
+</body>
+</html>
