@@ -9,6 +9,10 @@ const { isSafeSvg, hasSvgExtension } = require('./svgValidation');
 const { selectChurchLogoFilePath } = require('./logoStorage');
 const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig');
 const { resolveTrustProxySetting } = require('./trustProxy');
+const cron = require('node-cron');
+const { runAutomatedStandingOrders } = require('./standingOrders');
+const { aggregateStats } = require('./stats');
+const { getPaginatedTransactions } = require('./transactions');
 const {
   DEFAULT_SETTINGS,
   DEFAULT_SYSTEM_STATE,
@@ -92,6 +96,8 @@ async function initializeRuntime(config) {
   setupMode = false;
   transporter = buildSmtpTransport(config.smtp || null);
   console.log('Configuration loaded successfully. Setup mode: false');
+
+  runAutomatedStandingOrders(appConfig);
 }
 
 function setRuntimeConfig(config) {
@@ -122,6 +128,12 @@ function loadConfig() {
 loadConfig();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+
+cron.schedule('0 0 * * *', () => {
+  if (!setupMode && appConfig) {
+    runAutomatedStandingOrders(appConfig);
+  }
+});
 
 app.use((req, res, next) => {
   if (
@@ -297,7 +309,7 @@ function setAuthCookie(res, token) {
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
-    'Max-Age=7,948,800'
+    'Max-Age=7948800'
   ];
   res.setHeader('Set-Cookie', attributes.join('; '));
 }
@@ -805,6 +817,32 @@ app.delete('/api/db', dbRateLimit, verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || 'Failed to delete data' });
+  }
+});
+
+app.get('/api/stats', dbRateLimit, verifyToken, async (req, res) => {
+  try {
+    if (!req.user.admin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    const stats = await aggregateStats(appConfig);
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to fetch stats' });
+  }
+});
+
+app.get('/api/transactions', dbRateLimit, verifyToken, async (req, res) => {
+  try {
+    if (!req.user.admin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    const page = parseInt(req.query.page, 10) || 1;
+    const perPage = parseInt(req.query.perPage, 10) || 150;
+    const transactions = await getPaginatedTransactions(appConfig, page, perPage);
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to fetch transactions' });
   }
 });
 

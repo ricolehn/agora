@@ -542,6 +542,8 @@ function stripNormalizedPersonData(value) {
   return data;
 }
 
+const { preprocessPersonServerSide } = require('./derivedData');
+
 function buildPaymentRecordPayload(personKey, payment, index = 0) {
   const normalized = payment && typeof payment === 'object' ? { ...payment } : {};
   return {
@@ -652,7 +654,7 @@ function toSortedChildValues(records, sortField) {
     .filter(Boolean);
 }
 
-function hydratePersonRecord(record, payments = [], statusHistory = []) {
+function hydratePersonRecord(record, payments = [], statusHistory = [], appSettings = {}) {
   if (!record) return null;
   const data = record.data && typeof record.data === 'object' ? { ...record.data } : {};
   const normalizedPayments = toSortedChildValues(payments, 'date');
@@ -665,8 +667,9 @@ function hydratePersonRecord(record, payments = [], statusHistory = []) {
   data.originalMemberSince = data.originalMemberSince || record.originalMemberSince || data.memberSince || '';
   data.payments = normalizedPayments;
   data.statusHistory = normalizedStatusHistory;
+  data.standingOrders = Array.isArray(data.standingOrders) ? data.standingOrders : [];
   data.totalPaid = calculateTotalPaid(normalizedPayments);
-  return data;
+  return preprocessPersonServerSide(data, appSettings);
 }
 
 async function syncCollectionRecords(collectionName, keyField, existingRecords, nextPayloads, appConfig) {
@@ -933,15 +936,17 @@ function buildRequestRecordPayload(requestKey, value) {
 async function getPeopleRecord(appConfig, personKey) {
   const record = await getFirstRecord('people', pbFilterEquals('personKey', personKey), appConfig);
   if (!record) return null;
-  const [payments, statusHistory] = await Promise.all([
+  const [payments, statusHistory, settingsRecord] = await Promise.all([
     listAllRecords('payments', pbFilterEquals('personKey', personKey), appConfig),
-    listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig)
+    listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig),
+    getStateRecord(appConfig, 'settings')
   ]);
+  const settings = settingsRecord ? settingsRecord.value : DEFAULT_SETTINGS;
   return {
     ...record,
     _childPayments: payments,
     _childStatusHistory: statusHistory,
-    data: hydratePersonRecord(record, payments, statusHistory)
+    data: hydratePersonRecord(record, payments, statusHistory, settings)
   };
 }
 
@@ -954,16 +959,18 @@ async function listPeopleRecords(appConfig, query = {}) {
   }
   const people = await listAllRecords('people', filter, appConfig);
   const personKeys = people.map((record) => record.personKey);
-  const [payments, statusHistory] = await Promise.all([
+  const [payments, statusHistory, settingsRecord] = await Promise.all([
     listChildRecordsForPeople('payments', personKeys, appConfig),
-    listChildRecordsForPeople('status_history', personKeys, appConfig)
+    listChildRecordsForPeople('status_history', personKeys, appConfig),
+    getStateRecord(appConfig, 'settings')
   ]);
+  const settings = settingsRecord ? settingsRecord.value : DEFAULT_SETTINGS;
   const paymentsByPersonKey = groupRecordsBy(payments, 'personKey');
   const historyByPersonKey = groupRecordsBy(statusHistory, 'personKey');
 
   return people.map((record) => ({
     ...record,
-    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [])
+    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], settings)
   }));
 }
 

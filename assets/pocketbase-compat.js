@@ -57,11 +57,12 @@ async function apiFetch(url, options = {}) {
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     let message = 'Request failed';
+    const responseClone = response.clone();
     try {
       const data = await response.json();
       message = data.error || data.message || message;
     } catch {
-      message = await response.text() || message;
+      message = await responseClone.text() || message;
     }
     throw new Error(message);
   }
@@ -128,6 +129,11 @@ async function readRaw(queryTarget) {
 export async function get(queryTarget) {
   const result = await readRaw(queryTarget);
   return makeSnapshot(result?.value);
+}
+
+export async function apiGet(path) {
+  const result = await apiFetch(`/api/db?path=${encodeURIComponent(path)}`);
+  return result; // Note backend returns result.value or just the payload depending on `raw` param
 }
 
 export async function set(reference, value) {
