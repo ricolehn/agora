@@ -45,7 +45,7 @@ function checkAndExecuteStandingOrders(person) {
         }
 
         let safety = 0;
-        while (nextDueDate <= limitDate && safety < 120) {
+        while (nextDueDate <= limitDate && safety < 1200) {
             const dateStr = nextDueDate.toISOString().split('T')[0];
             const paymentId = `auto_${currentSO.id}_${dateStr}`;
 

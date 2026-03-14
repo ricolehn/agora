@@ -496,8 +496,8 @@ function calculatePaymentStatus(person) {
         // History is already sorted in loadData
         const sortedHistory = person.statusHistory;
 
-        // Maximal 120 Monate (10 Jahre) in die Zukunft prüfen
-        const maxIterations = 120;
+        // Maximal 1200 Monate (100 Jahre) in die Zukunft prüfen
+        const maxIterations = 1200;
         let iterations = 0;
 
         // ⚡ Bolt: Optimized linear scan through history
@@ -571,7 +571,7 @@ function calculateCostRange(person, startDate, endDate) {
     // ⚡ Bolt: Pre-calculate target months for faster integer comparison
     const targetTotal = endDate.getFullYear() * 12 + endDate.getMonth();
 
-    while ((year * 12 + month) <= targetTotal && limit < 120) {
+    while ((year * 12 + month) <= targetTotal && limit < 1200) {
         const currentTotal = year * 12 + month;
 
         const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
@@ -828,7 +828,7 @@ function checkAndExecuteStandingOrders(person) {
         // Loop until limitDate
         // Safety break to prevent infinite loops if dates are messed up
         let safety = 0;
-        while (nextDueDate <= limitDate && safety < 120) {
+        while (nextDueDate <= limitDate && safety < 1200) {
             const dateStr = nextDueDate.toISOString().split('T')[0];
             const paymentId = `auto_${currentSO.id}_${dateStr}`;
 
@@ -1089,11 +1089,11 @@ async function renderAll() {
         if (currentUser) {
             document.getElementById('admin-email-notifications').checked = !!currentUser.emailNotifications;
         }
-        renderSuperAdminTools();
+        await renderSuperAdminTools();
     }
 }
 
-function renderSuperAdminTools() {
+async function renderSuperAdminTools() {
     const card = document.getElementById('card-super-admin');
     if (!card) return;
 
@@ -1104,7 +1104,7 @@ function renderSuperAdminTools() {
 
     card.style.display = '';
     renderSuperAdminUserManagement();
-    renderSuperAdminPaymentEditor();
+    await renderSuperAdminPaymentEditor();
     if (!advancedConfigLoaded) {
         loadAdvancedSystemConfig();
     }
@@ -1290,14 +1290,28 @@ function renderSuperAdminUserManagement() {
     target.innerHTML = rows;
 }
 
-function renderSuperAdminPaymentEditor() {
+async function renderSuperAdminPaymentEditor() {
     const target = document.getElementById('super-admin-payment-editor');
     if (!target || !isSuperAdminUser()) return;
 
-    const allPayments = [];
+    target.innerHTML = '<div class="spinner" style="margin: 0 auto;"></div>';
+
+    let remoteDonations = [];
+    let remoteExpenses = [];
+    try {
+        remoteDonations = safeList(await apiGet('donations').catch(() => []));
+        remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
+    } catch(e) {
+        console.warn("Could not fetch remote donations/expenses", e);
+    }
+
+    const allRecords = [];
+
+    // Payments
     people.forEach(person => {
         safeList(person.payments).forEach((payment, index) => {
-            allPayments.push({
+            allRecords.push({
+                type: 'payment',
                 personId: person.id,
                 personName: person.name,
                 paymentId: payment.id ?? `idx-${index}`,
@@ -1307,35 +1321,74 @@ function renderSuperAdminPaymentEditor() {
         });
     });
 
-    allPayments.sort((a, b) => (b.payment.date || '').localeCompare(a.payment.date || ''));
-    superAdminPaymentRows = allPayments.slice(0, 30);
+    // Donations
+    remoteDonations.forEach((donation, index) => {
+        allRecords.push({
+            type: 'donation',
+            personId: null,
+            personName: donation.name || 'Spende',
+            paymentId: donation.id ?? `don-${index}`,
+            paymentIndex: index,
+            payment: donation
+        });
+    });
+
+    // Expenses
+    remoteExpenses.forEach((expense, index) => {
+        allRecords.push({
+            type: 'expense',
+            personId: null,
+            personName: expense.issuer || 'Ausgabe',
+            paymentId: expense.id ?? `exp-${index}`,
+            paymentIndex: index,
+            payment: expense
+        });
+    });
+
+    allRecords.sort((a, b) => (b.payment.date || '').localeCompare(a.payment.date || ''));
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    const recentRecords = allRecords.filter(item => {
+        if (!item.payment.date) return false;
+        return item.payment.date >= thirtyDaysAgoStr;
+    });
+
+    superAdminPaymentRows = recentRecords;
     const preview = superAdminPaymentRows;
 
     if (preview.length === 0) {
-        target.innerHTML = '<div style="color:var(--text-secondary);">Keine Zahlungen vorhanden.</div>';
+        target.innerHTML = '<div style="color:var(--text-secondary);">Keine Einträge in den letzten 30 Tagen vorhanden.</div>';
         return;
     }
 
     const options = preview.map((item, index) => {
         const dateText = item.payment.date ? dateFormatter.format(new Date(item.payment.date)) : 'Kein Datum';
         const desc = item.payment.description ? ` • ${item.payment.description}` : '';
-        const label = `${item.personName || 'Unbekannt'} • ${dateText} • ${formatCurrency(item.payment.amount)} €${desc}`;
+
+        let prefix = '';
+        if (item.type === 'donation') prefix = '[Spende] ';
+        else if (item.type === 'expense') prefix = '[Ausgabe] ';
+
+        const label = `${prefix}${item.personName || 'Unbekannt'} • ${dateText} • ${formatCurrency(item.payment.amount)} €${desc}`;
         return `<option value="${index}">${escapeHtml(label)}</option>`;
     }).join('');
 
     target.innerHTML = `
         <div class="form-group" style="margin:0;">
-            <label class="form-label" for="super-admin-payment-select">Zahlung auswählen</label>
+            <label class="form-label" for="super-admin-payment-select">Eintrag auswählen (letzte 30 Tage)</label>
             <select id="super-admin-payment-select" class="form-select">
                 <option value="">Bitte wählen...</option>
                 ${options}
             </select>
         </div>
-        <button class="btn btn-secondary btn-block" onclick="editSelectedPayment()">Ausgewählte Zahlung bearbeiten</button>
+        <button class="btn btn-secondary btn-block" onclick="editSelectedPayment()">Ausgewählten Eintrag bearbeiten</button>
     `;
 
-    if (allPayments.length > preview.length) {
-        target.innerHTML += `<div style="font-size:0.85rem; color:var(--text-secondary); margin-top:8px;">Es werden die letzten ${preview.length} Zahlungen angezeigt.</div>`;
+    if (allRecords.length > preview.length) {
+        target.innerHTML += `<div style="font-size:0.85rem; color:var(--text-secondary); margin-top:8px;">Es werden die letzten ${preview.length} Einträge angezeigt.</div>`;
     }
 }
 
@@ -1371,16 +1424,16 @@ window.setSupervisorAdminByIndex = async (index, isAdmin) => {
 window.editRecordedPaymentByIndex = async (index) => {
     const item = superAdminPaymentRows[index];
     if (!item) {
-        alert('Die ausgewählte Zahlung wurde nicht gefunden. Bitte Liste aktualisieren.');
+        alert('Der ausgewählte Eintrag wurde nicht gefunden. Bitte Liste aktualisieren.');
         return;
     }
-    await window.editRecordedPayment(item.personId, item.paymentId, item.paymentIndex, item.personName);
+    await window.editRecordedPayment(item.personId, item.paymentId, item.paymentIndex, item.personName, item.type, item.payment);
 };
 
 window.editSelectedPayment = async () => {
     const select = document.getElementById('super-admin-payment-select');
     if (!select || !select.value) {
-        alert('Bitte zuerst eine Zahlung auswählen.');
+        alert('Bitte zuerst einen Eintrag auswählen.');
         return;
     }
     const index = parseInt(select.value, 10);
@@ -1388,22 +1441,52 @@ window.editSelectedPayment = async () => {
     await window.editRecordedPaymentByIndex(index);
 };
 
-window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null) => {
+window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null, type = 'payment', paymentObj = null) => {
     if (!isSuperAdminUser()) return;
-    const person = people.find(p => String(p.id) === String(personId));
-    if (!person) return;
 
-    const payments = safeList(person.payments);
-    const idx = payments.findIndex((p, i) => String(p.id ?? `idx-${i}`) === String(paymentId));
-    const targetIndex = idx >= 0 ? idx : paymentIndex;
-    const payment = payments[targetIndex];
+    let payment = paymentObj;
+    let targetIndex = paymentIndex;
+
+    if (type === 'payment') {
+        const person = people.find(p => String(p.id) === String(personId));
+        if (!person) return;
+
+        const payments = safeList(person.payments);
+        const idx = payments.findIndex((p, i) => String(p.id ?? `idx-${i}`) === String(paymentId));
+        targetIndex = idx >= 0 ? idx : paymentIndex;
+        payment = payments[targetIndex];
+    }
+
     if (!payment) return;
 
-    currentEditedPayment = { personId, targetIndex };
-    document.getElementById('edit-payment-person').textContent = personName || person.name || 'Unbekannt';
+    currentEditedPayment = { personId, targetIndex, type, paymentId };
+
+    let titlePrefix = '';
+    if (type === 'donation') titlePrefix = '[Spende] ';
+    else if (type === 'expense') titlePrefix = '[Ausgabe] ';
+
+    document.getElementById('edit-payment-person').textContent = titlePrefix + (personName || 'Unbekannt');
     document.getElementById('edit-payment-amount').value = String(payment.amount ?? '');
     document.getElementById('edit-payment-date').value = payment.date || '';
-    document.getElementById('edit-payment-desc').value = payment.description || '';
+
+    const descEl = document.getElementById('edit-payment-desc');
+    if (descEl) descEl.value = payment.description || '';
+
+    const issuerGroup = document.getElementById('edit-payment-issuer-group');
+    const issuerEl = document.getElementById('edit-payment-issuer');
+
+    if (type === 'expense') {
+        if (issuerGroup) issuerGroup.style.display = 'block';
+        if (issuerEl) issuerEl.value = payment.issuer || payment.name || '';
+    } else {
+        if (issuerGroup) issuerGroup.style.display = 'none';
+        if (issuerEl) issuerEl.value = '';
+        if (type === 'donation' && descEl) {
+            // Donations don't have a separate description field in the form traditionally, but we might have mapped it.
+            // If we use 'name' for donations, it was passed as personName.
+        }
+    }
+
     openModal('edit-payment-modal');
 };
 
@@ -1413,6 +1496,9 @@ window.saveEditedPayment = async () => {
     const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(',', '.'));
     const date = document.getElementById('edit-payment-date').value;
     const description = document.getElementById('edit-payment-desc').value.trim();
+
+    const issuerEl = document.getElementById('edit-payment-issuer');
+    const issuer = issuerEl ? issuerEl.value.trim() : '';
 
     if (Number.isNaN(amount)) {
         alert('Ungültiger Betrag.');
@@ -1428,26 +1514,47 @@ window.saveEditedPayment = async () => {
     }
 
     try {
-        await mutatePerson(currentEditedPayment.personId, (draft) => {
-            const nextPayments = safeList(draft.payments).map((entry, i) => {
-                if (i !== currentEditedPayment.targetIndex) return entry;
-                return {
-                    ...entry,
-                    amount,
-                    date,
-                    description
-                };
+        if (currentEditedPayment.type === 'payment') {
+            await mutatePerson(currentEditedPayment.personId, (draft) => {
+                const nextPayments = safeList(draft.payments).map((entry, i) => {
+                    if (i !== currentEditedPayment.targetIndex) return entry;
+                    return { ...entry, amount, date, description };
+                });
+                const totalPaid = nextPayments.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
+                return { ...draft, payments: nextPayments, totalPaid };
             });
-            const totalPaid = nextPayments.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
-            return { ...draft, payments: nextPayments, totalPaid };
-        });
+            showToast('Zahlung aktualisiert');
+        } else if (currentEditedPayment.type === 'donation') {
+            const remoteDonations = safeList(await apiGet('donations').catch(() => []));
+            const targetDonationId = currentEditedPayment.paymentId;
+            const idx = remoteDonations.findIndex(d => String(d.id) === String(targetDonationId));
+
+            if (idx >= 0) {
+                remoteDonations[idx] = { ...remoteDonations[idx], amount, date };
+                // Keep the description if mapped or fallback
+                await set(ref(db, 'donations'), { ...remoteDonations });
+                donations = remoteDonations;
+            }
+            showToast('Spende aktualisiert');
+        } else if (currentEditedPayment.type === 'expense') {
+            const remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
+            const targetExpenseId = currentEditedPayment.paymentId;
+            const idx = remoteExpenses.findIndex(e => String(e.id) === String(targetExpenseId));
+
+            if (idx >= 0) {
+                remoteExpenses[idx] = { ...remoteExpenses[idx], amount, date, description, issuer };
+                await set(ref(db, 'expenses'), { ...remoteExpenses });
+                expenses = remoteExpenses;
+            }
+            showToast('Ausgabe aktualisiert');
+        }
+
         closeModal('edit-payment-modal');
         currentEditedPayment = null;
         await renderAll();
-        showToast('Zahlung aktualisiert');
     } catch (err) {
-        console.error('Fehler beim Bearbeiten der Zahlung:', err);
-        showToast('Zahlung konnte nicht aktualisiert werden', 'error');
+        console.error('Fehler beim Bearbeiten:', err);
+        showToast('Eintrag konnte nicht aktualisiert werden', 'error');
     }
 };
 

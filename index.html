@@ -179,51 +179,55 @@
                 </div>
             </div>
 
-            <div class="card card-settings" id="card-super-admin" style="display:none;">
-                <div class="card-header" style="color: var(--danger);">Erweiterte Einstellungen (Super-Admin)</div>
-                <div class="card-body">
+            <div class="card super-admin-zone" id="card-super-admin" style="display:none;">
+                <div class="super-admin-header">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    <span>Super-Admin Bereich</span>
+                </div>
+                <div class="super-admin-body">
 
                     <!-- Benutzerrechte -->
-                    <div class="form-group" style="margin-bottom: 30px; border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: var(--surface-alt);">
-                        <div style="font-weight:800; margin-bottom:4px; font-size: 1.05rem;">Benutzerrechte verwalten</div>
-                        <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:15px;">Aktiviert nur normale Admin-/Supervisor-Rechte (kein Super-Admin).</div>
+                    <div class="super-admin-group">
+                        <div class="super-admin-group-title">Benutzerrechte verwalten</div>
+                        <div class="super-admin-group-desc">Aktiviert nur normale Admin-/Supervisor-Rechte (kein Super-Admin).</div>
                         <div id="super-admin-user-management" style="display:flex; flex-direction: column; gap:10px; width: 100%;"></div>
                     </div>
 
                     <!-- Zahlungen bearbeiten -->
-                    <div class="form-group" style="margin-bottom: 30px; border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: var(--surface-alt);">
-                        <div style="font-weight:800; margin-bottom:15px; font-size: 1.05rem;">Zahlungen bearbeiten</div>
+                    <div class="super-admin-group">
+                        <div class="super-admin-group-title">Buchungen korrigieren</div>
+                        <div class="super-admin-group-desc">Hier können alle Zahlungen, Ausgaben und Spenden der letzten 30 Tage bearbeitet werden.</div>
                         <div id="super-admin-payment-editor" style="display:flex; flex-direction: column; gap:10px; width: 100%;"></div>
                     </div>
 
                     <!-- Logo ersetzen -->
-                    <div class="form-group" style="margin-bottom: 30px; border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: var(--surface-alt);">
-                        <div style="font-weight:800; margin-bottom:10px; font-size: 1.05rem;">Logo ersetzen</div>
-                        <label class="form-label" for="super-admin-logo-file" style="margin-bottom: 6px;">church-icon.svg / church-logo.svg (.svg format)</label>
-                        <input type="file" id="super-admin-logo-file" class="form-input" accept=".svg,image/svg+xml" style="margin-bottom: 10px;">
-                        <button class="btn btn-primary btn-block" onclick="uploadChurchLogo()">Logo hochladen</button>
+                    <div class="super-admin-group">
+                        <div class="super-admin-group-title">Logo ersetzen</div>
+                        <label class="form-label" for="super-admin-logo-file" style="margin-bottom: 6px; color: var(--text-secondary);">church-icon.svg / church-logo.svg (.svg format)</label>
+                        <input type="file" id="super-admin-logo-file" class="form-input super-admin-input" accept=".svg,image/svg+xml" style="margin-bottom: 10px;">
+                        <button class="btn btn-block super-admin-btn" onclick="uploadChurchLogo()">Logo hochladen</button>
                     </div>
 
                     <!-- System Config -->
-                    <div class="form-group" style="margin-bottom: 15px; border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: var(--surface-alt);">
-                        <div style="font-weight:800; margin-bottom:15px; font-size: 1.05rem;">System-Konfiguration</div>
+                    <div class="super-admin-group">
+                        <div class="super-admin-group-title">System-Konfiguration</div>
 
                         <div class="form-group">
-                            <label class="form-label" for="super-admin-app-name">Name der Anwendung</label>
-                            <input type="text" id="super-admin-app-name" class="form-input" placeholder="Nova">
-                            <div class="help-text">PocketBase wird automatisch im Docker-Container verwaltet. Hier können Sie nur den Anzeigenamen und optionale SMTP-Daten ändern.</div>
+                            <label class="form-label" for="super-admin-app-name" style="color: var(--text-secondary);">Name der Anwendung</label>
+                            <input type="text" id="super-admin-app-name" class="form-input super-admin-input" placeholder="Nova">
+                            <div class="help-text" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;">PocketBase wird automatisch im Docker-Container verwaltet. Hier können Sie nur den Anzeigenamen und optionale SMTP-Daten ändern.</div>
                         </div>
 
-                        <div style="font-weight:800; margin-bottom:15px; margin-top: 25px; font-size: 1rem;">SMTP Server (Optional)</div>
+                        <div style="font-weight:700; margin-bottom:15px; margin-top: 25px; font-size: 1rem;">SMTP Server (Optional)</div>
 
                         <div class="settings-flex-row">
                             <div class="form-group" style="flex: 2; min-width: 150px;">
-                                <label class="form-label" for="super-admin-smtp-host">Host</label>
-                                <input type="text" id="super-admin-smtp-host" class="form-input" placeholder="z.B. smtp.gmail.com">
+                                <label class="form-label" for="super-admin-smtp-host" style="color: var(--text-secondary);">Host</label>
+                                <input type="text" id="super-admin-smtp-host" class="form-input super-admin-input" placeholder="z.B. smtp.gmail.com">
                             </div>
                             <div class="form-group" style="flex: 1; min-width: 80px;">
-                                <label class="form-label" for="super-admin-smtp-port">Port</label>
-                                <input type="number" id="super-admin-smtp-port" class="form-input" placeholder="465">
+                                <label class="form-label" for="super-admin-smtp-port" style="color: var(--text-secondary);">Port</label>
+                                <input type="number" id="super-admin-smtp-port" class="form-input super-admin-input" placeholder="465">
                             </div>
                         </div>
 
@@ -232,21 +236,21 @@
                                 <input type="checkbox" id="super-admin-smtp-secure">
                                 <span class="slider"></span>
                             </label>
-                            <label for="super-admin-smtp-secure" style="margin:0; font-weight:600; cursor:pointer">SSL/TLS aktivieren</label>
+                            <label for="super-admin-smtp-secure" style="margin:0; font-weight:600; cursor:pointer;">SSL/TLS aktivieren</label>
                         </div>
 
                         <div class="settings-flex-row">
                             <div class="form-group" style="flex: 1; min-width: 150px;">
-                                <label class="form-label" for="super-admin-smtp-user">Benutzer / E-Mail</label>
-                                <input type="text" id="super-admin-smtp-user" class="form-input" placeholder="mail@example.com">
+                                <label class="form-label" for="super-admin-smtp-user" style="color: var(--text-secondary);">Benutzer / E-Mail</label>
+                                <input type="text" id="super-admin-smtp-user" class="form-input super-admin-input" placeholder="mail@example.com">
                             </div>
                             <div class="form-group" style="flex: 1; min-width: 150px;">
-                                <label class="form-label" for="super-admin-smtp-pass">Passwort</label>
-                                <input type="password" id="super-admin-smtp-pass" class="form-input" placeholder="Passwort">
+                                <label class="form-label" for="super-admin-smtp-pass" style="color: var(--text-secondary);">Passwort</label>
+                                <input type="password" id="super-admin-smtp-pass" class="form-input super-admin-input" placeholder="Passwort">
                             </div>
                         </div>
 
-                        <button class="btn btn-danger btn-block" style="margin-top: 10px;" onclick="saveAdvancedSystemConfig()">Erweiterte System-Konfiguration speichern</button>
+                        <button class="btn btn-block super-admin-btn" style="margin-top: 15px;" onclick="saveAdvancedSystemConfig()">Erweiterte System-Konfiguration speichern</button>
                     </div>
                 </div>
             </div>
@@ -508,6 +512,10 @@
         <div class="form-group">
             <label class="form-label" for="edit-payment-desc">Notiz</label>
             <input type="text" id="edit-payment-desc" class="form-input" placeholder="z.B. Beitrag Mai">
+        </div>
+        <div class="form-group" id="edit-payment-issuer-group" style="display:none;">
+            <label class="form-label" for="edit-payment-issuer">Wer / Empfänger</label>
+            <input type="text" id="edit-payment-issuer" class="form-input" placeholder="Name">
         </div>
         <button class="btn btn-primary btn-block" onclick="saveEditedPayment()">Speichern</button>
     </div>

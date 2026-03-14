@@ -274,7 +274,18 @@ const storage = multer.diskStorage({
     });
   }
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPG, PNG, WEBP, GIF, HEIC, and HEIF are allowed.'));
+    }
+  }
+});
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
@@ -1007,16 +1018,24 @@ app.post('/api/admin/logo', verifyToken, verifySuperAdmin, (req, res) => {
   });
 });
 
-app.post('/api/upload', protectedActionRateLimit, verifyToken, upload.single('receipt'), (req, res) => {
-  if (!req.file) return res.status(400).send('No file uploaded.');
-  res.json({ filename: req.file.filename });
+app.post('/api/upload', protectedActionRateLimit, verifyToken, (req, res) => {
+  upload.single('receipt')(req, res, (error) => {
+    if (error) {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large (max 50MB)' });
+      }
+      return res.status(400).json({ error: error.message || 'File upload failed' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+    res.json({ filename: req.file.filename });
+  });
 });
 
 app.get('/api/receipts/:filename', protectedActionRateLimit, verifyToken, (req, res) => {
   const filePath = path.resolve(path.join(uploadDir, req.params.filename));
   const normalizedUploadDir = path.resolve(uploadDir);
 
-  if (!filePath.startsWith(normalizedUploadDir)) {
+  if (!filePath.startsWith(normalizedUploadDir + path.sep)) {
     return res.status(403).send('Forbidden: Path traversal detected');
   }
 

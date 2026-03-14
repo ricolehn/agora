@@ -122,7 +122,7 @@ function calculatePaymentStatus(person, settings) {
 
         const sortedHistory = person.statusHistory || [];
 
-        const maxIterations = 120;
+        const maxIterations = 1200;
         let iterations = 0;
         let historyIdx = 0;
 
@@ -245,7 +245,7 @@ function calculateCostRange(person, startDate, endDate, settings) {
 
     const targetTotal = endDate.getFullYear() * 12 + endDate.getMonth();
 
-    while ((year * 12 + month) <= targetTotal && limit < 120) {
+    while ((year * 12 + month) <= targetTotal && limit < 1200) {
         const currentTotal = year * 12 + month;
 
         const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
