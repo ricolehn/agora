@@ -517,11 +517,6 @@ async function readLogicalPath(targetPath, query, user) {
   const normalizedPath = normalizeDataPath(targetPath);
   const [root, id, nested] = normalizedPath.split('/');
 
-  if (normalizedPath === 'system/inviteCode') {
-    const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    return { value: system?.inviteCode || DEFAULT_SYSTEM_STATE.inviteCode, version: null };
-  }
-
   if (!user) {
     const error = new Error('Unauthorized');
     error.status = 401;
@@ -544,6 +539,11 @@ async function readLogicalPath(targetPath, query, user) {
   }
 
   if (root === 'system' && id === 'inviteCode') {
+    if (!user.admin) {
+      const error = new Error('Admin access required');
+      error.status = 403;
+      throw error;
+    }
     const record = await getStateRecord(appConfig, 'system');
     return { value: record?.value?.inviteCode || DEFAULT_SYSTEM_STATE.inviteCode, version: record?.updated || null };
   }

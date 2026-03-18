@@ -1210,8 +1210,8 @@ function renderUnlinkedUsers() {
         return `
             <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:200px;">
-                    <div style="font-weight:700;">${(u.firstName || '?')} ${(u.lastName || '')}</div>
-                    <div style="font-size:0.85rem; color:var(--text-secondary);">${u.email || ''}</div>
+                    <div style="font-weight:700;">${escapeHtml(u.firstName || '?')} ${escapeHtml(u.lastName || '')}</div>
+                    <div style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(u.email || '')}</div>
                 </div>
                 <select id="link-select-${u.uid}" class="form-select" style="flex:1; min-width:220px;">
                     <option value="">Person auswählen</option>
@@ -2992,15 +2992,6 @@ window.attemptRegister = async () => {
     }
 
     try {
-        const codeSnap = await get(ref(db, 'system/inviteCode'));
-        const validCode = codeSnap.exists() ? codeSnap.val() : '123456';
-
-        if(code !== String(validCode)) {
-            errDiv.innerText = "Ungültiger Registrierungscode.";
-            errDiv.style.display = 'block';
-            return;
-        }
-
         const userCredential = await createUserWithEmailAndPassword(auth, email, p1, {
             inviteCode: code,
             firstName: first,
@@ -3023,7 +3014,11 @@ window.attemptRegister = async () => {
         document.getElementById('login-modal').classList.remove('show');
     } catch (error) {
         console.error(error);
-        errDiv.innerText = "Registrierung fehlgeschlagen: " + error.message;
+        if (error.message && error.message.includes('Ungültiger Registrierungscode')) {
+            errDiv.innerText = "Ungültiger Registrierungscode.";
+        } else {
+            errDiv.innerText = "Registrierung fehlgeschlagen: " + error.message;
+        }
         errDiv.style.display = 'block';
     }
 };
