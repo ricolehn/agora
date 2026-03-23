@@ -502,7 +502,7 @@ body { background-color: var(--bg); color: var(--text); min-height: 100vh; paddi
 .modal.show { opacity: 1; pointer-events: all; }
 .modal-content {
     background: var(--surface); width: 90%; max-width: 400px;
-    border-radius: 24px; padding: 24px;
+    border-radius: 24px; padding: 0 24px 24px 24px;
     transform: scale(0.95); transition: 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     max-height: 85vh; overflow-y: auto; border: 1px solid var(--border);
     scrollbar-gutter: stable;
@@ -518,7 +518,19 @@ body { background-color: var(--bg); color: var(--text); min-height: 100vh; paddi
     backdrop-filter: none;
 }
 
-.modal-header { font-size: 1.2rem; font-weight: 800; margin-bottom: 20px; display: flex; justify-content: space-between; color: var(--text); }
+.modal-header {
+    font-size: 1.2rem;
+    font-weight: 800;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    padding-top: 24px;
+    z-index: 10;
+}
 
 /* Trans List */
 .trans-item {
@@ -584,6 +596,18 @@ input:checked + .slider:before { transform: translateX(22px); }
     border-right-color: var(--primary-dark);
     border-radius: 50%;
     animation: spin 1.5s linear infinite;
+}
+
+/* Skeleton Loader */
+.skeleton {
+    background: linear-gradient(90deg, var(--surface-alt) 25%, var(--border) 50%, var(--surface-alt) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+}
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }

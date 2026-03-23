@@ -257,9 +257,17 @@ window.toggleFab = function() {
     });
 };
 
+// Web History API tracking for modals
+window._modalStack = window._modalStack || [];
+window._programmaticBacks = window._programmaticBacks || 0;
+
 window.openModal = (id) => {
     const modal = document.getElementById(id);
     if (!modal) return;
+
+    // Web History API integration
+    window._modalStack.push(id);
+    history.pushState({ isModal: true, modalId: id }, "");
 
     // Store current focus on the modal instance itself to handle nesting
     modal._returnFocusTo = document.activeElement;
@@ -283,9 +291,25 @@ window.openModal = (id) => {
     modal._escHandler = handleEsc;
 };
 
-window.closeModal = (id) => {
+window.closeModal = (id, fromPopstate = false) => {
     const modal = document.getElementById(id);
     if (!modal) return;
+
+    // Web History API integration
+    const stackIndex = window._modalStack ? window._modalStack.indexOf(id) : -1;
+    if (stackIndex > -1) {
+        window._modalStack.splice(stackIndex, 1);
+        if (!fromPopstate) {
+            window._programmaticBacks = (window._programmaticBacks || 0) + 1;
+            history.back();
+            // Fallback if history.back() does not trigger popstate
+            setTimeout(() => {
+                if (window._programmaticBacks > 0) {
+                    window._programmaticBacks--;
+                }
+            }, 200);
+        }
+    }
 
     modal.classList.remove('show');
 
@@ -299,7 +323,30 @@ window.closeModal = (id) => {
         try { returnFocus.focus(); } catch(e){}
     }
     delete modal._returnFocusTo;
+
+    // Re-show the previous modal in the stack if one exists
+    if (window._modalStack && window._modalStack.length > 0) {
+        const prevModalId = window._modalStack[window._modalStack.length - 1];
+        const prevModal = document.getElementById(prevModalId);
+        if (prevModal) {
+            prevModal.classList.add('show');
+        }
+    }
 };
+
+// Web History API event listener for system back gesture
+window.addEventListener('popstate', (e) => {
+    if (window._programmaticBacks > 0) {
+        window._programmaticBacks--;
+        return;
+    }
+
+    if (window._modalStack && window._modalStack.length > 0) {
+        // Close the top-most modal
+        const topModal = window._modalStack[window._modalStack.length - 1];
+        closeModal(topModal, true);
+    }
+});
 
 // Improved Toggle Details
 window.toggleDetails = function(id) {
@@ -2125,7 +2172,16 @@ window.showTransactionModal = async function(resetLimit = true) {
     const container = document.getElementById('full-transaction-list');
 
     if (resetLimit) {
-        container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Lade Buchungen...</div>';
+        const skeletonHtml = Array(15).fill(`
+            <div class="trans-item" style="pointer-events: none; border-bottom: 1px solid var(--border);">
+                <div class="trans-left" style="gap: 6px;">
+                    <div class="skeleton" style="width: 140px; height: 16px;"></div>
+                    <div class="skeleton" style="width: 100px; height: 12px; margin-top: 4px;"></div>
+                </div>
+                <div class="skeleton" style="width: 70px; height: 18px;"></div>
+            </div>
+        `).join('');
+        container.innerHTML = skeletonHtml;
     }
 
     if (!modal?.classList.contains('show')) {
@@ -3362,7 +3418,10 @@ window.showTransactionDetails = async function(id, type) {
     const item = window.findTransaction(id, type);
     if (!item) return;
 
-    closeModal('transaction-modal'); // Hide the list
+    // Hide the list visually without modifying the stack
+    const listModal = document.getElementById('transaction-modal');
+    if (listModal) listModal.classList.remove('show');
+
     openModal('transaction-details-modal');
     const content = document.getElementById('transaction-details-content');
 
