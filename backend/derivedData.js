@@ -166,15 +166,19 @@ function calculatePaymentStatus(person, settings) {
     return result;
 }
 
-function calculateTimeRemaining(person, paidUntil) {
+function calculateTimeRemaining(person, paidUntil, preCalcCredit, settings) {
     const standingOrders = person.standingOrders || [];
     const todayStr = getTodayStr();
 
-    const hasActiveSO = standingOrders.some(so => {
+    // Calculate total active standing order amount
+    let totalSOAmount = 0;
+    const activeSOs = standingOrders.filter(so => {
          if (so.startDate > todayStr) return false;
          if (so.endDate && so.endDate < todayStr) return false;
          return true;
     });
+    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
+    const hasActiveSO = activeSOs.length > 0;
 
     if (!paidUntil) {
         if (hasActiveSO) {
@@ -188,15 +192,31 @@ function calculateTimeRemaining(person, paidUntil) {
     const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
     const monthsDiff = paidTotal - currentTotal;
 
+    // CALCULATE TRUE MISSING AMOUNT FOR CURRENT MONTH
+    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0); // End of current month
+
+    const startCalc = new Date(paidUntil);
+    startCalc.setDate(1);
+    startCalc.setMonth(startCalc.getMonth() + 1);
+
+    let trueMissingAmount = 0;
+    if (startCalc <= targetDate) {
+        const missingCost = calculateCostRange(person, startCalc, targetDate, settings);
+        trueMissingAmount = missingCost - (preCalcCredit || 0);
+        if (trueMissingAmount < 0) trueMissingAmount = 0;
+    }
+
     if (monthsDiff < 0) {
         const overdueMonths = Math.abs(monthsDiff);
 
-        if (hasActiveSO) {
-            if (monthsDiff === -1) {
+        // Only allow standing order buffer for the current month (monthsDiff === -1)
+        if (hasActiveSO && overdueMonths === 1) {
+            // Check if the standing order covers the missing amount
+            if (trueMissingAmount <= totalSOAmount) {
                 return {
                     text: 'Dauerauftrag aktiv',
                     isOverdue: false,
-                    isSoonDue: true,
+                    isSoonDue: true, // Mark them as soon due since the standing order is expected this month
                     isActiveStandingOrder: true
                 };
             } else {
@@ -268,35 +288,63 @@ function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, setting
 
     const standingOrders = person.standingOrders || [];
     const todayStr = getTodayStr();
-    const hasActiveSO = standingOrders.some(so => {
+
+    let totalSOAmount = 0;
+    const activeSOs = standingOrders.filter(so => {
          if (so.startDate > todayStr) return false;
          if (so.endDate && so.endDate < todayStr) return false;
          return true;
     });
+    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
+    const hasActiveSO = activeSOs.length > 0;
 
-    const targetDate = hasActiveSO
-        ? new Date(today.getFullYear(), today.getMonth(), 0)
-        : new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    // ALWAYS calculate up to the end of the current month
+    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
+    let finalMissing = 0;
     if (preCalcPaidUntil) {
         const startCalc = new Date(preCalcPaidUntil);
         startCalc.setDate(1);
         startCalc.setMonth(startCalc.getMonth() + 1);
 
-        if (startCalc > targetDate) return 0;
-
-        const missingCost = calculateCostRange(person, startCalc, targetDate, settings);
-        const credit = preCalcCredit || 0;
-        const finalMissing = missingCost - credit;
-
-        return finalMissing > 0 ? finalMissing : 0;
+        if (startCalc <= targetDate) {
+            const missingCost = calculateCostRange(person, startCalc, targetDate, settings);
+            const credit = preCalcCredit || 0;
+            finalMissing = missingCost - credit;
+        }
+    } else {
+        const totalCost = calculateTotalCostUntil(person, targetDate, settings);
+        const totalPaid = person.totalPaid || 0;
+        finalMissing = totalCost - totalPaid;
     }
 
-    const totalCost = calculateTotalCostUntil(person, targetDate, settings);
-    const totalPaid = person.totalPaid || 0;
+    if (finalMissing < 0) finalMissing = 0;
 
-    const missing = totalCost - totalPaid;
-    return missing > 0 ? missing : 0;
+    // Calculate months difference to see if they are only overdue for the current month
+    const paidUntil = preCalcPaidUntil || calculatePaidUntil(person);
+    let monthsDiff = 0;
+    if (paidUntil) {
+        const currentTotal = today.getFullYear() * 12 + today.getMonth();
+        const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
+        monthsDiff = paidTotal - currentTotal;
+    } else {
+        monthsDiff = -2; // Force no SO buffer if they have no paid history
+    }
+
+    // Check if the active SO will cover the current month's debt
+    // if the user is completely covered by SO, their missing amount is 0.
+    // Only apply the buffer if the user is not more than 1 month behind (monthsDiff >= -1)
+    if (hasActiveSO && monthsDiff >= -1) {
+        if (finalMissing <= totalSOAmount) {
+             // The SO covers the missing amount (for the current month)
+             return 0;
+        } else {
+             // The SO does NOT cover the missing amount (they owe more)
+             return finalMissing;
+        }
+    }
+
+    return finalMissing > 0 ? finalMissing : 0;
 }
 
 function preprocessPersonServerSide(person, settings) {
@@ -315,7 +363,7 @@ function preprocessPersonServerSide(person, settings) {
     person.statusHistory = statusHistory;
 
     const { paidUntil, remainingCredit } = calculatePaymentStatus(person, settings);
-    const statusMeta = calculateTimeRemaining(person, paidUntil);
+    const statusMeta = calculateTimeRemaining(person, paidUntil, remainingCredit, settings);
     const overdueAmount = statusMeta.isOverdue ? calculateOverdueAmount(person, paidUntil, remainingCredit, settings) : 0;
     const currentStatus = getCurrentStatus(person);
 

@@ -273,13 +273,7 @@ window.openModal = (id) => {
     modal._returnFocusTo = document.activeElement;
     modal.classList.add('show');
 
-    // Focus management
-    const focusable = modal.querySelector('input:not([type="hidden"]), select, textarea') ||
-                      modal.querySelector('button, [href], [tabindex]:not([tabindex="-1"])');
-    if (focusable) {
-        // Small timeout to allow transition/visibility paint
-        setTimeout(() => focusable.focus(), 50);
-    }
+    // Removed automatic focus management to prevent soft keyboard from popping up on mobile devices
 
     // Escape to close
     const handleEsc = (e) => {
@@ -641,16 +635,19 @@ function calculateCostRange(person, startDate, endDate) {
  * @param {Object} person - Die Person
  * @returns {Object} - { text, isOverdue, isSoonDue }
  */
-function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = null) {
+function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = null, preCalcCredit = null) {
     // START CHECK
     const standingOrders = safeList(person.standingOrders);
     const todayStr = todayStrArg || getTodayStr();
 
-    const hasActiveSO = standingOrders.some(so => {
+    let totalSOAmount = 0;
+    const activeSOs = standingOrders.filter(so => {
          if (so.startDate > todayStr) return false;
          if (so.endDate && so.endDate < todayStr) return false;
          return true;
     });
+    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
+    const hasActiveSO = activeSOs.length > 0;
 
     const paidUntil = preCalculatedPaidUntil !== undefined ? preCalculatedPaidUntil : calculatePaidUntil(person);
     if (!paidUntil) {
@@ -666,14 +663,36 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
     const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
     const monthsDiff = paidTotal - currentTotal;
 
+    // CALCULATE TRUE MISSING AMOUNT FOR CURRENT MONTH
+    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0); // End of current month
+
+    const startCalc = new Date(paidUntil);
+    startCalc.setDate(1);
+    startCalc.setMonth(startCalc.getMonth() + 1);
+
+    let trueMissingAmount = 0;
+    if (startCalc <= targetDate) {
+        const missingCost = calculateCostRange(person, startCalc, targetDate);
+
+        let creditToUse = preCalcCredit;
+        if (creditToUse === null || creditToUse === undefined) {
+             const paymentStatus = calculatePaymentStatus(person);
+             creditToUse = paymentStatus.remainingCredit;
+        }
+
+        trueMissingAmount = missingCost - (creditToUse || 0);
+        if (trueMissingAmount < 0) trueMissingAmount = 0;
+    }
+
     if (monthsDiff < 0) {
         const overdueMonths = Math.abs(monthsDiff);
 
-        if (hasActiveSO) {
-            // If there's an active standing order and they are only missing the current month's payment (monthsDiff === -1),
-            // they shouldn't be considered overdue yet because the standing order might just execute later in the month.
-            // If they are missing more than one month, then the standing order must have failed or wasn't enough, so they are overdue.
-            if (monthsDiff === -1) {
+        // Only allow standing order buffer for the current month (monthsDiff === -1)
+        if (hasActiveSO && overdueMonths === 1) {
+            // Check if the standing order covers the missing amount
+            // Since the standing order will run this month, it will contribute `totalSOAmount`
+            // If trueMissingAmount <= totalSOAmount, then after SO executes, they will owe 0.
+            if (trueMissingAmount <= totalSOAmount) {
                 return {
                     text: 'Dauerauftrag aktiv',
                     isOverdue: false,
@@ -728,17 +747,20 @@ function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, todaySt
     // Check for active standing orders
     const standingOrders = safeList(person.standingOrders);
     const todayStr = todayStrArg || getTodayStr();
-    const hasActiveSO = standingOrders.some(so => {
+
+    let totalSOAmount = 0;
+    const activeSOs = standingOrders.filter(so => {
          if (so.startDate > todayStr) return false;
          if (so.endDate && so.endDate < todayStr) return false;
          return true;
     });
+    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
+    const hasActiveSO = activeSOs.length > 0;
 
-    // Wenn es einen aktiven Dauerauftrag gibt, fehlt der Betrag für diesen Monat noch nicht (wird ja noch ausgeführt)
-    // Ziel: Ende des Vormonats, andernfalls Ende des aktuellen Monats
-    const targetDate = hasActiveSO
-        ? new Date(today.getFullYear(), today.getMonth(), 0)
-        : new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    // ALWAYS calculate up to the end of the current month
+    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    let finalMissing = 0;
 
     // ⚡ Bolt: Optimized path avoiding full history iteration
     if (preCalcPaidUntil) {
@@ -747,21 +769,44 @@ function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, todaySt
         startCalc.setDate(1);
         startCalc.setMonth(startCalc.getMonth() + 1);
 
-        // If startCalc > targetDate, we are ahead of payment (not overdue), return 0
-        if (startCalc > targetDate) return 0;
-
-        const missingCost = calculateCostRange(person, startCalc, targetDate);
-        const credit = preCalcCredit || 0;
-        const finalMissing = missingCost - credit;
-
-        return finalMissing > 0 ? finalMissing : 0;
+        if (startCalc <= targetDate) {
+             const missingCost = calculateCostRange(person, startCalc, targetDate);
+             const credit = preCalcCredit || 0;
+             finalMissing = missingCost - credit;
+        }
+    } else {
+        const totalCost = calculateTotalCostUntil(person, targetDate);
+        const totalPaid = person.totalPaid || 0;
+        finalMissing = totalCost - totalPaid;
     }
 
-    const totalCost = calculateTotalCostUntil(person, targetDate);
-    const totalPaid = person.totalPaid || 0;
+    if (finalMissing < 0) finalMissing = 0;
 
-    const missing = totalCost - totalPaid;
-    return missing > 0 ? missing : 0;
+    // Calculate months difference to see if they are only overdue for the current month
+    const paidUntil = preCalcPaidUntil || calculatePaidUntil(person);
+    let monthsDiff = 0;
+    if (paidUntil) {
+        const currentTotal = today.getFullYear() * 12 + today.getMonth();
+        const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
+        monthsDiff = paidTotal - currentTotal;
+    } else {
+        monthsDiff = -2; // Force no SO buffer if they have no paid history
+    }
+
+    // Check if the active SO will cover the current month's debt
+    // if the user is completely covered by SO, their missing amount is 0.
+    // Only apply the buffer if the user is not more than 1 month behind (monthsDiff >= -1)
+    if (hasActiveSO && monthsDiff >= -1) {
+        if (finalMissing <= totalSOAmount) {
+             // The SO covers the missing amount (for the current month)
+             return 0;
+        } else {
+             // The SO does NOT cover the missing amount (they owe more)
+             return finalMissing;
+        }
+    }
+
+    return finalMissing > 0 ? finalMissing : 0;
 }
 
 /**
@@ -1222,7 +1267,7 @@ function renderAdminRequests() {
             const sorted = items.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             return `
                 <div style="margin-top: 12px;">
-                    <div style="font-weight: 900; margin-bottom: 6px;">${personName}</div>
+                    <div style="font-weight: 900; margin-bottom: 6px;">${escapeHtml(personName)}</div>
                     ${sorted.map(renderReq).join('')}
                 </div>
             `;
@@ -1598,7 +1643,9 @@ window.saveEditedPayment = async () => {
 
         closeModal('edit-payment-modal');
         currentEditedPayment = null;
-        await renderAll();
+        renderPeople();
+        renderStats();
+        renderSuperAdminPaymentEditor();
     } catch (err) {
         console.error('Fehler beim Bearbeiten:', err);
         showToast('Eintrag konnte nicht aktualisiert werden', 'error');
@@ -1718,10 +1765,10 @@ function renderUserView() {
     let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : 'Nie';
 
     const statusLabels = {
-        'vollverdiener': '💼 Vollverdiener',
-        'geringverdiener': '📉 Geringverdiener',
-        'keinverdiener': '🎓 Keinverdiener',
-        'pausiert': '⏸️ Pausiert'
+        'vollverdiener': 'Vollverdiener',
+        'geringverdiener': 'Geringverdiener',
+        'keinverdiener': 'Keinverdiener',
+        'pausiert': 'Pausiert'
     };
 
     let statusClass = 'user-status-ok';
@@ -1738,21 +1785,32 @@ function renderUserView() {
         statusIcon = '⏳';
     }
 
+    const monthlyRate = settings[currentStatus] || 0;
+
     document.getElementById('user-status-card').innerHTML = `
         <!-- Status Hero Card -->
         <div class="user-hero-status ${statusClass}">
-            <div style="font-size: 4rem; margin-bottom: 15px; line-height: 1;">${statusIcon}</div>
-            <h2 style="color: ${statusColor}; font-size: 1.5rem; font-weight: 800; margin-bottom: 10px;">
+            <h2 style="color: ${statusColor}; font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
                 ${statusMeta.isOverdue ? 'Zahlung überfällig' : (statusMeta.isSoonDue ? 'Bald fällig' : 'Alles in Ordnung')}
             </h2>
-            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1.15rem; font-weight: 600; color: var(--text); margin-bottom: 8px;">Bezahlt bis <strong>${dateText}</strong></div>`}
-            <div style="font-size: 0.95rem; opacity: 0.75; color: var(--text);">${statusMeta.text}</div>
+            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">Bezahlt bis <strong>${dateText}</strong></div>`}
             ${statusMeta.isOverdue ? `
-                <div style="margin-top: 20px; padding: 15px; background: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
+                <div style="margin-top: 15px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
                     <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 5px; color: var(--danger);">Offener Betrag</div>
-                    <div style="font-size: 1.8rem; font-weight: 800; color: var(--danger);">${formatCurrency(overdueAmount)} €</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">${formatCurrency(overdueAmount)} €</div>
                 </div>
             ` : ''}
+        </div>
+
+        <div class="user-info-boxes">
+            <div class="user-info-box">
+                <div class="user-info-box-label">Monatlicher Beitrag</div>
+                <div class="user-info-box-value">${formatCurrency(monthlyRate)} €</div>
+            </div>
+            <div class="user-info-box">
+                <div class="user-info-box-label">Aktueller Status</div>
+                <div class="user-info-box-value">${statusLabels[currentStatus] || currentStatus}</div>
+            </div>
         </div>
     `;
 
@@ -2027,9 +2085,20 @@ function generatePersonHTML(p, preCalcData = null) {
                     ${soListHtml}
 
                     <div class="details-actions" style="${(currentUser && !currentUser.admin) ? 'display:none' : ''}">
-                        <button class="btn btn-primary" onclick="openPaymentModal('${p.id}')">💰 Zahlung</button>
-                        <button class="btn btn-secondary" onclick="openChangeStatusModal('${p.id}')">🔄 Status</button>
-                        <button class="btn btn-secondary btn-span-all" onclick="sendStatusEmail('${p.id}')">📧 Status-E-Mail senden</button>
+                        <button class="btn btn-primary" onclick="openPaymentModal('${p.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12"></path><path d="M4 14h9"></path><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"></path></svg>
+                            Zahlung erfassen
+                        </button>
+                        <div class="secondary-actions">
+                            <button class="btn btn-secondary" onclick="openChangeStatusModal('${p.id}')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                                Status
+                            </button>
+                            <button class="btn btn-secondary" onclick="sendStatusEmail('${p.id}')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                                E-Mail
+                            </button>
+                        </div>
                     </div>
 
                     <div class="history-header">Verlauf</div>
@@ -2324,8 +2393,14 @@ window.addPayment = async () => {
             return;
         }
 
-        await renderAll();
         closeModal('add-payment-modal');
+        if (currentUser && !currentUser.admin) {
+            renderUserView();
+        } else {
+            renderPeople();
+            renderStats();
+            renderSuperAdminPaymentEditor();
+        }
         document.getElementById('payment-is-standing-order').checked = false;
         const lbl = document.getElementById('payment-date-label');
         if(lbl) lbl.innerText = 'Datum';
@@ -2354,8 +2429,9 @@ window.addDonation = async () => {
         const nextDonations = [...safeList(currentData), newDonation];
         await set(ref(db, 'donations'), { ...nextDonations });
         donations = nextDonations;
-        await renderAll();
         closeModal('add-donation-modal');
+        renderStats();
+        renderSuperAdminPaymentEditor();
         showToast('Spende gespeichert');
     } catch (err) {
         console.error('Fehler beim Speichern der Spende:', err);
@@ -2407,8 +2483,9 @@ window.addExpense = async () => {
         const nextExpenses = [...safeList(currentData), newExpense];
         await set(ref(db, 'expenses'), { ...nextExpenses });
         expenses = nextExpenses;
-        await renderAll();
         closeModal('add-expense-modal');
+        renderStats();
+        renderSuperAdminPaymentEditor();
         document.getElementById('expense-amount').value = '';
         document.getElementById('expense-issuer').value = '';
         document.getElementById('expense-desc').value = '';

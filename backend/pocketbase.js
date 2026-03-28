@@ -582,13 +582,16 @@ function buildExpenseRecordPayload(expense, index = 0) {
 }
 
 function groupRecordsBy(records, keyField) {
-  return records.reduce((acc, record) => {
+  const acc = {};
+  for (let i = 0, len = records.length; i < len; i++) {
+    const record = records[i];
     const key = record?.[keyField];
-    if (!key) return acc;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(record);
-    return acc;
-  }, {});
+    if (key) {
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(record);
+    }
+  }
+  return acc;
 }
 
 function mergeChildData(ownerKey, existingRecords, legacyItems, payloadBuilder, keyField) {
