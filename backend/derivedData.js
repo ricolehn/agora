@@ -2,6 +2,8 @@ function getTodayStr() {
     return new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 }
 
+const AMOUNT_COMPARISON_EPSILON = 0.0001;
+
 function findStatusInHistory(history, idx, currentTotal) {
     let newIdx = idx;
     let status = null;
@@ -284,67 +286,93 @@ function calculateCostRange(person, startDate, endDate, settings) {
 }
 
 function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, settings) {
-    const today = new Date();
+    const balance = calculateCurrentBalance(person, settings);
+    return balance < 0 ? Math.abs(balance) : 0;
+}
 
-    const standingOrders = person.standingOrders || [];
-    const todayStr = getTodayStr();
+function getIsoDateDay(dateStr) {
+    if (typeof dateStr === 'string') {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+        if (match) {
+            return parseInt(match[3], 10);
+        }
+    }
+    const parsed = new Date(dateStr);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getDate();
+}
 
-    let totalSOAmount = 0;
-    const activeSOs = standingOrders.filter(so => {
-         if (so.startDate > todayStr) return false;
-         if (so.endDate && so.endDate < todayStr) return false;
-         return true;
+function isPaymentInCurrentMonth(paymentDate, today) {
+    if (!paymentDate) return false;
+    const parsed = new Date(paymentDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+    return parsed.getFullYear() === today.getFullYear() && parsed.getMonth() === today.getMonth();
+}
+
+function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
+    const payments = person.payments || [];
+    const soAmount = parseFloat(standingOrder.amount || 0);
+    const soIdPrefix = standingOrder.id ? `auto_${standingOrder.id}_` : null;
+
+    return payments.some((payment) => {
+        if (!isPaymentInCurrentMonth(payment.date, today)) {
+            return false;
+        }
+
+        if (soIdPrefix && typeof payment.id === 'string' && payment.id.startsWith(soIdPrefix)) {
+            return true;
+        }
+
+        const isAutoLike = payment.isAuto === true || String(payment.description || '').includes('(Auto)');
+        const amountMatches = Math.abs(parseFloat(payment.amount || 0) - soAmount) < AMOUNT_COMPARISON_EPSILON;
+        return isAutoLike && amountMatches;
     });
-    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
-    const hasActiveSO = activeSOs.length > 0;
+}
 
-    // ALWAYS calculate up to the end of the current month
-    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+function getActiveStandingOrders(person, todayStr) {
+    const standingOrders = person.standingOrders || [];
+    return standingOrders.filter((so) => {
+        if (so.startDate > todayStr) return false;
+        if (so.endDate && so.endDate < todayStr) return false;
+        return true;
+    });
+}
 
-    let finalMissing = 0;
-    if (preCalcPaidUntil) {
-        const startCalc = new Date(preCalcPaidUntil);
-        startCalc.setDate(1);
-        startCalc.setMonth(startCalc.getMonth() + 1);
+function calculateAnticipatedStandingOrderPayment(person, today = new Date()) {
+    const todayStr = getTodayStr();
+    const activeSOs = getActiveStandingOrders(person, todayStr);
+    let anticipated = 0;
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-        if (startCalc <= targetDate) {
-            const missingCost = calculateCostRange(person, startCalc, targetDate, settings);
-            const credit = preCalcCredit || 0;
-            finalMissing = missingCost - credit;
+    for (const so of activeSOs) {
+        if (hasStandingOrderPaidThisMonth(person, so, today)) {
+            continue;
         }
-    } else {
-        const totalCost = calculateTotalCostUntil(person, targetDate, settings);
-        const totalPaid = person.totalPaid || 0;
-        finalMissing = totalCost - totalPaid;
-    }
 
-    if (finalMissing < 0) finalMissing = 0;
+        const dayOfMonth = getIsoDateDay(so.startDate);
+        if (!dayOfMonth) {
+            continue;
+        }
+        const maxDays = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const dueDay = Math.min(dayOfMonth, maxDays);
+        const dueDate = new Date(today.getFullYear(), today.getMonth(), dueDay);
 
-    // Calculate months difference to see if they are only overdue for the current month
-    const paidUntil = preCalcPaidUntil || calculatePaidUntil(person);
-    let monthsDiff = 0;
-    if (paidUntil) {
-        const currentTotal = today.getFullYear() * 12 + today.getMonth();
-        const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
-        monthsDiff = paidTotal - currentTotal;
-    } else {
-        monthsDiff = -2; // Force no SO buffer if they have no paid history
-    }
-
-    // Check if the active SO will cover the current month's debt
-    // if the user is completely covered by SO, their missing amount is 0.
-    // Only apply the buffer if the user is not more than 1 month behind (monthsDiff >= -1)
-    if (hasActiveSO && monthsDiff >= -1) {
-        if (finalMissing <= totalSOAmount) {
-             // The SO covers the missing amount (for the current month)
-             return 0;
-        } else {
-             // The SO does NOT cover the missing amount (they owe more)
-             return finalMissing;
+        // Grace period only for upcoming (or today) executions in the current month.
+        if (dueDate >= todayStart) {
+            anticipated += parseFloat(so.amount || 0);
         }
     }
 
-    return finalMissing > 0 ? finalMissing : 0;
+    return {
+        anticipated,
+        hasActiveSO: activeSOs.length > 0
+    };
+}
+
+function calculateCurrentBalance(person, settings, today = new Date()) {
+    const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const totalOwed = calculateTotalCostUntil(person, endOfCurrentMonth, settings);
+    const totalPaid = person.totalPaid || 0;
+    return totalPaid - totalOwed;
 }
 
 function preprocessPersonServerSide(person, settings) {
@@ -363,8 +391,23 @@ function preprocessPersonServerSide(person, settings) {
     person.statusHistory = statusHistory;
 
     const { paidUntil, remainingCredit } = calculatePaymentStatus(person, settings);
-    const statusMeta = calculateTimeRemaining(person, paidUntil, remainingCredit, settings);
-    const overdueAmount = statusMeta.isOverdue ? calculateOverdueAmount(person, paidUntil, remainingCredit, settings) : 0;
+    const currentBalance = calculateCurrentBalance(person, settings);
+    const { anticipated, hasActiveSO } = calculateAnticipatedStandingOrderPayment(person);
+    const isCurrent = (currentBalance + anticipated) >= -AMOUNT_COMPARISON_EPSILON;
+    const overdueAmount = isCurrent ? 0 : calculateOverdueAmount(person, paidUntil, remainingCredit, settings);
+    const statusMeta = isCurrent
+        ? {
+            text: hasActiveSO ? 'Dauerauftrag aktiv' : 'Alles in Ordnung',
+            isOverdue: false,
+            isSoonDue: anticipated > 0,
+            isActiveStandingOrder: hasActiveSO
+        }
+        : {
+            text: 'Zahlung überfällig',
+            isOverdue: true,
+            isSoonDue: false,
+            isActiveStandingOrder: hasActiveSO
+        };
     const currentStatus = getCurrentStatus(person);
 
     return {
@@ -372,7 +415,10 @@ function preprocessPersonServerSide(person, settings) {
         _paidUntil: paidUntil ? paidUntil.toISOString() : null,
         _statusMeta: statusMeta,
         _overdueAmount: overdueAmount,
-        _currentStatus: currentStatus
+        _currentStatus: currentStatus,
+        _currentBalance: currentBalance,
+        _anticipatedPayment: anticipated,
+        _overpayment: currentBalance > 0 ? currentBalance : 0
     };
 }
 

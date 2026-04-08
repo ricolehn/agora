@@ -13,6 +13,14 @@ const cron = require('node-cron');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { aggregateStats } = require('./stats');
 const { getPaginatedTransactions } = require('./transactions');
+
+const sseClients = new Set();
+function broadcastDataUpdate() {
+  for (const client of sseClients) {
+    client.write('event: data_update\ndata: {}\n\n');
+  }
+}
+
 const {
   DEFAULT_SETTINGS,
   DEFAULT_SYSTEM_STATE,
@@ -475,6 +483,9 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
       return res.status(403).json({ error: 'Ungültiger Registrierungscode.' });
     }
     const auth = await registerUser({ email, password, firstName, lastName });
+    const newCode = String(Math.floor(100000 + Math.random() * 900000));
+    await upsertStateValue(appConfig, 'system', { ...system, inviteCode: newCode });
+    broadcastDataUpdate();
     setAuthCookie(res, auth.token);
     res.json(auth);
   } catch (error) {
@@ -786,6 +797,26 @@ async function verifyOptionalUser(req) {
   }
 }
 
+app.get('/api/stream', verifyToken, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
+app.get('/api/stream', (req, res, next) => {
+  if (setupMode) {
+    return res.status(503).json({ error: 'App is in setup mode. Please configure first.' });
+  }
+  next();
+});
+
 app.get('/api/db', dbRateLimit, async (req, res) => {
   if (setupMode) {
     return res.status(503).json({ error: 'App is in setup mode. Please complete setup first.' });
@@ -811,6 +842,7 @@ app.get('/api/db', dbRateLimit, async (req, res) => {
 app.put('/api/db', dbRateLimit, verifyToken, async (req, res) => {
   try {
     await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'set');
+    broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || 'Failed to write data' });
@@ -820,6 +852,7 @@ app.put('/api/db', dbRateLimit, verifyToken, async (req, res) => {
 app.patch('/api/db', dbRateLimit, verifyToken, async (req, res) => {
   try {
     await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'patch');
+    broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || 'Failed to update data' });
@@ -829,6 +862,7 @@ app.patch('/api/db', dbRateLimit, verifyToken, async (req, res) => {
 app.delete('/api/db', dbRateLimit, verifyToken, async (req, res) => {
   try {
     await removeLogicalPath(req.body?.path, req.user);
+    broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || 'Failed to delete data' });
@@ -881,6 +915,7 @@ app.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) => {
     }
 
     const updated = await upsertPeopleRecord(appConfig, id, nextValue, currentVersion);
+    broadcastDataUpdate();
     res.json({ value: updated.data, version: updated.updated });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || 'Transaction failed' });
@@ -952,6 +987,7 @@ app.put('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, r
     await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), 'utf8');
     appConfig = newConfig;
     transporter = buildSmtpTransport(newConfig.smtp || null);
+    broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to update system config:', error);
@@ -974,6 +1010,7 @@ app.put('/api/admin/users/:uid/admin', verifyToken, verifySuperAdmin, async (req
       admin: makeAdmin,
       superAdmin: uid === superAdminUid
     }, req.user, 'patch');
+    broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to update admin role:', error);
@@ -1013,6 +1050,7 @@ app.post('/api/admin/logo', verifyToken, verifySuperAdmin, (req, res) => {
       }
 
       await fs.promises.writeFile(churchLogoFile, content, 'utf8');
+      broadcastDataUpdate();
       res.json({ success: true });
     } catch (error) {
       console.error('Failed to update logo:', error);

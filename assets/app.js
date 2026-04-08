@@ -20,6 +20,24 @@ let advancedConfigAppName = null;
 let superAdminPaymentRows = [];
 let superAdminUserRows = [];
 let currentEditedPayment = null;
+let sseConnection = null;
+
+function connectSSE() {
+    if (sseConnection) return;
+    sseConnection = new EventSource(config.apiBaseUrl + '/stream', { withCredentials: true });
+    sseConnection.addEventListener('data_update', () => {
+        console.log("SSE: Data updated remotely, refreshing...");
+        if (isAuthenticated) {
+            loadData();
+        }
+    });
+    sseConnection.onerror = () => {
+        console.log("SSE error, reconnecting...");
+        sseConnection.close();
+        sseConnection = null;
+        setTimeout(connectSSE, 5000);
+    };
+}
 
 // ⚡ Bolt: Global variable to handle paginated display of historical transactions
 let transactionPage = 1;
@@ -246,7 +264,7 @@ window.toggleFab = function() {
     menu.classList.toggle('show');
     const isExpanded = menu.classList.contains('show');
 
-    const fabs = document.querySelectorAll('.nav-fab, .desktop-fab');
+    const fabs = document.querySelectorAll('.nav-fab, .desktop-fab, .mobile-fab');
     fabs.forEach(fab => {
         if (isExpanded) {
             fab.classList.add('active');
@@ -3045,6 +3063,7 @@ onAuthStateChanged(auth, async (user) => {
 
         document.getElementById('login-modal').classList.remove('show');
         isAuthenticated = true;
+        connectSSE();
         loadData();
     } else {
         // Hide spinner if we are not logged in (e.g. session expired)
@@ -3067,6 +3086,10 @@ function checkAuth() {
 
 window.logout = async () => {
     try {
+        if (sseConnection) {
+            sseConnection.close();
+            sseConnection = null;
+        }
         await signOut(auth);
     } catch (error) {
         console.error("Logout Error:", error);
