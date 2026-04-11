@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
@@ -483,7 +484,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
       return res.status(403).json({ error: 'Ungültiger Registrierungscode.' });
     }
     const auth = await registerUser({ email, password, firstName, lastName });
-    const newCode = String(Math.floor(100000 + Math.random() * 900000));
+    const newCode = String(crypto.randomInt(100000, 1000000));
     await upsertStateValue(appConfig, 'system', { ...system, inviteCode: newCode });
     broadcastDataUpdate();
     setAuthCookie(res, auth.token);
@@ -521,11 +522,14 @@ function isOwnFullNameMatch(user, name) {
   return !!fullName && fullName === String(name || '').trim().toLowerCase();
 }
 
+// ⚡ Bolt: Replaced Array.reduce with a for loop to minimize callback overhead on large dataset hydration
 function objectFromRecords(records, keyField, valueMapper) {
-  return records.reduce((acc, record) => {
+  const acc = {};
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
     acc[record[keyField]] = valueMapper(record);
-    return acc;
-  }, {});
+  }
+  return acc;
 }
 
 async function readLogicalPath(targetPath, query, user) {
@@ -1117,6 +1121,19 @@ app.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmin, 
   }
 });
 
+const escapeHtml = (unsafe) => {
+  return (unsafe || '').replace(/[&<"'>]/g, (match) => {
+    const escape = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    };
+    return escape[match];
+  });
+};
+
 app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req, res) => {
   try {
     const { reqType, personName } = req.body;
@@ -1144,7 +1161,24 @@ app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req
       from: `"${appConfig.appName}" <${appConfig.smtp.user}>`,
       to: adminEmails,
       subject: `Neue Anfrage bei ${appConfig.appName}`,
-      text: `Eine neue Anfrage (${reqTypeLabel}) von ${personName} wurde eingereicht.\n\nBitte prüfe die Anfrage in der App.`
+      text: `Eine neue Anfrage (${reqTypeLabel}) von ${personName} wurde eingereicht.\n\nBitte prüfe die Anfrage in der App.`,
+      html: `
+        <div style="font-family: sans-serif; color: #2D3748; background-color: #F8FAFC; padding: 40px 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <div style="padding: 30px; text-align: center; border-bottom: 1px solid #E2E8F0;">
+              <h1 style="margin: 0; color: #14B8A6; font-size: 24px; font-weight: 600;">${escapeHtml(appConfig.appName)}</h1>
+            </div>
+            <div style="padding: 40px 30px;">
+              <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 20px; font-weight: 600; color: #1A202C;">Neue Anfrage</h2>
+              <p style="margin: 0 0 15px 0; font-size: 16px; line-height: 1.5;">Eine neue Anfrage vom Typ <strong style="color: #14B8A6;">${escapeHtml(reqTypeLabel)}</strong> wurde eingereicht.</p>
+              <p style="margin: 0 0 25px 0; font-size: 16px; line-height: 1.5;">Person: <strong style="color: #4A5568;">${escapeHtml(personName)}</strong></p>
+              <div style="background-color: #F1F5F9; border-left: 4px solid #94A3B8; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
+                  <p style="margin: 0; color: #475569; font-size: 16px;">Bitte prüfe die Anfrage in der App.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      `
     });
 
     console.log('Admin notification sent successfully: %s', info.messageId);

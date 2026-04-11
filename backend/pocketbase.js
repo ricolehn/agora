@@ -503,11 +503,15 @@ function toFiniteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// ⚡ Bolt: Replaced Array.reduce with a for loop to eliminate callback execution overhead and reduce CPU time
 function calculateTotalPaid(payments) {
-  return normalizeRecordListInput(payments).reduce((sum, payment) => {
-    const amount = Number(payment?.amount);
-    return Number.isFinite(amount) ? sum + amount : sum;
-  }, 0);
+  const list = normalizeRecordListInput(payments);
+  let sum = 0;
+  for (let i = 0; i < list.length; i++) {
+    const amount = Number(list[i]?.amount);
+    if (Number.isFinite(amount)) sum += amount;
+  }
+  return sum;
 }
 
 function stableSerialize(value) {
