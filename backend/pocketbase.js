@@ -887,11 +887,12 @@ async function loginUser(email, password) {
   };
 }
 
-async function updateOwnPassword(token, userId, password) {
+async function updateOwnPassword(token, userId, oldPassword, password) {
   await pocketBaseRequest(`/api/collections/users/records/${userId}`, {
     method: 'PATCH',
     token,
     body: {
+      oldPassword,
       password,
       passwordConfirm: password
     }

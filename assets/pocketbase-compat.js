@@ -239,10 +239,10 @@ export async function signOut() {
   saveAuth(null, null);
 }
 
-export async function updatePassword(user, password) {
+export async function updatePassword(user, oldPassword, password) {
   await apiFetch('/api/auth/password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
+    body: JSON.stringify({ oldPassword, password })
   });
 }

@@ -28,21 +28,86 @@
 
     <div class="app-layout">
         <header class="header">
-            <img src="assets/church-logo.svg" alt="Nova Logo">
-            <h1 id="app-name-header">Nova</h1>
+            <div class="header-left">
+                <div class="header-brand">
+                    <img src="assets/church-logo.svg" alt="Nova Logo">
+                    <h1 id="app-name-header">Nova</h1>
+                </div>
+                <nav id="admin-desktop-nav" class="desktop-nav">
+                    <button class="nav-btn active" data-tab="overview" onclick="switchTab('overview', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                        <span class="nav-label">Startseite</span>
+                    </button>
+                    <button class="nav-btn" data-tab="people-view" onclick="switchTab('people-view', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        <span class="nav-label">Personen</span>
+                    </button>
+                    <button id="admin-sys-nav-btn-desktop" class="nav-btn" data-tab="payment-history" onclick="switchTab('payment-history', this)" style="display:none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
+                        <span class="nav-label">Historie</span>
+                    </button>
+                    <button id="admin-ai-nav-btn-desktop" class="nav-btn" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" style="display:none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        <span class="nav-label">KI-Support</span>
+                    </button>
+                    <button class="nav-btn" data-tab="settings" onclick="switchTab('settings', this)" style="display:none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span class="nav-label">Einstellungen</span>
+                    </button>
+                </nav>
+                <nav id="user-desktop-nav" class="desktop-nav" style="display:none;">
+                    <button class="nav-btn active" data-tab="user-overview" onclick="switchTab('user-overview', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                        <span class="nav-label">Startseite</span>
+                    </button>
+                    <button class="nav-btn" data-tab="user-history" onclick="switchTab('user-history', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
+                        <span class="nav-label">Historie</span>
+                    </button>
+                    <button class="nav-btn" data-tab="user-requests" onclick="switchTab('user-requests', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <span class="nav-label">Anfragen</span>
+                    </button>
+                    <button class="nav-btn" data-tab="user-settings" onclick="switchTab('user-settings', this)" style="display:none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span class="nav-label">Einstellungen</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="header-right">
+                <div class="profile-menu-container">
+                    <button class="profile-btn" onclick="toggleProfileMenu()" aria-label="Profil Menü" aria-expanded="false" aria-haspopup="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </button>
+                    <div id="profileDropdown" class="profile-dropdown">
+                        <button class="dropdown-item" onclick="openHomeTab()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                            Startseite
+                        </button>
+                        <button id="profile-sys-settings-btn" class="dropdown-item" onclick="openSystemSettingsTab()" style="display:none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            Systemeinstellungen
+                        </button>
+                        <button class="dropdown-item" onclick="openSettingsTab()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            Einstellungen
+                        </button>
+                        <button class="dropdown-item text-danger" onclick="logout()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                            Abmelden
+                        </button>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <!-- ADMIN VIEW -->
     <div id="admin-view">
-        <nav id="admin-desktop-nav" class="desktop-nav">
-            <button class="nav-btn active" onclick="switchTab('overview', this)">Startseite</button>
-            <button class="nav-btn" onclick="switchTab('settings', this)">Einstellungen</button>
-        </nav>
-
         <div id="overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-overview">
             <div class="dashboard-top-section">
                 <div class="dashboard-left">
-                    <div class="hero-card" role="button" tabindex="0" aria-label="Transaktionsverlauf anzeigen" onclick="showTransactionModal()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); showTransactionModal();}">
+                    <div class="hero-card" role="button" tabindex="0" aria-label="Transaktionsverlauf anzeigen" onclick="switchTab('payment-history')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); switchTab('payment-history');}">
                         <span class="hero-label">Aktueller Kassenstand</span>
                         <div class="hero-amount" id="heroAmount">0,00 €</div>
                         <div class="hero-subtitle">Tippen für Details</div>
@@ -50,12 +115,40 @@
 
                     <div class="stats-grid">
                         <div class="stat-box">
-                            <div class="stat-label">Einnahmen</div>
-                            <div class="stat-value text-success" id="totalIncome">0,00 €</div>
+                            <div class="stat-icon success">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                            </div>
+                            <div>
+                                <div class="stat-label">Einnahmen</div>
+                                <div class="stat-value text-success" id="totalIncome">0,00 €</div>
+                            </div>
                         </div>
                         <div class="stat-box">
-                            <div class="stat-label">Ausgaben</div>
-                            <div class="stat-value text-danger" id="totalExpenses">0,00 €</div>
+                            <div class="stat-icon danger">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                            </div>
+                            <div>
+                                <div class="stat-label">Ausgaben</div>
+                                <div class="stat-value text-danger" id="totalExpenses">0,00 €</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon info">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            </div>
+                            <div>
+                                <div class="stat-label">Mitglieder</div>
+                                <div class="stat-value text-info" id="totalMembers">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon warning">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                            </div>
+                            <div>
+                                <div class="stat-label">Überfällig</div>
+                                <div class="stat-value text-warning" id="totalOverdue">0,00 €</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -72,15 +165,25 @@
 
             <div class="overview-right">
                 <div id="admin-requests-inline"></div>
-                <div id="unlinkedUsers"></div>
-                <div id="peopleList"></div>
-                <div id="emptyState" style="text-align:center; padding:40px; color:var(--text-secondary); display:none;">
-                    <div style="font-size:3rem; margin-bottom:10px;">👥</div>
-                    <p>Noch keine Mitglieder.</p>
-                    <button class="btn btn-primary" style="margin-top: 20px;" onclick="openModal('add-person-modal')">
-                        Person hinzufügen
-                    </button>
-                </div>
+            </div>
+        </div>
+
+        <div id="people-view" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-people-view">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 1.2rem; font-weight: 800;">Mitglieder</h2>
+                <button class="btn btn-primary btn-small" onclick="openModal('add-person-modal')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                    Hinzufügen
+                </button>
+            </div>
+            <div id="unlinkedUsers"></div>
+            <div id="peopleList"></div>
+            <div id="emptyState" style="text-align:center; padding:40px; color:var(--text-secondary); display:none;">
+                <div style="font-size:3rem; margin-bottom:10px;">👥</div>
+                <p>Noch keine Mitglieder.</p>
+                <button class="btn btn-primary" style="margin-top: 20px;" onclick="openModal('add-person-modal')">
+                    Person hinzufügen
+                </button>
             </div>
         </div>
 
@@ -170,7 +273,13 @@
                         <label for="admin-email-notifications" style="margin:0; font-weight:600; cursor:pointer">E-Mail Benachrichtigungen bei Anfragen</label>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
-                        <label class="form-label" for="new-password">Passwort ändern</label>
+                        <label class="form-label">Passwort ändern</label>
+                        <div class="password-wrapper" style="margin-bottom: 12px;">
+                            <input type="password" id="old-password" class="form-input has-toggle" placeholder="Altes Passwort">
+                            <button type="button" class="password-toggle" onclick="togglePassword('old-password', this)" aria-label="Passwort anzeigen">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
                         <div class="password-wrapper">
                             <input type="password" id="new-password" class="form-input has-toggle" placeholder="Neues Passwort">
                             <button type="button" class="password-toggle" onclick="togglePassword('new-password', this)" aria-label="Passwort anzeigen">
@@ -182,25 +291,19 @@
                 </div>
             </div>
 
-            <div class="card super-admin-zone" id="card-super-admin" style="display:none;">
-                <div class="super-admin-header">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    <span>Super-Admin Bereich</span>
-                </div>
-                <div class="super-admin-body">
+            <div style="display: flex; gap: 10px; margin-bottom: 30px; align-items: center; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="saveSettings()">Alle Einstellungen Speichern</button>
+            </div>
+        </div>
+
+        <div id="super-admin-settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-super-admin-settings">
+            <div id="card-super-admin">
 
                     <!-- Benutzerrechte -->
                     <div class="super-admin-group">
                         <div class="super-admin-group-title">Benutzerrechte verwalten</div>
                         <div class="super-admin-group-desc">Aktiviert nur normale Admin-/Supervisor-Rechte (kein Super-Admin).</div>
                         <div id="super-admin-user-management" style="display:flex; flex-direction: column; gap:10px; width: 100%;"></div>
-                    </div>
-
-                    <!-- Zahlungen bearbeiten -->
-                    <div class="super-admin-group">
-                        <div class="super-admin-group-title">Buchungen korrigieren</div>
-                        <div class="super-admin-group-desc">Hier können alle Zahlungen, Ausgaben und Spenden der letzten 30 Tage bearbeitet werden.</div>
-                        <div id="super-admin-payment-editor" style="display:flex; flex-direction: column; gap:10px; width: 100%;"></div>
                     </div>
 
                     <!-- Logo ersetzen -->
@@ -255,27 +358,85 @@
 
                         <button class="btn btn-block super-admin-btn" style="margin-top: 15px;" onclick="saveAdvancedSystemConfig()">Erweiterte System-Konfiguration speichern</button>
                     </div>
+
+                    <!-- KI-Support Konfiguration -->
+                    <div class="super-admin-group">
+                        <div class="super-admin-group-title">KI-Support Einstellungen</div>
+                        <div class="super-admin-group-desc">Verbindet die Anwendung mit einem KI-Anbieter (OpenAI, Google Gemini über OpenAI-Schnittstelle oder ein lokales Ollama-Modell).</div>
+
+                        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
+                            <label class="switch" style="flex-shrink:0;">
+                                <input type="checkbox" id="super-admin-ai-enabled">
+                                <span class="slider"></span>
+                            </label>
+                            <label for="super-admin-ai-enabled" style="margin:0; font-weight:600; cursor:pointer;">KI-Support aktivieren</label>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="super-admin-ai-base-url" style="color: var(--text-secondary);">Basis-URL</label>
+                            <input type="url" id="super-admin-ai-base-url" class="form-input super-admin-input" placeholder="https://api.openai.com/v1">
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Leer lassen für OpenAI-Standard. Für Ollama: http://localhost:11434/v1</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="super-admin-ai-api-key" style="color: var(--text-secondary);">API-Schlüssel</label>
+                            <div class="password-wrapper">
+                                <input type="password" id="super-admin-ai-api-key" class="form-input super-admin-input has-toggle" placeholder="sk-…">
+                                <button type="button" class="password-toggle" onclick="togglePassword('super-admin-ai-api-key', this)" aria-label="Schlüssel anzeigen">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="super-admin-ai-model" style="color: var(--text-secondary);">Modellname</label>
+                            <input type="text" id="super-admin-ai-model" class="form-input super-admin-input" placeholder="gpt-4o-mini">
+                        </div>
+
+                        <button class="btn btn-block super-admin-btn" onclick="saveAiConfig()">KI-Einstellungen speichern</button>
+                    </div>
+            </div>
+        </div>
+
+        <div id="payment-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-payment-history" style="height: 100%; display: none;">
+            <div class="card" id="card-payment-history" style="height: 100%; display: flex; flex-direction: column; margin-bottom: 0; border: none; box-shadow: none;">
+                <div class="card-header" style="background: var(--surface); border-bottom: 1px solid var(--border);">Historie</div>
+                <div class="card-body" style="flex: 1; overflow-y: auto; padding: 0;">
+                    <div id="history-page-list"></div>
                 </div>
             </div>
+        </div>
 
-            <div style="display: flex; gap: 10px; margin-bottom: 30px; align-items: center; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="saveSettings()">Alle Einstellungen Speichern</button>
+        <div id="ai-chat" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-ai-chat" style="height: 100%;">
+            <div id="card-ai-chat" class="ai-chat-layout">
+                <div class="card-header ai-chat-header-styled">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span>KI-Support</span>
+                    <button class="btn btn-secondary btn-small" onclick="clearAiChat()" style="margin-left:auto;">Verlauf löschen</button>
+                </div>
 
-                <button class="btn btn-danger" onclick="logout()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                    Abmelden
-                </button>
+                <div id="ai-chat-messages" class="ai-chat-messages ai-chat-messages-styled">
+                    <div class="ai-chat-welcome">
+                        <div class="ai-chat-welcome-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        </div>
+                        <div class="ai-chat-welcome-text">KI-Assistent bereit</div>
+                        <div class="ai-chat-welcome-sub">Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.</div>
+                    </div>
+                </div>
+
+                <div class="ai-chat-input-row ai-chat-input-styled">
+                    <textarea id="ai-chat-input" class="ai-chat-input form-input ai-chat-textarea-styled" rows="1" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)"></textarea>
+                    <button id="ai-chat-send-btn" class="btn btn-primary ai-chat-send-btn ai-chat-send-btn-styled" onclick="sendAiMessage()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- USER VIEW (Non-Admin) -->
     <div id="user-view" style="display:none;">
-        <nav id="user-desktop-nav" class="desktop-nav">
-            <button class="nav-btn active" onclick="switchTab('user-overview', this)">Startseite</button>
-            <button class="nav-btn" onclick="switchTab('user-settings', this)">Einstellungen</button>
-        </nav>
-
         <div id="user-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-user-overview">
             <div class="hero-card" style="cursor:default;">
                 <span class="hero-label">Willkommen</span>
@@ -291,6 +452,14 @@
                 </div>
             </div>
 
+        </div>
+
+        <div id="user-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-history">
+            <!-- Payment History -->
+            <div id="user-payment-history" style="margin-top: 25px;"></div>
+        </div>
+
+        <div id="user-requests" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-requests">
             <!-- Quick Actions -->
             <div style="margin-top: 25px;">
                 <h3 class="list-section-title">Schnellaktionen</h3>
@@ -315,9 +484,6 @@
                     </button>
                 </div>
             </div>
-
-            <!-- Payment History -->
-            <div id="user-payment-history" style="margin-top: 25px;"></div>
 
             <!-- Requests List -->
             <div style="margin-top: 25px;">
@@ -352,7 +518,13 @@
                         </div>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
-                        <label class="form-label" for="user-new-password">Passwort ändern</label>
+                        <label class="form-label">Passwort ändern</label>
+                        <div class="password-wrapper" style="margin-bottom: 12px;">
+                            <input type="password" id="user-old-password" class="form-input has-toggle" placeholder="Altes Passwort">
+                            <button type="button" class="password-toggle" onclick="togglePassword('user-old-password', this)" aria-label="Passwort anzeigen">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
                         <div class="password-wrapper">
                             <input type="password" id="user-new-password" class="form-input has-toggle" placeholder="Neues Passwort">
                             <button type="button" class="password-toggle" onclick="togglePassword('user-new-password', this)" aria-label="Passwort anzeigen">
@@ -364,12 +536,6 @@
                 </div>
             </div>
 
-            <div style="margin-top: 20px; display: flex; justify-content: center;">
-                <button class="btn btn-danger" onclick="logout()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                    Abmelden
-                </button>
-            </div>
         </div>
     </div>
 
@@ -397,27 +563,45 @@
 </button>
 
 <nav id="admin-bottom-nav" class="bottom-nav" style="display:none;">
-    <button class="nav-item active" onclick="switchTab('overview', this)" aria-label="Übersicht">
+    <button class="nav-item active" data-tab="overview" onclick="switchTab('overview', this)" aria-label="Übersicht">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+    </button>
+    <button class="nav-item" data-tab="people-view" onclick="switchTab('people-view', this)" aria-label="Personen">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
     </button>
     <button class="nav-item mobile-fab" onclick="toggleFab()" aria-label="Aktionen" aria-expanded="false" aria-haspopup="true" aria-controls="fabMenu">
         <div class="nav-action-bg">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </div>
     </button>
-    <button class="nav-item" onclick="switchTab('settings', this)" aria-label="Einstellungen">
+    <button id="admin-sys-nav-btn" class="nav-item" data-tab="payment-history" onclick="switchTab('payment-history', this)" aria-label="Historie" style="display:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
+    </button>
+    <button id="admin-ai-nav-btn" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" aria-label="KI-Support" style="display:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    </button>
+    <div id="admin-nav-spacer" class="nav-item" style="display:none; pointer-events:none;"></div>
+    <button class="nav-item" data-tab="settings" onclick="switchTab('settings', this)" aria-label="Einstellungen" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
 </nav>
 
 <nav id="user-bottom-nav" class="bottom-nav" style="display:none;">
-    <button class="nav-item active" onclick="switchTab('user-overview', this)" aria-label="Übersicht">
+    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" aria-label="Startseite">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
     </button>
-    <button class="nav-item" onclick="switchTab('user-settings', this)" aria-label="Einstellungen">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    <button class="nav-item" data-tab="user-history" onclick="switchTab('user-history', this)" aria-label="Historie">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
+    </button>
+    <button class="nav-item" data-tab="user-requests" onclick="switchTab('user-requests', this)" aria-label="Anfragen">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+    </button>
+    <div id="user-nav-spacer" class="nav-item" style="display:none; pointer-events:none;"></div>
+    <button class="nav-item" data-tab="user-settings" onclick="switchTab('user-settings', this)" aria-label="Einstellungen" style="display:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
 </nav>
+
 
 <div id="add-person-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-person">
     <div class="modal-content">
@@ -556,13 +740,6 @@
     </div>
 </div>
 
-<div id="transaction-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-transaction">
-    <div class="modal-content">
-        <div class="modal-header"><span id="title-transaction">Verlauf</span> <button class="close-btn" onclick="closeModal('transaction-modal')" aria-label="Schließen">&times;</button></div>
-        <div id="full-transaction-list"></div>
-    </div>
-</div>
-
 <div id="end-standing-order-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-end-so">
     <div class="modal-content">
         <div class="modal-header"><span id="title-end-so">Dauerauftrag verwalten</span> <button class="close-btn" onclick="closeModal('end-standing-order-modal')" aria-label="Schließen">&times;</button></div>
@@ -596,20 +773,33 @@
 
 <div id="login-modal" class="modal show" style="z-index:2000;" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="modal-content" style="max-width: 400px;">
-        <div style="text-align: center; margin-bottom: 20px; padding-top: 24px;">
-            <h2 id="auth-title" style="margin-bottom: 15px;">Anmelden</h2>
-            <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;">
-                <button class="btn btn-sm btn-primary" onclick="showLogin()" id="btn-show-login">Login</button>
-                <button class="btn btn-sm btn-secondary" onclick="showRegister()" id="btn-show-register">Registrieren</button>
+        <div class="login-header">
+            <div class="login-brand">
+                <img src="assets/church-logo.svg" alt="App Logo" id="login-app-logo">
+                <h2 id="login-app-name">Nova</h2>
             </div>
+            <p id="auth-subtitle" class="login-subtitle">Melden Sie sich an, um fortzufahren</p>
+        </div>
+
+        <div class="auth-tabs">
+            <button class="auth-tab-btn active" onclick="showLogin()" id="btn-show-login">Login</button>
+            <button class="auth-tab-btn" onclick="showRegister()" id="btn-show-register">Registrieren</button>
         </div>
 
         <!-- Login Form -->
         <form id="login-form" onsubmit="event.preventDefault(); attemptLogin()">
-            <label for="login-email" class="sr-only">E-Mail</label>
-            <input type="email" id="login-email" class="form-input" placeholder="E-Mail" style="margin-bottom:10px;" autocomplete="username" required>
-            <label for="login-password" class="sr-only">Passwort</label>
-            <div class="password-wrapper" style="margin-bottom:15px;">
+            <div class="input-with-icon" style="margin-bottom: 12px;">
+                <div class="input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                </div>
+                <label for="login-email" class="sr-only">E-Mail</label>
+                <input type="email" id="login-email" class="form-input" placeholder="E-Mail" autocomplete="username" required>
+            </div>
+            <div class="input-with-icon password-wrapper" style="margin-bottom: 24px;">
+                <div class="input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>
+                <label for="login-password" class="sr-only">Passwort</label>
                 <input type="password" id="login-password" class="form-input has-toggle" placeholder="Passwort" autocomplete="current-password" required>
                 <button type="button" class="password-toggle" onclick="togglePassword('login-password', this)" aria-label="Passwort anzeigen">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -620,28 +810,52 @@
 
         <!-- Register Form -->
         <form id="register-form" style="display:none;" onsubmit="event.preventDefault(); attemptRegister()">
-            <div style="background: var(--surface-alt); padding: 10px; border-radius: 10px; margin-bottom: 15px; font-size: 0.9rem;">
-                <p id="reg-code-desc">Bitte geben Sie den aktuellen 6-stelligen Registrierungscode ein.</p>
+            <div style="background: var(--surface-alt); padding: 12px; border-radius: 12px; margin-bottom: 16px; font-size: 0.9rem; text-align: center; border: 1px dashed var(--border);">
+                <p id="reg-code-desc" style="color: var(--text-secondary);">Bitte geben Sie den aktuellen 6-stelligen Registrierungscode ein.</p>
             </div>
-            <label for="reg-code" class="sr-only">Registrierungscode</label>
-            <input type="text" id="reg-code" class="form-input" placeholder="6-stelliger Code" style="margin-bottom:10px;" maxlength="6" inputmode="numeric" pattern="[0-9]*" required autocomplete="off" aria-describedby="reg-code-desc">
-            <label for="reg-email" class="sr-only">E-Mail</label>
-            <input type="email" id="reg-email" class="form-input" placeholder="E-Mail" style="margin-bottom:10px;" autocomplete="username" required>
-            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <label for="reg-firstname" class="sr-only">Vorname</label>
-                <input type="text" id="reg-firstname" class="form-input" placeholder="Vorname" autocomplete="given-name" required>
-                <label for="reg-lastname" class="sr-only">Nachname</label>
-                <input type="text" id="reg-lastname" class="form-input" placeholder="Nachname" autocomplete="family-name" required>
+            <div class="input-with-icon" style="margin-bottom: 12px;">
+                <div class="input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                </div>
+                <label for="reg-code" class="sr-only">Registrierungscode</label>
+                <input type="text" id="reg-code" class="form-input" placeholder="6-stelliger Code" maxlength="6" inputmode="numeric" pattern="[0-9]*" required autocomplete="off" aria-describedby="reg-code-desc">
             </div>
-            <label for="reg-pass1" class="sr-only">Passwort (min 6 Zeichen)</label>
-            <div class="password-wrapper" style="margin-bottom:10px;">
+            <div class="input-with-icon" style="margin-bottom: 12px;">
+                <div class="input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                </div>
+                <label for="reg-email" class="sr-only">E-Mail</label>
+                <input type="email" id="reg-email" class="form-input" placeholder="E-Mail" autocomplete="username" required>
+            </div>
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                <div class="input-with-icon" style="flex: 1;">
+                    <div class="input-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </div>
+                    <label for="reg-firstname" class="sr-only">Vorname</label>
+                    <input type="text" id="reg-firstname" class="form-input" placeholder="Vorname" autocomplete="given-name" required>
+                </div>
+                <div class="input-with-icon" style="flex: 1;">
+                    <div class="input-icon" style="display: none;"></div>
+                    <label for="reg-lastname" class="sr-only">Nachname</label>
+                    <input type="text" id="reg-lastname" class="form-input" placeholder="Nachname" autocomplete="family-name" required style="padding-left: 12px;">
+                </div>
+            </div>
+            <div class="input-with-icon password-wrapper" style="margin-bottom: 12px;">
+                <div class="input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>
+                <label for="reg-pass1" class="sr-only">Passwort (min 6 Zeichen)</label>
                 <input type="password" id="reg-pass1" class="form-input has-toggle" placeholder="Passwort (min 6)" autocomplete="new-password" required minlength="6">
                 <button type="button" class="password-toggle" onclick="togglePassword('reg-pass1', this)" aria-label="Passwort anzeigen">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </button>
             </div>
-            <label for="reg-pass2" class="sr-only">Passwort wiederholen</label>
-            <div class="password-wrapper" style="margin-bottom:15px;">
+            <div class="input-with-icon password-wrapper" style="margin-bottom: 24px;">
+                <div class="input-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>
+                <label for="reg-pass2" class="sr-only">Passwort wiederholen</label>
                 <input type="password" id="reg-pass2" class="form-input has-toggle" placeholder="Passwort wiederholen" autocomplete="new-password" required minlength="6">
                 <button type="button" class="password-toggle" onclick="togglePassword('reg-pass2', this)" aria-label="Passwort anzeigen">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>

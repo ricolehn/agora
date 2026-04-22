@@ -21,6 +21,10 @@ let superAdminPaymentRows = [];
 let superAdminUserRows = [];
 let currentEditedPayment = null;
 let sseConnection = null;
+let aiEnabled = false;
+let aiMessages = [];
+let aiStreaming = false;
+const MAX_AI_CHAT_INPUT_HEIGHT = 120;
 
 function connectSSE() {
     if (sseConnection) return;
@@ -59,6 +63,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Update visual elements
     const headerEl = document.getElementById('app-name-header');
     if (headerEl) headerEl.textContent = appName;
+    const loginHeaderEl = document.getElementById('login-app-name');
+    if (loginHeaderEl) loginHeaderEl.textContent = appName;
 
     // Update document title
     document.title = appName;
@@ -67,22 +73,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 window.showLogin = () => {
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('register-form').style.display = 'none';
-    document.getElementById('auth-title').innerText = 'Anmelden';
-    document.getElementById('btn-show-login').classList.add('btn-primary');
-    document.getElementById('btn-show-login').classList.remove('btn-secondary');
-    document.getElementById('btn-show-register').classList.add('btn-secondary');
-    document.getElementById('btn-show-register').classList.remove('btn-primary');
+    document.getElementById('btn-show-login').classList.add('active');
+    document.getElementById('btn-show-register').classList.remove('active');
+    document.getElementById('auth-subtitle').innerText = 'Melden Sie sich an, um fortzufahren';
     document.getElementById('auth-error').style.display = 'none';
 };
 
 window.showRegister = () => {
     document.getElementById('login-form').style.display = 'none';
     document.getElementById('register-form').style.display = 'block';
-    document.getElementById('auth-title').innerText = 'Registrieren';
-    document.getElementById('btn-show-register').classList.add('btn-primary');
-    document.getElementById('btn-show-register').classList.remove('btn-secondary');
-    document.getElementById('btn-show-login').classList.add('btn-secondary');
-    document.getElementById('btn-show-login').classList.remove('btn-primary');
+    document.getElementById('btn-show-register').classList.add('active');
+    document.getElementById('btn-show-login').classList.remove('active');
+    document.getElementById('auth-subtitle').innerText = 'Erstellen Sie ein neues Konto';
     document.getElementById('auth-error').style.display = 'none';
     setButtonLoading('btn-login', false, null); // Reset login button state
 };
@@ -133,6 +135,15 @@ function getTodayStr() {
     return new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 }
 
+// ⚡ Bolt: Replaced Array.reduce with a for loop to eliminate callback execution overhead and reduce CPU time
+function calculateTotalPaidLoop(payments) {
+    let sum = 0;
+    for (let i = 0; i < payments.length; i++) {
+        sum += parseFloat(payments[i].amount || 0);
+    }
+    return sum;
+}
+
 // ⚡ Bolt: Helper to normalize and pre-calculate person data for performance
 function preprocessPerson(person) {
     if (!person.memberSince) person.memberSince = getTodayStr();
@@ -140,7 +151,7 @@ function preprocessPerson(person) {
     person.payments = safeList(person.payments);
 
     // ⚡ Bolt: Ensure totalPaid is accurately cached in memory
-    person.totalPaid = person.payments.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
+    person.totalPaid = calculateTotalPaidLoop(person.payments);
 
     // Pre-process history for faster lookup (avoid Date creation in loops)
     // ⚡ Bolt: Fast string comparison for ISO dates
@@ -232,30 +243,135 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 window.switchTab = function(tabName, btn) {
-    const isUserNav = !!btn.closest('#user-bottom-nav') || !!btn.closest('#user-desktop-nav');
+    // Some buttons might not pass `btn` or it might not be in a nav, determine scope by string
+    const isUserNav = (btn && !!btn.closest('#user-desktop-nav')) || tabName.startsWith('user-');
     const scope = isUserNav ? document.getElementById('user-view') : document.getElementById('admin-view');
     if (!scope) return;
 
     // Hide only the tab contents inside the current scope (admin vs user)
-    scope.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    scope.querySelectorAll('.tab-content').forEach(el => {
+        el.classList.remove('active');
+        if (el.id === 'payment-history' || el.id === 'user-history' || el.id === 'user-requests') el.style.display = 'none';
+    });
 
     // Show the selected tab content only if it belongs to the same scope
     const targetContent = document.getElementById(tabName);
     if (targetContent && scope.contains(targetContent)) {
         targetContent.classList.add('active');
+        if (tabName === 'payment-history' || tabName === 'user-history' || tabName === 'user-requests') targetContent.style.display = 'block';
     }
 
-    // Update buttons in the same nav container
-    const container = btn.closest('.bottom-nav') || btn.closest('.desktop-nav');
-    if (container) {
-        container.querySelectorAll('.nav-item, .nav-btn').forEach(el => {
+    const appContainer = document.querySelector('.container');
+    if (appContainer) {
+        const isAiChatActive = !isUserNav && tabName === 'ai-chat';
+        appContainer.classList.toggle('ai-chat-active', isAiChatActive);
+        if (isAiChatActive) {
+            requestAnimationFrame(() => {
+                const inputEl = document.getElementById('ai-chat-input');
+                adjustAiInputHeight(inputEl);
+                const messagesEl = document.getElementById('ai-chat-messages');
+                if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+            });
+        }
+    }
+
+    const navSelector = isUserNav
+        ? '#user-desktop-nav [data-tab], #user-bottom-nav [data-tab]'
+        : '#admin-desktop-nav [data-tab], #admin-bottom-nav [data-tab]';
+    const navButtons = document.querySelectorAll(navSelector);
+    navButtons.forEach(el => {
+        const isActive = el.dataset.tab === tabName;
+        if (isActive) {
+            el.classList.add('active');
+            el.setAttribute('aria-selected', 'true');
+        } else {
             el.classList.remove('active');
             el.setAttribute('aria-selected', 'false');
-        });
-        btn.classList.add('active');
-        btn.setAttribute('aria-selected', 'true');
+        }
+    });
+
+    if (tabName === 'payment-history') {
+        window.renderHistoryTab(true);
     }
 };
+
+window.toggleProfileMenu = function() {
+    const menu = document.getElementById('profileDropdown');
+    const btn = document.querySelector('.profile-btn');
+    if (!menu || !btn) return;
+
+    menu.classList.toggle('show');
+    btn.setAttribute('aria-expanded', menu.classList.contains('show'));
+};
+
+window.openSystemSettingsTab = function() {
+    const menu = document.getElementById('profileDropdown');
+    if (menu) {
+        menu.classList.remove('show');
+        document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
+    }
+    if (isSuperAdminUser()) {
+        switchTab('super-admin-settings', null);
+    }
+};
+
+window.openSettingsTab = function() {
+    // Close the profile menu
+    const menu = document.getElementById('profileDropdown');
+    if (menu) {
+        menu.classList.remove('show');
+        document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
+    }
+
+    // Determine current view mode
+    const isAdmin = currentUser && currentUser.admin;
+
+    // Find the corresponding nav button and trigger switchTab
+    let btn;
+    if (isAdmin) {
+        btn = document.querySelector('#admin-desktop-nav [data-tab="settings"]') ||
+              document.querySelector('#admin-bottom-nav [data-tab="settings"]');
+        if(btn) switchTab('settings', btn);
+    } else {
+        btn = document.querySelector('#user-desktop-nav [data-tab="user-settings"]');
+        if(btn) switchTab('user-settings', btn);
+    }
+};
+
+window.openHomeTab = function() {
+    // Close the profile menu
+    const menu = document.getElementById('profileDropdown');
+    if (menu) {
+        menu.classList.remove('show');
+        document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
+    }
+
+    // Determine current view mode
+    const isAdmin = currentUser && currentUser.admin;
+
+    // Find the corresponding nav button and trigger switchTab
+    let btn;
+    if (isAdmin) {
+        btn = document.querySelector('#admin-desktop-nav [data-tab="overview"]') ||
+              document.querySelector('#admin-bottom-nav [data-tab="overview"]');
+        if(btn) switchTab('overview', btn);
+    } else {
+        btn = document.querySelector('#user-desktop-nav [data-tab="user-overview"]');
+        if(btn) switchTab('user-overview', btn);
+    }
+};
+
+// Close profile menu when clicking outside
+document.addEventListener('click', (e) => {
+    const container = document.querySelector('.profile-menu-container');
+    if (container && !container.contains(e.target)) {
+        const menu = document.getElementById('profileDropdown');
+        if (menu && menu.classList.contains('show')) {
+            menu.classList.remove('show');
+            document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
+        }
+    }
+});
 
 window.toggleFab = function() {
     const menu = document.getElementById('fabMenu');
@@ -1086,6 +1202,10 @@ async function loadData(silent = false) {
         // UI toggles
         document.getElementById('admin-view').style.display = 'none';
         document.getElementById('user-view').style.display = 'block';
+        const adminDesktopNav = document.getElementById('admin-desktop-nav');
+        const userDesktopNav = document.getElementById('user-desktop-nav');
+        if (adminDesktopNav) adminDesktopNav.style.display = 'none';
+        if (userDesktopNav) userDesktopNav.style.display = '';
 
         // Hide desktop FAB for non-admins
         const desktopFab = document.getElementById('desktop-fab');
@@ -1097,6 +1217,9 @@ async function loadData(silent = false) {
         if(userBottomNav) userBottomNav.style.display = 'flex';
 
         document.getElementById('settings').style.display = 'none';
+
+        const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
+        if (sysSettingsBtn) sysSettingsBtn.style.display = 'none';
 
         // Populate User View basic info
         document.getElementById('user-name-display').innerText = `${currentUser.firstName} ${currentUser.lastName}`;
@@ -1137,6 +1260,10 @@ async function loadData(silent = false) {
         // UI toggles
         document.getElementById('admin-view').style.display = 'block';
         document.getElementById('user-view').style.display = 'none';
+        const adminDesktopNav = document.getElementById('admin-desktop-nav');
+        const userDesktopNav = document.getElementById('user-desktop-nav');
+        if (adminDesktopNav) adminDesktopNav.style.display = '';
+        if (userDesktopNav) userDesktopNav.style.display = 'none';
 
         // Show desktop FAB for admins (CSS handles layout)
         const desktopFab = document.getElementById('desktop-fab');
@@ -1148,6 +1275,16 @@ async function loadData(silent = false) {
         if(userBottomNav) userBottomNav.style.display = 'none';
 
         document.getElementById('settings').style.display = '';
+
+        // Fetch AI enabled state for all admins to show/hide AI nav button
+        fetchWithAuth(`${config.apiBaseUrl}/admin/ai-status`).then(r => {
+            if (r.ok) return r.json();
+        }).then(data => {
+            if (data) {
+                aiEnabled = !!data.enabled;
+                updateAiNavVisibility();
+            }
+        }).catch(() => {});
     }
 
     // Normalize people data
@@ -1159,7 +1296,7 @@ async function loadData(silent = false) {
         people.forEach(person => {
             const result = checkAndExecuteStandingOrders(person);
             if (result) {
-                const newTotal = safeList(result.payments).reduce((acc, p) => acc + parseFloat(p.amount), 0);
+                const newTotal = calculateTotalPaidLoop(safeList(result.payments));
                 // Update in DB
                 updates.push(update(ref(db, 'people/' + person.id), {
                     payments: result.payments,
@@ -1223,14 +1360,23 @@ async function renderAll() {
 
 async function renderSuperAdminTools() {
     const card = document.getElementById('card-super-admin');
-    if (!card) return;
+    const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
+    const sysNavBtnDesktop = document.getElementById('admin-sys-nav-btn-desktop');
+    const sysNavBtnBottom = document.getElementById('admin-sys-nav-btn');
+    const isAdmin = !!(currentUser && currentUser.admin);
+
+    if (sysNavBtnDesktop) sysNavBtnDesktop.style.display = isAdmin ? 'block' : 'none';
+    if (sysNavBtnBottom) sysNavBtnBottom.style.display = isAdmin ? 'flex' : 'none';
 
     if (!isSuperAdminUser()) {
-        card.style.display = 'none';
+        if (card) card.style.display = 'none';
+        if (sysSettingsBtn) sysSettingsBtn.style.display = 'none';
         return;
     }
 
-    card.style.display = '';
+    if (card) card.style.display = '';
+    if (sysSettingsBtn) sysSettingsBtn.style.display = '';
+
     renderSuperAdminUserManagement();
     await renderSuperAdminPaymentEditor();
     if (!advancedConfigLoaded) {
@@ -1257,41 +1403,58 @@ function renderAdminRequests() {
 
     const renderReq = (req) => {
         let typeLabel = '';
+        let typeIcon = '';
         let details = '';
 
         if (req.type === 'payment') {
-            typeLabel = '💰 Zahlung';
+            typeLabel = 'Zahlung';
+            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>';
             details = `${formatCurrency(req.data.amount)} € am ${dateFormatter.format(new Date(req.data.date))}`;
-            if (req.data.note) details += `<br><small>"${req.data.note}"</small>`;
+            if (req.data.note) details += `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(req.data.note)}<span style="opacity: 0.7;">"</span></small>`;
         } else if (req.type === 'status') {
-            typeLabel = '🔄 Statusänderung';
-            details = `Neu: <strong>${req.data.newStatus}</strong> ab ${dateFormatter.format(new Date(req.data.date))}`;
+            typeLabel = 'Statusänderung';
+            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+            details = `Neu: <strong>${escapeHtml(req.data.newStatus)}</strong> ab ${dateFormatter.format(new Date(req.data.date))}`;
         } else if (req.type === 'expense') {
-            typeLabel = '💸 Ausgabe';
-            details = `${formatCurrency(req.data.amount)} € für "${req.data.description}" am ${dateFormatter.format(new Date(req.data.date))}`;
+            typeLabel = 'Ausgabe';
+            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 14h-8"/><path d="M16 18h-8"/><path d="M16 10h-8"/></svg>';
+            details = `${formatCurrency(req.data.amount)} € für "${escapeHtml(req.data.description)}" am ${dateFormatter.format(new Date(req.data.date))}`;
             if (req.data.receipt) {
                 const safeReceipt = escapeHtml(req.data.receipt.replace(/\\/g, "\\\\").replace(/'/g, "\\'"));
                 const safeId = escapeHtml(req.id);
                 details += `<div id="receipt-container-${safeId}" style="margin-top:10px;">
-                    <button class="btn btn-secondary btn-small" onclick="viewRequestReceipt('${safeReceipt}', 'receipt-container-${safeId}')">📷 Beleg anzeigen</button>
+                    <button class="btn btn-small" style="background: transparent; border: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 6px;" onclick="viewRequestReceipt('${safeReceipt}', 'receipt-container-${safeId}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                        Beleg anzeigen
+                    </button>
                 </div>`;
             }
         } else if (req.type === 'standing_order') {
-            typeLabel = '🔄 Dauerauftrag';
+            typeLabel = 'Dauerauftrag';
+            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
             details = `${formatCurrency(req.data.amount)} € / Monat<br>Start: ${dateFormatter.format(new Date(req.data.date))}`;
-            if (req.data.note) details += `<br><small>"${escapeHtml(req.data.note)}"</small>`;
+            if (req.data.note) details += `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(req.data.note)}<span style="opacity: 0.7;">"</span></small>`;
         }
 
         return `
-            <div style="background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 12px; margin: 8px 0;">
-                <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:8px; align-items:flex-start;">
-                    <span style="font-weight:800;">${typeLabel}</span>
-                    <span style="font-size:0.8rem; color:var(--text-secondary); white-space:nowrap;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; align-items:center;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text);">
+                        ${typeIcon}
+                        <span>${typeLabel}</span>
+                    </div>
+                    <span style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; background: var(--surface-alt); padding: 4px 8px; border-radius: 12px;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
                 </div>
-                <div style="margin-bottom:10px;">${details}</div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <button class="btn btn-primary btn-small" style="width:auto;" onclick="approveRequest('${req.id}')">Genehmigen</button>
-                    <button class="btn btn-danger btn-small" style="width:auto;" onclick="rejectRequest('${req.id}')">Ablehnen</button>
+                <div style="margin-bottom:16px; font-size: 0.95rem; color: var(--text); line-height: 1.5;">${details}</div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-primary btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; border-radius: 12px; padding: 8px 0;" onclick="approveRequest('${req.id}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        Genehmigen
+                    </button>
+                    <button class="btn btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 8px 0;" onclick="rejectRequest('${req.id}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        Ablehnen
+                    </button>
                 </div>
             </div>
         `;
@@ -1302,8 +1465,11 @@ function renderAdminRequests() {
         .map(([personName, items]) => {
             const sorted = items.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             return `
-                <div style="margin-top: 12px;">
-                    <div style="font-weight: 900; margin-bottom: 6px;">${escapeHtml(personName)}</div>
+                <div style="margin-top: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 10px; color: var(--text); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--secondary);"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        ${escapeHtml(personName)}
+                    </div>
                     ${sorted.map(renderReq).join('')}
                 </div>
             `;
@@ -1312,8 +1478,11 @@ function renderAdminRequests() {
 
     target.innerHTML = `
         <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header">📥 Offene Anfragen (${pending.length})</div>
-            <div class="card-body">${groupBlocks}</div>
+            <div class="card-header" style="display: flex; align-items: center; gap: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; color: var(--text-secondary);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                Offene Anfragen (${pending.length})
+            </div>
+            <div class="card-body" style="padding-top: 10px;">${groupBlocks}</div>
         </div>
     `;
 }
@@ -1419,104 +1588,8 @@ function renderSuperAdminUserManagement() {
 }
 
 async function renderSuperAdminPaymentEditor() {
-    const target = document.getElementById('super-admin-payment-editor');
-    if (!target || !isSuperAdminUser()) return;
-
-    target.innerHTML = '<div class="spinner" style="margin: 0 auto;"></div>';
-
-    let remoteDonations = [];
-    let remoteExpenses = [];
-    try {
-        remoteDonations = safeList(await apiGet('donations').catch(() => []));
-        remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
-    } catch(e) {
-        console.warn("Could not fetch remote donations/expenses", e);
-    }
-
-    const allRecords = [];
-
-    // Payments
-    people.forEach(person => {
-        safeList(person.payments).forEach((payment, index) => {
-            allRecords.push({
-                type: 'payment',
-                personId: person.id,
-                personName: person.name,
-                paymentId: payment.id ?? `idx-${index}`,
-                paymentIndex: index,
-                payment
-            });
-        });
-    });
-
-    // Donations
-    remoteDonations.forEach((donation, index) => {
-        allRecords.push({
-            type: 'donation',
-            personId: null,
-            personName: donation.name || 'Spende',
-            paymentId: donation.id ?? `don-${index}`,
-            paymentIndex: index,
-            payment: donation
-        });
-    });
-
-    // Expenses
-    remoteExpenses.forEach((expense, index) => {
-        allRecords.push({
-            type: 'expense',
-            personId: null,
-            personName: expense.issuer || 'Ausgabe',
-            paymentId: expense.id ?? `exp-${index}`,
-            paymentIndex: index,
-            payment: expense
-        });
-    });
-
-    allRecords.sort((a, b) => (b.payment.date || '').localeCompare(a.payment.date || ''));
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-
-    const recentRecords = allRecords.filter(item => {
-        if (!item.payment.date) return false;
-        return item.payment.date >= thirtyDaysAgoStr;
-    });
-
-    superAdminPaymentRows = recentRecords;
-    const preview = superAdminPaymentRows;
-
-    if (preview.length === 0) {
-        target.innerHTML = '<div style="color:var(--text-secondary);">Keine Einträge in den letzten 30 Tagen vorhanden.</div>';
-        return;
-    }
-
-    const options = preview.map((item, index) => {
-        const dateText = item.payment.date ? dateFormatter.format(new Date(item.payment.date)) : 'Kein Datum';
-        const desc = item.payment.description ? ` • ${item.payment.description}` : '';
-
-        let prefix = '';
-        if (item.type === 'donation') prefix = '[Spende] ';
-        else if (item.type === 'expense') prefix = '[Ausgabe] ';
-
-        const label = `${prefix}${item.personName || 'Unbekannt'} • ${dateText} • ${formatCurrency(item.payment.amount)} €${desc}`;
-        return `<option value="${index}">${escapeHtml(label)}</option>`;
-    }).join('');
-
-    target.innerHTML = `
-        <div class="form-group" style="margin:0;">
-            <label class="form-label" for="super-admin-payment-select">Eintrag auswählen (letzte 30 Tage)</label>
-            <select id="super-admin-payment-select" class="form-select">
-                <option value="">Bitte wählen...</option>
-                ${options}
-            </select>
-        </div>
-        <button class="btn btn-secondary btn-block" onclick="editSelectedPayment()">Ausgewählten Eintrag bearbeiten</button>
-    `;
-
-    if (allRecords.length > preview.length) {
-        target.innerHTML += `<div style="font-size:0.85rem; color:var(--text-secondary); margin-top:8px;">Es werden die letzten ${preview.length} Einträge angezeigt.</div>`;
+    if (document.getElementById('payment-history')?.classList.contains('active')) {
+        renderHistoryTab(true);
     }
 }
 
@@ -1547,26 +1620,6 @@ window.setSupervisorAdminByIndex = async (index, isAdmin) => {
     const user = superAdminUserRows[index];
     if (!user || !user.uid) return;
     await window.setSupervisorAdmin(user.uid, isAdmin);
-};
-
-window.editRecordedPaymentByIndex = async (index) => {
-    const item = superAdminPaymentRows[index];
-    if (!item) {
-        alert('Der ausgewählte Eintrag wurde nicht gefunden. Bitte Liste aktualisieren.');
-        return;
-    }
-    await window.editRecordedPayment(item.personId, item.paymentId, item.paymentIndex, item.personName, item.type, item.payment);
-};
-
-window.editSelectedPayment = async () => {
-    const select = document.getElementById('super-admin-payment-select');
-    if (!select || !select.value) {
-        alert('Bitte zuerst einen Eintrag auswählen.');
-        return;
-    }
-    const index = parseInt(select.value, 10);
-    if (Number.isNaN(index)) return;
-    await window.editRecordedPaymentByIndex(index);
 };
 
 window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null, type = 'payment', paymentObj = null) => {
@@ -1648,7 +1701,7 @@ window.saveEditedPayment = async () => {
                     if (i !== currentEditedPayment.targetIndex) return entry;
                     return { ...entry, amount, date, description };
                 });
-                const totalPaid = nextPayments.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
+                const totalPaid = calculateTotalPaidLoop(nextPayments);
                 return { ...draft, payments: nextPayments, totalPaid };
             });
             showToast('Zahlung aktualisiert');
@@ -1879,7 +1932,7 @@ function renderUserView() {
 
             let details = '';
             if(req.status === 'rejected') {
-                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:var(--danger)10; border-radius:8px;">⚠️ ${req.rejectionReason || 'Keine Begründung'}</div>`;
+                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:var(--danger)10; border-radius:8px;">⚠️ ${escapeHtml(req.rejectionReason) || 'Keine Begründung'}</div>`;
             }
 
             return `
@@ -2158,6 +2211,15 @@ async function renderStats() {
         document.getElementById('totalIncome').textContent = currencyFormatter.format(data.totalIncome || 0);
         document.getElementById('totalExpenses').textContent = currencyFormatter.format(data.totalExpenses || 0);
 
+        const totalMembers = people.length;
+        let totalOverdue = 0;
+        people.forEach(p => {
+            totalOverdue += (p._overdueAmount || 0);
+        });
+
+        document.getElementById('totalMembers').textContent = totalMembers;
+        document.getElementById('totalOverdue').textContent = currencyFormatter.format(totalOverdue);
+
         if (data.chartData && Array.isArray(data.chartData.dataPoints)) {
             chartDataCache = {
                 dataPoints: data.chartData.dataPoints.map(dp => ({ ...dp, date: new Date(dp.date) })),
@@ -2267,18 +2329,18 @@ window.addEventListener('resize', () => {
     }, 100);
 });
 
-window.showTransactionModal = async function(resetLimit = true) {
+window.renderHistoryTab = async function(resetLimit = true) {
     if (resetLimit) {
         transactionPage = 1;
         cachedTransactions = null;
     }
 
-    const modal = document.getElementById('transaction-modal');
-    const container = document.getElementById('full-transaction-list');
+    const container = document.getElementById('history-page-list');
+    if (!container) return;
 
     if (resetLimit) {
         const skeletonHtml = Array(15).fill(`
-            <div class="trans-item" style="pointer-events: none; border-bottom: 1px solid var(--border);">
+            <div class="trans-item" style="pointer-events: none; border-bottom: 1px solid var(--border); padding: 15px;">
                 <div class="trans-left" style="gap: 6px;">
                     <div class="skeleton" style="width: 140px; height: 16px;"></div>
                     <div class="skeleton" style="width: 100px; height: 12px; margin-top: 4px;"></div>
@@ -2287,10 +2349,6 @@ window.showTransactionModal = async function(resetLimit = true) {
             </div>
         `).join('');
         container.innerHTML = skeletonHtml;
-    }
-
-    if (!modal?.classList.contains('show')) {
-        openModal('transaction-modal');
     }
 
     try {
@@ -2306,9 +2364,11 @@ window.showTransactionModal = async function(resetLimit = true) {
         transactionTotalItems = data.totalItems;
 
         if (!cachedTransactions || cachedTransactions.length === 0) {
-            container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Keine Buchungen vorhanden.</div>';
+            container.innerHTML = '<div style="text-align:center; padding:30px 20px; color:var(--text-secondary);">Keine Buchungen vorhanden.</div>';
             return;
         }
+
+        const isSuperAdmin = isSuperAdminUser();
 
         let html = cachedTransactions.map(t => {
             const isExp = t.type === 'exp';
@@ -2316,27 +2376,44 @@ window.showTransactionModal = async function(resetLimit = true) {
             const sign = isExp ? '-' : '+';
             const icon = t.type === 'pay' ? '👤' : (t.type === 'don' ? '💝' : '💸');
             const hasReceipt = t.receipt ? '<span style="margin-left:5px" title="Beleg vorhanden">📷</span>' : '';
+
+            const paymentPayload = t.payment ? JSON.stringify(t.payment).replace(/"/g, '&quot;') : '{}';
+
+            let mappedType = t.type;
+            if (t.type === 'pay') mappedType = 'payment';
+            else if (t.type === 'don') mappedType = 'donation';
+            else if (t.type === 'exp') mappedType = 'expense';
+
+            const editBtn = isSuperAdmin ? `
+                <button class="btn btn-secondary btn-small" style="padding: 6px; border-radius: 8px; margin-left: 10px;" data-payload="${paymentPayload}" onclick="event.stopPropagation(); editRecordedPayment('${escapeHtml(String(t.personId || ''))}', '${escapeHtml(String(t.paymentId || ''))}', ${t.paymentIndex !== undefined ? t.paymentIndex : -1}, '${escapeHtml(String(t.personName || ''))}', '${mappedType}', JSON.parse(this.dataset.payload))" aria-label="Bearbeiten">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+            ` : '';
+
             return `
-                <div class="trans-item" role="button" tabindex="0" onclick="showTransactionDetails('${t.id}', '${t.type}')" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails('${t.id}', '${t.type}')}" style="cursor:pointer;">
-                    <div class="trans-left">
+                <div class="trans-item" role="button" tabindex="0" onclick="showTransactionDetails('${t.id}', '${t.type}')" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails('${t.id}', '${t.type}')}" style="cursor:pointer; padding: 15px; border-bottom: 1px solid var(--border);">
+                    <div class="trans-left" style="flex: 1;">
                         <span style="font-weight:600;">${icon} ${t.who}</span>
                         <div class="trans-meta">${t.description || '-'} ${hasReceipt} • ${t.date ? dateFormatter.format(new Date(t.date)) : 'Kein Datum'}</div>
                     </div>
-                    <div class="trans-amount ${color}">${sign}${formatCurrency(t.amount)}€</div>
+                    <div style="display: flex; align-items: center;">
+                        <div class="trans-amount ${color}" style="font-size: 1.1rem;">${sign}${formatCurrency(t.amount)}€</div>
+                        ${editBtn}
+                    </div>
                 </div>
             `;
         }).join('');
 
         if (cachedTransactions.length < transactionTotalItems) {
             html += `
-                <div style="text-align:center; padding:10px;">
-                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 10px;">Es werden ${cachedTransactions.length} von ${transactionTotalItems} Buchungen angezeigt.</div>
-                    <button class="btn btn-secondary" onclick="loadMoreTransactions()">Mehr laden...</button>
+                <div style="text-align:center; padding:20px;">
+                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 12px;">Es werden ${cachedTransactions.length} von ${transactionTotalItems} Buchungen angezeigt.</div>
+                    <button class="btn btn-secondary" onclick="loadMoreHistory()">Mehr laden...</button>
                 </div>
             `;
         }
 
-        const scrollContainer = container?.closest('.modal-content') || container;
+        const scrollContainer = container.parentElement;
         const previousScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
 
         container.innerHTML = html;
@@ -2346,13 +2423,13 @@ window.showTransactionModal = async function(resetLimit = true) {
         }
     } catch (err) {
         console.error('Fehler beim Laden der Transaktionen:', err);
-        container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger);">Fehler beim Laden der Buchungen.</div>';
+        container.innerHTML = '<div style="text-align:center; padding:30px 20px; color:var(--danger);">Fehler beim Laden der Buchungen.</div>';
     }
 };
 
-window.loadMoreTransactions = function() {
+window.loadMoreHistory = function() {
     transactionPage += 1;
-    window.showTransactionModal(false);
+    window.renderHistoryTab(false);
 };
 
 window.addPerson = async () => {
@@ -2606,7 +2683,7 @@ window.saveStandingOrderEnd = async () => {
                  standingOrders = standingOrders.filter(so => String(so.id) !== String(editingSoId));
             }
 
-            const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+            const totalPaid = calculateTotalPaidLoop(payments);
             return { ...person, standingOrders, payments, totalPaid };
         });
 
@@ -2811,6 +2888,7 @@ async function loadAdvancedSystemConfig() {
         document.getElementById('super-admin-smtp-user').value = data.smtp?.user || '';
         document.getElementById('super-admin-smtp-pass').value = data.smtp?.pass || '';
         advancedConfigLoaded = true;
+        await loadAiConfig();
     } catch (err) {
         console.error('Fehler beim Laden der erweiterten Konfiguration:', err);
         showToast('Erweiterte Konfiguration konnte nicht geladen werden', 'error');
@@ -2868,6 +2946,456 @@ window.saveAdvancedSystemConfig = async () => {
         alert(`Erweiterte Konfiguration konnte nicht gespeichert werden: ${err.message || 'Unbekannter Fehler'}`);
     }
 };
+
+async function loadAiConfig() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/ai-config`);
+        if (!response.ok) return;
+        const data = await response.json();
+        aiEnabled = !!data.enabled;
+        const enabledEl = document.getElementById('super-admin-ai-enabled');
+        if (enabledEl) enabledEl.checked = data.enabled;
+        const baseUrlEl = document.getElementById('super-admin-ai-base-url');
+        if (baseUrlEl) baseUrlEl.value = data.baseUrl || '';
+        const apiKeyEl = document.getElementById('super-admin-ai-api-key');
+        if (apiKeyEl) apiKeyEl.value = data.apiKey || '';
+        const modelEl = document.getElementById('super-admin-ai-model');
+        if (modelEl) modelEl.value = data.model || '';
+        updateAiNavVisibility();
+    } catch (err) {
+        console.error('KI-Konfiguration konnte nicht geladen werden:', err);
+    }
+}
+
+window.saveAiConfig = async () => {
+    if (!isSuperAdminUser()) return;
+    try {
+        const payload = {
+            enabled: document.getElementById('super-admin-ai-enabled')?.checked ?? false,
+            baseUrl: document.getElementById('super-admin-ai-base-url')?.value.trim() || '',
+            apiKey: document.getElementById('super-admin-ai-api-key')?.value || '',
+            model: document.getElementById('super-admin-ai-model')?.value.trim() || ''
+        };
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/ai-config`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+        }
+        aiEnabled = payload.enabled;
+        updateAiNavVisibility();
+        showToast('KI-Einstellungen gespeichert');
+    } catch (err) {
+        console.error('Fehler beim Speichern der KI-Einstellungen:', err);
+        alert(`KI-Einstellungen konnten nicht gespeichert werden: ${err.message || 'Unbekannter Fehler'}`);
+    }
+};
+
+function updateAiNavVisibility() {
+    const show = aiEnabled && !!(currentUser && currentUser.admin);
+    const bottomBtn = document.getElementById('admin-ai-nav-btn');
+    const desktopBtn = document.getElementById('admin-ai-nav-btn-desktop');
+    const spacer = document.getElementById('admin-nav-spacer');
+    if (bottomBtn) bottomBtn.style.display = show ? '' : 'none';
+    if (desktopBtn) desktopBtn.style.display = show ? '' : 'none';
+    if (spacer) spacer.style.display = !show ? '' : 'none'; // Show spacer when AI is off to keep 5-item flex balanced (History is always right, so we need a spacer if AI is missing)
+}
+
+window.clearAiChat = () => {
+    aiMessages = [];
+    const messagesEl = document.getElementById('ai-chat-messages');
+    if (!messagesEl) return;
+    messagesEl.innerHTML = `
+        <div class="ai-chat-welcome">
+            <div class="ai-chat-welcome-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div class="ai-chat-welcome-text">KI-Assistent bereit</div>
+            <div class="ai-chat-welcome-sub">Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.</div>
+        </div>`;
+};
+
+function adjustAiInputHeight(inputEl) {
+    if (!inputEl) return;
+    inputEl.style.height = 'auto';
+    inputEl.style.height = `${Math.min(inputEl.scrollHeight, MAX_AI_CHAT_INPUT_HEIGHT)}px`;
+}
+
+window.handleAiChatInput = (event) => {
+    if (!event || !event.target) return;
+    adjustAiInputHeight(event.target);
+};
+
+window.handleAiChatKey = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendAiMessage();
+    }
+};
+
+function appendAiMessage(role, content) {
+    const messagesEl = document.getElementById('ai-chat-messages');
+    if (!messagesEl) return null;
+
+    // Remove welcome screen on first message
+    const welcome = messagesEl.querySelector('.ai-chat-welcome');
+    if (welcome) welcome.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = `ai-chat-bubble ai-chat-bubble-${role}`;
+    if (role === 'assistant') {
+        bubble.appendChild(renderMarkdown(content));
+    } else {
+        bubble.textContent = content;
+    }
+    messagesEl.appendChild(bubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return bubble;
+}
+
+/**
+ * Builds a collapsed <details> element for thinking/reasoning content.
+ * All text is set via textContent to prevent XSS.
+ */
+function buildThinkingElement(thinkingText) {
+    const details = document.createElement('details');
+    details.className = 'ai-thinking';
+    const summary = document.createElement('summary');
+    summary.className = 'ai-thinking-summary';
+    summary.textContent = 'Denkprozess anzeigen';
+    const pre = document.createElement('pre');
+    pre.className = 'ai-thinking-content';
+    pre.textContent = thinkingText.trim();
+    details.appendChild(summary);
+    details.appendChild(pre);
+    return details;
+}
+
+/**
+ * Finalises an assistant bubble after streaming is complete.
+ * Extracts <think>…</think> or <thought>…</thought> blocks, renders thinking dropdown + markdown body.
+ */
+function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
+    if (!bubble) return;
+
+    const existingDetails = bubble.querySelector('details.ai-thinking');
+    const wasOpen = existingDetails ? existingDetails.open : false;
+
+    // Extract <think>…</think> or <thought>…</thought> blocks from content (some models embed thinking inline)
+    let thinkingFromContent = '';
+    const mainContent = rawContent.replace(/<(?:think|thought)>([\s\S]*?)(?:<\/?(?:think|thought)>|$)/gi, (_, inner) => {
+        thinkingFromContent += inner;
+        return '';
+    }).trim();
+
+    const combinedThinking = (reasoningContent + thinkingFromContent).trim();
+
+    bubble.replaceChildren();
+    if (combinedThinking) {
+        const thinkingEl = buildThinkingElement(combinedThinking);
+        if (wasOpen) thinkingEl.open = true;
+        bubble.appendChild(thinkingEl);
+    }
+    bubble.appendChild(renderMarkdown(mainContent));
+}
+
+/**
+ * Lightweight Markdown → DOM fragment renderer for AI chat messages.
+ * Uses DOM APIs exclusively (no innerHTML) to prevent XSS.
+ * Handles: fenced code blocks, inline code, bold, italic, headers, lists, line breaks.
+ */
+function renderMarkdown(text) {
+    const frag = document.createDocumentFragment();
+    if (!text) return frag;
+
+    // 1. Extract fenced code blocks to protect them from inline transforms
+    const codeBlocks = [];
+    const processed = text.replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (_, lang, code) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push({ lang: lang || '', code: code.replace(/\n$/, '') });
+        return `\x00CODE${idx}\x00`;
+    });
+
+    // 2. Process lines for block-level elements
+    const lines = processed.split('\n');
+    let i = 0;
+
+    while (i < lines.length) {
+        const line = lines[i];
+
+        // Unordered list
+        if (/^[ \t]*[-*] /.test(line)) {
+            const ul = document.createElement('ul');
+            while (i < lines.length && /^[ \t]*[-*] /.test(lines[i])) {
+                const li = document.createElement('li');
+                appendInlineNodes(li, lines[i].replace(/^[ \t]*[-*] /, ''));
+                ul.appendChild(li);
+                i++;
+            }
+            frag.appendChild(ul);
+            continue;
+        }
+
+        // Ordered list
+        if (/^[ \t]*\d+\. /.test(line)) {
+            const ol = document.createElement('ol');
+            while (i < lines.length && /^[ \t]*\d+\. /.test(lines[i])) {
+                const li = document.createElement('li');
+                appendInlineNodes(li, lines[i].replace(/^[ \t]*\d+\. /, ''));
+                ol.appendChild(li);
+                i++;
+            }
+            frag.appendChild(ol);
+            continue;
+        }
+
+        // Headers (# ## ###)
+        const headingMatch = line.match(/^(#{1,3}) (.+)/);
+        if (headingMatch) {
+            const level = headingMatch[1].length;
+            const el = document.createElement(`h${level}`);
+            appendInlineNodes(el, headingMatch[2]);
+            frag.appendChild(el);
+            i++;
+            continue;
+        }
+
+        // Tables
+        if (/^[ \t]*\|/.test(line)) {
+            const tableWrap = document.createElement('div');
+            tableWrap.className = 'ai-table-wrapper';
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const tbody = document.createElement('tbody');
+            let isFirstRow = true;
+
+            while (i < lines.length && /^[ \t]*\|/.test(lines[i])) {
+                const rowLine = lines[i].trim();
+
+                // Skip separator rows like |:---|:---|
+                if (/^[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*$/.test(rowLine)) {
+                    i++;
+                    isFirstRow = false;
+                    continue;
+                }
+
+                const tr = document.createElement('tr');
+                const cells = rowLine.split('|');
+
+                // Remove empty first and last elements if the line starts/ends with |
+                if (cells.length > 0 && cells[0].trim() === '') cells.shift();
+                if (cells.length > 0 && cells[cells.length - 1].trim() === '') cells.pop();
+
+                for (const cell of cells) {
+                    const cellEl = document.createElement(isFirstRow ? 'th' : 'td');
+                    appendInlineNodes(cellEl, cell.trim());
+                    tr.appendChild(cellEl);
+                }
+
+                if (isFirstRow) {
+                    thead.appendChild(tr);
+                    isFirstRow = false;
+                } else {
+                    tbody.appendChild(tr);
+                }
+                i++;
+            }
+            if (thead.childNodes.length > 0) table.appendChild(thead);
+            if (tbody.childNodes.length > 0) table.appendChild(tbody);
+            tableWrap.appendChild(table);
+            frag.appendChild(tableWrap);
+            // Adjust iterator to correctly process the next line without skipping
+            i--;
+            continue;
+        }
+
+        // Horizontal rule
+        if (/^---+$/.test(line.trim())) {
+            frag.appendChild(document.createElement('hr'));
+            i++;
+            continue;
+        }
+
+        // Fenced code block placeholder
+        const codeMatch = line.match(/^\x00CODE(\d+)\x00$/);
+        if (codeMatch) {
+            const { lang, code } = codeBlocks[parseInt(codeMatch[1], 10)];
+            const pre = document.createElement('pre');
+            pre.className = 'ai-code-block';
+            const codeEl = document.createElement('code');
+            if (lang) codeEl.className = `language-${lang}`;
+            codeEl.textContent = code;
+            pre.appendChild(codeEl);
+            frag.appendChild(pre);
+            i++;
+            continue;
+        }
+
+        // Empty line → visual break
+        if (line.trim() === '') {
+            frag.appendChild(document.createElement('br'));
+            i++;
+            continue;
+        }
+
+        // Paragraph
+        const p = document.createElement('p');
+        appendInlineNodes(p, line);
+        frag.appendChild(p);
+        i++;
+    }
+
+    return frag;
+}
+
+/**
+ * Parses inline markdown (bold, italic, inline code) and appends DOM nodes to parent.
+ * Text nodes are created with createTextNode — no innerHTML, no XSS risk.
+ */
+function appendInlineNodes(parent, text) {
+    // Split on inline patterns (backtick code, bold **, italic *)
+    const parts = text.split(/(`[^`]+`|\*\*(?:.+?)\*\*|\*(?:[^*]+)\*)/);
+    for (const part of parts) {
+        if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+            const code = document.createElement('code');
+            code.className = 'ai-inline-code';
+            code.textContent = part.slice(1, -1);
+            parent.appendChild(code);
+        } else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+            const strong = document.createElement('strong');
+            strong.textContent = part.slice(2, -2);
+            parent.appendChild(strong);
+        } else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+            const em = document.createElement('em');
+            em.textContent = part.slice(1, -1);
+            parent.appendChild(em);
+        } else {
+            parent.appendChild(document.createTextNode(part));
+        }
+    }
+}
+
+window.sendAiMessage = async () => {
+    if (aiStreaming) return;
+    const inputEl = document.getElementById('ai-chat-input');
+    const sendBtn = document.getElementById('ai-chat-send-btn');
+    if (!inputEl) return;
+
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    inputEl.value = '';
+    adjustAiInputHeight(inputEl);
+
+    aiMessages.push({ role: 'user', content: text });
+    appendAiMessage('user', text);
+
+    aiStreaming = true;
+    if (sendBtn) sendBtn.disabled = true;
+
+    // Show typing indicator
+    const messagesEl = document.getElementById('ai-chat-messages');
+    const typingEl = document.createElement('div');
+    typingEl.className = 'ai-chat-typing';
+    typingEl.innerHTML = '<span></span><span></span><span></span>';
+    if (messagesEl) {
+        messagesEl.appendChild(typingEl);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    let assistantBubble = null;
+    let assistantContent = '';
+    let reasoningContent = '';
+
+    try {
+        let token;
+        try {
+            token = await auth.currentUser.getIdToken();
+        } catch {
+            throw new Error('Authentifizierung fehlgeschlagen');
+        }
+
+        const response = await fetch(`${config.apiBaseUrl}/ai/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ messages: aiMessages })
+        });
+
+        if (typingEl.parentNode) typingEl.remove();
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+        }
+
+        assistantBubble = appendAiMessage('assistant', '');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('data:')) continue;
+                const data = trimmed.slice(5).trim();
+                if (data === '[DONE]') break;
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.content) {
+                        assistantContent += parsed.content;
+                    }
+                    if (parsed.reasoning) {
+                        reasoningContent += parsed.reasoning;
+                    }
+                    if (assistantBubble) {
+                        finalizeAssistantBubble(assistantBubble, assistantContent, reasoningContent);
+                        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    }
+                } catch { /* skip */ }
+            }
+        }
+
+        // Re-render with markdown + optional thinking dropdown
+        finalizeAssistantBubble(assistantBubble, assistantContent, reasoningContent);
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+
+        aiMessages.push({ role: 'assistant', content: assistantContent });
+    } catch (err) {
+        if (typingEl.parentNode) typingEl.remove();
+        console.error('KI-Chat Fehler:', err);
+        if (assistantBubble) {
+            assistantBubble.textContent = `Fehler: ${err.message || 'Unbekannter Fehler'}`;
+            assistantBubble.classList.add('ai-chat-bubble-error');
+        } else {
+            const errBubble = appendAiMessage('assistant', `Fehler: ${err.message || 'Unbekannter Fehler'}`);
+            if (errBubble) errBubble.classList.add('ai-chat-bubble-error');
+        }
+        // Remove the failed user message from history so the user can retry
+        if (aiMessages.length > 0 && aiMessages[aiMessages.length - 1].role === 'user') {
+            aiMessages.pop();
+        }
+    } finally {
+        aiStreaming = false;
+        if (sendBtn) sendBtn.disabled = false;
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const inputEl = document.getElementById('ai-chat-input');
+    if (inputEl) adjustAiInputHeight(inputEl);
+});
 
 window.uploadChurchLogo = async () => {
     if (!isSuperAdminUser()) return;
@@ -2944,19 +3472,27 @@ window.saveSettings = async () => {
 
 window.changePassword = async (isUser = false) => {
     const inputId = isUser ? 'user-new-password' : 'new-password';
+    const oldInputId = isUser ? 'user-old-password' : 'old-password';
     const pw = document.getElementById(inputId).value;
+    const oldPw = document.getElementById(oldInputId).value;
+
+    if(!oldPw) {
+        alert("Bitte geben Sie Ihr altes Passwort ein.");
+        return;
+    }
 
     if(!pw || pw.length < 6) {
-        alert("Passwort muss mindestens 6 Zeichen lang sein.");
+        alert("Neues Passwort muss mindestens 6 Zeichen lang sein.");
         return;
     }
 
     try {
         const user = auth.currentUser;
         if(user) {
-            await updatePassword(user, pw);
+            await updatePassword(user, oldPw, pw);
             showToast("Passwort erfolgreich geändert");
             document.getElementById(inputId).value = '';
+            document.getElementById(oldInputId).value = '';
         } else {
             alert("Kein Benutzer angemeldet.");
         }

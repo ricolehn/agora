@@ -20,19 +20,40 @@ async function getPaginatedTransactions(appConfig, page, perPage) {
 
   people.forEach(p => {
     if (p.data && Array.isArray(p.data.payments)) {
-      p.data.payments.forEach(pay => {
-        all.push({ ...pay, who: p.data.name, type: 'pay' });
+      p.data.payments.forEach((pay, index) => {
+        all.push({
+          ...pay,
+          who: p.data.name,
+          type: 'pay',
+          personId: p.data.id,
+          paymentId: pay.id,
+          paymentIndex: index,
+          personName: p.data.name,
+          payment: pay
+        });
       });
     }
   });
 
   donations.forEach(d => {
-    all.push({ ...d, who: d.name || 'Spende', type: 'don' });
+    all.push({
+      ...d,
+      who: d.name || 'Spende',
+      type: 'don',
+      paymentId: d.id,
+      payment: d
+    });
   });
 
   expenses.forEach(e => {
     const expenseData = e.data || e;
-    all.push({ ...expenseData, who: expenseData.issuer, type: 'exp' });
+    all.push({
+      ...expenseData,
+      who: expenseData.issuer,
+      type: 'exp',
+      paymentId: expenseData.id,
+      payment: expenseData
+    });
   });
 
   all.sort((a, b) => (b.date || '').localeCompare(a.date || ''));

@@ -14,6 +14,7 @@ const cron = require('node-cron');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { aggregateStats } = require('./stats');
 const { getPaginatedTransactions } = require('./transactions');
+const { getAiSettings, setAiSettings, buildDatabaseSnapshot, buildSystemPrompt } = require('./ai');
 
 const sseClients = new Set();
 function broadcastDataUpdate() {
@@ -504,13 +505,19 @@ app.post('/api/auth/logout', authRateLimit, (req, res) => {
 });
 
 app.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) => {
+  const oldPassword = String(req.body?.oldPassword || '');
   const password = String(req.body?.password || '');
+
+  if (!oldPassword) {
+    return res.status(400).json({ error: 'Altes Passwort erforderlich.' });
+  }
+
   if (!password || password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
   }
 
   try {
-    await updateOwnPassword(req.authToken, req.user.uid, password);
+    await updateOwnPassword(req.authToken, req.user.uid, oldPassword, password);
     res.json({ success: true });
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message || 'Failed to update password.' });
@@ -1186,6 +1193,153 @@ app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req
   } catch (error) {
     console.error('Error notifying admins:', error);
     res.status(500).json({ error: 'Failed to notify admins' });
+  }
+});
+
+const aiChatRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.get('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, res) => {
+  try {
+    const aiSettings = await getAiSettings(appConfig);
+    res.json({
+      enabled: aiSettings.enabled,
+      baseUrl: aiSettings.baseUrl || '',
+      // Always return '***' as a consistent placeholder – do not reveal whether a key is set
+      apiKey: '***',
+      model: aiSettings.model || ''
+    });
+  } catch (err) {
+    console.error('Failed to get AI config:', err);
+    res.status(500).json({ error: 'Failed to get AI config' });
+  }
+});
+
+// Lightweight endpoint for all admins – returns only the enabled flag
+app.get('/api/admin/ai-status', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const aiSettings = await getAiSettings(appConfig);
+    res.json({ enabled: !!aiSettings.enabled });
+  } catch (err) {
+    res.json({ enabled: false });
+  }
+});
+
+app.put('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, res) => {
+  try {
+    await setAiSettings(appConfig, req.body || {});
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to save AI config:', err);
+    res.status(500).json({ error: 'Failed to save AI config' });
+  }
+});
+
+app.post('/api/ai/chat', aiChatRateLimit, verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const aiSettings = await getAiSettings(appConfig);
+    if (!aiSettings.enabled) {
+      return res.status(403).json({ error: 'AI support is not enabled' });
+    }
+
+    const rawMessages = req.body?.messages;
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
+      return res.status(400).json({ error: 'messages array is required' });
+    }
+
+    const ALLOWED_ROLES = new Set(['user', 'assistant']);
+    if (rawMessages.some((m) => !ALLOWED_ROLES.has(m.role))) {
+      return res.status(400).json({ error: 'Invalid message role. Only "user" and "assistant" are allowed.' });
+    }
+
+    const MAX_MESSAGES = 50;
+    const messages = rawMessages.slice(-MAX_MESSAGES).map((m) => ({
+      role: m.role,
+      content: String(m.content || '').slice(0, 8000)
+    }));
+
+    const baseUrl = (aiSettings.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+    const apiKey = aiSettings.apiKey || '';
+    const model = aiSettings.model || 'gpt-4o-mini';
+
+    const dbSnapshot = await buildDatabaseSnapshot(appConfig);
+    const systemContent = buildSystemPrompt(appConfig.appName, dbSnapshot);
+
+    const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: systemContent }, ...messages],
+        stream: true
+      })
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text().catch(() => '');
+      console.error('AI provider error:', aiRes.status, errText);
+      return res.status(502).json({ error: 'AI provider returned an error', detail: errText.slice(0, 200) });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const reader = aiRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete last line
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]') {
+            res.write('data: [DONE]\n\n');
+          } else {
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              const reasoning = parsed.choices?.[0]?.delta?.reasoning_content;
+              if (typeof content === 'string') {
+                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+              }
+              if (typeof reasoning === 'string') {
+                res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);
+              }
+            } catch { /* skip malformed chunks */ }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    res.end();
+  } catch (err) {
+    console.error('AI chat error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'AI chat request failed' });
+    } else {
+      res.end();
+    }
   }
 });
 
