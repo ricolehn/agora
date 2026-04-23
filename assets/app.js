@@ -3208,8 +3208,6 @@ function renderMarkdown(text) {
             if (tbody.childNodes.length > 0) table.appendChild(tbody);
             tableWrap.appendChild(table);
             frag.appendChild(tableWrap);
-            // Adjust iterator to correctly process the next line without skipping
-            i--;
             continue;
         }
 

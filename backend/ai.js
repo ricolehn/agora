@@ -69,11 +69,17 @@ async function buildDatabaseSnapshot(appConfig) {
         name: p.name || '',
         status: p.status || '',
         memberSince: p.memberSince || '',
+        originalMemberSince: p.originalMemberSince || p.memberSince || '',
         totalPaid: Math.round(parseFloat(p.totalPaid || 0) * 100) / 100,
         payments: payments.map((pay) => ({
           amount: Math.round(parseFloat(pay.amount || 0) * 100) / 100,
           date: pay.date || '',
           description: pay.description || ''
+        })),
+        statusHistory: (Array.isArray(p.data?.statusHistory) ? p.data.statusHistory : []).map(h => ({
+          status: h.status || '',
+          startDate: h.startDate || '',
+          endDate: h.endDate || ''
         }))
       };
     });

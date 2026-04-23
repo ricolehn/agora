@@ -194,11 +194,14 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 .hero-amount { font-size: 2.8rem; font-weight: 800; margin-bottom: 6px; line-height: 1.1; color: white; }
 .hero-subtitle { font-size: 0.95rem; opacity: 0.9; font-weight: 500; }
 
-.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px; }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px; min-width: 0; }
 .stat-box {
     background: var(--surface); padding: 12px; border-radius: 20px;
-    display: flex; flex-direction: row; align-items: center; justify-content: flex-start; text-align: left; gap: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: none;
+}
+.stat-box > div:not(.stat-icon) {
+    display: flex; flex-direction: column; align-items: center; width: 100%; min-width: 0;
 }
 .stat-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; }
 .stat-icon.success { background-color: #F0FDF4; color: var(--success); }
@@ -206,7 +209,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 .stat-icon.info { background-color: #F0F9FF; color: #0EA5E9; }
 .stat-icon.warning { background-color: #FFFBEB; color: #D97706; }
 .stat-label { font-size: 0.7rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; margin-bottom: 2px; }
-.stat-value { font-size: 1.1rem; font-weight: 700; }
+.stat-value { font-size: 1.1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .text-success { color: var(--success); }
 .text-danger { color: var(--danger); }
 .text-info { color: #0EA5E9; }
@@ -1397,6 +1400,10 @@ input:checked + .slider:before { transform: translateX(22px); }
 }
 
 @media (max-width: 767px) {
+    #ai-chat.tab-content {
+        animation: none;
+    }
+
     #ai-chat.active {
         display: flex;
         flex-direction: column;
@@ -1435,6 +1442,18 @@ input:checked + .slider:before { transform: translateX(22px); }
     #ai-chat {
         max-width: 800px;
         margin: 0 auto;
+        padding-bottom: 100px;
+    }
+
+    #ai-chat .ai-chat-input-styled {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 40px);
+        max-width: 800px;
+        z-index: 100;
+        box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
     }
 }
 
