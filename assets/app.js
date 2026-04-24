@@ -2766,8 +2766,41 @@ window.sendStatusEmail = async (personId) => {
     const readableStatus = statusLabels[currentStatus] || currentStatus;
     const appName = config.appName || "Nova";
 
-    const subject = `Dein aktueller Kassenstatus - ${appName}`;
-    const text = `Hallo ${person.name},\n\nDein aktueller Status ist: ${readableStatus}.\nDu bist aktuell ${statusMeta.text}.\nOffener Betrag: ${formatCurrency(overdueAmount)} €.\n\nLiebe Grüße,\ndein ${appName} Team`;
+    const paidUntilDate = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
+    const paidUntilText = paidUntilDate ? monthYearFormatter.format(paidUntilDate) : 'Nie';
+
+    let overdueMonths = 0;
+    if (paidUntilDate) {
+        const today = new Date();
+        const currentTotal = today.getFullYear() * 12 + today.getMonth();
+        const paidTotal = paidUntilDate.getFullYear() * 12 + paidUntilDate.getMonth();
+        const diff = paidTotal - currentTotal;
+        if (diff < 0) {
+            overdueMonths = Math.abs(diff);
+        }
+    }
+
+    const hasStandingOrder = statusMeta.isActiveStandingOrder;
+
+    let customMessage = '';
+    let customHtmlMessage = '';
+
+    if (hasStandingOrder) {
+        customMessage = `Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!`;
+        customHtmlMessage = `<div style="background-color: #F0FDF4; border-left: 4px solid #22C55E; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!</p></div>`;
+    } else if (statusMeta.isOverdue) {
+        let monthStr = overdueMonths === 1 ? 'einen Monat' : `${overdueMonths} Monate`;
+        customMessage = `Das bedeutet, dass dein Beitrag aktuell für ${monthStr} überfällig ist.\nInsgesamt beläuft sich der offene Betrag auf ${formatCurrency(overdueAmount)} €.`;
+        customHtmlMessage = `<div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0 0 5px 0; color: #B91C1C; font-size: 16px;">Das bedeutet, dass dein Beitrag aktuell für <strong>${monthStr}</strong> überfällig ist.</p><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">Insgesamt beläuft sich der offene Betrag auf ${formatCurrency(overdueAmount)} €.</p></div>`;
+    } else {
+        customMessage = `Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!`;
+        customHtmlMessage = `<div style="background-color: #F0FDF4; border-left: 4px solid #22C55E; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!</p></div>`;
+    }
+
+    const subject = `Dein Kassenstatus - ${appName}`;
+
+    const text = `Hallo ${person.name},\n\nwir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.\n\nDein Beitragstarif ist derzeit auf '${readableStatus}' eingestellt.\nNach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich ${paidUntilText} bezahlt.\n\n${customMessage}\n\nBei Fragen kannst du dich jederzeit gerne melden.\n\nLiebe Grüße,\ndein ${appName} Team`;
+
     const html = `
         <div style="font-family: sans-serif; color: #2D3748; background-color: #F8FAFC; padding: 40px 20px;">
             <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -2776,9 +2809,12 @@ window.sendStatusEmail = async (personId) => {
                 </div>
                 <div style="padding: 40px 30px;">
                     <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 20px; font-weight: 600; color: #1A202C;">Hallo ${escapeHtml(person.name)},</h2>
-                    <p style="margin: 0 0 15px 0; font-size: 16px; line-height: 1.5;">Dein aktueller Status ist: <strong style="color: #14B8A6;">${escapeHtml(readableStatus)}</strong>.</p>
-                    <p style="margin: 0 0 25px 0; font-size: 16px; line-height: 1.5;">Du bist aktuell: <strong style="color: #4A5568;">${escapeHtml(statusMeta.text)}</strong>.</p>
-                    ${statusMeta.isOverdue ? `<div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">Offener Betrag: ${formatCurrency(overdueAmount)} €</p></div>` : `<div style="background-color: #F0FDF4; border-left: 4px solid #22C55E; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">Dein Konto ist ausgeglichen.</p></div>`}
+                    <p style="margin: 0 0 15px 0; font-size: 16px; line-height: 1.5;">wir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.</p>
+                    <p style="margin: 0 0 15px 0; font-size: 16px; line-height: 1.5;">Dein Beitragstarif ist derzeit auf <strong style="color: #14B8A6;">${escapeHtml(readableStatus)}</strong> eingestellt.</p>
+                    <p style="margin: 0 0 25px 0; font-size: 16px; line-height: 1.5;">Nach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich <strong style="color: #4A5568;">${escapeHtml(paidUntilText)}</strong> bezahlt.</p>
+                    ${customHtmlMessage}
+                    <p style="margin: 0 0 5px 0; font-size: 16px; color: #4A5568;">Bei Fragen kannst du dich jederzeit gerne melden.</p>
+                    <br>
                     <p style="margin: 0 0 5px 0; font-size: 16px; color: #4A5568;">Liebe Grüße,</p>
                     <p style="margin: 0; font-size: 16px; font-weight: 600; color: #2D3748;">dein ${escapeHtml(appName)} Team</p>
                 </div>
