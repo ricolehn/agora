@@ -54,6 +54,15 @@
     --border: #475569;
     --border-light: #334155; /* Better separation */
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+
+    /* Dark mode overrides for desktop header */
+    --desktop-header-bg: var(--surface);
+    --desktop-header-border: var(--border);
+    --desktop-nav-text: var(--text-secondary);
+    --desktop-nav-active: var(--text);
+    --desktop-nav-underline: var(--primary);
+    --desktop-profile-border: var(--border);
+    --desktop-profile-text: var(--text);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; scrollbar-width: none; }
@@ -137,6 +146,19 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     transform: translateY(-10px);
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     z-index: 100;
+}
+.profile-dropdown::before {
+    content: "";
+    position: absolute;
+    top: -6px;
+    right: 16px;
+    width: 10px;
+    height: 10px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    transform: rotate(45deg);
+    border-radius: 2px;
 }
 .profile-dropdown.show {
     opacity: 1;
@@ -1656,4 +1678,32 @@ details[open] .ai-thinking-summary::before {
 }
 .input-with-icon:focus-within .input-icon {
     color: var(--primary);
+}
+
+/* --- Search Bar Overrides --- */
+.search-bar-wrapper {
+    margin-bottom: 12px;
+}
+.search-bar-wrapper .form-input.search-input {
+    background: var(--surface-alt);
+    border: none;
+    border-radius: 14px;
+    padding: 12px 12px 12px 42px;
+    font-size: 1rem;
+    color: var(--text);
+    box-shadow: none;
+}
+.search-bar-wrapper .form-input.search-input:focus {
+    background: var(--surface-alt);
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+.search-bar-wrapper .input-icon {
+    left: 14px;
+    color: var(--text-secondary);
+}
+.search-bar-wrapper .input-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5;
 }

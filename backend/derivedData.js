@@ -216,14 +216,14 @@ function calculateTimeRemaining(person, paidUntil, preCalcCredit, settings) {
             // Check if the standing order covers the missing amount
             if (trueMissingAmount <= totalSOAmount) {
                 return {
-                    text: 'Dauerauftrag aktiv',
+                    text: 'Alles in Ordnung',
                     isOverdue: false,
                     isSoonDue: true, // Mark them as soon due since the standing order is expected this month
                     isActiveStandingOrder: true
                 };
             } else {
                 return {
-                    text: 'Dauerauftrag aktiv (Betrag fehlt)',
+                    text: 'Zahlung überfällig',
                     isOverdue: true,
                     isSoonDue: false,
                     isActiveStandingOrder: true
@@ -240,7 +240,7 @@ function calculateTimeRemaining(person, paidUntil, preCalcCredit, settings) {
 
     if (hasActiveSO) {
         return {
-            text: 'Dauerauftrag aktiv',
+            text: 'Alles in Ordnung',
             isOverdue: false,
             isSoonDue: false,
             isActiveStandingOrder: true
@@ -397,7 +397,7 @@ function preprocessPersonServerSide(person, settings) {
     const overdueAmount = isCurrent ? 0 : calculateOverdueAmount(person, paidUntil, remainingCredit, settings);
     const statusMeta = isCurrent
         ? {
-            text: hasActiveSO ? 'Dauerauftrag aktiv' : 'Alles in Ordnung',
+            text: 'Alles in Ordnung',
             isOverdue: false,
             isSoonDue: anticipated > 0,
             isActiveStandingOrder: hasActiveSO

@@ -295,6 +295,49 @@ window.switchTab = function(tabName, btn) {
     }
 };
 
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// ⚡ Bolt: Debounce search to prevent synchronous layout thrashing on every keystroke
+// Expected impact: Removes main thread blocking during fast typing, especially for large lists
+window.filterPeople = debounce(function() {
+    const query = document.getElementById('people-search')?.value.toLowerCase() || '';
+    const items = document.querySelectorAll('.person-wrapper');
+    items.forEach(item => {
+        const nameEl = item.querySelector('.person-name');
+        if (nameEl && nameEl.textContent.toLowerCase().includes(query)) {
+            item.style.display = 'block';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}, 300);
+
+window.filterHistory = debounce(function() {
+    const query = document.getElementById('history-search')?.value.toLowerCase() || '';
+    const container = document.getElementById('history-page-list');
+    if (!container) return;
+
+    const items = container.querySelectorAll('.trans-item');
+    items.forEach(item => {
+        const leftEl = item.querySelector('.trans-left');
+        if (leftEl && leftEl.textContent.toLowerCase().includes(query)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}, 300);
+
 window.toggleProfileMenu = function() {
     const menu = document.getElementById('profileDropdown');
     const btn = document.querySelector('.profile-btn');
@@ -828,14 +871,14 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
             // If trueMissingAmount <= totalSOAmount, then after SO executes, they will owe 0.
             if (trueMissingAmount <= totalSOAmount) {
                 return {
-                    text: 'Dauerauftrag aktiv',
+                    text: 'Alles in Ordnung',
                     isOverdue: false,
                     isSoonDue: true, // Mark them as soon due since the standing order is expected this month
                     isActiveStandingOrder: true
                 };
             } else {
                 return {
-                    text: 'Dauerauftrag aktiv (Betrag fehlt)',
+                    text: 'Zahlung überfällig',
                     isOverdue: true,
                     isSoonDue: false,
                     isActiveStandingOrder: true
@@ -852,7 +895,7 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
 
     if (hasActiveSO) {
         return {
-            text: 'Dauerauftrag aktiv',
+            text: 'Alles in Ordnung',
             isOverdue: false,
             isSoonDue: false,
             isActiveStandingOrder: true
@@ -1880,7 +1923,7 @@ function renderUserView() {
         <!-- Status Hero Card -->
         <div class="user-hero-status ${statusClass}">
             <h2 style="color: ${statusColor}; font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
-                ${statusMeta.isOverdue ? 'Zahlung überfällig' : (statusMeta.isSoonDue ? 'Bald fällig' : 'Alles in Ordnung')}
+                ${statusMeta.text}
             </h2>
             ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">Bezahlt bis <strong>${dateText}</strong></div>`}
             ${statusMeta.isOverdue ? `
@@ -1911,7 +1954,7 @@ function renderUserView() {
     `;
 
     // User Requests List
-    const myRequests = requests.filter(r => r.userId === currentUser.uid && r.status !== 'approved').sort((a,b) => b.timestamp - a.timestamp);
+    const myRequests = requests.filter(r => r.userId === currentUser.uid).sort((a,b) => b.timestamp - a.timestamp);
     const reqList = document.getElementById('user-requests-list');
 
     if(myRequests.length > 0) {
@@ -1921,6 +1964,10 @@ function renderUserView() {
                 statusBadge = '❌';
                 statusBg = '#ef444415';
                 statusText = 'Abgelehnt';
+            } else if(req.status === 'approved') {
+                statusBadge = '✅';
+                statusBg = '#10b98115'; // A soft green background
+                statusText = 'Genehmigt';
             } else {
                 statusBadge = '⏳';
                 statusBg = '#f59e0b15';
