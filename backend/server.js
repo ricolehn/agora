@@ -257,6 +257,9 @@ app.get('/api/status', (req, res) => {
 const uploadDir = path.join(dataDir, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
+const profilesDir = path.join(dataDir, 'profiles');
+if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir);
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
@@ -289,7 +292,11 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   fileFilter: (req, file, cb) => {
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
-    if (allowedMimeTypes.includes(file.mimetype)) {
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'];
+
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Invalid file type. Only JPG, PNG, WEBP, GIF, HEIC, and HEIF are allowed.'));
@@ -299,6 +306,17 @@ const upload = multer({
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
+});
+const profileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'image/jpeg') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG files are accepted for profile pictures.'));
+    }
+  }
 });
 
 const adminRateLimit = rateLimit({
@@ -899,7 +917,8 @@ app.get('/api/transactions', dbRateLimit, verifyToken, async (req, res) => {
     }
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.perPage, 10) || 150;
-    const transactions = await getPaginatedTransactions(appConfig, page, perPage);
+    const search = req.query.search || '';
+    const transactions = await getPaginatedTransactions(appConfig, page, perPage, search);
     res.json(transactions);
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to fetch transactions' });
@@ -1099,6 +1118,51 @@ app.get('/api/receipts/:filename', protectedActionRateLimit, verifyToken, (req, 
     res.sendFile(filePath);
   } else {
     res.status(404).send('File not found');
+  }
+});
+
+app.post('/api/profile/picture', protectedActionRateLimit, verifyToken, (req, res) => {
+  profileUpload.single('picture')(req, res, async (uploadError) => {
+    if (uploadError) {
+      if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large (max 5MB)' });
+      }
+      return res.status(400).json({ error: uploadError.message || 'Upload failed' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+
+    try {
+      const uid = req.user.uid;
+      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(uid)) {
+        return res.status(400).json({ error: 'Invalid user ID' });
+      }
+      const destPath = path.join(profilesDir, `${uid}.jpg`);
+      await fs.promises.writeFile(destPath, req.file.buffer);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Failed to save profile picture:', err);
+      res.status(500).json({ error: 'Failed to save profile picture' });
+    }
+  });
+});
+
+app.get('/api/profile/picture/:uid', protectedActionRateLimit, verifyToken, (req, res) => {
+  const uid = req.params.uid;
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(uid)) {
+    return res.status(400).send('Invalid user ID');
+  }
+  const normalizedProfilesDir = path.resolve(profilesDir);
+  const filePath = path.resolve(path.join(normalizedProfilesDir, `${uid}.jpg`));
+
+  if (path.relative(normalizedProfilesDir, filePath).startsWith('..')) {
+    return res.status(403).send('Forbidden: Path traversal detected');
+  }
+
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Not found');
   }
 });
 

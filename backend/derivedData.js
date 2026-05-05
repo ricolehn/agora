@@ -394,7 +394,14 @@ function preprocessPersonServerSide(person, settings) {
     const currentBalance = calculateCurrentBalance(person, settings);
     const { anticipated, hasActiveSO } = calculateAnticipatedStandingOrderPayment(person);
     const isCurrent = (currentBalance + anticipated) >= -AMOUNT_COMPARISON_EPSILON;
-    const overdueAmount = isCurrent ? 0 : calculateOverdueAmount(person, paidUntil, remainingCredit, settings);
+
+    // Substract the anticipated standing order from the absolute balance for the final overdue amount
+    let overdueAmount = 0;
+    if (!isCurrent) {
+        const rawOverdue = calculateOverdueAmount(person, paidUntil, remainingCredit, settings);
+        overdueAmount = Math.max(0, rawOverdue - anticipated);
+    }
+
     const statusMeta = isCurrent
         ? {
             text: 'Alles in Ordnung',

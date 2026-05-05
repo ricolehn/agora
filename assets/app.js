@@ -48,6 +48,7 @@ let transactionPage = 1;
 const transactionPerPage = 150;
 let cachedTransactions = null;
 let transactionTotalItems = 0;
+let transactionSearchQuery = '';
 
 // ⚡ Bolt: Global formatters for improved performance (avoiding re-initialization)
 const numberFormatter = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -323,19 +324,11 @@ window.filterPeople = debounce(function() {
 }, 300);
 
 window.filterHistory = debounce(function() {
-    const query = document.getElementById('history-search')?.value.toLowerCase() || '';
-    const container = document.getElementById('history-page-list');
-    if (!container) return;
-
-    const items = container.querySelectorAll('.trans-item');
-    items.forEach(item => {
-        const leftEl = item.querySelector('.trans-left');
-        if (leftEl && leftEl.textContent.toLowerCase().includes(query)) {
-            item.style.display = 'flex';
-        } else {
-            item.style.display = 'none';
-        }
-    });
+    const query = document.getElementById('history-search')?.value.trim() || '';
+    if (transactionSearchQuery !== query) {
+        transactionSearchQuery = query;
+        window.renderHistoryTab(true);
+    }
 }, 300);
 
 window.toggleProfileMenu = function() {
@@ -918,6 +911,40 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
  * @param {number} [preCalcCredit] - Optional: Vorberechnetes Restguthaben
  * @returns {number} - Fehlender Betrag (0 wenn ausgeglichen oder Guthaben)
  */
+function isPaymentInCurrentMonth(paymentDate, today) {
+    if (!paymentDate) return false;
+    const parsed = new Date(paymentDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+    return parsed.getFullYear() === today.getFullYear() && parsed.getMonth() === today.getMonth();
+}
+
+function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
+    const payments = safeList(person.payments);
+    const soAmount = parseFloat(standingOrder.amount || 0);
+    const soIdPrefix = standingOrder.id ? `auto_${standingOrder.id}_` : null;
+
+    return payments.some((payment) => {
+        if (!isPaymentInCurrentMonth(payment.date, today)) {
+            return false;
+        }
+
+        if (soIdPrefix && typeof payment.id === 'string' && payment.id.startsWith(soIdPrefix)) {
+            return true;
+        }
+
+        const isAutoLike = payment.isAuto === true || String(payment.description || '').includes('(Auto)');
+        const amountMatches = Math.abs(parseFloat(payment.amount || 0) - soAmount) < 0.0001;
+        return isAutoLike && amountMatches;
+    });
+}
+
+/**
+ * Berechnet den fehlenden Betrag in Euro bis zum Ende des aktuellen Monats.
+ * @param {Object} person - Die Person
+ * @param {Date} [preCalcPaidUntil] - Optional: Vorberechnetes "Bezahlt bis" Datum
+ * @param {number} [preCalcCredit] - Optional: Vorberechnetes Restguthaben
+ * @returns {number} - Fehlender Betrag (0 wenn ausgeglichen oder Guthaben)
+ */
 function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, todayStrArg = null) {
     const today = new Date();
 
@@ -925,13 +952,19 @@ function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, todaySt
     const standingOrders = safeList(person.standingOrders);
     const todayStr = todayStrArg || getTodayStr();
 
-    let totalSOAmount = 0;
+    let anticipatedSOAmount = 0;
     const activeSOs = standingOrders.filter(so => {
          if (so.startDate > todayStr) return false;
          if (so.endDate && so.endDate < todayStr) return false;
          return true;
     });
-    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
+
+    activeSOs.forEach(so => {
+        // Only consider it an anticipated buffer if it hasn't been executed yet this month
+        if (!hasStandingOrderPaidThisMonth(person, so, today)) {
+            anticipatedSOAmount += parseFloat(so.amount || 0);
+        }
+    });
     const hasActiveSO = activeSOs.length > 0;
 
     // ALWAYS calculate up to the end of the current month
@@ -959,28 +992,11 @@ function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, todaySt
 
     if (finalMissing < 0) finalMissing = 0;
 
-    // Calculate months difference to see if they are only overdue for the current month
-    const paidUntil = preCalcPaidUntil || calculatePaidUntil(person);
-    let monthsDiff = 0;
-    if (paidUntil) {
-        const currentTotal = today.getFullYear() * 12 + today.getMonth();
-        const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
-        monthsDiff = paidTotal - currentTotal;
-    } else {
-        monthsDiff = -2; // Force no SO buffer if they have no paid history
-    }
-
-    // Check if the active SO will cover the current month's debt
-    // if the user is completely covered by SO, their missing amount is 0.
-    // Only apply the buffer if the user is not more than 1 month behind (monthsDiff >= -1)
-    if (hasActiveSO && monthsDiff >= -1) {
-        if (finalMissing <= totalSOAmount) {
-             // The SO covers the missing amount (for the current month)
-             return 0;
-        } else {
-             // The SO does NOT cover the missing amount (they owe more)
-             return finalMissing;
-        }
+    // If the user has active standing orders scheduled for this month,
+    // we subtract that anticipated payment from the total missing amount
+    // so it doesn't show as an overdue sum yet.
+    if (hasActiveSO && finalMissing > 0) {
+        finalMissing = finalMissing - anticipatedSOAmount;
     }
 
     return finalMissing > 0 ? finalMissing : 0;
@@ -2387,10 +2403,13 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
     if (resetLimit) {
         const skeletonHtml = Array(15).fill(`
-            <div class="trans-item" style="pointer-events: none; border-bottom: 1px solid var(--border); padding: 15px;">
-                <div class="trans-left" style="gap: 6px;">
-                    <div class="skeleton" style="width: 140px; height: 16px;"></div>
-                    <div class="skeleton" style="width: 100px; height: 12px; margin-top: 4px;"></div>
+            <div class="trans-item" style="pointer-events: none;">
+                <div style="display: flex; align-items: center; flex: 1;">
+                    <div class="skeleton" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 16px; flex-shrink: 0;"></div>
+                    <div class="trans-left" style="gap: 6px; flex: 1;">
+                        <div class="skeleton" style="width: 140px; height: 16px;"></div>
+                        <div class="skeleton" style="width: 100px; height: 12px; margin-top: 4px;"></div>
+                    </div>
                 </div>
                 <div class="skeleton" style="width: 70px; height: 18px;"></div>
             </div>
@@ -2399,7 +2418,8 @@ window.renderHistoryTab = async function(resetLimit = true) {
     }
 
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/transactions?page=${transactionPage}&perPage=${transactionPerPage}`);
+        const queryParam = transactionSearchQuery ? `&search=${encodeURIComponent(transactionSearchQuery)}` : '';
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/transactions?page=${transactionPage}&perPage=${transactionPerPage}${queryParam}`);
         if (!response.ok) throw new Error('Failed to fetch transactions');
         const data = await response.json();
 
@@ -2421,7 +2441,20 @@ window.renderHistoryTab = async function(resetLimit = true) {
             const isExp = t.type === 'exp';
             const color = isExp ? 'text-danger' : 'text-success';
             const sign = isExp ? '-' : '+';
-            const icon = t.type === 'pay' ? '👤' : (t.type === 'don' ? '💝' : '💸');
+
+            let iconSvg = '';
+            let iconClass = '';
+            if (t.type === 'pay') {
+                iconClass = 'pay';
+                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+            } else if (t.type === 'don') {
+                iconClass = 'don';
+                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>';
+            } else {
+                iconClass = 'exp';
+                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>';
+            }
+
             const hasReceipt = t.receipt ? '<span style="margin-left:5px" title="Beleg vorhanden">📷</span>' : '';
 
             const paymentPayload = t.payment ? JSON.stringify(t.payment).replace(/"/g, '&quot;') : '{}';
@@ -2437,11 +2470,18 @@ window.renderHistoryTab = async function(resetLimit = true) {
                 </button>
             ` : '';
 
+            const uidAttr = (t.type === 'pay' && t.personUid) ? ` data-uid="${t.personUid}"` : '';
+
             return `
-                <div class="trans-item" role="button" tabindex="0" onclick="showTransactionDetails('${t.id}', '${t.type}')" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails('${t.id}', '${t.type}')}" style="cursor:pointer; padding: 15px; border-bottom: 1px solid var(--border);">
-                    <div class="trans-left" style="flex: 1;">
-                        <span style="font-weight:600;">${icon} ${t.who}</span>
-                        <div class="trans-meta">${t.description || '-'} ${hasReceipt} • ${t.date ? dateFormatter.format(new Date(t.date)) : 'Kein Datum'}</div>
+                <div class="trans-item" role="button" tabindex="0" onclick="showTransactionDetails('${t.id}', '${t.type}')" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails('${t.id}', '${t.type}')}" style="cursor:pointer;">
+                    <div style="display: flex; align-items: center; flex: 1;">
+                        <div class="trans-icon-wrapper ${iconClass}"${uidAttr}>
+                            ${iconSvg}
+                        </div>
+                        <div class="trans-left" style="flex: 1;">
+                            <span style="font-weight:600;">${t.who}</span>
+                            <div class="trans-meta">${t.description || '-'} ${hasReceipt} • ${t.date ? dateFormatter.format(new Date(t.date)) : 'Kein Datum'}</div>
+                        </div>
                     </div>
                     <div style="display: flex; align-items: center;">
                         <div class="trans-amount ${color}" style="font-size: 1.1rem;">${sign}${formatCurrency(t.amount)}€</div>
@@ -2464,6 +2504,19 @@ window.renderHistoryTab = async function(resetLimit = true) {
         const previousScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
 
         container.innerHTML = html;
+
+        // Lazy load profile pictures for payments
+        const iconWrappers = container.querySelectorAll('.trans-icon-wrapper[data-uid]');
+        for (const wrapper of iconWrappers) {
+            const uid = wrapper.getAttribute('data-uid');
+            getProfilePicUrl(uid).then(url => {
+                if (url) {
+                    wrapper.innerHTML = `<img src="${url}" alt="Profil" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`;
+                    wrapper.style.background = 'transparent'; // Remove soft background color
+                    wrapper.style.color = 'inherit'; // Reset color
+                }
+            });
+        }
 
         if (!resetLimit && scrollContainer) {
             scrollContainer.scrollTop = previousScrollTop;
@@ -3707,6 +3760,7 @@ onAuthStateChanged(auth, async (user) => {
         isAuthenticated = true;
         connectSSE();
         loadData();
+        loadCurrentProfilePicture();
     } else {
         // Hide spinner if we are not logged in (e.g. session expired)
         const loader = document.getElementById('loading-overlay');
@@ -3732,6 +3786,7 @@ window.logout = async () => {
             sseConnection.close();
             sseConnection = null;
         }
+        _applyProfilePicture(null);
         await signOut(auth);
     } catch (error) {
         console.error("Logout Error:", error);
@@ -4015,6 +4070,316 @@ async function fetchWithTimeout(resource, options = {}) {
     } catch (error) {
         clearTimeout(id);
         throw error;
+    }
+}
+
+// Profile picture: crop state
+let _profileCropDataUrl = null;
+let _profileCropContext = null; // { imgEl, naturalW, naturalH, cropSize, offsetX, offsetY, isDragging, dragStartX, dragStartY, source }
+
+function _profileCropClamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+window.openProfileCrop = async function(input, source) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+
+    // HEIC/HEIF conversion using existing heic2any
+    let imageFile = file;
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+    if (isHeic) {
+        try {
+            const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+            const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
+            imageFile = new File([convertedBlob], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg' });
+        } catch (e) {
+            console.error('HEIC conversion failed:', e);
+        }
+    }
+
+    // Use FileReader to produce a data: URL (guaranteed safe scheme, no XSS risk)
+    const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(imageFile);
+    });
+    _profileCropDataUrl = dataUrl;
+
+    const viewport = document.getElementById('profileCropViewport');
+    const imgEl = document.getElementById('profileCropImage');
+    const overlay = document.getElementById('profileCropOverlay');
+
+    imgEl.src = _profileCropDataUrl;
+    await new Promise(resolve => { imgEl.onload = resolve; });
+
+    const vw = viewport.clientWidth || 360;
+    const vh = Math.round(vw * 0.75);
+    viewport.style.height = vh + 'px';
+
+    const nw = imgEl.naturalWidth;
+    const nh = imgEl.naturalHeight;
+
+    // Scale image to fit inside viewport
+    const scale = Math.min(vw / nw, vh / nh);
+    let currentZoom = 1;
+
+    function applyZoom() {
+        const dispW = Math.round(nw * scale * currentZoom);
+        const dispH = Math.round(nh * scale * currentZoom);
+        imgEl.style.width = dispW + 'px';
+        imgEl.style.height = dispH + 'px';
+        imgEl.style.position = 'absolute';
+
+        // Keep image centered
+        imgEl.style.left = Math.round((vw - dispW) / 2) + 'px';
+        imgEl.style.top = Math.round((vh - dispH) / 2) + 'px';
+
+        // Constrain overlay within new image bounds
+        const imgL = parseInt(imgEl.style.left);
+        const imgT = parseInt(imgEl.style.top);
+        offsetX = _profileCropClamp(offsetX, imgL, imgL + dispW - cropSize);
+        offsetY = _profileCropClamp(offsetY, imgT, imgT + dispH - cropSize);
+        overlay.style.left = offsetX + 'px';
+        overlay.style.top = offsetY + 'px';
+    }
+
+    const cropSize = Math.min(Math.round(nw * scale), Math.round(nh * scale), Math.min(vw, vh) - 20);
+    overlay.style.width = cropSize + 'px';
+    overlay.style.height = cropSize + 'px';
+
+    let offsetX = Math.round((vw - cropSize) / 2);
+    let offsetY = Math.round((vh - cropSize) / 2);
+
+    applyZoom();
+
+    let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartOX = 0, dragStartOY = 0;
+
+    function onPointerDown(e) {
+        e.preventDefault();
+        isDragging = true;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        dragStartX = clientX; dragStartY = clientY;
+        dragStartOX = offsetX; dragStartOY = offsetY;
+    }
+    function onPointerMove(e) {
+        if (!isDragging) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const imgL = parseInt(imgEl.style.left);
+        const imgT = parseInt(imgEl.style.top);
+        const dispW = Math.round(nw * scale * currentZoom);
+        const dispH = Math.round(nh * scale * currentZoom);
+        offsetX = _profileCropClamp(dragStartOX + (clientX - dragStartX), imgL, imgL + dispW - cropSize);
+        offsetY = _profileCropClamp(dragStartOY + (clientY - dragStartY), imgT, imgT + dispH - cropSize);
+        overlay.style.left = offsetX + 'px';
+        overlay.style.top = offsetY + 'px';
+    }
+    function onPointerUp() { isDragging = false; }
+
+    overlay.removeEventListener('mousedown', overlay._md);
+    overlay.removeEventListener('touchstart', overlay._td);
+    overlay._md = onPointerDown; overlay._td = onPointerDown;
+    overlay.addEventListener('mousedown', overlay._md);
+    overlay.addEventListener('touchstart', overlay._td, { passive: false });
+    document.removeEventListener('mousemove', overlay._mm);
+    document.removeEventListener('mouseup', overlay._mu);
+    document.removeEventListener('touchmove', overlay._tm);
+    document.removeEventListener('touchend', overlay._tu);
+    overlay._mm = onPointerMove; overlay._mu = onPointerUp;
+    overlay._tm = onPointerMove; overlay._tu = onPointerUp;
+    document.addEventListener('mousemove', overlay._mm);
+    document.addEventListener('mouseup', overlay._mu);
+    document.addEventListener('touchmove', overlay._tm, { passive: false });
+    document.addEventListener('touchend', overlay._tu);
+
+    // Zoom slider logic
+    const zoomSlider = document.getElementById('profileCropZoom');
+    if (zoomSlider) {
+        zoomSlider.value = 1;
+
+        zoomSlider.removeEventListener('input', zoomSlider._zl);
+        zoomSlider._zl = function(e) {
+            currentZoom = parseFloat(e.target.value);
+            applyZoom();
+        };
+        zoomSlider.addEventListener('input', zoomSlider._zl);
+    }
+
+    // Mouse wheel zoom logic
+    viewport.removeEventListener('wheel', viewport._wl);
+    viewport._wl = function(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        currentZoom = _profileCropClamp(currentZoom + delta, 1, 3);
+        if (zoomSlider) zoomSlider.value = currentZoom;
+        applyZoom();
+    };
+    viewport.addEventListener('wheel', viewport._wl, { passive: false });
+
+    _profileCropContext = {
+        imgEl, nw, nh,
+        get dispW() { return Math.round(nw * scale * currentZoom); },
+        get dispH() { return Math.round(nh * scale * currentZoom); },
+        get imgLeft() { return parseInt(imgEl.style.left); },
+        get imgTop() { return parseInt(imgEl.style.top); },
+        cropSize, vw, vh,
+        getOffset: () => ({ x: offsetX, y: offsetY }),
+        source
+    };
+
+    openModal('profile-crop-modal');
+};
+
+window.cancelProfileCrop = function() {
+    _profileCropDataUrl = null;
+    _profileCropContext = null;
+    closeModal('profile-crop-modal');
+};
+
+window.confirmProfileCrop = async function() {
+    const ctx = _profileCropContext;
+    if (!ctx) return;
+
+    const { imgEl, nw, nh, dispW, dispH, imgLeft, imgTop, cropSize, getOffset, source } = ctx;
+    const { x: offsetX, y: offsetY } = getOffset();
+
+    // Crop relative to displayed image
+    const relX = offsetX - imgLeft;
+    const relY = offsetY - imgTop;
+    const scaleX = nw / dispW;
+    const scaleY = nh / dispH;
+    const srcX = Math.round(relX * scaleX);
+    const srcY = Math.round(relY * scaleY);
+    const srcSize = Math.round(cropSize * Math.min(scaleX, scaleY));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const c = canvas.getContext('2d');
+    c.drawImage(imgEl, srcX, srcY, srcSize, srcSize, 0, 0, 256, 256);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) { showToast('Fehler beim Verarbeiten des Bildes.', 'error'); return; }
+
+    const jpegFile = new File([blob], 'profile.jpg', { type: 'image/jpeg' });
+
+    setButtonLoading('btn-confirm-crop', true, 'Speichern...');
+    try {
+        await uploadProfilePicture(jpegFile);
+        closeModal('profile-crop-modal');
+        _profileCropDataUrl = null;
+        showToast('Profilbild gespeichert!', 'success');
+        await loadCurrentProfilePicture();
+    } catch (e) {
+        console.error('Profile upload error:', e);
+        showToast('Fehler beim Hochladen: ' + e.message, 'error');
+    } finally {
+        setButtonLoading('btn-confirm-crop', false, null);
+    }
+};
+
+async function uploadProfilePicture(jpegFile) {
+    const formData = new FormData();
+    formData.append('picture', jpegFile);
+    const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture`, {
+        method: 'POST',
+        body: formData
+    });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Upload fehlgeschlagen');
+    }
+}
+
+async function loadCurrentProfilePicture() {
+    if (!currentUser) return;
+    const uid = currentUser.uid || currentUser.id;
+    if (!uid) return;
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture/${encodeURIComponent(uid)}`);
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            _applyProfilePicture(url);
+        } else {
+            _applyProfilePicture(null);
+        }
+    } catch {
+        _applyProfilePicture(null);
+    }
+}
+
+let _profilePicCache = new Map();
+let _profilePicFetches = new Map();
+
+async function getProfilePicUrl(uid) {
+    if (!uid) return null;
+
+    // Check if already fetched and cached
+    if (_profilePicCache.has(uid)) {
+        return _profilePicCache.get(uid);
+    }
+
+    // If currently fetching, wait for that fetch to complete
+    if (_profilePicFetches.has(uid)) {
+        return await _profilePicFetches.get(uid);
+    }
+
+    // Start a new fetch
+    const fetchPromise = (async () => {
+        try {
+            const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture/${encodeURIComponent(uid)}`);
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                _profilePicCache.set(uid, url);
+                return url;
+            }
+        } catch (err) {
+            // ignore
+        }
+        _profilePicCache.set(uid, null);
+        return null;
+    })();
+
+    _profilePicFetches.set(uid, fetchPromise);
+    const result = await fetchPromise;
+    _profilePicFetches.delete(uid);
+    return result;
+}
+
+let _profilePictureObjectUrl = null;
+
+function _applyProfilePicture(url) {
+    if (_profilePictureObjectUrl) {
+        URL.revokeObjectURL(_profilePictureObjectUrl);
+        _profilePictureObjectUrl = null;
+    }
+    if (url) _profilePictureObjectUrl = url;
+
+    const adminPreview = document.getElementById('admin-profile-pic-preview');
+    const adminPlaceholder = document.getElementById('admin-profile-pic-placeholder');
+    const userPreview = document.getElementById('user-profile-pic-preview');
+    const userPlaceholder = document.getElementById('user-profile-pic-placeholder');
+    const headerPic = document.getElementById('header-profile-pic');
+    const headerIcon = document.getElementById('header-profile-icon');
+
+    if (url) {
+        if (adminPreview) { adminPreview.src = url; adminPreview.style.display = ''; }
+        if (adminPlaceholder) adminPlaceholder.style.display = 'none';
+        if (userPreview) { userPreview.src = url; userPreview.style.display = ''; }
+        if (userPlaceholder) userPlaceholder.style.display = 'none';
+        if (headerPic) { headerPic.src = url; headerPic.style.display = ''; }
+        if (headerIcon) headerIcon.style.display = 'none';
+    } else {
+        if (adminPreview) adminPreview.style.display = 'none';
+        if (adminPlaceholder) adminPlaceholder.style.display = '';
+        if (userPreview) userPreview.style.display = 'none';
+        if (userPlaceholder) userPlaceholder.style.display = '';
+        if (headerPic) headerPic.style.display = 'none';
+        if (headerIcon) headerIcon.style.display = '';
     }
 }
 
