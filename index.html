@@ -430,22 +430,20 @@
             </div>
         </div>
 
-        <div id="payment-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-payment-history" style="height: 100%; display: none;">
-            <div class="card" id="card-payment-history" style="height: 100%; display: flex; flex-direction: column; margin-bottom: 0; border: none; box-shadow: none;">
-                <div class="card-header" style="background: var(--surface); border-bottom: 1px solid var(--border);">Historie</div>
-                <div class="card-body" style="flex: 1; overflow-y: auto; padding: 0;">
-                    <div style="padding: 15px 15px 0 15px;">
-                        <label for="history-search" class="sr-only">Historie suchen</label>
-                        <div class="input-with-icon search-bar-wrapper">
-                            <div class="input-icon">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                            </div>
-                            <input type="text" id="history-search" class="form-input search-input" placeholder="Suche..." oninput="window.filterHistory()">
-                        </div>
+        <div id="payment-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-payment-history">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 1.2rem; font-weight: 800;">Historie</h2>
+            </div>
+            <div class="form-group">
+                <label for="history-search" class="sr-only">Historie suchen</label>
+                <div class="input-with-icon search-bar-wrapper">
+                    <div class="input-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
-                    <div id="history-page-list"></div>
+                    <input type="text" id="history-search" class="form-input search-input" placeholder="Suche..." oninput="window.filterHistory()">
                 </div>
             </div>
+            <div id="history-page-list"></div>
         </div>
 
         <div id="ai-chat" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-ai-chat" style="height: 100%;">
@@ -467,8 +465,8 @@
                 </div>
 
                 <div class="ai-chat-input-row ai-chat-input-styled">
-                    <textarea id="ai-chat-input" class="ai-chat-input form-input ai-chat-textarea-styled" rows="1" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)"></textarea>
-                    <button id="ai-chat-send-btn" class="btn btn-primary ai-chat-send-btn ai-chat-send-btn-styled" onclick="sendAiMessage()">
+                    <textarea id="ai-chat-input" class="ai-chat-input form-input ai-chat-textarea-styled" rows="1" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
+                    <button id="ai-chat-send-btn" class="btn btn-primary ai-chat-send-btn ai-chat-send-btn-styled" onclick="sendAiMessage()" aria-label="Nachricht senden">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
                 </div>
@@ -772,28 +770,44 @@
 <div id="add-donation-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-donation">
     <div class="modal-content">
         <div class="modal-header"><span id="title-add-donation">Spende</span> <button class="close-btn" onclick="closeModal('add-donation-modal')" aria-label="Schließen">&times;</button></div>
-        <label for="donation-amount" class="sr-only">Betrag</label>
-        <input id="donation-amount" class="form-input" type="text" inputmode="decimal" placeholder="Betrag" style="margin-bottom:10px">
-        <label for="donation-name" class="sr-only">Spender Name</label>
-        <input id="donation-name" class="form-input" placeholder="Spender Name" style="margin-bottom:10px">
-        <label for="donation-date" class="sr-only">Datum</label>
-        <input type="date" id="donation-date" class="form-input" style="margin-bottom:10px">
+        <div class="form-group">
+            <label for="donation-amount" class="form-label">Betrag</label>
+            <input id="donation-amount" class="form-input" type="text" inputmode="decimal" placeholder="Betrag">
+        </div>
+        <div class="form-group">
+            <label for="donation-name" class="form-label">Spender Name</label>
+            <input id="donation-name" class="form-input" placeholder="Spender Name">
+        </div>
+        <div class="form-group">
+            <label for="donation-date" class="form-label">Datum</label>
+            <input type="date" id="donation-date" class="form-input">
+        </div>
         <button id="btn-add-donation" class="btn btn-primary btn-block" onclick="addDonation()">Speichern</button>
     </div>
 </div>
 <div id="add-expense-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-expense">
     <div class="modal-content">
         <div class="modal-header"><span id="title-add-expense">Ausgabe</span> <button class="close-btn" onclick="closeModal('add-expense-modal')" aria-label="Schließen">&times;</button></div>
-        <label for="expense-amount" class="sr-only">Betrag</label>
-        <input id="expense-amount" class="form-input" type="text" inputmode="decimal" placeholder="Betrag" style="margin-bottom:10px">
-        <label for="expense-issuer" class="sr-only">Wer?</label>
-        <input id="expense-issuer" class="form-input" placeholder="Wer?" style="margin-bottom:10px">
-        <label for="expense-desc" class="sr-only">Wofür?</label>
-        <input id="expense-desc" class="form-input" placeholder="Wofür?" style="margin-bottom:10px">
-        <label for="expense-date" class="sr-only">Datum</label>
-        <input type="date" id="expense-date" class="form-input" style="margin-bottom:10px">
-        <label for="expense-receipt" class="sr-only">Beleg</label>
-        <input type="file" id="expense-receipt" accept="image/*,.heic,.heif" class="form-input" style="margin-bottom:10px">
+        <div class="form-group">
+            <label for="expense-amount" class="form-label">Betrag</label>
+            <input id="expense-amount" class="form-input" type="text" inputmode="decimal" placeholder="Betrag">
+        </div>
+        <div class="form-group">
+            <label for="expense-issuer" class="form-label">Wer?</label>
+            <input id="expense-issuer" class="form-input" placeholder="Wer?">
+        </div>
+        <div class="form-group">
+            <label for="expense-desc" class="form-label">Wofür?</label>
+            <input id="expense-desc" class="form-input" placeholder="Wofür?">
+        </div>
+        <div class="form-group">
+            <label for="expense-date" class="form-label">Datum</label>
+            <input type="date" id="expense-date" class="form-input">
+        </div>
+        <div class="form-group">
+            <label for="expense-receipt" class="form-label">Beleg</label>
+            <input type="file" id="expense-receipt" accept="image/*,.heic,.heif" class="form-input">
+        </div>
         <button id="btn-add-expense" class="btn btn-primary btn-block" onclick="addExpense()">Speichern</button>
     </div>
 </div>

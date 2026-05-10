@@ -481,6 +481,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 }
 .btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .btn:active { transform: scale(0.95); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-block { width: 100%; }
 .btn-primary { background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%); color: white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
 .btn-secondary { background: var(--surface-alt); color: var(--text); border: 1px solid var(--border); }
@@ -695,20 +696,26 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 
 /* Trans List */
 .trans-item {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 16px;
+    border: none;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
     display: flex; justify-content: space-between; align-items: center;
-    padding: 16px; border-bottom: 1px solid var(--border); font-size: 0.95rem;
-    transition: background 0.2s, transform 0.2s;
-}
-.trans-item:last-child {
-    border-bottom: none;
+    font-size: 0.95rem;
+    position: relative;
+    z-index: 2;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 @media (hover: hover) {
     .trans-item:hover {
-        background: var(--surface-alt);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 15px rgba(0,0,0,0.05);
     }
 }
 .trans-item:active {
-    background: var(--border-light);
+    transform: scale(0.97);
 }
 .trans-left { display: flex; flex-direction: column; }
 .trans-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }

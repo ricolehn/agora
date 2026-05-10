@@ -342,7 +342,7 @@ function extractBearerToken(req) {
   return cookie ? decodeURIComponent(cookie.slice(authCookieName.length + 1)) : null;
 }
 
-function setAuthCookie(res, token) {
+function setAuthCookie(req, res, token) {
   const attributes = [
     `${authCookieName}=${encodeURIComponent(token)}`,
     'Path=/',
@@ -350,11 +350,18 @@ function setAuthCookie(res, token) {
     'SameSite=Lax',
     'Max-Age=7948800'
   ];
+  if (req.secure) {
+    attributes.push('Secure');
+  }
   res.setHeader('Set-Cookie', attributes.join('; '));
 }
 
-function clearAuthCookie(res) {
-  res.setHeader('Set-Cookie', `${authCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+function clearAuthCookie(req, res) {
+  const attributes = [`${authCookieName}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+  if (req.secure) {
+    attributes.push('Secure');
+  }
+  res.setHeader('Set-Cookie', attributes.join('; '));
 }
 
 async function verifyToken(req, res, next) {
@@ -469,7 +476,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
 
   try {
     const auth = await loginUser(email, password);
-    setAuthCookie(res, auth.token);
+    setAuthCookie(req, res, auth.token);
     res.json(auth);
   } catch (error) {
     res.status(401).json({ error: error.message || 'Login failed.' });
@@ -506,7 +513,7 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
     const newCode = String(crypto.randomInt(100000, 1000000));
     await upsertStateValue(appConfig, 'system', { ...system, inviteCode: newCode });
     broadcastDataUpdate();
-    setAuthCookie(res, auth.token);
+    setAuthCookie(req, res, auth.token);
     res.json(auth);
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
@@ -518,7 +525,7 @@ app.get('/api/auth/me', authRateLimit, verifyToken, (req, res) => {
 });
 
 app.post('/api/auth/logout', authRateLimit, (req, res) => {
-  clearAuthCookie(res);
+  clearAuthCookie(req, res);
   res.json({ success: true });
 });
 
