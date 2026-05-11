@@ -2435,7 +2435,17 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
         const isSuperAdmin = isSuperAdminUser();
 
-        let html = cachedTransactions.map(t => {
+        let lastDateFormatted = null;
+        let html = '';
+
+        cachedTransactions.forEach((t, index) => {
+            const tDateFormatted = t.date ? dateFormatter.format(new Date(t.date)) : 'Kein Datum';
+
+            if (tDateFormatted !== lastDateFormatted) {
+                html += `<div style="margin: ${index === 0 ? '0' : '20px'} 0 8px 10px; font-weight: bold; font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${tDateFormatted}</div>`;
+                lastDateFormatted = tDateFormatted;
+            }
+
             const isExp = t.type === 'exp';
             const color = isExp ? 'text-danger' : 'text-success';
             const sign = isExp ? '-' : '+';
@@ -2478,7 +2488,8 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
             const uidAttr = (t.type === 'pay' && t.personUid) ? ` data-uid="${t.personUid}"` : '';
 
-            return `
+            let descHtml = t.description ? t.description : '-';
+            html += `
                 <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(t.id)}" data-type="${escapeHtml(t.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
                     <div style="display: flex; align-items: center; flex: 1;">
                         <div class="trans-icon-wrapper ${iconClass}"${uidAttr}>
@@ -2486,7 +2497,7 @@ window.renderHistoryTab = async function(resetLimit = true) {
                         </div>
                         <div class="trans-left" style="flex: 1;">
                             <span style="font-weight:600;">${t.who}</span>
-                            <div class="trans-meta">${t.description || '-'} ${hasReceipt} • ${t.date ? dateFormatter.format(new Date(t.date)) : 'Kein Datum'}</div>
+                            <div class="trans-meta">${descHtml} ${hasReceipt}</div>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center;">
@@ -2495,7 +2506,7 @@ window.renderHistoryTab = async function(resetLimit = true) {
                     </div>
                 </div>
             `;
-        }).join('');
+        });
 
         if (cachedTransactions.length < transactionTotalItems) {
             html += `
