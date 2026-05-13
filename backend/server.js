@@ -278,7 +278,7 @@ const storage = multer.diskStorage({
           const counters = matchingFiles.map((entry) => {
             const parts = entry.replace(ext, '').split('-');
             const lastPart = parts[parts.length - 1];
-            return /^\\d+$/.test(lastPart) ? parseInt(lastPart, 10) : 0;
+            return /^\d+$/.test(lastPart) ? parseInt(lastPart, 10) : 0;
           });
           counter = Math.max(...counters) + 1;
         }
@@ -746,10 +746,18 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
       throw Object.assign(new Error('User not found'), { status: 404 });
     }
 
+    // Prevent ordinary admins from modifying a super admin
+    if (existing.superAdmin && !user.superAdmin && id !== user.uid) {
+      throw Object.assign(new Error('Forbidden: Cannot modify super admin'), { status: 403 });
+    }
+
     let updates = {};
     if (user.admin && id !== user.uid && value && typeof value === 'object') {
-      if (typeof value.admin === 'boolean') updates.admin = value.admin;
-      if (typeof value.superAdmin === 'boolean') updates.superAdmin = value.superAdmin;
+      // Only super admin can grant/revoke admin or superAdmin rights via generic DB update
+      if (user.superAdmin) {
+        if (typeof value.admin === 'boolean') updates.admin = value.admin;
+        if (typeof value.superAdmin === 'boolean') updates.superAdmin = value.superAdmin;
+      }
     } else {
       updates = sanitizeSelfUserWrite(value);
     }
@@ -1200,7 +1208,7 @@ app.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmin, 
 });
 
 const escapeHtml = (unsafe) => {
-  return (unsafe || '').replace(/[&<"'>]/g, (match) => {
+  return String(unsafe || '').replace(/[&<"'>]/g, (match) => {
     const escape = {
       '&': '&amp;',
       '<': '&lt;',

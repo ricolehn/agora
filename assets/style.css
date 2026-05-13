@@ -70,7 +70,7 @@
 html { overscroll-behavior: none; }
 body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow: hidden; overscroll-behavior: none; transition: background-color 0.3s ease; }
 
-.container { max-width: none; margin: 0; padding: 20px calc(max(20px, (100% - 800px) / 2)); padding-bottom: 100px; height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.container { max-width: none; margin: 0; padding: 20px calc(max(20px, (100% - 800px) / 2)); padding-bottom: 100px; height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
 
 .app-layout {
     position: relative;
@@ -283,9 +283,20 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 }
 
 /* --- Tabs (Content only) --- */
-.tab-content { display: none; animation: fadeIn 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
+.tab-content { display: none; }
 .tab-content.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+.tab-content.slide-in-right { animation: slideInRight 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
+.tab-content.slide-in-left { animation: slideInLeft 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
+
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
 
 /* --- Cards & Settings --- */
 .card {
@@ -653,15 +664,15 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(0,0,0,0.5);
     display: flex; align-items: center; justify-content: center;
-    z-index: 2000; opacity: 0; pointer-events: none; transition: 0.3s;
+    z-index: 2000; opacity: 0; pointer-events: none; transition: opacity 0.3s cubic-bezier(0.25, 1, 0.5, 1), backdrop-filter 0.3s cubic-bezier(0.25, 1, 0.5, 1);
     will-change: opacity, backdrop-filter;
 }
 .modal.show { opacity: 1; pointer-events: all; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
 .modal-content {
     background: var(--surface); width: 90%; max-width: 400px;
     border-radius: 28px; padding: 0 24px 24px 24px;
-    transform: scale(0.95); transition: 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-    max-height: 85vh; overflow-y: auto; border: none;
+    transform: translateY(20px) scale(0.95); transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    max-height: 85vh; overflow-y: auto; -webkit-overflow-scrolling: touch; border: none;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
     will-change: transform, opacity;
 }
@@ -669,7 +680,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     border: 1px solid var(--border);
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
-.modal.show .modal-content { transform: scale(1); }
+.modal.show .modal-content { transform: translateY(0) scale(1); }
 
 /* Login Modal Specific Backdrop */
 #login-modal {
@@ -1469,10 +1480,6 @@ input:checked + .slider:before { transform: translateX(22px); }
 }
 
 @media (max-width: 767px) {
-    #ai-chat.tab-content {
-        animation: none;
-    }
-
     #ai-chat.active {
         display: flex;
         flex-direction: column;
