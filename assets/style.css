@@ -1823,3 +1823,27 @@ details[open] .ai-thinking-summary::before {
     cursor: move;
     touch-action: none;
 }
+
+/* AI Chat specific slide animations to prevent position: fixed bug */
+#ai-chat.tab-content.slide-in-right { animation: none; }
+#ai-chat.tab-content.slide-in-left { animation: none; }
+
+#ai-chat.tab-content.slide-in-right .ai-chat-header-styled,
+#ai-chat.tab-content.slide-in-right .ai-chat-messages {
+    animation: slideInRight 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+#ai-chat.tab-content.slide-in-left .ai-chat-header-styled,
+#ai-chat.tab-content.slide-in-left .ai-chat-messages {
+    animation: slideInLeft 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+#ai-chat.tab-content.slide-in-right .ai-chat-input-styled,
+#ai-chat.tab-content.slide-in-left .ai-chat-input-styled {
+    animation: aiChatFadeIn 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes aiChatFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
