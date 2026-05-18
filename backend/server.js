@@ -805,6 +805,9 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
       }
     }
     const existing = await getRequestRecord(appConfig, id);
+    if (existing && existing.data && !user.admin && existing.data.userId !== user.uid) {
+      throw Object.assign(new Error('Forbidden'), { status: 403 });
+    }
     const nextValue = method === 'patch' && existing?.data && value && typeof value === 'object'
       ? { ...existing.data, ...value }
       : value;
@@ -995,9 +998,15 @@ app.get('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, r
   if (!appConfig) {
     return res.status(404).json({ error: 'No config found' });
   }
+
+  let smtpResponse = null;
+  if (appConfig.smtp) {
+    smtpResponse = { ...appConfig.smtp, pass: '***' };
+  }
+
   res.json({
     appName: appConfig.appName,
-    smtp: appConfig.smtp || null,
+    smtp: smtpResponse,
     usesPocketBase: true
   });
 });
@@ -1011,12 +1020,18 @@ app.put('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, r
 
     let smtp = null;
     if (req.body?.smtp && typeof req.body.smtp === 'object' && String(req.body.smtp.host || '').trim()) {
+      let pass = String(req.body.smtp.pass || '');
+      // Preserve existing password if '***' was sent back by the frontend
+      if (pass === '***' && appConfig.smtp?.pass) {
+        pass = appConfig.smtp.pass;
+      }
+
       smtp = {
         host: String(req.body.smtp.host || '').trim(),
         port: Number.isFinite(Number(req.body.smtp.port)) ? parseInt(req.body.smtp.port, 10) : 465,
         secure: req.body.smtp.secure === true,
         user: String(req.body.smtp.user || '').trim(),
-        pass: String(req.body.smtp.pass || '')
+        pass: pass
       };
     }
 

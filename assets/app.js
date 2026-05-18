@@ -2513,7 +2513,7 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
             const uidAttr = (t.type === 'pay' && t.personUid) ? ` data-uid="${t.personUid}"` : '';
 
-            let descHtml = t.description ? t.description : '-';
+            let descHtml = t.description ? escapeHtml(t.description) : '-';
             html += `
                 <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(t.id)}" data-type="${escapeHtml(t.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
                     <div style="display: flex; align-items: center; flex: 1;">
@@ -2521,7 +2521,7 @@ window.renderHistoryTab = async function(resetLimit = true) {
                             ${iconSvg}
                         </div>
                         <div class="trans-left" style="flex: 1;">
-                            <span style="font-weight:600;">${t.who}</span>
+                            <span style="font-weight:600;">${escapeHtml(t.who)}</span>
                             <div class="trans-meta">${descHtml} ${hasReceipt}</div>
                         </div>
                     </div>
