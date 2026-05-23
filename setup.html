@@ -7,6 +7,11 @@
     <title>Setup - Nova</title>
     <link rel="stylesheet" href="assets/style.css">
     <style>
+        body {
+            height: auto;
+            min-height: 100dvh;
+            overflow-y: auto;
+        }
         .setup-container {
             max-width: 600px;
             margin: 40px auto;
@@ -63,9 +68,11 @@
     <div class="step-indicator" id="stepIndicator">
         <div class="step-dot active"></div>
         <div class="step-dot"></div>
+        <div class="step-dot"></div>
     </div>
 
     <form id="setupForm" novalidate onsubmit="event.preventDefault(); nextStep();">
+        <!-- STEP 1 -->
         <div class="setup-step active" id="step1">
             <h2 style="margin-bottom: 20px;">1. Allgemeine Informationen</h2>
 
@@ -84,8 +91,46 @@
             <button type="submit" class="btn btn-primary btn-block" style="margin-top: 30px;">Weiter</button>
         </div>
 
+        <!-- STEP 2 -->
         <div class="setup-step" id="step2">
-            <h2 style="margin-bottom: 20px;">2. E-Mail Einstellungen (Optional)</h2>
+            <h2 style="margin-bottom: 20px;">2. Super-Admin-Konto erstellen</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">Dieser Benutzer wird automatisch als Administrator (Super-Admin) angelegt.</p>
+
+            <div style="display: flex; gap: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label" for="adminFirstName">Vorname</label>
+                    <input type="text" id="adminFirstName" class="form-input" placeholder="z.B. Max" required>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label" for="adminLastName">Nachname</label>
+                    <input type="text" id="adminLastName" class="form-input" placeholder="z.B. Mustermann" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="adminEmail">E-Mail-Adresse</label>
+                <input type="email" id="adminEmail" class="form-input" placeholder="z.B. admin@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="adminPassword">Passwort (mind. 6 Zeichen)</label>
+                <input type="password" id="adminPassword" class="form-input" placeholder="Passwort eingeben" minlength="6" required autocomplete="new-password">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="adminPasswordConfirm">Passwort bestätigen</label>
+                <input type="password" id="adminPasswordConfirm" class="form-input" placeholder="Passwort bestätigen" minlength="6" required autocomplete="new-password">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 30px;">
+                <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="prevStep()">Zurück</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">Weiter</button>
+            </div>
+        </div>
+
+        <!-- STEP 3 -->
+        <div class="setup-step" id="step3">
+            <h2 style="margin-bottom: 20px;">3. E-Mail Einstellungen (Optional)</h2>
             <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">Diese Einstellungen werden für Benachrichtigungen benötigt. Sie können diesen Schritt überspringen.</p>
 
             <div class="form-group">
@@ -130,7 +175,7 @@
 
 <script>
     let currentStep = 1;
-    const totalSteps = 2;
+    const totalSteps = 3;
 
     fetch('/api/status').then(res => res.json()).then(data => {
         if (!data.setupMode) {
@@ -164,6 +209,58 @@
         return appName;
     }
 
+    function validateAdminUser(onError) {
+        const firstInput = document.getElementById('adminFirstName');
+        const lastInput = document.getElementById('adminLastName');
+        const emailInput = document.getElementById('adminEmail');
+        const passInput = document.getElementById('adminPassword');
+        const confirmInput = document.getElementById('adminPasswordConfirm');
+
+        firstInput.setCustomValidity('');
+        lastInput.setCustomValidity('');
+        emailInput.setCustomValidity('');
+        passInput.setCustomValidity('');
+        confirmInput.setCustomValidity('');
+
+        const first = firstInput.value.trim();
+        const last = lastInput.value.trim();
+        const email = emailInput.value.trim();
+        const pass = passInput.value;
+        const confirm = confirmInput.value;
+
+        if (!first) {
+            onError('Bitte geben Sie den Vornamen des Admin-Kontos ein.');
+            firstInput.setCustomValidity('Pflichtfeld');
+            firstInput.reportValidity();
+            return null;
+        }
+        if (!last) {
+            onError('Bitte geben Sie den Nachnamen des Admin-Kontos ein.');
+            lastInput.setCustomValidity('Pflichtfeld');
+            lastInput.reportValidity();
+            return null;
+        }
+        if (!email || !emailInput.checkValidity()) {
+            onError('Bitte geben Sie eine gültige E-Mail-Adresse für das Admin-Konto ein.');
+            emailInput.setCustomValidity('Gültige E-Mail erforderlich');
+            emailInput.reportValidity();
+            return null;
+        }
+        if (!pass || pass.length < 6) {
+            onError('Das Passwort muss mindestens 6 Zeichen lang sein.');
+            passInput.setCustomValidity('Mindestens 6 Zeichen');
+            passInput.reportValidity();
+            return null;
+        }
+        if (pass !== confirm) {
+            onError('Die Passwörter stimmen nicht überein.');
+            confirmInput.setCustomValidity('Passwörter stimmen nicht überein');
+            confirmInput.reportValidity();
+            return null;
+        }
+        return { firstName: first, lastName: last, email, password: pass };
+    }
+
     async function readOptionalLogoSvg() {
         const fileInput = document.getElementById('setupLogo');
         const file = fileInput && fileInput.files ? fileInput.files[0] : null;
@@ -182,6 +279,12 @@
                 const appNameInput = document.getElementById('appName');
                 appNameInput.setCustomValidity(message);
                 appNameInput.reportValidity();
+            })) {
+                return;
+            }
+        } else if (currentStep === 2) {
+            if (!validateAdminUser((message) => {
+                // validation messages are handled by inline Validity alerts
             })) {
                 return;
             }
@@ -208,7 +311,22 @@
             errorMsg.style.display = 'block';
         });
 
-        if (!appName) return;
+        if (!appName) {
+            currentStep = 1;
+            showStep(1);
+            return;
+        }
+
+        const adminUser = validateAdminUser((message) => {
+            errorMsg.innerText = message;
+            errorMsg.style.display = 'block';
+        });
+
+        if (!adminUser) {
+            currentStep = 2;
+            showStep(2);
+            return;
+        }
 
         let smtp = null;
         const smtpHost = document.getElementById('smtpHost').value.trim();
@@ -231,7 +349,7 @@
             const res = await fetch('/api/setup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ appName, smtp, logoSvg })
+                body: JSON.stringify({ appName, smtp, logoSvg, adminUser })
             });
             const data = await res.json();
             if (res.ok && data.success) {

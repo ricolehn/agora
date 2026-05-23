@@ -404,6 +404,19 @@ function validateSetupPayload(body = {}) {
     throw new Error('Missing required configuration data.');
   }
 
+  const adminUser = body.adminUser || {};
+  const adminEmail = typeof adminUser.email === 'string' ? adminUser.email.trim() : '';
+  const adminPassword = typeof adminUser.password === 'string' ? adminUser.password : '';
+  const adminFirstName = typeof adminUser.firstName === 'string' ? adminUser.firstName.trim() : '';
+  const adminLastName = typeof adminUser.lastName === 'string' ? adminUser.lastName.trim() : '';
+
+  if (!adminEmail || !adminPassword || !adminFirstName || !adminLastName) {
+    throw new Error('Missing required super-admin account details.');
+  }
+  if (adminPassword.length < 6) {
+    throw new Error('Super-admin password must be at least 6 characters long.');
+  }
+
   let smtp = null;
   if (body.smtp && typeof body.smtp === 'object') {
     smtp = {
@@ -417,7 +430,17 @@ function validateSetupPayload(body = {}) {
   }
 
   const logoSvg = typeof body.logoSvg === 'string' ? body.logoSvg : null;
-  return { appName, smtp, logoSvg };
+  return {
+    appName,
+    smtp,
+    logoSvg,
+    adminUser: {
+      email: adminEmail,
+      password: adminPassword,
+      firstName: adminFirstName,
+      lastName: adminLastName
+    }
+  };
 }
 
 async function saveOptionalLogo(logoSvg) {
@@ -436,7 +459,7 @@ app.post('/api/setup', setupRateLimit, async (req, res) => {
   }
 
   try {
-    const { appName, smtp, logoSvg } = validateSetupPayload(req.body || {});
+    const { appName, smtp, logoSvg, adminUser } = validateSetupPayload(req.body || {});
     const newConfig = {
       appName,
       smtp,
@@ -450,6 +473,25 @@ app.post('/api/setup', setupRateLimit, async (req, res) => {
     await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), 'utf8');
     await saveOptionalLogo(logoSvg);
     await setRuntimeConfig(newConfig);
+
+    // Register the super-admin user in PocketBase using the superuser token,
+    // which bypasses PocketBase's default minPasswordLength constraint (8 chars)
+    // so that 6-character passwords set in the wizard are accepted.
+    const auth = await registerUser({
+      email: adminUser.email,
+      password: adminUser.password,
+      firstName: adminUser.firstName,
+      lastName: adminUser.lastName
+    }, newConfig);
+
+    // Instantly promote user to superAdmin and save their UID
+    const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
+    await upsertStateValue(newConfig, 'system', { ...system, superAdminUid: auth.user.id });
+    await updateUserRecord(newConfig, auth.user.id, { admin: true, superAdmin: true });
+
+    // Log the user in automatically by setting the authorization cookie
+    setAuthCookie(req, res, auth.token);
+
     res.json({ success: true, message: 'Setup completed successfully.' });
   } catch (error) {
     console.error('Error saving configuration:', error);

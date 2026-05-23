@@ -58,6 +58,18 @@ const monthYearFormatter = new Intl.DateTimeFormat('de-DE', { month: 'long', yea
 const dateTimeFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const shortDateFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' });
 
+// ⚡ Bolt: Fast path for ISO date formatting
+// Avoids expensive Date parsing and Intl.DateTimeFormat overhead for standard database dates
+function formatDateFast(dateInput) {
+    if (!dateInput) return '';
+    const dStr = String(dateInput);
+    if (dStr.length === 10 && dStr[4] === '-' && dStr[7] === '-') {
+        return `${dStr.substring(8, 10)}.${dStr.substring(5, 7)}.${dStr.substring(0, 4)}`;
+    }
+    const d = new Date(dateInput);
+    return Number.isNaN(d.getTime()) ? 'Kein Datum' : dateFormatter.format(d);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const appName = config.appName || "Nova";
 
@@ -157,12 +169,22 @@ function preprocessPerson(person) {
     person.statusHistory = safeList(person.statusHistory).sort(
         (a, b) => a.startDate.localeCompare(b.startDate)
     );
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}/;
     person.statusHistory.forEach(entry => {
-        const s = new Date(entry.startDate);
-        entry.startTotal = s.getFullYear() * 12 + s.getMonth();
+        if (entry.startDate && isoDateRegex.test(entry.startDate)) {
+            entry.startTotal = parseInt(entry.startDate.substring(0, 4), 10) * 12 + (parseInt(entry.startDate.substring(5, 7), 10) - 1);
+        } else {
+            const s = new Date(entry.startDate);
+            entry.startTotal = s.getFullYear() * 12 + s.getMonth();
+        }
+
         if (entry.endDate) {
-            const e = new Date(entry.endDate);
-            entry.endTotal = e.getFullYear() * 12 + e.getMonth();
+            if (isoDateRegex.test(entry.endDate)) {
+                entry.endTotal = parseInt(entry.endDate.substring(0, 4), 10) * 12 + (parseInt(entry.endDate.substring(5, 7), 10) - 1);
+            } else {
+                const e = new Date(entry.endDate);
+                entry.endTotal = e.getFullYear() * 12 + e.getMonth();
+            }
         } else {
             entry.endTotal = null;
         }
@@ -464,6 +486,12 @@ window.openModal = (id) => {
 
     // Store current focus on the modal instance itself to handle nesting
     modal._returnFocusTo = document.activeElement;
+
+    // Dynamically increase z-index for nested modals to guarantee correct stacking order
+    const baseZIndex = 2000;
+    const currentStackDepth = (window._modalStack || []).length;
+    modal.style.zIndex = baseZIndex + (currentStackDepth * 10);
+
     modal.classList.add('show');
 
     // Removed automatic focus management to prevent soft keyboard from popping up on mobile devices
@@ -499,6 +527,7 @@ window.closeModal = (id, fromPopstate = false) => {
     }
 
     modal.classList.remove('show');
+    modal.style.zIndex = ''; // Reset z-index to default CSS/inline style
 
     if (modal._escHandler) {
         document.removeEventListener('keydown', modal._escHandler);
@@ -1052,7 +1081,7 @@ function generateStatusHistoryHTML(person) {
         <div class="trans-item" style="background: rgba(6, 182, 212, 0.05); border: 1px solid rgba(6, 182, 212, 0.2);">
             <div class="trans-left">
                 <span style="font-weight:600;">${escapeHtml(statusLabels[person.status] || person.status)}</span>
-                <div class="trans-meta">Seit ${dateFormatter.format(new Date(currentStatusStart))} • Aktuell</div>
+                <div class="trans-meta">Seit ${formatDateFast(currentStatusStart)} • Aktuell</div>
             </div>
             <div style="font-size:0.75rem; color:var(--success); font-weight:600;">AKTIV</div>
         </div>
@@ -1063,8 +1092,8 @@ function generateStatusHistoryHTML(person) {
     }
 
     html += history.map(entry => {
-        const start = dateFormatter.format(new Date(entry.startDate));
-        const end = entry.endDate ? dateFormatter.format(new Date(entry.endDate)) : 'Offen';
+        const start = formatDateFast(entry.startDate);
+        const end = entry.endDate ? formatDateFast(entry.endDate) : 'Offen';
         const rate = settings[entry.status] || 0;
 
         return `
@@ -1264,7 +1293,7 @@ async function loadData(silent = false) {
                 }
             }
         }
-        people = peopleList;
+        people = peopleList.filter(p => !p.isDeleted);
 
         // 3. Fetch User's Requests
         const requestsRef = child(dbRef, 'requests');
@@ -1319,7 +1348,7 @@ async function loadData(silent = false) {
             apiGet('users').catch(() => null)
         ]);
 
-        people = safeList(pData);
+        people = safeList(pData).filter(p => !p.isDeleted);
         // We no longer need to load all donations and expenses on startup for the Admin!
         // The stats endpoint and transaction pagination handle this data now.
         donations = [];
@@ -1491,16 +1520,16 @@ function renderAdminRequests() {
         if (req.type === 'payment') {
             typeLabel = 'Zahlung';
             typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>';
-            details = `${formatCurrency(req.data.amount)} € am ${dateFormatter.format(new Date(req.data.date))}`;
+            details = `${formatCurrency(req.data.amount)} € am ${formatDateFast(req.data.date)}`;
             if (req.data.note) details += `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(req.data.note)}<span style="opacity: 0.7;">"</span></small>`;
         } else if (req.type === 'status') {
             typeLabel = 'Statusänderung';
             typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-            details = `Neu: <strong>${escapeHtml(req.data.newStatus)}</strong> ab ${dateFormatter.format(new Date(req.data.date))}`;
+            details = `Neu: <strong>${escapeHtml(req.data.newStatus)}</strong> ab ${formatDateFast(req.data.date)}`;
         } else if (req.type === 'expense') {
             typeLabel = 'Ausgabe';
             typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 14h-8"/><path d="M16 18h-8"/><path d="M16 10h-8"/></svg>';
-            details = `${formatCurrency(req.data.amount)} € für "${escapeHtml(req.data.description)}" am ${dateFormatter.format(new Date(req.data.date))}`;
+            details = `${formatCurrency(req.data.amount)} € für "${escapeHtml(req.data.description)}" am ${formatDateFast(req.data.date)}`;
             if (req.data.receipt) {
                 const safeReceipt = escapeHtml(req.data.receipt);
                 const safeId = escapeHtml(req.id);
@@ -1514,7 +1543,7 @@ function renderAdminRequests() {
         } else if (req.type === 'standing_order') {
             typeLabel = 'Dauerauftrag';
             typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
-            details = `${formatCurrency(req.data.amount)} € / Monat<br>Start: ${dateFormatter.format(new Date(req.data.date))}`;
+            details = `${formatCurrency(req.data.amount)} € / Monat<br>Start: ${formatDateFast(req.data.date)}`;
             if (req.data.note) details += `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(req.data.note)}<span style="opacity: 0.7;">"</span></small>`;
         }
 
@@ -1705,22 +1734,29 @@ window.setSupervisorAdminByIndex = async (index, isAdmin) => {
 };
 
 window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null, type = 'payment', paymentObj = null) => {
-    if (!isSuperAdminUser()) return;
+    if (!(currentUser && currentUser.admin)) return;
 
     let payment = paymentObj;
     let targetIndex = paymentIndex;
 
     if (type === 'payment') {
         const person = people.find(p => String(p.id) === String(personId));
-        if (!person) return;
-
-        const payments = safeList(person.payments);
-        const idx = payments.findIndex((p, i) => String(p.id ?? `idx-${i}`) === String(paymentId));
-        targetIndex = idx >= 0 ? idx : paymentIndex;
-        payment = payments[targetIndex];
+        if (person) {
+            const payments = safeList(person.payments);
+            const idx = payments.findIndex((p, i) => String(p.id ?? `idx-${i}`) === String(paymentId));
+            targetIndex = idx >= 0 ? idx : paymentIndex;
+            payment = payments[targetIndex] || paymentObj; // Resilient fallback
+        } else {
+            // Fallback for logically deleted/archived members who are not in the active people list
+            targetIndex = paymentIndex;
+            payment = paymentObj;
+        }
     }
 
-    if (!payment) return;
+    if (!payment) {
+        console.error("editRecordedPayment: No payment structure resolved.", { personId, paymentId, paymentIndex, type, paymentObj });
+        return;
+    }
 
     currentEditedPayment = { personId, targetIndex, type, paymentId };
 
@@ -1744,17 +1780,34 @@ window.editRecordedPayment = async (personId, paymentId, paymentIndex, personNam
     } else {
         if (issuerGroup) issuerGroup.style.display = 'none';
         if (issuerEl) issuerEl.value = '';
-        if (type === 'donation' && descEl) {
-            // Donations don't have a separate description field in the form traditionally, but we might have mapped it.
-            // If we use 'name' for donations, it was passed as personName.
-        }
     }
 
     openModal('edit-payment-modal');
 };
 
+window.editRecordedPaymentByIndex = function(index) {
+    if (!cachedTransactions || !cachedTransactions[index]) {
+        console.error("editRecordedPaymentByIndex: Transaction not found at index", index);
+        return;
+    }
+    const t = cachedTransactions[index];
+    let mappedType = t.type;
+    if (t.type === 'pay') mappedType = 'payment';
+    else if (t.type === 'don') mappedType = 'donation';
+    else if (t.type === 'exp') mappedType = 'expense';
+
+    window.editRecordedPayment(
+        t.personId || null,
+        t.paymentId || null,
+        t.paymentIndex !== undefined ? t.paymentIndex : -1,
+        t.personName || t.who || null,
+        mappedType,
+        t.payment || null
+    );
+};
+
 window.saveEditedPayment = async () => {
-    if (!isSuperAdminUser() || !currentEditedPayment) return;
+    if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
 
     const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(',', '.'));
     const date = document.getElementById('edit-payment-date').value;
@@ -1779,10 +1832,16 @@ window.saveEditedPayment = async () => {
     try {
         if (currentEditedPayment.type === 'payment') {
             await mutatePerson(currentEditedPayment.personId, (draft) => {
-                const nextPayments = safeList(draft.payments).map((entry, i) => {
-                    if (i !== currentEditedPayment.targetIndex) return entry;
-                    return { ...entry, amount, date, description };
-                });
+                const nextPayments = safeList(draft.payments);
+                let targetIdx = currentEditedPayment.targetIndex;
+                if (targetIdx < 0 || targetIdx >= nextPayments.length) {
+                    targetIdx = nextPayments.findIndex((entry, i) => String(entry.id ?? `idx-${i}`) === String(currentEditedPayment.paymentId));
+                }
+                if (targetIdx >= 0 && targetIdx < nextPayments.length) {
+                    nextPayments[targetIdx] = { ...nextPayments[targetIdx], amount, date, description };
+                } else {
+                    console.warn("saveEditedPayment: fallback payment match not found, mapping all", currentEditedPayment);
+                }
                 const totalPaid = calculateTotalPaidLoop(nextPayments);
                 return { ...draft, payments: nextPayments, totalPaid };
             });
@@ -1794,7 +1853,6 @@ window.saveEditedPayment = async () => {
 
             if (idx >= 0) {
                 remoteDonations[idx] = { ...remoteDonations[idx], amount, date };
-                // Keep the description if mapped or fallback
                 await set(ref(db, 'donations'), { ...remoteDonations });
                 donations = remoteDonations;
             }
@@ -1820,6 +1878,55 @@ window.saveEditedPayment = async () => {
     } catch (err) {
         console.error('Fehler beim Bearbeiten:', err);
         showToast('Eintrag konnte nicht aktualisiert werden', 'error');
+    }
+};
+
+window.deleteRecordedPaymentClick = () => {
+    if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
+    openModal('confirm-delete-modal');
+};
+
+window.confirmDeleteRecordedPayment = async () => {
+    if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
+
+    closeModal('confirm-delete-modal');
+    closeModal('edit-payment-modal');
+
+    try {
+        if (currentEditedPayment.type === 'payment') {
+            await mutatePerson(currentEditedPayment.personId, (draft) => {
+                const nextPayments = safeList(draft.payments).filter((entry, i) => {
+                    if (i === currentEditedPayment.targetIndex) return false;
+                    if (String(entry.id ?? `idx-${i}`) === String(currentEditedPayment.paymentId)) return false;
+                    return true;
+                });
+                const totalPaid = calculateTotalPaidLoop(nextPayments);
+                return { ...draft, payments: nextPayments, totalPaid };
+            });
+            showToast('Zahlung gelöscht');
+        } else if (currentEditedPayment.type === 'donation') {
+            const remoteDonations = safeList(await apiGet('donations').catch(() => []));
+            const targetDonationId = currentEditedPayment.paymentId;
+            const nextDonations = remoteDonations.filter(d => String(d.id) !== String(targetDonationId));
+            await set(ref(db, 'donations'), nextDonations);
+            donations = nextDonations;
+            showToast('Spende gelöscht');
+        } else if (currentEditedPayment.type === 'expense') {
+            const remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
+            const targetExpenseId = currentEditedPayment.paymentId;
+            const nextExpenses = remoteExpenses.filter(e => String(e.id) !== String(targetExpenseId));
+            await set(ref(db, 'expenses'), nextExpenses);
+            expenses = nextExpenses;
+            showToast('Ausgabe gelöscht');
+        }
+
+        currentEditedPayment = null;
+        renderPeople();
+        renderStats();
+        renderSuperAdminPaymentEditor();
+    } catch (err) {
+        console.error('Fehler beim Löschen:', err);
+        showToast('Eintrag konnte nicht gelöscht werden', 'error');
     }
 };
 
@@ -2026,7 +2133,7 @@ function renderUserView() {
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                         <div>
                             <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 4px;">${typeIcons[req.type]} ${typeLabels[req.type] || req.type}</div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${dateFormatter.format(new Date(req.timestamp))}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${formatDateFast(req.timestamp)}</div>
                         </div>
                         <div style="background: ${statusBg}; padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">
                             ${statusBadge} ${statusText}
@@ -2141,7 +2248,7 @@ function generateTimelineHTML(person) {
     };
 
     const timelineItems = allEvents.map(event => {
-        const dateStr = dateFormatter.format(new Date(event.dateStr));
+        const dateStr = formatDateFast(event.dateStr);
         let content = '';
         let dotClass = 'timeline-dot';
 
@@ -2203,8 +2310,8 @@ function generatePersonHTML(p, preCalcData = null) {
                             <div style="font-size:0.9rem; font-weight:600;">${formatCurrency(so.amount)} € / Monat</div>
                             <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">${escapeHtml(so.note || 'Ohne Notiz')}</div>
                             <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
-                                Start: ${dateFormatter.format(new Date(so.startDate))}
-                                ${so.endDate ? `<br>Ende: ${dateFormatter.format(new Date(so.endDate))}` : ''}
+                                Start: ${formatDateFast(so.startDate)}
+                                ${so.endDate ? `<br>Ende: ${formatDateFast(so.endDate)}` : ''}
                             </div>
                         </div>
                         ${(true) ? `
@@ -2279,6 +2386,13 @@ function generatePersonHTML(p, preCalcData = null) {
                     <div class="history-header">Verlauf</div>
                     <div id="timeline-${p.id}">
                         <div style="padding:10px; color:var(--text-secondary); font-size:0.8rem; font-style:italic;">Lade Verlauf...</div>
+                    </div>
+
+                    <div style="display: ${!(currentUser && currentUser.admin) ? 'none' : 'flex'}; justify-content: flex-end; margin-top: 20px;">
+                        <button class="btn btn-secondary btn-small" style="border-color: var(--danger); color: var(--danger); font-size: 0.85rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" data-id="${escapeHtml(p.id)}" onclick="deletePersonClick(this.dataset.id)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Mitglied löschen
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2458,13 +2572,13 @@ window.renderHistoryTab = async function(resetLimit = true) {
             return;
         }
 
-        const isSuperAdmin = isSuperAdminUser();
+        const isSuperAdmin = !!(currentUser && currentUser.admin);
 
         let lastDateFormatted = null;
         let html = '';
 
         cachedTransactions.forEach((t, index) => {
-            const tDateFormatted = t.date ? dateFormatter.format(new Date(t.date)) : 'Kein Datum';
+            const tDateFormatted = t.date ? formatDateFast(t.date) : 'Kein Datum';
 
             if (tDateFormatted !== lastDateFormatted) {
                 html += `<div style="margin: ${index === 0 ? '0' : '20px'} 0 8px 10px; font-weight: bold; font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${tDateFormatted}</div>`;
@@ -2490,22 +2604,9 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
             const hasReceipt = t.receipt ? '<span style="margin-left:5px" title="Beleg vorhanden">📷</span>' : '';
 
-            const paymentPayload = t.payment ? JSON.stringify(t.payment).replace(/"/g, '&quot;') : '{}';
-
-            let mappedType = t.type;
-            if (t.type === 'pay') mappedType = 'payment';
-            else if (t.type === 'don') mappedType = 'donation';
-            else if (t.type === 'exp') mappedType = 'expense';
-
             const editBtn = isSuperAdmin ? `
                 <button class="btn btn-secondary btn-small" style="padding: 6px; border-radius: 8px; margin-left: 10px;"
-                    data-payload="${paymentPayload}"
-                    data-person-id="${escapeHtml(String(t.personId || ''))}"
-                    data-payment-id="${escapeHtml(String(t.paymentId || ''))}"
-                    data-payment-index="${t.paymentIndex !== undefined ? t.paymentIndex : -1}"
-                    data-person-name="${escapeHtml(String(t.personName || ''))}"
-                    data-mapped-type="${escapeHtml(mappedType)}"
-                    onclick="event.stopPropagation(); editRecordedPayment(this.dataset.personId, this.dataset.paymentId, parseInt(this.dataset.paymentIndex, 10), this.dataset.personName, this.dataset.mappedType, JSON.parse(this.dataset.payload))"
+                    onclick="event.stopPropagation(); editRecordedPaymentByIndex(${index})"
                     aria-label="Bearbeiten">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                 </button>
@@ -2754,17 +2855,26 @@ window.addExpense = async () => {
     }
 };
 
-window.deletePerson = async (id) => {
-    if(confirm("Wirklich löschen?")) {
-        try {
-            await remove(ref(db, 'people/' + id));
-            people = people.filter(p => String(p.id) !== String(id));
-            await renderAll();
-            showToast('Person gelöscht');
-        } catch (err) {
-            console.error('Fehler beim Löschen der Person:', err);
-            alert('Löschen fehlgeschlagen. Bitte erneut versuchen.');
-        }
+window.deletePersonClick = (id) => {
+    editingPersonId = id;
+    openModal('confirm-delete-person-modal');
+};
+
+window.confirmDeletePerson = async () => {
+    if (!editingPersonId) return;
+
+    closeModal('confirm-delete-person-modal');
+
+    try {
+        await remove(ref(db, 'people/' + editingPersonId));
+        people = people.filter(p => String(p.id) !== String(editingPersonId));
+        await renderAll();
+        showToast('Mitglied erfolgreich gelöscht');
+    } catch (err) {
+        console.error('Fehler beim Löschen der Person:', err);
+        showToast('Mitglied konnte nicht gelöscht werden', 'error');
+    } finally {
+        editingPersonId = null;
     }
 };
 
@@ -2852,6 +2962,47 @@ window.deleteStandingOrderCompletely = async () => {
     } catch (err) {
         console.error('Fehler beim Löschen:', err);
         alert('Fehler beim Löschen.');
+    }
+};
+
+window.deleteEditedPayment = async () => {
+    if (!isSuperAdminUser() || !currentEditedPayment) return;
+
+    if (!confirm('Achtung: Soll dieser Eintrag wirklich gelöscht werden? Dies kann nicht rückgängig gemacht werden.')) {
+        return;
+    }
+
+    try {
+        if (currentEditedPayment.type === 'payment') {
+            await mutatePerson(currentEditedPayment.personId, (draft) => {
+                const nextPayments = safeList(draft.payments).filter((_, i) => i !== currentEditedPayment.targetIndex);
+                const totalPaid = calculateTotalPaidLoop(nextPayments);
+                return { ...draft, payments: nextPayments, totalPaid };
+            });
+            showToast('Zahlung gelöscht');
+        } else if (currentEditedPayment.type === 'donation') {
+            const remoteDonations = safeList(await apiGet('donations').catch(() => []));
+            const targetDonationId = currentEditedPayment.paymentId;
+            const updatedDonations = remoteDonations.filter(d => String(d.id) !== String(targetDonationId));
+
+            await set(ref(db, 'donations'), updatedDonations.length > 0 ? { ...updatedDonations } : null);
+            donations = updatedDonations;
+            showToast('Spende gelöscht');
+        } else if (currentEditedPayment.type === 'expense') {
+            const remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
+            const targetExpenseId = currentEditedPayment.paymentId;
+            const updatedExpenses = remoteExpenses.filter(e => String(e.id) !== String(targetExpenseId));
+
+            await set(ref(db, 'expenses'), updatedExpenses.length > 0 ? { ...updatedExpenses } : null);
+            expenses = updatedExpenses;
+            showToast('Ausgabe gelöscht');
+        }
+
+        closeModal('edit-payment-modal');
+        if (typeof loadData === 'function') loadData();
+    } catch (e) {
+        console.error("Error deleting payment:", e);
+        alert('Fehler beim Löschen des Eintrags.');
     }
 };
 
@@ -3683,9 +3834,15 @@ function replacePersonInMemory(person) {
     preprocessPerson(person);
     const idx = people.findIndex(p => String(p.id) === String(person.id));
     if (idx >= 0) {
-        people[idx] = person;
+        if (person.isDeleted) {
+            people.splice(idx, 1);
+        } else {
+            people[idx] = person;
+        }
     } else {
-        people.push(person);
+        if (!person.isDeleted) {
+            people.push(person);
+        }
     }
 }
 
@@ -4633,7 +4790,7 @@ window.showTransactionDetails = async function(id, type) {
         <div class="details-status-card" style="background:var(--surface-alt); border:1px solid var(--border);">
             <div class="details-row">
                 <span class="details-label">Datum</span>
-                <span class="details-value">${item.date ? dateFormatter.format(new Date(item.date)) : '-'}</span>
+                <span class="details-value">${item.date ? formatDateFast(item.date) : '-'}</span>
             </div>
             ${item.who ? `
             <div class="details-row">

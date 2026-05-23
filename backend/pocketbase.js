@@ -314,20 +314,42 @@ async function ensurePocketBaseSuperuser(appConfig) {
     throw new Error('PocketBase superuser credentials are missing.');
   }
 
-  await execFileAsync(getPocketBaseBinaryPath(), [
+  const binary = getPocketBaseBinaryPath();
+  const dir = getPocketBaseDataDir();
+  const args = [
     '--dir',
-    getPocketBaseDataDir(),
+    dir,
     'superuser',
     'upsert',
     appConfig.pocketbase.adminEmail,
     appConfig.pocketbase.adminPassword
-  ]);
+  ];
+
+  console.log(`[PocketBase] Running superuser upsert with binary: ${binary}, dir: ${dir}, email: ${appConfig.pocketbase.adminEmail}`);
+  try {
+    const { stdout, stderr } = await execFileAsync(binary, args);
+    console.log(`[PocketBase] Superuser upsert stdout: ${stdout.trim()}`);
+    if (stderr.trim()) {
+      console.warn(`[PocketBase] Superuser upsert stderr: ${stderr.trim()}`);
+    }
+  } catch (error) {
+    console.error(`[PocketBase] Superuser upsert failed! Error:`, error);
+    throw error;
+  }
 }
 
 async function ensureUsersCollection(appConfig) {
   const token = await authenticateSuperuser(appConfig);
   const existing = await pocketBaseRequest('/api/collections/users', { token });
-  const fields = [...existing.fields];
+  
+  // Set password min length to 6 for PocketBase 0.23+ where password is in fields
+  const fields = (existing.fields || []).map((f) => {
+    if (f.name === 'password') {
+      return { ...f, min: 6 };
+    }
+    return f;
+  });
+
   const wantedFields = [
     { name: 'firstName', type: 'text' },
     { name: 'lastName', type: 'text' },
@@ -353,7 +375,11 @@ async function ensureUsersCollection(appConfig) {
       updateRule: 'id = @request.auth.id || @request.auth.admin = true',
       deleteRule: '@request.auth.superAdmin = true',
       fields,
-      indexes: existing.indexes || []
+      indexes: existing.indexes || [],
+      options: {
+        ...existing.options,
+        minPasswordLength: 6
+      }
     }
   });
 }
@@ -837,12 +863,19 @@ async function verifyUserToken(token) {
   return toPublicUser(userRecord);
 }
 
-async function registerUser({ email, password, firstName = '', lastName = '' }) {
+async function registerUser({ email, password, firstName = '', lastName = '' }, appConfig = null) {
   const normalizedFirstName = String(firstName || '').trim();
   const normalizedLastName = String(lastName || '').trim();
   const name = `${normalizedFirstName} ${normalizedLastName}`.trim();
+
+  // When appConfig is provided (e.g. during initial setup), use the superuser token
+  // to create the record. This bypasses the collection's minPasswordLength constraint
+  // so that passwords shorter than PocketBase's default 8-character minimum are accepted.
+  const superuserToken = appConfig ? await authenticateSuperuser(appConfig) : null;
+
   const created = await pocketBaseRequest('/api/collections/users/records', {
     method: 'POST',
+    token: superuserToken || undefined,
     body: {
       email,
       password,
@@ -1011,15 +1044,43 @@ async function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated =
 async function removePeopleRecord(appConfig, personKey) {
   const existing = await getPeopleRecord(appConfig, personKey);
   if (existing) {
-    const [payments, statusHistory] = await Promise.all([
-      listAllRecords('payments', pbFilterEquals('personKey', personKey), appConfig),
-      listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig)
-    ]);
-    await Promise.all([
-      ...payments.map((payment) => deleteRecord('payments', payment.id, appConfig)),
-      ...statusHistory.map((entry) => deleteRecord('status_history', entry.id, appConfig))
-    ]);
-    await deleteRecord('people', existing.id, appConfig);
+    // 1. Delete corresponding auth user record from 'users' collection if uid exists
+    const uid = existing.uid || (existing.data && existing.data.uid);
+    if (uid) {
+      try {
+        await deleteRecord('users', uid, appConfig);
+      } catch (err) {
+        console.warn(`[PocketBase] Failed to delete auth user ${uid}:`, err.message);
+      }
+    }
+
+    // 2. Delete status history records associated with this personKey
+    const statusHistory = await listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig);
+    await Promise.all(
+      statusHistory.map((entry) => deleteRecord('status_history', entry.id, appConfig))
+    );
+
+    // 3. Keep payments, name, totalPaid, uid, and profile picture, but absolutely delete/clear the rest
+    // Set isDeleted = true, status = "", standingOrders = [] inside data JSON blob and people record
+    const updatedData = {
+      ...(existing.data || {}),
+      status: '',
+      standingOrders: [],
+      isDeleted: true
+    };
+
+    const updatePayload = {
+      personKey: String(personKey),
+      uid: toOptionalText(uid),
+      name: toOptionalText(existing.name),
+      status: '',
+      memberSince: toOptionalText(existing.memberSince),
+      originalMemberSince: toOptionalText(existing.originalMemberSince || existing.memberSince),
+      totalPaid: existing.totalPaid || 0,
+      data: updatedData
+    };
+
+    await updateRecord('people', existing.id, updatePayload, appConfig);
   }
 }
 
