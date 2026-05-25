@@ -68,26 +68,9 @@ docker run -d \
 
 > **Reverse proxy note:** Nova trusts local/private reverse proxies by default so the bundled rate limiting works cleanly behind Docker reverse proxies. If your proxy setup is different, you can override Express' proxy handling with the `TRUST_PROXY` environment variable.
 
-### Docker Compose
-
-A `docker-compose.yml` is included in the repository for convenience. To start Nova with Compose:
-
-```bash
-docker compose up -d
-```
-
 ### Updating
 
 Nova is designed to be fully updateable through Docker image upgrades. When you pull a new image and recreate the container, all changes — backend code, frontend files, and the embedded PocketBase binary — are applied automatically. Your data in `/app/data` and `/app/db` is preserved across updates.
-
-**With Docker Compose** (recommended):
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-**With plain Docker:**
 
 ```bash
 docker pull ghcr.io/ricouhd/nova:latest

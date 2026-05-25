@@ -353,9 +353,7 @@ function debounce(func, wait) {
     };
 }
 
-// ⚡ Bolt: Debounce search to prevent synchronous layout thrashing on every keystroke
-// Expected impact: Removes main thread blocking during fast typing, especially for large lists
-window.filterPeople = debounce(function() {
+window.filterPeopleSync = function() {
     const query = document.getElementById('people-search')?.value.toLowerCase() || '';
     const items = document.querySelectorAll('.person-wrapper');
     items.forEach(item => {
@@ -366,6 +364,12 @@ window.filterPeople = debounce(function() {
             item.style.display = 'none';
         }
     });
+};
+
+// ⚡ Bolt: Debounce search to prevent synchronous layout thrashing on every keystroke
+// Expected impact: Removes main thread blocking during fast typing, especially for large lists
+window.filterPeople = debounce(function() {
+    window.filterPeopleSync();
 }, 300);
 
 window.filterHistory = debounce(function() {
@@ -2197,6 +2201,11 @@ function renderPeople() {
             <div class="people-column valid-column">${validHtml}</div>
         </div>
     `;
+
+    // Apply search filters if something is typed in the search bar
+    if (typeof window.filterPeopleSync === 'function') {
+        window.filterPeopleSync();
+    }
 }
 
 function generateTimelineHTML(person) {
@@ -2537,6 +2546,12 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
     const container = document.getElementById('history-page-list');
     if (!container) return;
+
+    // Ensure search query is always synchronized with the current input value
+    const searchInput = document.getElementById('history-search');
+    if (searchInput) {
+        transactionSearchQuery = searchInput.value.trim();
+    }
 
     if (resetLimit) {
         const skeletonHtml = Array(15).fill(`
