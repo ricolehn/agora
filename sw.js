@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nova-v1.0.5';
+const CACHE_NAME = 'nova-v1.0.7';
 const URLS_TO_CACHE = [
     './',
     './index.html',
@@ -7,7 +7,9 @@ const URLS_TO_CACHE = [
     './assets/app.js',
     './assets/pocketbase-compat.js',
     './manifest.json',
-    './assets/icon.png'
+    './assets/icon.png',
+    './assets/locales/de.json',
+    './assets/locales/en.json'
 ];
 
 self.addEventListener('install', event => {

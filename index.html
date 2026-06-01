@@ -16,14 +16,14 @@
 
 <div id="loading-overlay">
     <div class="spinner"></div>
-    <div id="loading-message" style="font-weight:600; color:#333; margin-top: 20px;">Lade Daten...</div>
+    <div id="loading-message" style="font-weight:600; color:#333; margin-top: 20px;" data-i18n="loading">Lade Daten...</div>
     <div class="loading-footer"><span id="app-name-footer">Nova</span> &copy; 2026</div>
 </div>
 
 <div class="container">
     <button id="install-pwa-btn" class="btn btn-primary" style="display:none; margin-bottom: 20px;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        App installieren
+        <span data-i18n="btn_install_app">App installieren</span>
     </button>
 
     <div class="app-layout">
@@ -36,41 +36,41 @@
                 <nav id="admin-desktop-nav" class="desktop-nav">
                     <button class="nav-btn active" data-tab="overview" onclick="switchTab('overview', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        <span class="nav-label">Startseite</span>
+                        <span class="nav-label" data-i18n="nav_home">Startseite</span>
                     </button>
                     <button class="nav-btn" data-tab="people-view" onclick="switchTab('people-view', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                        <span class="nav-label">Personen</span>
+                        <span class="nav-label" data-i18n="nav_people">Personen</span>
                     </button>
                     <button id="admin-sys-nav-btn-desktop" class="nav-btn" data-tab="payment-history" onclick="switchTab('payment-history', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
-                        <span class="nav-label">Historie</span>
+                        <span class="nav-label" data-i18n="nav_history">Historie</span>
                     </button>
                     <button id="admin-ai-nav-btn-desktop" class="nav-btn" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                        <span class="nav-label">KI-Support</span>
+                        <span class="nav-label" data-i18n="nav_ai">KI-Support</span>
                     </button>
                     <button class="nav-btn" data-tab="settings" onclick="switchTab('settings', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        <span class="nav-label">Einstellungen</span>
+                        <span class="nav-label" data-i18n="nav_settings">Einstellungen</span>
                     </button>
                 </nav>
                 <nav id="user-desktop-nav" class="desktop-nav" style="display:none;">
                     <button class="nav-btn active" data-tab="user-overview" onclick="switchTab('user-overview', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        <span class="nav-label">Startseite</span>
+                        <span class="nav-label" data-i18n="nav_home">Startseite</span>
                     </button>
                     <button class="nav-btn" data-tab="user-history" onclick="switchTab('user-history', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
-                        <span class="nav-label">Historie</span>
+                        <span class="nav-label" data-i18n="nav_history">Historie</span>
                     </button>
                     <button class="nav-btn" data-tab="user-requests" onclick="switchTab('user-requests', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        <span class="nav-label">Anfragen</span>
+                        <span class="nav-label" data-i18n="nav_requests">Anfragen</span>
                     </button>
                     <button class="nav-btn" data-tab="user-settings" onclick="switchTab('user-settings', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        <span class="nav-label">Einstellungen</span>
+                        <span class="nav-label" data-i18n="nav_settings">Einstellungen</span>
                     </button>
                 </nav>
             </div>
@@ -84,19 +84,19 @@
                     <div id="profileDropdown" class="profile-dropdown">
                         <button class="dropdown-item" onclick="openHomeTab()">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                            Startseite
+                            <span data-i18n="nav_home">Startseite</span>
                         </button>
                         <button id="profile-sys-settings-btn" class="dropdown-item" onclick="openSystemSettingsTab()" style="display:none;">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                            Systemeinstellungen
+                            <span data-i18n="nav_superadmin_settings">Systemeinstellungen</span>
                         </button>
                         <button class="dropdown-item" onclick="openSettingsTab()">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                            Einstellungen
+                            <span data-i18n="nav_settings">Einstellungen</span>
                         </button>
                         <button class="dropdown-item text-danger" onclick="logout()">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                            Abmelden
+                            <span data-i18n="logout">Abmelden</span>
                         </button>
                     </div>
                 </div>
@@ -108,10 +108,10 @@
         <div id="overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-overview">
             <div class="dashboard-top-section">
                 <div class="dashboard-left">
-                    <div class="hero-card" role="button" tabindex="0" aria-label="Transaktionsverlauf anzeigen" onclick="switchTab('payment-history')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); switchTab('payment-history');}">
-                        <span class="hero-label">Aktueller Kassenstand</span>
+                    <div class="hero-card" role="button" tabindex="0" data-i18n-aria-label="nav_history" aria-label="Transaktionsverlauf anzeigen" onclick="switchTab('payment-history')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); switchTab('payment-history');}">
+                        <span class="hero-label" data-i18n="total_balance">Aktueller Kassenstand</span>
                         <div class="hero-amount" id="heroAmount">0,00 €</div>
-                        <div class="hero-subtitle">Tippen für Details</div>
+                        <div class="hero-subtitle" data-i18n="hero_subtitle">Tippen für Details</div>
                     </div>
 
                     <div class="stats-grid">
@@ -120,7 +120,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
                             </div>
                             <div>
-                                <div class="stat-label">Einnahmen</div>
+                                <div class="stat-label" data-i18n="nav_income">Einnahmen</div>
                                 <div class="stat-value text-success" id="totalIncome">0,00 €</div>
                             </div>
                         </div>
@@ -129,7 +129,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
                             </div>
                             <div>
-                                <div class="stat-label">Ausgaben</div>
+                                <div class="stat-label" data-i18n="nav_expenses">Ausgaben</div>
                                 <div class="stat-value text-danger" id="totalExpenses">0,00 €</div>
                             </div>
                         </div>
@@ -138,7 +138,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                             </div>
                             <div>
-                                <div class="stat-label">Mitglieder</div>
+                                <div class="stat-label" data-i18n="nav_members">Mitglieder</div>
                                 <div class="stat-value text-info" id="totalMembers">0</div>
                             </div>
                         </div>
@@ -147,7 +147,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                             </div>
                             <div>
-                                <div class="stat-label">Überfällig</div>
+                                <div class="stat-label" data-i18n="nav_overdue">Überfällig</div>
                                 <div class="stat-value text-warning" id="totalOverdue">0,00 €</div>
                             </div>
                         </div>
@@ -156,7 +156,7 @@
 
                 <div class="dashboard-right">
                     <div class="chart-card">
-                        <div class="chart-header">Verlauf (90 Tage)</div>
+                        <div class="chart-header" data-i18n="chart_title">Verlauf (90 Tage)</div>
                     <div class="chart-container">
                             <canvas id="balanceChart" role="img" aria-label="Kontostandsverlauf über 90 Tage"></canvas>
                         </div>
@@ -171,36 +171,78 @@
 
         <div id="people-view" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-people-view">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="font-size: 1.2rem; font-weight: 800;">Mitglieder</h2>
+                <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_people">Mitglieder</h2>
                 <button class="btn btn-primary btn-small" onclick="openModal('add-person-modal')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
-                    Hinzufügen
+                    <span data-i18n="btn_add">Hinzufügen</span>
                 </button>
             </div>
             <div class="form-group">
-                <label for="people-search" class="sr-only">Mitglieder suchen</label>
+                <label for="people-search" class="sr-only" data-i18n="search_placeholder">Mitglieder suchen</label>
                 <div class="input-with-icon search-bar-wrapper">
                     <div class="input-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
-                    <input type="text" id="people-search" class="form-input search-input" placeholder="Suche..." oninput="window.filterPeople()">
+                    <input type="text" id="people-search" class="form-input search-input" data-i18n-placeholder="search_placeholder" placeholder="Suche..." oninput="window.filterPeople()">
                 </div>
             </div>
             <div id="unlinkedUsers"></div>
             <div id="peopleList"></div>
             <div id="emptyState" style="text-align:center; padding:40px; color:var(--text-secondary); display:none;">
                 <div style="font-size:3rem; margin-bottom:10px;">👥</div>
-                <p>Noch keine Mitglieder.</p>
+                <p data-i18n="no_members_yet">Noch keine Mitglieder.</p>
                 <button class="btn btn-primary" style="margin-top: 20px;" onclick="openModal('add-person-modal')">
-                    Person hinzufügen
+                    <span data-i18n="btn_add_person_full">Person hinzufügen</span>
                 </button>
             </div>
         </div>
 
         <div id="settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-settings">
             
+            <!-- PREMIUM ELEGANT REGISTRATION/INVITE CODE CARD -->
+            <div class="card card-settings premium-invite-card" id="card-invite">
+                <div class="card-header premium-invite-header">
+                    <div class="premium-invite-header-title">
+                        <svg class="premium-invite-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span data-i18n="invite_title">Registrierungscode</span>
+                    </div>
+                </div>
+                <div class="card-body premium-invite-body">
+                    <p class="premium-invite-desc" data-i18n="invite_desc">Dieser Code wird für neue Registrierungen benötigt.</p>
+                    
+                    <div class="premium-invite-display-container">
+                        <!-- Hidden input so the old JS logic still works perfectly without any breaking changes -->
+                        <input type="text" id="admin-invite-code" style="position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0;" readonly>
+                        
+                        <div class="premium-invite-code-wrapper">
+                            <div class="premium-invite-code-label" data-i18n="invite_current">Aktueller Code</div>
+                            <div class="premium-invite-code-value" id="admin-invite-code-display">------</div>
+                        </div>
+                        
+                        <div class="premium-invite-actions">
+                            <button class="btn btn-premium-action btn-copy-invite" onclick="copyInviteCode()" aria-label="Code kopieren" title="Code kopieren">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span data-i18n="copy_btn">Kopieren</span>
+                            </button>
+                            <button class="btn btn-premium-action btn-generate-invite" onclick="generateNewCode()" aria-label="Neuen Code generieren">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                                </svg>
+                                <span data-i18n="btn_generate_new">Neu</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card card-settings" id="card-profile-pic-admin">
-                <div class="card-header">Profilbild</div>
+                <div class="card-header" data-i18n="profile_pic_title">Profilbild</div>
                 <div class="card-body">
                     <div class="profile-pic-section">
                         <div class="profile-pic-preview-wrap">
@@ -212,30 +254,30 @@
                         <div>
                             <label class="btn btn-secondary" for="admin-profile-pic-input" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                Bild hochladen
+                                <span data-i18n="btn_upload_pic">Bild hochladen</span>
                             </label>
                             <input type="file" id="admin-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'admin')">
-                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;">JPG, PNG, HEIC – wird als 256×256 JPEG gespeichert.</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;" data-i18n="profile_pic_desc">JPG, PNG, HEIC – wird als 256×256 JPEG gespeichert.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="card card-settings" id="card-design">
-                <div class="card-header">Design</div>
+                <div class="card-header" data-i18n="settings_design">Design</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <span class="form-label">Farbschema</span>
+                        <span class="form-label" data-i18n="theme_title">Farbschema</span>
                         <div class="settings-flex-row">
-                            <button class="btn btn-secondary" onclick="setTheme('light')">
+                            <button class="btn btn-secondary" onclick="setTheme('light')" data-i18n="theme_light">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                                 Hell
                             </button>
-                            <button class="btn btn-secondary" onclick="setTheme('dark')">
+                            <button class="btn btn-secondary" onclick="setTheme('dark')" data-i18n="theme_dark">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                                 Dunkel
                             </button>
-                            <button class="btn btn-secondary" onclick="setTheme('system')">
+                            <button class="btn btn-secondary" onclick="setTheme('system')" data-i18n="theme_system">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
                                 System
                             </button>
@@ -245,86 +287,82 @@
             </div>
 
             <div class="card card-settings" id="card-rates">
-                <div class="card-header">Monatliche Beiträge</div>
+                <div class="card-header" data-i18n="rates_title">Monatliche Beiträge</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <label class="form-label" for="rate-vollverdiener">Vollverdiener (€)</label>
+                        <label class="form-label" for="rate-vollverdiener" data-i18n="rate_full">Vollverdiener (€)</label>
                 <input type="text" inputmode="decimal" id="rate-vollverdiener" class="form-input" value="50">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" for="rate-geringverdiener">Geringverdiener (€)</label>
+                        <label class="form-label" for="rate-geringverdiener" data-i18n="rate_low">Geringverdiener (€)</label>
                 <input type="text" inputmode="decimal" id="rate-geringverdiener" class="form-input" value="25">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" for="rate-keinverdiener">Keinverdiener (€)</label>
+                        <label class="form-label" for="rate-keinverdiener" data-i18n="rate_none">Keinverdiener (€)</label>
                 <input type="text" inputmode="decimal" id="rate-keinverdiener" class="form-input" value="10">
                     </div>
                 </div>
             </div>
 
             <div class="card card-settings" id="card-report">
-                <div class="card-header">Berichtszeitraum</div>
+                <div class="card-header" data-i18n="report_title">Berichtszeitraum</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <label class="form-label" for="report-start-date">Startdatum für Berechnung</label>
+                        <label class="form-label" for="report-start-date" data-i18n="report_start">Startdatum für Berechnung</label>
                         <input type="date" id="report-start-date" class="form-input">
-                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="report_desc">
                             Einnahmen und Ausgaben werden erst ab diesem Datum in der Übersicht gezählt.
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="card card-settings" id="card-invite">
-                <div class="card-header">Registrierungscode</div>
+
+            <div class="card card-settings" id="card-language">
+                <div class="card-header">Sprache / Language</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <label class="form-label" for="admin-invite-code">Aktueller Code</label>
-                        <div class="settings-flex-row">
-                            <input type="text" id="admin-invite-code" class="form-input" readonly>
-                            <button class="btn btn-secondary" onclick="copyInviteCode()" aria-label="Code kopieren" title="Code kopieren">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            </button>
-                            <button class="btn btn-secondary" onclick="generateNewCode()" aria-label="Neuen Code generieren">Neu</button>
-                        </div>
-                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
-                            Dieser Code wird für neue Registrierungen benötigt.
-                        </div>
+                        <label class="form-label">Sprache / Language</label>
+                        <select id="settings-language" class="form-select" onchange="changeAppLanguage(this.value)">
+                            <option value="system" data-i18n="lang_system">System</option>
+                            <option value="de">Deutsch</option>
+                            <option value="en">English</option>
+                        </select>
                     </div>
                 </div>
             </div>
 
             <div class="card card-settings" id="card-security">
-                <div class="card-header">Sicherheit & Benachrichtigungen</div>
+                <div class="card-header" data-i18n="security_title">Sicherheit & Benachrichtigungen</div>
                 <div class="card-body">
                     <div class="form-group" style="display:flex; align-items:center; gap:10px;">
                         <label class="switch">
                             <input type="checkbox" id="admin-email-notifications">
                             <span class="slider"></span>
                         </label>
-                        <label for="admin-email-notifications" style="margin:0; font-weight:600; cursor:pointer">E-Mail Benachrichtigungen bei Anfragen</label>
+                        <label for="admin-email-notifications" style="margin:0; font-weight:600; cursor:pointer" data-i18n="email_notifications">E-Mail Benachrichtigungen bei Anfragen</label>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
-                        <label class="form-label">Passwort ändern</label>
+                        <label class="form-label" data-i18n="change_password_title">Passwort ändern</label>
                         <div class="password-wrapper" style="margin-bottom: 12px;">
-                            <input type="password" id="old-password" class="form-input has-toggle" placeholder="Altes Passwort">
+                            <input type="password" id="old-password" class="form-input has-toggle" data-i18n-placeholder="old_password" placeholder="Altes Passwort">
                             <button type="button" class="password-toggle" onclick="togglePassword('old-password', this)" aria-label="Passwort anzeigen">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
                         <div class="password-wrapper">
-                            <input type="password" id="new-password" class="form-input has-toggle" placeholder="Neues Passwort">
+                            <input type="password" id="new-password" class="form-input has-toggle" data-i18n-placeholder="new_password" placeholder="Neues Passwort">
                             <button type="button" class="password-toggle" onclick="togglePassword('new-password', this)" aria-label="Passwort anzeigen">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
                     </div>
-                    <button class="btn btn-secondary btn-block" onclick="changePassword()">Passwort ändern</button>
+                    <button class="btn btn-secondary btn-block" onclick="changePassword()" data-i18n="btn_change_password">Passwort ändern</button>
                 </div>
             </div>
 
             <div style="display: flex; gap: 10px; margin-bottom: 30px; align-items: center; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="saveSettings()">Alle Einstellungen Speichern</button>
+                <button class="btn btn-primary" onclick="saveSettings()" data-i18n="btn_save_settings">Alle Einstellungen Speichern</button>
             </div>
         </div>
 
@@ -333,38 +371,38 @@
 
                     <!-- Benutzerrechte -->
                     <div class="super-admin-group">
-                        <div class="super-admin-group-title">Benutzerrechte verwalten</div>
-                        <div class="super-admin-group-desc">Aktiviert nur normale Admin-/Supervisor-Rechte (kein Super-Admin).</div>
+                        <div class="super-admin-group-title" data-i18n="superadmin_users_title">Benutzerrechte verwalten</div>
+                        <div class="super-admin-group-desc" data-i18n="superadmin_users_desc">Aktiviert nur normale Admin-/Supervisor-Rechte (kein Super-Admin).</div>
                         <div id="super-admin-user-management" style="display:flex; flex-direction: column; gap:10px; width: 100%;"></div>
                     </div>
 
                     <!-- Logo ersetzen -->
                     <div class="super-admin-group">
-                        <div class="super-admin-group-title">Logo ersetzen</div>
-                        <label class="form-label" for="super-admin-logo-file" style="margin-bottom: 6px; color: var(--text-secondary);">church-icon.svg / church-logo.svg (.svg format)</label>
+                        <div class="super-admin-group-title" data-i18n="superadmin_logo_title">Logo ersetzen</div>
+                        <label class="form-label" for="super-admin-logo-file" style="margin-bottom: 6px; color: var(--text-secondary);" data-i18n="superadmin_logo_desc">church-icon.svg / church-logo.svg (.svg format)</label>
                         <input type="file" id="super-admin-logo-file" class="form-input super-admin-input" accept=".svg,image/svg+xml" style="margin-bottom: 10px;">
-                        <button class="btn btn-block super-admin-btn" onclick="uploadChurchLogo()">Logo hochladen</button>
+                        <button class="btn btn-block super-admin-btn" onclick="uploadChurchLogo()" data-i18n="btn_upload_logo">Logo hochladen</button>
                     </div>
 
                     <!-- System Config -->
                     <div class="super-admin-group">
-                        <div class="super-admin-group-title">System-Konfiguration</div>
+                        <div class="super-admin-group-title" data-i18n="superadmin_config_title">System-Konfiguration</div>
 
                         <div class="form-group">
-                            <label class="form-label" for="super-admin-app-name" style="color: var(--text-secondary);">Name der Anwendung</label>
+                            <label class="form-label" for="super-admin-app-name" style="color: var(--text-secondary);" data-i18n="app_name_label">Name der Anwendung</label>
                             <input type="text" id="super-admin-app-name" class="form-input super-admin-input" placeholder="Nova">
-                            <div class="help-text" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;">PocketBase wird automatisch im Docker-Container verwaltet. Hier können Sie nur den Anzeigenamen und optionale SMTP-Daten ändern.</div>
+                            <div class="help-text" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;" data-i18n="app_name_desc">PocketBase wird automatisch im Docker-Container verwaltet. Hier können Sie nur den Anzeigenamen und optionale SMTP-Daten ändern.</div>
                         </div>
 
-                        <div style="font-weight:700; margin-bottom:15px; margin-top: 25px; font-size: 1rem;">SMTP Server (Optional)</div>
+                        <div style="font-weight:700; margin-bottom:15px; margin-top: 25px; font-size: 1rem;" data-i18n="smtp_title">SMTP Server (Optional)</div>
 
                         <div class="settings-flex-row">
                             <div class="form-group" style="flex: 2; min-width: 150px;">
-                                <label class="form-label" for="super-admin-smtp-host" style="color: var(--text-secondary);">Host</label>
+                                <label class="form-label" for="super-admin-smtp-host" style="color: var(--text-secondary);" data-i18n="smtp_host">Host</label>
                                 <input type="text" id="super-admin-smtp-host" class="form-input super-admin-input" placeholder="z.B. smtp.gmail.com">
                             </div>
                             <div class="form-group" style="flex: 1; min-width: 80px;">
-                                <label class="form-label" for="super-admin-smtp-port" style="color: var(--text-secondary);">Port</label>
+                                <label class="form-label" for="super-admin-smtp-port" style="color: var(--text-secondary);" data-i18n="smtp_port">Port</label>
                                 <input type="number" id="super-admin-smtp-port" class="form-input super-admin-input" placeholder="465">
                             </div>
                         </div>
@@ -374,44 +412,44 @@
                                 <input type="checkbox" id="super-admin-smtp-secure">
                                 <span class="slider"></span>
                             </label>
-                            <label for="super-admin-smtp-secure" style="margin:0; font-weight:600; cursor:pointer;">SSL/TLS aktivieren</label>
+                            <label for="super-admin-smtp-secure" style="margin:0; font-weight:600; cursor:pointer;" data-i18n="smtp_secure">SSL/TLS aktivieren</label>
                         </div>
 
                         <div class="settings-flex-row">
                             <div class="form-group" style="flex: 1; min-width: 150px;">
-                                <label class="form-label" for="super-admin-smtp-user" style="color: var(--text-secondary);">Benutzer / E-Mail</label>
+                                <label class="form-label" for="super-admin-smtp-user" style="color: var(--text-secondary);" data-i18n="smtp_user">Benutzer / E-Mail</label>
                                 <input type="text" id="super-admin-smtp-user" class="form-input super-admin-input" placeholder="mail@example.com">
                             </div>
                             <div class="form-group" style="flex: 1; min-width: 150px;">
-                                <label class="form-label" for="super-admin-smtp-pass" style="color: var(--text-secondary);">Passwort</label>
+                                <label class="form-label" for="super-admin-smtp-pass" style="color: var(--text-secondary);" data-i18n="smtp_pass">Passwort</label>
                                 <input type="password" id="super-admin-smtp-pass" class="form-input super-admin-input" placeholder="Passwort">
                             </div>
                         </div>
 
-                        <button class="btn btn-block super-admin-btn" style="margin-top: 15px;" onclick="saveAdvancedSystemConfig()">Erweiterte System-Konfiguration speichern</button>
+                        <button class="btn btn-block super-admin-btn" style="margin-top: 15px;" onclick="saveAdvancedSystemConfig()" data-i18n="btn_save_config">Erweiterte System-Konfiguration speichern</button>
                     </div>
 
                     <!-- KI-Support Konfiguration -->
                     <div class="super-admin-group">
-                        <div class="super-admin-group-title">KI-Support Einstellungen</div>
-                        <div class="super-admin-group-desc">Verbindet die Anwendung mit einem KI-Anbieter (OpenAI, Google Gemini über OpenAI-Schnittstelle oder ein lokales Ollama-Modell).</div>
+                        <div class="super-admin-group-title" data-i18n="superadmin_ai_title">KI-Support Einstellungen</div>
+                        <div class="super-admin-group-desc" data-i18n="superadmin_ai_desc">Verbindet die Anwendung mit einem KI-Anbieter (OpenAI, Google Gemini über OpenAI-Schnittstelle oder ein lokales Ollama-Modell).</div>
 
                         <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
                             <label class="switch" style="flex-shrink:0;">
                                 <input type="checkbox" id="super-admin-ai-enabled">
                                 <span class="slider"></span>
                             </label>
-                            <label for="super-admin-ai-enabled" style="margin:0; font-weight:600; cursor:pointer;">KI-Support aktivieren</label>
+                            <label for="super-admin-ai-enabled" style="margin:0; font-weight:600; cursor:pointer;" data-i18n="ai_enabled">KI-Support aktivieren</label>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="super-admin-ai-base-url" style="color: var(--text-secondary);">Basis-URL</label>
+                            <label class="form-label" for="super-admin-ai-base-url" style="color: var(--text-secondary);" data-i18n="ai_base_url">Basis-URL</label>
                             <input type="url" id="super-admin-ai-base-url" class="form-input super-admin-input" placeholder="https://api.openai.com/v1">
-                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Leer lassen für OpenAI-Standard. Für Ollama: http://localhost:11434/v1</div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;" data-i18n="ai_base_url_desc">Leer lassen für OpenAI-Standard. Für Ollama: http://localhost:11434/v1</div>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="super-admin-ai-api-key" style="color: var(--text-secondary);">API-Schlüssel</label>
+                            <label class="form-label" for="super-admin-ai-api-key" style="color: var(--text-secondary);" data-i18n="ai_api_key">API-Schlüssel</label>
                             <div class="password-wrapper">
                                 <input type="password" id="super-admin-ai-api-key" class="form-input super-admin-input has-toggle" placeholder="sk-…">
                                 <button type="button" class="password-toggle" onclick="togglePassword('super-admin-ai-api-key', this)" aria-label="Schlüssel anzeigen">
@@ -421,26 +459,26 @@
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="super-admin-ai-model" style="color: var(--text-secondary);">Modellname</label>
+                            <label class="form-label" for="super-admin-ai-model" style="color: var(--text-secondary);" data-i18n="ai_model">Modellname</label>
                             <input type="text" id="super-admin-ai-model" class="form-input super-admin-input" placeholder="gpt-4o-mini">
                         </div>
 
-                        <button class="btn btn-block super-admin-btn" onclick="saveAiConfig()">KI-Einstellungen speichern</button>
+                        <button class="btn btn-block super-admin-btn" onclick="saveAiConfig()" data-i18n="btn_save_ai">KI-Einstellungen speichern</button>
                     </div>
             </div>
         </div>
 
         <div id="payment-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-payment-history">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="font-size: 1.2rem; font-weight: 800;">Historie</h2>
+                <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_history">Historie</h2>
             </div>
             <div class="form-group">
-                <label for="history-search" class="sr-only">Historie suchen</label>
+                <label for="history-search" class="sr-only" data-i18n="search_placeholder">Historie suchen</label>
                 <div class="input-with-icon search-bar-wrapper">
                     <div class="input-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
-                    <input type="text" id="history-search" class="form-input search-input" placeholder="Suche..." oninput="window.filterHistory()">
+                    <input type="text" id="history-search" class="form-input search-input" data-i18n-placeholder="search_placeholder" placeholder="Suche..." oninput="window.filterHistory()">
                 </div>
             </div>
             <div id="history-page-list"></div>
@@ -450,8 +488,8 @@
             <div id="card-ai-chat" class="ai-chat-layout">
                 <div class="card-header ai-chat-header-styled">
                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span>KI-Support</span>
-                    <button class="btn btn-secondary btn-small" onclick="clearAiChat()" style="margin-left:auto;">Verlauf löschen</button>
+                    <span data-i18n="nav_ai">KI-Support</span>
+                    <button class="btn btn-secondary btn-small" onclick="clearAiChat()" style="margin-left:auto;" data-i18n="btn_clear_chat">Verlauf löschen</button>
                 </div>
 
                 <div id="ai-chat-messages" class="ai-chat-messages ai-chat-messages-styled">
@@ -459,13 +497,13 @@
                         <div class="ai-chat-welcome-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         </div>
-                        <div class="ai-chat-welcome-text">KI-Assistent bereit</div>
-                        <div class="ai-chat-welcome-sub">Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.</div>
+                        <div class="ai-chat-welcome-text" data-i18n="ai_chat_ready">KI-Assistent bereit</div>
+                        <div class="ai-chat-welcome-sub" data-i18n="ai_chat_welcome_sub">Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.</div>
                     </div>
                 </div>
 
                 <div class="ai-chat-input-row ai-chat-input-styled">
-                    <textarea id="ai-chat-input" class="ai-chat-input form-input ai-chat-textarea-styled" rows="1" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
+                    <textarea id="ai-chat-input" class="ai-chat-input form-input ai-chat-textarea-styled" rows="1" data-i18n-placeholder="ai_chat_input_placeholder" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
                     <button id="ai-chat-send-btn" class="btn btn-primary ai-chat-send-btn ai-chat-send-btn-styled" onclick="sendAiMessage()" aria-label="Nachricht senden">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
@@ -478,7 +516,7 @@
     <div id="user-view" style="display:none;">
         <div id="user-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-user-overview">
             <div class="hero-card" style="cursor:default;">
-                <span class="hero-label">Willkommen</span>
+                <span class="hero-label" data-i18n="welcome_title">Willkommen</span>
                 <div class="hero-amount" id="user-name-display">—</div>
                 <div class="hero-subtitle" id="user-email-display">—</div>
             </div>
@@ -487,7 +525,7 @@
             <div id="user-status-card">
                 <div style="text-align:center; padding: 40px 20px; color: var(--text-secondary);">
                     <div class="spinner" style="margin: 0 auto 15px;"></div>
-                    <div>Lade Daten...</div>
+                    <div data-i18n="loading">Lade Daten...</div>
                 </div>
             </div>
 
@@ -501,34 +539,34 @@
         <div id="user-requests" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-requests">
             <!-- Quick Actions -->
             <div style="margin-top: 25px;">
-                <h3 class="list-section-title">Schnellaktionen</h3>
+                <h3 class="list-section-title" data-i18n="user_quick_actions">Schnellaktionen</h3>
                 <div class="user-quick-actions-grid">
                     <button class="btn btn-secondary user-action-btn" onclick="openUserRequestModal('payment')">
                         <div class="user-action-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
                         </div>
-                        <div class="user-action-label">Zahlung</div>
+                        <div class="user-action-label" data-i18n="action_payment">Zahlung</div>
                     </button>
                     <button class="btn btn-secondary user-action-btn" onclick="openUserRequestModal('status')">
                         <div class="user-action-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                         </div>
-                        <div class="user-action-label">Status</div>
+                        <div class="user-action-label" data-i18n="action_status">Status</div>
                     </button>
                     <button class="btn btn-secondary user-action-btn" onclick="openUserRequestModal('expense')">
                         <div class="user-action-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                         </div>
-                        <div class="user-action-label">Ausgabe</div>
+                        <div class="user-action-label" data-i18n="action_expense">Ausgabe</div>
                     </button>
                 </div>
             </div>
 
             <!-- Requests List -->
             <div style="margin-top: 25px;">
-                <h3 class="list-section-title">Meine Anfragen</h3>
+                <h3 class="list-section-title" data-i18n="user_requests_title">Meine Anfragen</h3>
                 <div id="user-requests-list">
-                    <div style="text-align:center; padding: 30px 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px;">
+                    <div style="text-align:center; padding: 30px 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px;" data-i18n="no_open_requests">
                         Keine offenen Anfragen
                     </div>
                 </div>
@@ -537,7 +575,7 @@
 
         <div id="user-settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-settings">
             <div class="card">
-                <div class="card-header">Profilbild</div>
+                <div class="card-header" data-i18n="profile_pic_title">Profilbild</div>
                 <div class="card-body">
                     <div class="profile-pic-section">
                         <div class="profile-pic-preview-wrap">
@@ -549,51 +587,59 @@
                         <div>
                             <label class="btn btn-secondary" for="user-profile-pic-input" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                Bild hochladen
+                                <span data-i18n="btn_upload_pic">Bild hochladen</span>
                             </label>
                             <input type="file" id="user-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'user')">
-                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;">JPG, PNG, HEIC – wird als 256×256 JPEG gespeichert.</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;" data-i18n="profile_pic_desc">JPG, PNG, HEIC – wird als 256×256 JPEG gespeichert.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="card">
-                <div class="card-header">Einstellungen</div>
+                <div class="card-header" data-i18n="nav_settings">Einstellungen</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <span class="form-label">Farbschema</span>
+                        <label class="form-label" data-i18n="settings_language">Sprache / Language</label>
+                        <select id="user-settings-language" class="form-select" onchange="changeAppLanguage(this.value)">
+                            <option value="system" data-i18n="lang_system">System</option>
+                            <option value="de">Deutsch</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-top:20px;">
+                        <span class="form-label" data-i18n="theme_title">Farbschema</span>
                         <div class="settings-flex-row">
-                            <button class="btn btn-secondary" onclick="setTheme('light')">
+                            <button class="btn btn-secondary" onclick="setTheme('light')" data-i18n="theme_light">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                                 Hell
                             </button>
-                            <button class="btn btn-secondary" onclick="setTheme('dark')">
+                            <button class="btn btn-secondary" onclick="setTheme('dark')" data-i18n="theme_dark">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                                 Dunkel
                             </button>
-                            <button class="btn btn-secondary" onclick="setTheme('system')">
+                            <button class="btn btn-secondary" onclick="setTheme('system')" data-i18n="theme_system">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
                                 System
                             </button>
                         </div>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
-                        <label class="form-label">Passwort ändern</label>
+                        <label class="form-label" data-i18n="change_password_title">Passwort ändern</label>
                         <div class="password-wrapper" style="margin-bottom: 12px;">
-                            <input type="password" id="user-old-password" class="form-input has-toggle" placeholder="Altes Passwort">
+                            <input type="password" id="user-old-password" class="form-input has-toggle" data-i18n-placeholder="old_password" placeholder="Altes Passwort">
                             <button type="button" class="password-toggle" onclick="togglePassword('user-old-password', this)" aria-label="Passwort anzeigen">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
                         <div class="password-wrapper">
-                            <input type="password" id="user-new-password" class="form-input has-toggle" placeholder="Neues Passwort">
+                            <input type="password" id="user-new-password" class="form-input has-toggle" data-i18n-placeholder="new_password" placeholder="Neues Passwort">
                             <button type="button" class="password-toggle" onclick="togglePassword('user-new-password', this)" aria-label="Passwort anzeigen">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
                     </div>
-                    <button class="btn btn-secondary btn-block" onclick="changePassword(true)">Passwort ändern</button>
+                    <button class="btn btn-secondary btn-block" onclick="changePassword(true)" data-i18n="btn_change_password">Passwort ändern</button>
                 </div>
             </div>
 
@@ -607,15 +653,15 @@
 <div class="fab-menu" id="fabMenu">
     <button type="button" class="fab-item" onclick="openModal('add-person-modal'); toggleFab()">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-        Person
+        <span data-i18n="btn_add_person">Person</span>
     </button>
     <button type="button" class="fab-item" onclick="openModal('add-donation-modal'); toggleFab()">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"></polyline><rect x="2" y="7" width="20" height="5"></rect><line x1="12" y1="22" x2="12" y2="7"></line><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>
-        Spende
+        <span data-i18n="btn_add_donation">Spende</span>
     </button>
     <button type="button" class="fab-item" onclick="openModal('add-expense-modal'); toggleFab()">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-        Ausgabe
+        <span data-i18n="btn_add_expense">Ausgabe</span>
     </button>
 </div>
 
@@ -624,165 +670,172 @@
 </button>
 
 <nav id="admin-bottom-nav" class="bottom-nav" style="display:none;">
-    <button class="nav-item active" data-tab="overview" onclick="switchTab('overview', this)" aria-label="Übersicht">
+    <button class="nav-item active" data-tab="overview" onclick="switchTab('overview', this)" data-i18n-aria-label="nav_overview" aria-label="Übersicht">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
     </button>
-    <button class="nav-item" data-tab="people-view" onclick="switchTab('people-view', this)" aria-label="Personen">
+    <button class="nav-item" data-tab="people-view" onclick="switchTab('people-view', this)" data-i18n-aria-label="nav_people" aria-label="Personen">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
     </button>
-    <button class="nav-item mobile-fab" onclick="toggleFab()" aria-label="Aktionen" aria-expanded="false" aria-haspopup="true" aria-controls="fabMenu">
+    <button class="nav-item mobile-fab" onclick="toggleFab()" data-i18n-aria-label="user_quick_actions" aria-label="Aktionen" aria-expanded="false" aria-haspopup="true" aria-controls="fabMenu">
         <div class="nav-action-bg">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </div>
     </button>
-    <button id="admin-sys-nav-btn" class="nav-item" data-tab="payment-history" onclick="switchTab('payment-history', this)" aria-label="Historie" style="display:none;">
+    <button id="admin-sys-nav-btn" class="nav-item" data-tab="payment-history" onclick="switchTab('payment-history', this)" data-i18n-aria-label="nav_history" aria-label="Historie" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
     </button>
-    <button id="admin-ai-nav-btn" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" aria-label="KI-Support" style="display:none;">
+    <button id="admin-ai-nav-btn" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" data-i18n-aria-label="nav_ai" aria-label="KI-Support" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
     </button>
     <div id="admin-nav-spacer" class="nav-item" style="display:none; pointer-events:none; opacity: 0.2;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>
     </div>
-    <button class="nav-item" data-tab="settings" onclick="switchTab('settings', this)" aria-label="Einstellungen" style="display:none;">
+    <button class="nav-item" data-tab="settings" onclick="switchTab('settings', this)" data-i18n-aria-label="nav_settings" aria-label="Einstellungen" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
 </nav>
 
 <nav id="user-bottom-nav" class="bottom-nav" style="display:none;">
-    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" aria-label="Startseite">
+    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" data-i18n-aria-label="nav_home" aria-label="Startseite">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
     </button>
-    <button class="nav-item" data-tab="user-history" onclick="switchTab('user-history', this)" aria-label="Historie">
+    <button class="nav-item" data-tab="user-history" onclick="switchTab('user-history', this)" data-i18n-aria-label="nav_history" aria-label="Historie">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
     </button>
-    <button class="nav-item" data-tab="user-requests" onclick="switchTab('user-requests', this)" aria-label="Anfragen">
+    <button class="nav-item" data-tab="user-requests" onclick="switchTab('user-requests', this)" data-i18n-aria-label="nav_requests" aria-label="Anfragen">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
     </button>
     <div id="user-nav-spacer" class="nav-item" style="display:none; pointer-events:none;"></div>
-    <button class="nav-item" data-tab="user-settings" onclick="switchTab('user-settings', this)" aria-label="Einstellungen" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    <button class="nav-item" data-tab="user-settings" onclick="switchTab('user-settings', this)" data-i18n-aria-label="nav_settings" aria-label="Einstellungen" style="display:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
 </nav>
 
 
 <div id="add-person-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-person">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-add-person">Person hinzufügen</span> <button class="close-btn" onclick="closeModal('add-person-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="title-add-person" data-i18n="modal_add_person_title">Person hinzufügen</span> <button class="close-btn" onclick="closeModal('add-person-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div class="form-group">
-            <label class="form-label" for="new-person-name">Name</label>
+            <label class="form-label" for="new-person-name" data-i18n="modal_person_name">Name</label>
             <input type="text" id="new-person-name" class="form-input">
         </div>
         <div class="form-group">
-            <label class="form-label" for="new-person-start">Mitglied Seit</label>
+            <label class="form-label" for="new-person-start" data-i18n="modal_person_start">Mitglied Seit</label>
             <input type="date" id="new-person-start" class="form-input">
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_person_start_desc">
                 Ab diesem Datum werden Beiträge berechnet.
             </div>
         </div>
         <div class="form-group">
-            <label class="form-label" for="new-person-status">Status</label>
+            <label class="form-label" for="new-person-status" data-i18n="modal_person_status">Status</label>
             <select id="new-person-status" class="form-select">
-                <option value="vollverdiener">💼 Vollverdiener</option>
-                <option value="geringverdiener">📉 Geringverdiener</option>
-                <option value="keinverdiener">🎓 Keinverdiener</option>
-                <option value="pausiert">⏸️ Pausiert</option>
+                <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
+                <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
+                <option value="keinverdiener" data-i18n="member_status_none">🎓 Keinverdiener</option>
+                <option value="pausiert" data-i18n="member_status_paused">⏸️ Pausiert</option>
             </select>
         </div>
-        <button id="btn-add-person" class="btn btn-primary btn-block" onclick="addPerson()">Hinzufügen</button>
+        <button id="btn-add-person" class="btn btn-primary btn-block" onclick="addPerson()" data-i18n="btn_add">Hinzufügen</button>
     </div>
 </div>
 
 <div id="change-status-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-change-status">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-change-status">Status Ändern</span> <button class="close-btn" onclick="closeModal('change-status-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="title-change-status" data-i18n="modal_change_status_title">Status Ändern</span> <button class="close-btn" onclick="closeModal('change-status-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div class="form-group">
-            <label class="form-label" for="change-status-select">Neuer Status</label>
+            <label class="form-label" for="change-status-select" data-i18n="modal_new_status">Neuer Status</label>
             <select id="change-status-select" class="form-select">
-                <option value="vollverdiener">💼 Vollverdiener</option>
-                <option value="geringverdiener">📉 Geringverdiener</option>
-                <option value="keinverdiener">🎓 Keinverdiener</option>
-                <option value="pausiert">⏸️ Pausiert</option>
+                <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
+                <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
+                <option value="keinverdiener" data-i18n="member_status_none">🎓 Keinverdiener</option>
+                <option value="pausiert" data-i18n="member_status_paused">⏸️ Pausiert</option>
             </select>
         </div>
         <div class="form-group">
-            <label class="form-label" for="change-status-date">Gültig ab</label>
+            <label class="form-label" for="change-status-date" data-i18n="modal_valid_from">Gültig ab</label>
             <input type="date" id="change-status-date" class="form-input">
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_status_desc">
                 <strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br>
                 <strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).
             </div>
         </div>
-        <button class="btn btn-primary btn-block" onclick="saveStatusChange()">Status Ändern</button>
+        <button class="btn btn-primary btn-block" onclick="saveStatusChange()" data-i18n="btn_save">Status Ändern</button>
     </div>
 </div>
 
 <div id="add-payment-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-payment">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-add-payment">Zahlung buchen</span> <button class="close-btn" onclick="closeModal('add-payment-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="title-add-payment" data-i18n="modal_book_payment_title">Zahlung buchen</span> <button class="close-btn" onclick="closeModal('add-payment-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div class="form-group" style="display:flex; align-items:center; gap:10px;">
             <label class="switch">
-                <input type="checkbox" id="payment-is-standing-order" onchange="document.getElementById('payment-date-label').innerText = this.checked ? 'Startdatum' : 'Datum'">
+                <input type="checkbox" id="payment-is-standing-order" onchange="document.getElementById('payment-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
                 <span class="slider"></span>
             </label>
-            <label for="payment-is-standing-order" style="margin:0; font-weight:600; cursor:pointer">Dauerauftrag</label>
+            <label for="payment-is-standing-order" style="margin:0; font-weight:600; cursor:pointer" data-i18n="modal_standing_order">Dauerauftrag</label>
         </div>
         <div class="form-group">
-            <label class="form-label" for="payment-amount">Betrag (€)</label>
+            <label class="form-label" for="payment-amount" data-i18n="modal_amount">Betrag (€)</label>
             <input type="text" inputmode="decimal" id="payment-amount" class="form-input">
         </div>
         <div class="form-group">
-            <label class="form-label" id="payment-date-label" for="payment-date">Datum</label>
+            <label class="form-label" id="payment-date-label" for="payment-date" data-i18n="modal_date">Datum</label>
             <input type="date" id="payment-date" class="form-input">
         </div>
         <div class="form-group">
-            <label class="form-label" for="payment-desc">Notiz</label>
-            <input type="text" id="payment-desc" class="form-input" placeholder="z.B. Beitrag Mai">
+            <label class="form-label" for="payment-desc" data-i18n="modal_note">Notiz</label>
+            <input type="text" id="payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
         </div>
-        <button id="btn-add-payment" class="btn btn-primary btn-block" onclick="addPayment()">Buchen</button>
+        <button id="btn-add-payment" class="btn btn-primary btn-block" onclick="addPayment()" data-i18n="btn_book">Buchen</button>
     </div>
 </div>
 
 <div id="edit-payment-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-edit-payment">
     <div class="modal-content">
         <div class="modal-header">
-            <span id="title-edit-payment">Zahlung bearbeiten</span>
+            <span id="title-edit-payment" data-i18n="modal_edit_payment_title">Zahlung bearbeiten</span>
             <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
-                <button class="delete-icon-btn" onclick="deleteRecordedPaymentClick()" aria-label="Löschen" style="background: none; border: none; color: var(--danger); padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1">
+                <button class="delete-icon-btn" onclick="deleteRecordedPaymentClick()" data-i18n-aria-label="btn_delete" aria-label="Löschen" style="background: none; border: none; color: var(--danger); padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                 </button>
-                <button class="close-btn" style="margin: 0; padding: 0 4px; line-height: 1;" onclick="closeModal('edit-payment-modal')" aria-label="Schließen">&times;</button>
+                <button class="close-btn" style="margin: 0; padding: 0 4px; line-height: 1;" onclick="closeModal('edit-payment-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
             </div>
         </div>
         <div id="edit-payment-person" style="font-weight:700; margin-bottom:10px;"></div>
         <div class="form-group">
-            <label class="form-label" for="edit-payment-amount">Betrag (€)</label>
+            <label class="form-label" for="edit-payment-amount" data-i18n="modal_amount">Betrag (€)</label>
             <input type="text" inputmode="decimal" id="edit-payment-amount" class="form-input">
         </div>
         <div class="form-group">
-            <label class="form-label" for="edit-payment-date">Datum</label>
+            <label class="form-label" for="edit-payment-date" data-i18n="modal_date">Datum</label>
             <input type="date" id="edit-payment-date" class="form-input">
         </div>
         <div class="form-group">
-            <label class="form-label" for="edit-payment-desc">Notiz</label>
-            <input type="text" id="edit-payment-desc" class="form-input" placeholder="z.B. Beitrag Mai">
+            <label class="form-label" for="edit-payment-desc" data-i18n="modal_note">Notiz</label>
+            <input type="text" id="edit-payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
         </div>
         <div class="form-group" id="edit-payment-issuer-group" style="display:none;">
-            <label class="form-label" for="edit-payment-issuer">Wer / Empfänger</label>
-            <input type="text" id="edit-payment-issuer" class="form-input" placeholder="Name">
+            <label class="form-label" for="edit-payment-issuer" data-i18n="modal_recipient">Wer / Empfänger</label>
+            <input type="text" id="edit-payment-issuer" class="form-input" data-i18n-placeholder="modal_recipient_placeholder" placeholder="Name">
         </div>
-        <button class="btn btn-primary btn-block" onclick="saveEditedPayment()">Speichern</button>
+        <div class="form-group" id="edit-payment-receipts-group" style="display:none; border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px;">
+            <label class="form-label" style="font-weight: 600;" data-i18n="manage_receipts">Belege verwalten</label>
+            <div id="edit-payment-receipts-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
+            
+            <label class="form-label" for="edit-payment-new-receipt" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 10px;" data-i18n="add_receipts">Beleg(e) hinzufügen</label>
+            <input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif" class="form-input" multiple>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="saveEditedPayment()" data-i18n="btn_save">Speichern</button>
     </div>
 </div>
 
 <div id="confirm-delete-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-confirm-delete" style="z-index: 3000;">
     <div class="modal-content" style="max-width: 400px; text-align: center; padding: 25px;">
         <div style="font-size: 2.5rem; margin-bottom: 15px; color: var(--danger);">⚠️</div>
-        <h3 id="title-confirm-delete" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; color: var(--text);">Transaktion löschen?</h3>
-        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;">Sind Sie sicher, dass Sie diese Zahlung dauerhaft löschen möchten? Dies kann nicht rückgängig gemacht werden.</p>
+        <h3 id="title-confirm-delete" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; color: var(--text);" data-i18n="modal_delete_trans_title">Transaktion löschen?</h3>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;" data-i18n="modal_delete_trans_desc">Sind Sie sicher, dass Sie diese Zahlung dauerhaft löschen möchten? Dies kann nicht rückgängig gemacht werden.</p>
         <div style="display: flex; gap: 12px;">
-            <button class="btn btn-secondary" style="flex: 1;" onclick="closeModal('confirm-delete-modal')">Abbrechen</button>
-            <button class="btn btn-danger" style="flex: 1; background-color: var(--danger); color: white;" onclick="confirmDeleteRecordedPayment()">Löschen</button>
+            <button class="btn btn-secondary" style="flex: 1;" onclick="closeModal('confirm-delete-modal')" data-i18n="btn_cancel">Abbrechen</button>
+            <button class="btn btn-danger" style="flex: 1; background-color: var(--danger); color: white;" onclick="confirmDeleteRecordedPayment()" data-i18n="btn_delete">Löschen</button>
         </div>
     </div>
 </div>
@@ -790,101 +843,101 @@
 <div id="confirm-delete-person-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-confirm-delete-person" style="z-index: 3000;">
     <div class="modal-content" style="max-width: 400px; text-align: center; padding: 25px;">
         <div style="font-size: 2.5rem; margin-bottom: 15px; color: var(--danger);">⚠️</div>
-        <h3 id="title-confirm-delete-person" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; color: var(--text);">Mitglied löschen?</h3>
-        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;">Sind Sie sicher, dass Sie dieses Mitglied deaktivieren und den Login-Account löschen möchten? Die Zahlungen und das Profilbild bleiben in der Historie erhalten.</p>
+        <h3 id="title-confirm-delete-person" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; color: var(--text);" data-i18n="modal_delete_person_title">Mitglied löschen?</h3>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;" data-i18n="modal_delete_person_desc">Sind Sie sicher, dass Sie dieses Mitglied deaktivieren und den Login-Account löschen möchten? Die Zahlungen und das Profilbild bleiben in der Historie erhalten.</p>
         <div style="display: flex; gap: 12px;">
-            <button class="btn btn-secondary" style="flex: 1;" onclick="closeModal('confirm-delete-person-modal')">Abbrechen</button>
-            <button class="btn btn-danger" style="flex: 1; background-color: var(--danger); color: white;" onclick="confirmDeletePerson()">Löschen</button>
+            <button class="btn btn-secondary" style="flex: 1;" onclick="closeModal('confirm-delete-person-modal')" data-i18n="btn_cancel">Abbrechen</button>
+            <button class="btn btn-danger" style="flex: 1; background-color: var(--danger); color: white;" onclick="confirmDeletePerson()" data-i18n="btn_delete">Löschen</button>
         </div>
     </div>
 </div>
 
 <div id="add-donation-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-donation">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-add-donation">Spende</span> <button class="close-btn" onclick="closeModal('add-donation-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="title-add-donation" data-i18n="btn_add_donation">Spende</span> <button class="close-btn" onclick="closeModal('add-donation-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div class="form-group">
-            <label for="donation-amount" class="form-label">Betrag</label>
-            <input id="donation-amount" class="form-input" type="text" inputmode="decimal" placeholder="Betrag">
+            <label for="donation-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
+            <input id="donation-amount" class="form-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="Betrag">
         </div>
         <div class="form-group">
-            <label for="donation-name" class="form-label">Spender Name</label>
-            <input id="donation-name" class="form-input" placeholder="Spender Name">
+            <label for="donation-name" class="form-label" data-i18n="modal_donor_name">Spender Name</label>
+            <input id="donation-name" class="form-input" data-i18n-placeholder="modal_donor_name" placeholder="Spender Name">
         </div>
         <div class="form-group">
-            <label for="donation-date" class="form-label">Datum</label>
+            <label for="donation-date" class="form-label" data-i18n="modal_date">Datum</label>
             <input type="date" id="donation-date" class="form-input">
         </div>
-        <button id="btn-add-donation" class="btn btn-primary btn-block" onclick="addDonation()">Speichern</button>
+        <button id="btn-add-donation" class="btn btn-primary btn-block" onclick="addDonation()" data-i18n="btn_save">Speichern</button>
     </div>
 </div>
 <div id="add-expense-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-expense">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-add-expense">Ausgabe</span> <button class="close-btn" onclick="closeModal('add-expense-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="title-add-expense" data-i18n="modal_add_expense_title">Ausgabe</span> <button class="close-btn" onclick="closeModal('add-expense-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div class="form-group">
-            <label for="expense-amount" class="form-label">Betrag</label>
-            <input id="expense-amount" class="form-input" type="text" inputmode="decimal" placeholder="Betrag">
+            <label for="expense-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
+            <input id="expense-amount" class="form-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="Betrag">
         </div>
         <div class="form-group">
-            <label for="expense-issuer" class="form-label">Wer?</label>
-            <input id="expense-issuer" class="form-input" placeholder="Wer?">
+            <label for="expense-issuer" class="form-label" data-i18n="modal_expense_who">Wer?</label>
+            <input id="expense-issuer" class="form-input" data-i18n-placeholder="modal_expense_who_placeholder" placeholder="Wer?">
         </div>
         <div class="form-group">
-            <label for="expense-desc" class="form-label">Wofür?</label>
-            <input id="expense-desc" class="form-input" placeholder="Wofür?">
+            <label for="expense-desc" class="form-label" data-i18n="modal_expense_what">Wofür?</label>
+            <input id="expense-desc" class="form-input" data-i18n-placeholder="modal_expense_what_placeholder" placeholder="Wofür?">
         </div>
         <div class="form-group">
-            <label for="expense-date" class="form-label">Datum</label>
+            <label for="expense-date" class="form-label" data-i18n="modal_date">Datum</label>
             <input type="date" id="expense-date" class="form-input">
         </div>
         <div class="form-group">
-            <label for="expense-receipt" class="form-label">Beleg</label>
-            <input type="file" id="expense-receipt" accept="image/*,.heic,.heif" class="form-input">
+            <label class="form-label" for="expense-receipt" data-i18n="modal_expense_receipt">Beleg</label>
+            <input type="file" id="expense-receipt" accept="image/*,.heic,.heif" class="form-input" multiple>
         </div>
-        <button id="btn-add-expense" class="btn btn-primary btn-block" onclick="addExpense()">Speichern</button>
+        <button id="btn-add-expense" class="btn btn-primary btn-block" onclick="addExpense()" data-i18n="btn_save">Speichern</button>
     </div>
 </div>
 
 <div id="transaction-details-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-transaction-details">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-transaction-details">Details</span> <button class="close-btn" onclick="closeModal('transaction-details-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="title-transaction-details" data-i18n="modal_details_title">Details</span> <button class="close-btn" onclick="closeModal('transaction-details-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div id="transaction-details-content"></div>
     </div>
 </div>
 
 <div id="end-standing-order-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-end-so">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-end-so">Dauerauftrag verwalten</span> <button class="close-btn" onclick="closeModal('end-standing-order-modal')" aria-label="Schließen">&times;</button></div>
-        <p style="margin-bottom:15px; color:var(--text-secondary); font-size:0.9rem;">Wann soll dieser Dauerauftrag enden?</p>
+        <div class="modal-header"><span id="title-end-so" data-i18n="modal_end_so_title">Dauerauftrag verwalten</span> <button class="close-btn" onclick="closeModal('end-standing-order-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
+        <p style="margin-bottom:15px; color:var(--text-secondary); font-size:0.9rem;" data-i18n="modal_end_so_desc">Wann soll dieser Dauerauftrag enden?</p>
 
         <div class="form-group">
-            <label class="form-label" for="end-so-date">Enddatum</label>
+            <label class="form-label" for="end-so-date" data-i18n="modal_end_so_date">Enddatum</label>
             <input type="date" id="end-so-date" class="form-input">
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_end_so_desc_help">
                 Zahlungen werden nur bis zu diesem Datum erstellt.
             </div>
         </div>
 
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px;">
-            <button class="btn btn-primary btn-block" onclick="saveStandingOrderEnd()">Beenden / Speichern</button>
+            <button class="btn btn-primary btn-block" onclick="saveStandingOrderEnd()" data-i18n="modal_end_so_btn">Beenden / Speichern</button>
         </div>
         <button class="btn btn-danger btn-block" onclick="deleteStandingOrderCompletely()" style="margin-top:15px; background:none; border:1px solid var(--danger); color:var(--danger);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            Eintrag ganz löschen
+            <span data-i18n="modal_end_so_delete_btn">Eintrag ganz löschen</span>
         </button>
     </div>
 </div>
 
 <div id="user-request-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="req-modal-title">
     <div class="modal-content">
-        <div class="modal-header"><span id="req-modal-title">Anfrage</span> <button class="close-btn" onclick="closeModal('user-request-modal')" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="req-modal-title" data-i18n="user_request_modal_title">Anfrage</span> <button class="close-btn" onclick="closeModal('user-request-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div id="req-form-content"></div>
-        <button id="btn-submit-request" class="btn btn-primary btn-block" onclick="submitUserRequest()" style="margin-top:15px;">Absenden</button>
+        <button id="btn-submit-request" class="btn btn-primary btn-block" onclick="submitUserRequest()" style="margin-top:15px;" data-i18n="btn_submit">Absenden</button>
     </div>
 </div>
 
 <div id="profile-crop-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-crop-title">
     <div class="modal-content" style="max-width:420px;">
-        <div class="modal-header"><span id="profile-crop-title">Profilbild zuschneiden</span> <button class="close-btn" onclick="cancelProfileCrop()" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header"><span id="profile-crop-title" data-i18n="profile_crop_title">Profilbild zuschneiden</span> <button class="close-btn" onclick="cancelProfileCrop()" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
         <div class="profile-crop-container">
             <div class="profile-crop-viewport" id="profileCropViewport">
                 <img id="profileCropImage" alt="Crop preview" draggable="false">
@@ -895,11 +948,11 @@
                 <input type="range" id="profileCropZoom" min="1" max="3" step="0.01" value="1" style="flex:1;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
             </div>
-            <p style="font-size:0.82rem; color:var(--text-secondary); margin:10px 0 0 0; text-align:center;">Bild verschieben und zoomen, um den Bildausschnitt zu wählen</p>
+            <p style="font-size:0.82rem; color:var(--text-secondary); margin:10px 0 0 0; text-align:center;" data-i18n="profile_crop_desc">Bild verschieben und zoomen, um den Bildausschnitt zu wählen</p>
         </div>
         <div style="display:flex; gap:10px; margin-top:15px;">
-            <button class="btn btn-secondary" style="flex:1" onclick="cancelProfileCrop()">Abbrechen</button>
-            <button class="btn btn-primary" style="flex:1" id="btn-confirm-crop" onclick="confirmProfileCrop()">Speichern</button>
+            <button class="btn btn-secondary" style="flex:1" onclick="cancelProfileCrop()" data-i18n="btn_cancel">Abbrechen</button>
+            <button class="btn btn-primary" style="flex:1" id="btn-confirm-crop" onclick="confirmProfileCrop()" data-i18n="btn_save">Speichern</button>
         </div>
     </div>
 </div>
@@ -911,12 +964,12 @@
                 <img src="assets/church-logo.svg" alt="App Logo" id="login-app-logo">
                 <h2 id="login-app-name">Nova</h2>
             </div>
-            <p id="auth-subtitle" class="login-subtitle">Melden Sie sich an, um fortzufahren</p>
+            <p id="auth-subtitle" class="login-subtitle" data-i18n="login_subtitle">Melden Sie sich an, um fortzufahren</p>
         </div>
 
         <div class="auth-tabs">
-            <button class="auth-tab-btn active" onclick="showLogin()" id="btn-show-login">Login</button>
-            <button class="auth-tab-btn" onclick="showRegister()" id="btn-show-register">Registrieren</button>
+            <button class="auth-tab-btn active" onclick="showLogin()" id="btn-show-login" data-i18n="login_tab">Login</button>
+            <button class="auth-tab-btn" onclick="showRegister()" id="btn-show-register" data-i18n="register_tab">Registrieren</button>
         </div>
 
         <!-- Login Form -->
@@ -926,39 +979,39 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                 </div>
                 <label for="login-email" class="sr-only">E-Mail</label>
-                <input type="email" id="login-email" class="form-input" placeholder="E-Mail" autocomplete="username" required>
+                <input type="email" id="login-email" class="form-input" data-i18n-placeholder="smtp_user" placeholder="E-Mail" autocomplete="username" required>
             </div>
             <div class="input-with-icon password-wrapper" style="margin-bottom: 24px;">
                 <div class="input-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 </div>
                 <label for="login-password" class="sr-only">Passwort</label>
-                <input type="password" id="login-password" class="form-input has-toggle" placeholder="Passwort" autocomplete="current-password" required>
+                <input type="password" id="login-password" class="form-input has-toggle" data-i18n-placeholder="smtp_pass" placeholder="Passwort" autocomplete="current-password" required>
                 <button type="button" class="password-toggle" onclick="togglePassword('login-password', this)" aria-label="Passwort anzeigen">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </button>
             </div>
-            <button id="btn-login" type="submit" class="btn btn-primary btn-block">Anmelden</button>
+            <button id="btn-login" type="submit" class="btn btn-primary btn-block" data-i18n="btn_login">Anmelden</button>
         </form>
 
         <!-- Register Form -->
         <form id="register-form" style="display:none;" onsubmit="event.preventDefault(); attemptRegister()">
             <div style="background: var(--surface-alt); padding: 12px; border-radius: 12px; margin-bottom: 16px; font-size: 0.9rem; text-align: center; border: 1px dashed var(--border);">
-                <p id="reg-code-desc" style="color: var(--text-secondary);">Bitte geben Sie den aktuellen 6-stelligen Registrierungscode ein.</p>
+                <p id="reg-code-desc" style="color: var(--text-secondary);" data-i18n="register_code_desc">Bitte geben Sie den aktuellen 6-stelligen Registrierungscode ein.</p>
             </div>
             <div class="input-with-icon" style="margin-bottom: 12px;">
                 <div class="input-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                 </div>
                 <label for="reg-code" class="sr-only">Registrierungscode</label>
-                <input type="text" id="reg-code" class="form-input" placeholder="6-stelliger Code" maxlength="6" inputmode="numeric" pattern="[0-9]*" required autocomplete="off" aria-describedby="reg-code-desc">
+                <input type="text" id="reg-code" class="form-input" data-i18n-placeholder="register_code_placeholder" placeholder="6-stelliger Code" maxlength="6" inputmode="numeric" pattern="[0-9]*" required autocomplete="off" aria-describedby="reg-code-desc">
             </div>
             <div class="input-with-icon" style="margin-bottom: 12px;">
                 <div class="input-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                 </div>
                 <label for="reg-email" class="sr-only">E-Mail</label>
-                <input type="email" id="reg-email" class="form-input" placeholder="E-Mail" autocomplete="username" required>
+                <input type="email" id="reg-email" class="form-input" data-i18n-placeholder="smtp_user" placeholder="E-Mail" autocomplete="username" required>
             </div>
             <div style="display: flex; gap: 12px; margin-bottom: 12px;">
                 <div class="input-with-icon" style="flex: 1;">
@@ -966,12 +1019,12 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                     </div>
                     <label for="reg-firstname" class="sr-only">Vorname</label>
-                    <input type="text" id="reg-firstname" class="form-input" placeholder="Vorname" autocomplete="given-name" required>
+                    <input type="text" id="reg-firstname" class="form-input" data-i18n-placeholder="setup_admin_first_name" placeholder="Vorname" autocomplete="given-name" required>
                 </div>
                 <div class="input-with-icon" style="flex: 1;">
                     <div class="input-icon" style="display: none;"></div>
                     <label for="reg-lastname" class="sr-only">Nachname</label>
-                    <input type="text" id="reg-lastname" class="form-input" placeholder="Nachname" autocomplete="family-name" required style="padding-left: 12px;">
+                    <input type="text" id="reg-lastname" class="form-input" data-i18n-placeholder="setup_admin_last_name" placeholder="Nachname" autocomplete="family-name" required style="padding-left: 12px;">
                 </div>
             </div>
             <div class="input-with-icon password-wrapper" style="margin-bottom: 12px;">
@@ -979,9 +1032,9 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 </div>
                 <label for="reg-pass1" class="sr-only">Passwort (min 6 Zeichen)</label>
-                <input type="password" id="reg-pass1" class="form-input has-toggle" placeholder="Passwort (min 6)" autocomplete="new-password" required minlength="6">
+                <input type="password" id="reg-pass1" class="form-input has-toggle" data-i18n-placeholder="register_pass_placeholder" placeholder="Passwort (min 6)" autocomplete="new-password" required minlength="6">
                 <button type="button" class="password-toggle" onclick="togglePassword('reg-pass1', this)" aria-label="Passwort anzeigen">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </button>
             </div>
             <div class="input-with-icon password-wrapper" style="margin-bottom: 24px;">
@@ -989,12 +1042,12 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 </div>
                 <label for="reg-pass2" class="sr-only">Passwort wiederholen</label>
-                <input type="password" id="reg-pass2" class="form-input has-toggle" placeholder="Passwort wiederholen" autocomplete="new-password" required minlength="6">
+                <input type="password" id="reg-pass2" class="form-input has-toggle" data-i18n-placeholder="setup_admin_password_confirm" placeholder="Passwort wiederholen" autocomplete="new-password" required minlength="6">
                 <button type="button" class="password-toggle" onclick="togglePassword('reg-pass2', this)" aria-label="Passwort anzeigen">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </button>
             </div>
-            <button type="submit" class="btn btn-primary btn-block">Registrieren</button>
+            <button type="submit" class="btn btn-primary btn-block" data-i18n="register_tab">Registrieren</button>
         </form>
         
         <div id="auth-error" style="color: var(--danger); text-align: center; margin-top: 15px; display: none; font-weight: bold;"></div>
