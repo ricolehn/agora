@@ -3,7 +3,7 @@
   <h1>Nova</h1>
   <p>
     <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPLv3" /></a>
-    <a href="https://ghcr.io/ricouhd/nova"><img src="https://img.shields.io/badge/GHCR-Ready-brightgreen.svg?logo=docker" alt="GHCR Ready" /></a>
+    <a href="https://ghcr.io/ricolehn/nova"><img src="https://img.shields.io/badge/GHCR-Ready-brightgreen.svg?logo=docker" alt="GHCR Ready" /></a>
   </p>
 </div>
 
@@ -32,7 +32,7 @@ To run Nova, pull the latest image and start a container. Nova now keeps general
 That makes it easy to place `/app/db` on faster cache/SSD storage while keeping the rest on larger HDD-backed storage.
 
 ```bash
-docker pull ghcr.io/ricouhd/nova:latest
+docker pull ghcr.io/ricolehn/nova:latest
 
 docker run -d \
   -p 3000:3000 \
@@ -40,7 +40,7 @@ docker run -d \
   -v /path/to/your/cache:/app/db \
   --name nova-app \
   --restart unless-stopped \
-  ghcr.io/ricouhd/nova:latest
+  ghcr.io/ricolehn/nova:latest
 ```
 
 *Replace `/path/to/your/storage` and `/path/to/your/cache` with directories on your host machine to ensure your data survives container restarts.*
@@ -59,7 +59,7 @@ docker run -d \
   -v /path/to/your/frontend:/app/html \
   --name nova-app \
   --restart unless-stopped \
-  ghcr.io/ricouhd/nova:latest
+  ghcr.io/ricolehn/nova:latest
 ```
 
 *When mapping `/app/html`, Nova automatically syncs the bundled frontend files from the image into that directory on every start so that image upgrades take effect without removing the volume. Files that were removed in a newer image version are cleaned up automatically.*
@@ -73,7 +73,7 @@ docker run -d \
 Nova is designed to be fully updateable through Docker image upgrades. When you pull a new image and recreate the container, all changes — backend code, frontend files, and the embedded PocketBase binary — are applied automatically. Your data in `/app/data` and `/app/db` is preserved across updates.
 
 ```bash
-docker pull ghcr.io/ricouhd/nova:latest
+docker pull ghcr.io/ricolehn/nova:latest
 docker stop nova-app
 docker rm nova-app
 docker run -d \
@@ -82,7 +82,7 @@ docker run -d \
   -v /path/to/your/cache:/app/db \
   --name nova-app \
   --restart unless-stopped \
-  ghcr.io/ricouhd/nova:latest
+  ghcr.io/ricolehn/nova:latest
 ```
 
 **What happens during an update:**

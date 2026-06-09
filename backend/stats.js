@@ -24,6 +24,12 @@ async function aggregateStats(appConfig) {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const todayY = today.getFullYear();
+  const todayM = String(today.getMonth() + 1).padStart(2, '0');
+  const todayD = String(today.getDate()).padStart(2, '0');
+  const todayStr = `${todayY}-${todayM}-${todayD}`;
+
   const ninetyDaysAgo = new Date(today);
   ninetyDaysAgo.setDate(today.getDate() - 90);
 
@@ -34,6 +40,15 @@ async function aggregateStats(appConfig) {
 
   let currentBalance = 0;
   const eventsByDay = {};
+
+  // Helper to safely extract YYYY-MM-DD from Strings or Date Objects consistently in local time
+  const toDateStr = (d) => {
+    if (!d) return '1970-01-01'; // Fallback for legacy items so they are included in history
+    if (d instanceof Date) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return String(d).slice(0, 10);
+  };
 
   const processEvent = (amount, dateStr) => {
     if (!dateStr) return;
@@ -46,40 +61,47 @@ async function aggregateStats(appConfig) {
 
   people.forEach(record => {
     const p = record.data;
-    if (!p) return;
-    const pTotal = parseFloat(p.totalPaid || 0);
-    totalInc += pTotal;
+    if (!p || !Array.isArray(p.payments)) return;
 
-    if (startStr) {
-      if (Array.isArray(p.payments)) {
-        p.payments.forEach(pay => {
-          if (pay.date >= startStr) periodInc += parseFloat(pay.amount);
-          processEvent(parseFloat(pay.amount), pay.date);
-        });
+    p.payments.forEach(pay => {
+      const payDateStr = toDateStr(pay.date);
+      if (payDateStr > todayStr) return; // Exclude strictly future payments
+
+      const amount = Number(String(pay.amount || 0).replace(',', '.'));
+      totalInc += amount;
+
+      if (!startStr || payDateStr >= startStr) {
+        periodInc += amount;
       }
-    } else {
-      periodInc += pTotal;
-      if (Array.isArray(p.payments)) {
-        p.payments.forEach(pay => {
-          processEvent(parseFloat(pay.amount), pay.date);
-        });
-      }
-    }
+      processEvent(amount, payDateStr);
+    });
   });
 
   donations.forEach(d => {
-    const amount = parseFloat(d.amount);
+    const dDateStr = toDateStr(d.date);
+    if (dDateStr > todayStr) return; // Exclude future donations
+
+    const amount = Number(String(d.amount || 0).replace(',', '.'));
     totalInc += amount;
-    if (!startStr || d.date >= startStr) periodInc += amount;
-    processEvent(amount, d.date);
+
+    if (!startStr || dDateStr >= startStr) {
+      periodInc += amount;
+    }
+    processEvent(amount, dDateStr);
   });
 
   expenses.forEach(record => {
     const e = record.data || record;
-    const amount = parseFloat(e.amount);
+    const eDateStr = toDateStr(e.date);
+    if (eDateStr > todayStr) return; // Exclude future expenses
+
+    const amount = Number(String(e.amount || 0).replace(',', '.'));
     totalExp += amount;
-    if (!startStr || e.date >= startStr) periodExp += amount;
-    processEvent(-amount, e.date);
+
+    if (!startStr || eDateStr >= startStr) {
+      periodExp += amount;
+    }
+    processEvent(-amount, eDateStr);
   });
 
   const totalBalance = totalInc - totalExp;
@@ -101,20 +123,20 @@ async function aggregateStats(appConfig) {
       currentBalance += eventsByDay[dayStr];
     }
 
-    dataPoints.push({ x: i, y: currentBalance, date: d });
+    dataPoints.push({ x: i, y: Math.round(currentBalance * 100) / 100, date: d });
 
     if (currentBalance < minVal) minVal = currentBalance;
     if (currentBalance > maxVal) maxVal = currentBalance;
   }
 
   return {
-    totalBalance,
-    totalIncome: periodInc,
-    totalExpenses: periodExp,
+    totalBalance: Math.round(totalBalance * 100) / 100,
+    totalIncome: Math.round(periodInc * 100) / 100,
+    totalExpenses: Math.round(periodExp * 100) / 100,
     chartData: {
       dataPoints,
-      minVal,
-      maxVal
+      minVal: Math.round(minVal * 100) / 100,
+      maxVal: Math.round(maxVal * 100) / 100
     }
   };
 }

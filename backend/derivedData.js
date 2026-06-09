@@ -179,7 +179,7 @@ function calculateTimeRemaining(person, paidUntil, preCalcCredit, settings) {
          if (so.endDate && so.endDate < todayStr) return false;
          return true;
     });
-    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
+    activeSOs.forEach(so => totalSOAmount += Number(String(so.amount || 0).replace(',', '.')));
     const hasActiveSO = activeSOs.length > 0;
 
     if (!paidUntil) {
@@ -310,7 +310,7 @@ function isPaymentInCurrentMonth(paymentDate, today) {
 
 function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
     const payments = person.payments || [];
-    const soAmount = parseFloat(standingOrder.amount || 0);
+    const soAmount = Number(String(standingOrder.amount || 0).replace(',', '.'));
     const soIdPrefix = standingOrder.id ? `auto_${standingOrder.id}_` : null;
 
     return payments.some((payment) => {
@@ -323,7 +323,7 @@ function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
         }
 
         const isAutoLike = payment.isAuto === true || String(payment.description || '').includes('(Auto)');
-        const amountMatches = Math.abs(parseFloat(payment.amount || 0) - soAmount) < AMOUNT_COMPARISON_EPSILON;
+        const amountMatches = Math.abs(Number(String(payment.amount || 0).replace(',', '.')) - soAmount) < AMOUNT_COMPARISON_EPSILON;
         return isAutoLike && amountMatches;
     });
 }
@@ -358,7 +358,7 @@ function calculateAnticipatedStandingOrderPayment(person, today = new Date()) {
 
         // Grace period only for upcoming (or today) executions in the current month.
         if (dueDate >= todayStart) {
-            anticipated += parseFloat(so.amount || 0);
+            anticipated += Number(String(so.amount || 0).replace(',', '.'));
         }
     }
 

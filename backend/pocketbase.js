@@ -534,7 +534,7 @@ function calculateTotalPaid(payments) {
   const list = normalizeRecordListInput(payments);
   let sum = 0;
   for (let i = 0; i < list.length; i++) {
-    const amount = Number(list[i]?.amount);
+    const amount = Number(String(list[i]?.amount || 0).replace(',', '.'));
     if (Number.isFinite(amount)) sum += amount;
   }
   return sum;

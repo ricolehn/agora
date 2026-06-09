@@ -52,7 +52,7 @@ function checkAndExecuteStandingOrders(person) {
             if (!existingPaymentIds.has(paymentId)) {
                 payments.push({
                     id: paymentId,
-                    amount: parseFloat(currentSO.amount),
+                    amount: Number(String(currentSO.amount || 0).replace(',', '.')),
                     date: dateStr,
                     description: (currentSO.note || 'Dauerauftrag') + ' (Auto)',
                     isAuto: true
