@@ -1,4 +1,5 @@
 const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords } = require('./pocketbase');
+const { toDateStr } = require('./utils/date');
 
 const AI_STATE_KEY = 'ai_config';
 
@@ -52,14 +53,6 @@ async function buildDatabaseSnapshot(appConfig) {
     const todayM = String(today.getMonth() + 1).padStart(2, '0');
     const todayD = String(today.getDate()).padStart(2, '0');
     const todayStr = `${todayY}-${todayM}-${todayD}`;
-
-    const toDateStr = (d) => {
-      if (!d) return '1970-01-01'; // Fallback for legacy items
-      if (d instanceof Date) {
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      }
-      return String(d).slice(0, 10);
-    };
 
     // Aggregate summary statistics
     const membersByStatus = {};
