@@ -358,5 +358,8 @@
   "report_tier_detailed": "Comprehensive",
   "report_download_pdf": "Download PDF",
   "report_no_data": "No data found for the selected period",
-  "report_transactions_select": "Select Transactions"
+  "report_transactions_select": "Select Transactions",
+  "report_outstanding_till_today": "Outstanding (till today)",
+  "report_status_good": "Good (paid up)"
 }
+

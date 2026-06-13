@@ -2988,7 +2988,8 @@ window.openExportReportModal = async function() {
         // Populate single person selector
         const personSelect = document.getElementById('report-person-select');
         if (personSelect) {
-            personSelect.innerHTML = people.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+            const sortedPeople = [...people].sort((a, b) => a.name.localeCompare(b.name));
+            personSelect.innerHTML = sortedPeople.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
         }
         document.getElementById('report-person-date-from').value = `${thisYear}-01-01`;
         document.getElementById('report-person-date-to').value = today;
@@ -3067,6 +3068,7 @@ window.updateReportPreview = function() {
     
     let filtered = [];
     let filterDesc = '';
+    let selectedPerson = null;
     
     if (type === 'annual') {
         const year = document.getElementById('report-year-select').value;
@@ -3084,7 +3086,7 @@ window.updateReportPreview = function() {
         filterDesc = currentLang === 'de' ? 'Manuelle Auswahl' : 'Manual Selection';
     } else if (type === 'person') {
         const selectedPersonId = document.getElementById('report-person-select').value;
-        const selectedPerson = people.find(p => String(p.id) === String(selectedPersonId));
+        selectedPerson = people.find(p => String(p.id) === String(selectedPersonId));
         const personName = selectedPerson ? selectedPerson.name : '';
         
         const from = document.getElementById('report-person-date-from').value;
@@ -3137,12 +3139,14 @@ window.updateReportPreview = function() {
     });
     const netBalance = totalIncome - totalExpenses;
     
+    const appName = config.appName || "Nova";
+    
     // Header HTML
     const headerHtml = `
         <div class="preview-header">
             <div class="preview-logo">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #1e3a8a;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                <span>Nova</span>
+                <span>${escapeHtml(appName)}</span>
             </div>
             <div class="preview-meta">
                 <div>${currentLang === 'de' ? 'Erstellt am:' : 'Created on:'} ${formatDateFast(getTodayStr())}</div>
@@ -3157,6 +3161,33 @@ window.updateReportPreview = function() {
         </div>
     `;
     
+    let thirdCardHtml = '';
+    if (type === 'person') {
+        const overdueAmount = selectedPerson ? (selectedPerson._overdueAmount || 0) : 0;
+        if (overdueAmount > 0) {
+            thirdCardHtml = `
+                <div class="preview-stat-card">
+                    <div class="preview-stat-label">${t('report_outstanding_till_today', 'Ausstehend (bis heute)')}</div>
+                    <div class="preview-stat-value expense">${formatCurrency(overdueAmount)} €</div>
+                </div>
+            `;
+        } else {
+            thirdCardHtml = `
+                <div class="preview-stat-card">
+                    <div class="preview-stat-label">${t('status_label', 'Status')}</div>
+                    <div class="preview-stat-value income">${t('report_status_good', 'Kein Rückstand')}</div>
+                </div>
+            `;
+        }
+    } else {
+        thirdCardHtml = `
+            <div class="preview-stat-card">
+                <div class="preview-stat-label">Saldo</div>
+                <div class="preview-stat-value balance ${netBalance >= 0 ? 'income' : 'expense'}">${netBalance >= 0 ? '+' : ''}${formatCurrency(netBalance)} €</div>
+            </div>
+        `;
+    }
+    
     // Stats HTML
     const statsHtml = `
         <div class="preview-stats-grid">
@@ -3168,10 +3199,7 @@ window.updateReportPreview = function() {
                 <div class="preview-stat-label">${t('nav_expenses', 'Ausgaben')}</div>
                 <div class="preview-stat-value expense">-${formatCurrency(totalExpenses)} €</div>
             </div>
-            <div class="preview-stat-card">
-                <div class="preview-stat-label">Saldo</div>
-                <div class="preview-stat-value balance ${netBalance >= 0 ? 'income' : 'expense'}">${netBalance >= 0 ? '+' : ''}${formatCurrency(netBalance)} €</div>
-            </div>
+            ${thirdCardHtml}
         </div>
     `;
     
@@ -3280,9 +3308,12 @@ window.downloadReportPdf = function() {
 
     setButtonLoading('btn-download-pdf', true, currentLang === 'de' ? 'Generiere...' : 'Generating...');
     
+    const appName = config.appName || "Nova";
+    const safeAppName = appName.replace(/[^a-zA-Z0-9]/g, '_');
+    
     const opt = {
         margin: 15,
-        filename: `Nova_Finanzbericht_${getTodayStr()}.pdf`,
+        filename: `${safeAppName}_Finanzbericht_${getTodayStr()}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },

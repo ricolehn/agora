@@ -358,5 +358,8 @@
   "report_tier_detailed": "Ausführlich",
   "report_download_pdf": "PDF herunterladen",
   "report_no_data": "Keine Daten im gewählten Zeitraum",
-  "report_transactions_select": "Transaktionen auswählen"
+  "report_transactions_select": "Transaktionen auswählen",
+  "report_outstanding_till_today": "Ausstehend (bis heute)",
+  "report_status_good": "Kein Rückstand"
 }
+
