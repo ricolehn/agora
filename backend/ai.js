@@ -65,7 +65,7 @@ async function buildDatabaseSnapshot(appConfig) {
       for (const pay of payments) {
         const payDateStr = toDateStr(pay.date);
         if (payDateStr <= todayStr) {
-          totalPaidAcrossMembers += Number(String(pay.amount || 0).replace(',', '.'));
+          totalPaidAcrossMembers += Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
         }
       }
     }
@@ -74,7 +74,7 @@ async function buildDatabaseSnapshot(appConfig) {
     for (const e of expenses) {
       const eDateStr = toDateStr(e.date);
       if (eDateStr <= todayStr) {
-        totalExpenses += Number(String(e.amount || 0).replace(',', '.'));
+        totalExpenses += Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
       }
     }
 
@@ -82,7 +82,7 @@ async function buildDatabaseSnapshot(appConfig) {
     for (const d of Object.values(donations || {})) {
       const dDateStr = toDateStr(d.date);
       if (dDateStr <= todayStr) {
-        totalDonations += Number(String(d.amount || 0).replace(',', '.'));
+        totalDonations += Number(String(d.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
       }
     }
 
@@ -95,11 +95,19 @@ async function buildDatabaseSnapshot(appConfig) {
         status: p.status || '',
         memberSince: p.memberSince || '',
         originalMemberSince: p.originalMemberSince || p.memberSince || '',
-        totalPaid: Math.round(Number(String(p.totalPaid || 0).replace(',', '.')) * 100) / 100,
+        totalPaid: Math.round(Number(String(p.totalPaid || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
         payments: payments.map((pay) => ({
-          amount: Math.round(Number(String(pay.amount || 0).replace(',', '.')) * 100) / 100,
+          amount: Math.round(Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
           date: pay.date || '',
           description: pay.description || ''
+        })),
+        standingOrders: (Array.isArray(p.data?.standingOrders) ? p.data.standingOrders : []).map((so) => ({
+          id: so.id || '',
+          amount: Math.round(Number(String(so.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+          startDate: so.startDate || '',
+          endDate: so.endDate || '',
+          note: so.note || '',
+          lastAutoPayment: so.lastAutoPayment || ''
         })),
         statusHistory: (Array.isArray(p.data?.statusHistory) ? p.data.statusHistory : []).map(h => ({
           status: h.status || '',
@@ -112,7 +120,7 @@ async function buildDatabaseSnapshot(appConfig) {
     // Build expense records (no receipt field)
     const expenseRecords = expenses.map((e) => ({
       id: e.expenseKey,
-      amount: Math.round(Number(String(e.amount || 0).replace(',', '.')) * 100) / 100,
+      amount: Math.round(Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
       date: e.date || '',
       issuer: e.issuer || '',
       description: e.description || ''

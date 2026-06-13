@@ -11,6 +11,7 @@
     <link rel="modulepreload" href="assets/pocketbase-compat.js">
     <link rel="stylesheet" href="assets/style.css">
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 
@@ -471,6 +472,16 @@
         <div id="payment-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-payment-history">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_history">Historie</h2>
+                <button class="btn btn-secondary btn-small" onclick="openExportReportModal()" style="display: flex; align-items: center; gap: 6px;" id="btn-open-export-report">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <span data-i18n="btn_create_report">Bericht erstellen</span>
+                </button>
             </div>
             <div class="form-group">
                 <label for="history-search" class="sr-only" data-i18n="search_placeholder">Historie suchen</label>
@@ -953,6 +964,110 @@
         <div style="display:flex; gap:10px; margin-top:15px;">
             <button class="btn btn-secondary" style="flex:1" onclick="cancelProfileCrop()" data-i18n="btn_cancel">Abbrechen</button>
             <button class="btn btn-primary" style="flex:1" id="btn-confirm-crop" onclick="confirmProfileCrop()" data-i18n="btn_save">Speichern</button>
+        </div>
+    </div>
+</div>
+
+<!-- EXPORT REPORT MODAL -->
+<div id="export-report-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+    <div class="modal-content report-modal-content">
+        <div class="modal-header" style="padding: 20px 24px 10px;">
+            <span id="report-modal-title" data-i18n="report_modal_title">Bericht erstellen / Exportieren</span>
+            <button class="close-btn" onclick="closeModal('export-report-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
+        </div>
+        <div class="report-modal-body">
+            <!-- Left Column: Config Panel -->
+            <div class="report-config-panel">
+                <div class="form-group">
+                    <label class="form-label" for="report-type-select" data-i18n="report_type">Berichtstyp</label>
+                    <select id="report-type-select" class="form-select" onchange="window.onReportTypeChange()">
+                        <option value="annual" data-i18n="report_type_annual" selected>Jahreszusammenfassung</option>
+                        <option value="custom" data-i18n="report_type_custom">Benutzerdefinierter Zeitraum</option>
+                        <option value="manual" data-i18n="report_type_manual">Manuelle Auswahl</option>
+                        <option value="person" data-i18n="report_type_person">Einzelperson</option>
+                    </select>
+                </div>
+                
+                <!-- 1. Year Picker -->
+                <div id="report-year-picker-container" class="form-group">
+                    <label class="form-label" for="report-year-select" data-i18n="report_year">Jahr</label>
+                    <select id="report-year-select" class="form-select" onchange="window.updateReportPreview()">
+                        <!-- Filled dynamically by JS -->
+                    </select>
+                </div>
+                
+                <!-- 2. Custom Date Range Pickers -->
+                <div id="report-date-range-container" class="form-group" style="display: none;">
+                    <div style="display: flex; gap: 10px;">
+                        <div style="flex: 1;">
+                            <label class="form-label" for="report-date-from" data-i18n="report_from">Von</label>
+                            <input type="date" id="report-date-from" class="form-input" onchange="window.updateReportPreview()">
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="form-label" for="report-date-to" data-i18n="report_to">Bis</label>
+                            <input type="date" id="report-date-to" class="form-input" onchange="window.updateReportPreview()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2.5. Single Person Selector -->
+                <div id="report-person-selector-container" class="form-group" style="display: none;">
+                    <label class="form-label" for="report-person-select" data-i18n="report_person">Mitglied / Person</label>
+                    <select id="report-person-select" class="form-select" onchange="window.updateReportPreview()">
+                        <!-- Filled dynamically by JS -->
+                    </select>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <label class="form-label" for="report-person-date-from" data-i18n="report_from">Von</label>
+                            <input type="date" id="report-person-date-from" class="form-input" onchange="window.updateReportPreview()">
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="form-label" for="report-person-date-to" data-i18n="report_to">Bis</label>
+                            <input type="date" id="report-person-date-to" class="form-input" onchange="window.updateReportPreview()">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 3. Manual Transaction Checklist -->
+                <div id="report-manual-checklist-container" class="form-group" style="display: none;">
+                    <label class="form-label" data-i18n="report_transactions_select">Transaktionen auswählen</label>
+                    <div id="report-manual-checklist" class="report-checklist-scroll">
+                        <!-- Filled dynamically by JS -->
+                    </div>
+                </div>
+                
+                <!-- Detail Tiers Dropdown -->
+                <div class="form-group">
+                    <label class="form-label" for="report-tier-select" data-i18n="report_detail_tier">Detailgrad</label>
+                    <select id="report-tier-select" class="form-select" onchange="window.updateReportPreview()">
+                        <option value="compact" data-i18n="report_tier_compact">Kompakt</option>
+                        <option value="standard" data-i18n="report_tier_standard" selected>Standard</option>
+                        <option value="detailed" data-i18n="report_tier_detailed">Ausführlich</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Right Column: Live A4 Preview Viewport -->
+            <div class="report-preview-viewport">
+                <div class="report-preview-scale-container">
+                    <div class="report-print-preview-wrapper">
+                        <div id="report-print-preview" class="print-preview-canvas">
+                            <!-- Filled dynamically by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="padding: 15px 24px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; background: var(--surface);">
+            <button class="btn btn-secondary" onclick="closeModal('export-report-modal')" data-i18n="btn_cancel">Abbrechen</button>
+            <button id="btn-download-pdf" class="btn btn-primary" style="background: linear-gradient(90deg, #10b981 0%, #059669 100%);" onclick="window.downloadReportPdf()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span data-i18n="report_download_pdf">PDF herunterladen</span>
+            </button>
         </div>
     </div>
 </div>

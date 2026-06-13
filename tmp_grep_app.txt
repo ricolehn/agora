@@ -1,0 +1,9 @@
+1963:    const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(',', '.'));
+3347:    const amt = parseFloat(document.getElementById('payment-amount').value.replace(',', '.'));
+3408:    const amt = parseFloat(document.getElementById('donation-amount').value.replace(',', '.'));
+3436:    const amt = parseFloat(document.getElementById('expense-amount').value.replace(',', '.'));
+4409:    settings.vollverdiener = parseFloat(document.getElementById('rate-vollverdiener').value.replace(',', '.'));
+4410:    settings.geringverdiener = parseFloat(document.getElementById('rate-geringverdiener').value.replace(',', '.'));
+4411:    settings.keinverdiener = parseFloat(document.getElementById('rate-keinverdiener').value.replace(',', '.'));
+4792:        const amount = document.getElementById('req-amount').value.replace(',', '.');
+4812:        const amount = document.getElementById('req-amount').value.replace(',', '.');

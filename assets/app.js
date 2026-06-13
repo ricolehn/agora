@@ -1960,7 +1960,7 @@ window.editRecordedPaymentByIndex = function(index) {
 window.saveEditedPayment = async () => {
     if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
 
-    const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(',', '.'));
+    const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(/\.(?=.*,)/g, '').replace(',', '.'));
     const date = document.getElementById('edit-payment-date').value;
     const description = document.getElementById('edit-payment-desc').value.trim();
 
@@ -2929,6 +2929,403 @@ window.loadMoreHistory = function() {
     window.renderHistoryTab(false);
 };
 
+/* --- REPORT GENERATION & PDF EXPORT LOGIC --- */
+let allReportTransactions = [];
+const selectedManualTransactionIds = new Set();
+
+window.openExportReportModal = async function() {
+    const previewContainer = document.getElementById('report-print-preview');
+    if (previewContainer) {
+        previewContainer.innerHTML = `
+            <div class="report-placeholder-container">
+                <div class="spinner" style="margin: 0 auto 15px;"></div>
+                <p style="font-weight: 600; margin: 0;">${t('loading', 'Lade Daten...')}</p>
+            </div>
+        `;
+    }
+    
+    // Open the modal immediately so user sees loading state
+    openModal('export-report-modal');
+    
+    try {
+        let pageNum = 1;
+        let totalPages = 1;
+        allReportTransactions = [];
+        do {
+            const response = await fetchWithAuth(`${config.apiBaseUrl}/transactions?page=${pageNum}&perPage=500`);
+            if (!response.ok) throw new Error('Failed to fetch transactions');
+            const data = await response.json();
+            allReportTransactions = allReportTransactions.concat(data.items || []);
+            totalPages = data.totalPages || 1;
+            pageNum++;
+        } while (pageNum <= totalPages);
+        
+        // Find unique years of transactions
+        const years = new Set();
+        allReportTransactions.forEach(tData => {
+            if (tData.date) {
+                const y = tData.date.substring(0, 4);
+                if (y && !isNaN(y)) years.add(parseInt(y, 10));
+            }
+        });
+        
+        if (years.size === 0) {
+            years.add(new Date().getFullYear());
+        }
+        
+        const sortedYears = Array.from(years).sort((a, b) => b - a);
+        const yearSelect = document.getElementById('report-year-select');
+        if (yearSelect) {
+            yearSelect.innerHTML = sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
+        }
+        
+        // Set default custom date range
+        const today = getTodayStr();
+        const thisYear = new Date().getFullYear();
+        document.getElementById('report-date-from').value = `${thisYear}-01-01`;
+        document.getElementById('report-date-to').value = today;
+        
+        // Populate single person selector
+        const personSelect = document.getElementById('report-person-select');
+        if (personSelect) {
+            personSelect.innerHTML = people.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+        }
+        document.getElementById('report-person-date-from').value = `${thisYear}-01-01`;
+        document.getElementById('report-person-date-to').value = today;
+        
+        // Reset manual transaction checklist
+        selectedManualTransactionIds.clear();
+        const checklistContainer = document.getElementById('report-manual-checklist');
+        if (checklistContainer) {
+            if (allReportTransactions.length === 0) {
+                checklistContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">${t('no_transactions', 'Keine Buchungen vorhanden.')}</div>`;
+            } else {
+                checklistContainer.innerHTML = allReportTransactions.map(tData => {
+                    const tDateFormatted = tData.date ? formatDateFast(tData.date) : '';
+                    const isExp = tData.type === 'exp';
+                    const color = isExp ? 'text-danger' : 'text-success';
+                    const sign = isExp ? '-' : '+';
+                    const key = tData.id || tData.paymentId;
+                    return `
+                        <div class="report-checklist-item" onclick="window.toggleManualTransactionSelection('${key}')">
+                            <input type="checkbox" id="chk-report-${key}" value="${key}" onclick="event.stopPropagation(); window.toggleManualTransactionSelection('${key}')">
+                            <div class="report-checklist-info">
+                                <span style="font-weight: 600;">${escapeHtml(tData.who)}</span>
+                                <span class="report-checklist-meta">${tDateFormatted} &bull; <span class="${color}">${sign}${formatCurrency(tData.amount)}€</span></span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        // Initialize state to Annual Summary
+        document.getElementById('report-type-select').value = 'annual';
+        window.onReportTypeChange();
+        
+    } catch (err) {
+        console.error('Fehler beim Laden der Berichtstransaktionen:', err);
+        if (previewContainer) {
+            previewContainer.innerHTML = `
+                <div class="report-placeholder-container" style="color: var(--danger);">
+                    <div class="report-placeholder-icon">⚠️</div>
+                    <p style="font-weight: 600; margin: 0;">${t('alert_error_loading_data', 'Fehler beim Laden der Daten.')}</p>
+                </div>
+            `;
+        }
+    }
+};
+
+window.toggleManualTransactionSelection = function(id) {
+    const chk = document.getElementById(`chk-report-${id}`);
+    if (selectedManualTransactionIds.has(id)) {
+        selectedManualTransactionIds.delete(id);
+        if (chk) chk.checked = false;
+    } else {
+        selectedManualTransactionIds.add(id);
+        if (chk) chk.checked = true;
+    }
+    window.updateReportPreview();
+};
+
+window.onReportTypeChange = function() {
+    const type = document.getElementById('report-type-select').value;
+    
+    document.getElementById('report-year-picker-container').style.display = (type === 'annual') ? 'block' : 'none';
+    document.getElementById('report-date-range-container').style.display = (type === 'custom') ? 'block' : 'none';
+    document.getElementById('report-manual-checklist-container').style.display = (type === 'manual') ? 'block' : 'none';
+    document.getElementById('report-person-selector-container').style.display = (type === 'person') ? 'block' : 'none';
+    
+    window.updateReportPreview();
+};
+
+window.updateReportPreview = function() {
+    const type = document.getElementById('report-type-select').value;
+    const tier = document.getElementById('report-tier-select').value;
+    const previewContainer = document.getElementById('report-print-preview');
+    if (!previewContainer) return;
+    
+    let filtered = [];
+    let filterDesc = '';
+    
+    if (type === 'annual') {
+        const year = document.getElementById('report-year-select').value;
+        filtered = allReportTransactions.filter(tData => tData.date && tData.date.startsWith(year));
+        filterDesc = currentLang === 'de' ? `Jahr: ${year}` : `Year: ${year}`;
+    } else if (type === 'custom') {
+        const from = document.getElementById('report-date-from').value;
+        const to = document.getElementById('report-date-to').value;
+        filtered = allReportTransactions.filter(tData => tData.date && tData.date >= from && tData.date <= to);
+        const fromFormatted = from ? formatDateFast(from) : '';
+        const toFormatted = to ? formatDateFast(to) : '';
+        filterDesc = `${fromFormatted} - ${toFormatted}`;
+    } else if (type === 'manual') {
+        filtered = allReportTransactions.filter(tData => selectedManualTransactionIds.has(tData.id || tData.paymentId));
+        filterDesc = currentLang === 'de' ? 'Manuelle Auswahl' : 'Manual Selection';
+    } else if (type === 'person') {
+        const selectedPersonId = document.getElementById('report-person-select').value;
+        const selectedPerson = people.find(p => String(p.id) === String(selectedPersonId));
+        const personName = selectedPerson ? selectedPerson.name : '';
+        
+        const from = document.getElementById('report-person-date-from').value;
+        const to = document.getElementById('report-person-date-to').value;
+        
+        filtered = allReportTransactions.filter(tData => {
+            const matchesPersonId = String(tData.personId) === String(selectedPersonId) ||
+                                    (tData.personUid && selectedPerson && tData.personUid === selectedPerson.uid);
+            const matchesPersonFallback = !matchesPersonId && (tData.who && personName && tData.who.trim().toLowerCase() === personName.trim().toLowerCase());
+
+            if (!matchesPersonId && !matchesPersonFallback) return false;
+            if (matchesPersonFallback) {
+                console.warn(`Fallback string match used for person "${personName}" on transaction: `, tData);
+            }
+            
+            if (from && tData.date && tData.date < from) return false;
+            if (to && tData.date && tData.date > to) return false;
+            return true;
+        });
+        
+        const fromFormatted = from ? formatDateFast(from) : '';
+        const toFormatted = to ? formatDateFast(to) : '';
+        const rangeText = (from || to) ? `: ${fromFormatted} - ${toFormatted}` : '';
+        filterDesc = `${personName}${rangeText}`;
+    }
+    
+    // Sort transactions chronologically (oldest first)
+    filtered.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    
+    if (filtered.length === 0) {
+        previewContainer.innerHTML = `
+            <div class="report-placeholder-container">
+                <div class="report-placeholder-icon">📄</div>
+                <p style="font-weight: 600; margin: 0;">${t('report_no_data', 'Keine Daten im gewählten Zeitraum')}</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Calculate stats
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    filtered.forEach(tData => {
+        const amt = parseFloat(tData.amount || 0);
+        if (tData.type === 'exp') {
+            totalExpenses += amt;
+        } else {
+            totalIncome += amt;
+        }
+    });
+    const netBalance = totalIncome - totalExpenses;
+    
+    // Header HTML
+    const headerHtml = `
+        <div class="preview-header">
+            <div class="preview-logo">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #1e3a8a;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                <span>Nova</span>
+            </div>
+            <div class="preview-meta">
+                <div>${currentLang === 'de' ? 'Erstellt am:' : 'Created on:'} ${formatDateFast(getTodayStr())}</div>
+                <div style="font-weight: 600; margin-top: 2px;">${filterDesc}</div>
+            </div>
+        </div>
+        <div class="preview-title-block">
+            <h2>${currentLang === 'de' ? 'Finanzbericht' : 'Financial Report'}</h2>
+            <div style="font-size: 0.9rem; color: #718096; margin-top: 5px;">
+                ${currentLang === 'de' ? 'Zusammenfassung der Einnahmen und Ausgaben' : 'Summary of income and expenses'}
+            </div>
+        </div>
+    `;
+    
+    // Stats HTML
+    const statsHtml = `
+        <div class="preview-stats-grid">
+            <div class="preview-stat-card">
+                <div class="preview-stat-label">${t('nav_income', 'Einnahmen')}</div>
+                <div class="preview-stat-value income">+${formatCurrency(totalIncome)} €</div>
+            </div>
+            <div class="preview-stat-card">
+                <div class="preview-stat-label">${t('nav_expenses', 'Ausgaben')}</div>
+                <div class="preview-stat-value expense">-${formatCurrency(totalExpenses)} €</div>
+            </div>
+            <div class="preview-stat-card">
+                <div class="preview-stat-label">Saldo</div>
+                <div class="preview-stat-value balance ${netBalance >= 0 ? 'income' : 'expense'}">${netBalance >= 0 ? '+' : ''}${formatCurrency(netBalance)} €</div>
+            </div>
+        </div>
+    `;
+    
+    // Table HTML
+    let tableHtml = '';
+    if (tier !== 'compact') {
+        const headers = currentLang === 'de' 
+            ? `<tr><th>Datum</th><th>Typ</th><th>Beschreibung / Partner</th><th style="text-align: right;">Betrag</th></tr>`
+            : `<tr><th>Date</th><th>Type</th><th>Description / Partner</th><th style="text-align: right;">Amount</th></tr>`;
+            
+        let rowsHtml = '';
+        filtered.forEach(tData => {
+            const dateFormatted = tData.date ? formatDateFast(tData.date) : '';
+            const isExp = tData.type === 'exp';
+            const sign = isExp ? '-' : '+';
+            const amountClass = isExp ? 'amount-expense' : 'amount-income';
+            
+            let typeStr = '';
+            if (tData.type === 'pay') {
+                typeStr = currentLang === 'de' ? 'Beitrag' : 'Membership';
+            } else if (tData.type === 'don') {
+                typeStr = currentLang === 'de' ? 'Spende' : 'Donation';
+            } else {
+                typeStr = currentLang === 'de' ? 'Ausgabe' : 'Expense';
+            }
+            
+            let partnerDesc = '';
+            if (tData.type === 'pay') {
+                partnerDesc = tData.who;
+            } else if (tData.type === 'don') {
+                partnerDesc = tData.who || 'Spende';
+            } else {
+                partnerDesc = tData.description || tData.who || 'Ausgabe';
+            }
+            
+            rowsHtml += `
+                <tr>
+                    <td>${dateFormatted}</td>
+                    <td><strong>${typeStr}</strong></td>
+                    <td>${escapeHtml(partnerDesc)}</td>
+                    <td class="amount-cell ${amountClass}">${sign}${formatCurrency(tData.amount)} €</td>
+                </tr>
+            `;
+            
+            if (tier === 'detailed') {
+                const notes = tData.type !== 'exp' ? (tData.description || tData.note || '') : '';
+                const hasReceipt = !!tData.receipt;
+                const tagsList = tData.tags ? (Array.isArray(tData.tags) ? tData.tags : [tData.tags]) : [];
+                const hasTags = tagsList.length > 0;
+                
+                if (notes || hasReceipt || hasTags) {
+                    let detailContent = '';
+                    if (notes) {
+                        detailContent += `<div class="preview-notes">"${escapeHtml(notes)}"</div>`;
+                    }
+                    if (hasTags) {
+                        detailContent += `<div>${tagsList.map(tag => `<span class="preview-tags-badge">${escapeHtml(tag)}</span>`).join('')}</div>`;
+                    }
+                    if (hasReceipt) {
+                        detailContent += `
+                            <div class="preview-attachment-indicator">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                <span>${currentLang === 'de' ? 'Beleg vorhanden' : 'Receipt attached'}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    rowsHtml += `
+                        <tr class="preview-detail-row">
+                            <td></td>
+                            <td colspan="3">${detailContent}</td>
+                        </tr>
+                    `;
+                }
+            }
+        });
+        
+        tableHtml = `
+            <table class="preview-table">
+                <thead>${headers}</thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+        `;
+    }
+    
+    previewContainer.innerHTML = `
+        ${headerHtml}
+        ${statsHtml}
+        ${tableHtml}
+    `;
+    
+    // Scale preview to fit screen reactively
+    requestAnimationFrame(() => {
+        window.resizeReportPreview();
+    });
+};
+
+window.downloadReportPdf = function() {
+    const element = document.getElementById('report-print-preview');
+    if (!element) return;
+    
+    if (typeof html2pdf === 'undefined') {
+        alert(currentLang === 'de' ? 'PDF-Bibliothek konnte nicht geladen werden.' : 'PDF library failed to load.');
+        return;
+    }
+
+    setButtonLoading('btn-download-pdf', true, currentLang === 'de' ? 'Generiere...' : 'Generating...');
+    
+    const opt = {
+        margin: 15,
+        filename: `Nova_Finanzbericht_${getTodayStr()}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+    
+    html2pdf().set(opt).from(element).save().then(() => {
+        setButtonLoading('btn-download-pdf', false);
+    }).catch(err => {
+        console.error('PDF generation failed:', err);
+        setButtonLoading('btn-download-pdf', false);
+        alert(currentLang === 'de' ? 'Fehler beim Erstellen der PDF-Datei.' : 'Failed to generate PDF.');
+    });
+};
+
+window.resizeReportPreview = function() {
+    const viewport = document.querySelector('.report-preview-viewport');
+    const container = document.querySelector('.report-preview-scale-container');
+    const canvas = document.getElementById('report-print-preview');
+    if (!viewport || !container || !canvas) return;
+    
+    const padding = 40; // 20px padding left + 20px right
+    const viewportWidth = viewport.clientWidth - padding;
+    const a4Width = 794;
+    
+    const scale = Math.min(1, viewportWidth / a4Width);
+    viewport.style.setProperty('--preview-scale', scale);
+    
+    const canvasHeight = canvas.offsetHeight || 1120;
+    viewport.style.setProperty('--preview-height', `${canvasHeight}px`);
+};
+
+let reportResizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(reportResizeTimeout);
+    reportResizeTimeout = setTimeout(() => {
+        const modal = document.getElementById('export-report-modal');
+        if (modal && modal.classList.contains('show')) {
+            window.resizeReportPreview();
+        }
+    }, 100);
+});
+
 window.addPerson = async () => {
     if (!validateRequired(['new-person-name', 'new-person-start'])) return;
 
@@ -2967,7 +3364,7 @@ window.addPayment = async () => {
 
     setButtonLoading('btn-add-payment', true, "Buche...");
 
-    const amt = parseFloat(document.getElementById('payment-amount').value.replace(',', '.'));
+    const amt = parseFloat(document.getElementById('payment-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
     const date = document.getElementById('payment-date').value;
     const desc = document.getElementById('payment-desc').value;
     const isStandingOrder = document.getElementById('payment-is-standing-order').checked;
@@ -3028,7 +3425,7 @@ window.addDonation = async () => {
 
     setButtonLoading('btn-add-donation', true, "Speichert...");
 
-    const amt = parseFloat(document.getElementById('donation-amount').value.replace(',', '.'));
+    const amt = parseFloat(document.getElementById('donation-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
     if(isNaN(amt)) {
         setButtonLoading('btn-add-donation', false);
         return;
@@ -3056,7 +3453,7 @@ window.addExpense = async () => {
 
     setButtonLoading('btn-add-expense', true, "Speichert...");
 
-    const amt = parseFloat(document.getElementById('expense-amount').value.replace(',', '.'));
+    const amt = parseFloat(document.getElementById('expense-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
     if(isNaN(amt)) {
         setButtonLoading('btn-add-expense', false);
         return;
@@ -4029,9 +4426,9 @@ window.uploadChurchLogo = async () => {
 };
 
 window.saveSettings = async () => {
-    settings.vollverdiener = parseFloat(document.getElementById('rate-vollverdiener').value.replace(',', '.'));
-    settings.geringverdiener = parseFloat(document.getElementById('rate-geringverdiener').value.replace(',', '.'));
-    settings.keinverdiener = parseFloat(document.getElementById('rate-keinverdiener').value.replace(',', '.'));
+    settings.vollverdiener = parseFloat(document.getElementById('rate-vollverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    settings.geringverdiener = parseFloat(document.getElementById('rate-geringverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    settings.keinverdiener = parseFloat(document.getElementById('rate-keinverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
     settings.reportStartDate = document.getElementById('report-start-date').value || null;
     settingsVersion++;
 
@@ -4412,7 +4809,7 @@ window.submitUserRequest = async () => {
     const date = document.getElementById('req-date').value;
 
     if(currentRequestType === 'payment') {
-        const amount = document.getElementById('req-amount').value.replace(',', '.');
+        const amount = document.getElementById('req-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.');
         const note = document.getElementById('req-note').value;
         const isStandingOrder = document.getElementById('req-is-standing-order') && document.getElementById('req-is-standing-order').checked;
 
@@ -4432,7 +4829,7 @@ window.submitUserRequest = async () => {
         reqData.newStatus = status;
         reqData.date = date;
     } else if(currentRequestType === 'expense') {
-        const amount = document.getElementById('req-amount').value.replace(',', '.');
+        const amount = document.getElementById('req-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.');
         const desc = document.getElementById('req-desc').value;
         if(!amount || !desc || !date) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
         reqData.amount = amount;
