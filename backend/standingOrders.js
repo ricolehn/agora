@@ -45,15 +45,28 @@ function checkAndExecuteStandingOrders(person) {
         }
 
         let safety = 0;
-        while (nextDueDate <= limitDate && safety < 1200) {
-            const dateStr = nextDueDate.toISOString().split('T')[0];
-            const paymentId = `auto_${currentSO.id}_${dateStr}`;
+        while (safety < 1200) {
+            let executionDate = new Date(nextDueDate);
+            const dayOfWeek = executionDate.getUTCDay();
+            if (dayOfWeek === 6) { // Saturday
+                executionDate.setUTCDate(executionDate.getUTCDate() + 2);
+            } else if (dayOfWeek === 0) { // Sunday
+                executionDate.setUTCDate(executionDate.getUTCDate() + 1);
+            }
+
+            if (executionDate > limitDate) {
+                break;
+            }
+
+            const baseDateStr = nextDueDate.toISOString().split('T')[0];
+            const executionDateStr = executionDate.toISOString().split('T')[0];
+            const paymentId = `auto_${currentSO.id}_${baseDateStr}`;
 
             if (!existingPaymentIds.has(paymentId)) {
                 payments.push({
                     id: paymentId,
                     amount: Number(String(currentSO.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')),
-                    date: dateStr,
+                    date: executionDateStr,
                     description: (currentSO.note || 'Dauerauftrag') + ' (Auto)',
                     isAuto: true
                 });

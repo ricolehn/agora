@@ -139,7 +139,7 @@ loadConfig();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
-cron.schedule('0 0 * * *', () => {
+cron.schedule('0 5 * * *', () => {
   if (!setupMode && appConfig) {
     runAutomatedStandingOrders(appConfig);
   }
