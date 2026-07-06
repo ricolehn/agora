@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#06b6d4">
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="assets/church-logo.svg">
     <title>Nova</title>
     <link rel="modulepreload" href="assets/config.js">
     <link rel="modulepreload" href="assets/app.js">
@@ -662,17 +663,32 @@
 </div>
 
 <div class="fab-menu" id="fabMenu">
-    <button type="button" class="fab-item" onclick="openModal('add-person-modal'); toggleFab()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-        <span data-i18n="btn_add_person">Person</span>
+    <button type="button" class="fab-menu-item" onclick="openModal('add-person-modal'); toggleFab()">
+        <div class="fab-menu-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"></path><path d="M9 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+        </div>
+        <div class="fab-menu-text">
+            <div class="fab-menu-title" data-i18n="action_create_member">Mitglied anlegen</div>
+            <div class="fab-menu-subtitle" data-i18n="action_create_member_sub">Personen verwalten.</div>
+        </div>
     </button>
-    <button type="button" class="fab-item" onclick="openModal('add-donation-modal'); toggleFab()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"></polyline><rect x="2" y="7" width="20" height="5"></rect><line x1="12" y1="22" x2="12" y2="7"></line><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>
-        <span data-i18n="btn_add_donation">Spende</span>
+    <button type="button" class="fab-menu-item" onclick="openModal('add-donation-modal'); toggleFab()">
+        <div class="fab-menu-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"></polyline><rect x="2" y="7" width="20" height="5"></rect><line x1="12" y1="22" x2="12" y2="7"></line><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>
+        </div>
+        <div class="fab-menu-text">
+            <div class="fab-menu-title" data-i18n="action_capture_donation">Spende erfassen</div>
+            <div class="fab-menu-subtitle" data-i18n="action_capture_donation_sub">Einnahme buchen.</div>
+        </div>
     </button>
-    <button type="button" class="fab-item" onclick="openModal('add-expense-modal'); toggleFab()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-        <span data-i18n="btn_add_expense">Ausgabe</span>
+    <button type="button" class="fab-menu-item" onclick="openModal('add-expense-modal'); toggleFab()">
+        <div class="fab-menu-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        </div>
+        <div class="fab-menu-text">
+            <div class="fab-menu-title" data-i18n="action_book_expense">Ausgabe buchen</div>
+            <div class="fab-menu-subtitle" data-i18n="action_book_expense_sub">Zahlung freigeben.</div>
+        </div>
     </button>
 </div>
 
@@ -875,6 +891,10 @@
             <input id="donation-name" class="form-input" data-i18n-placeholder="modal_donor_name" placeholder="Spender Name">
         </div>
         <div class="form-group">
+            <label for="donation-desc" class="form-label" data-i18n="details_description">Beschreibung</label>
+            <input id="donation-desc" class="form-input" data-i18n-placeholder="details_description" placeholder="Beschreibung">
+        </div>
+        <div class="form-group">
             <label for="donation-date" class="form-label" data-i18n="modal_date">Datum</label>
             <input type="date" id="donation-date" class="form-input">
         </div>
@@ -910,7 +930,15 @@
 
 <div id="transaction-details-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-transaction-details">
     <div class="modal-content">
-        <div class="modal-header"><span id="title-transaction-details" data-i18n="modal_details_title">Details</span> <button class="close-btn" onclick="closeModal('transaction-details-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
+        <div class="modal-header">
+            <span id="title-transaction-details" data-i18n="modal_details_title">Details</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button id="details-edit-btn" class="btn btn-secondary btn-small" style="display: none; padding: 6px; border-radius: 8px;" aria-label="Bearbeiten">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+                <button class="close-btn" onclick="closeModal('transaction-details-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
+            </div>
+        </div>
         <div id="transaction-details-content"></div>
     </div>
 </div>

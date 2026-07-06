@@ -152,6 +152,7 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/auth/') ||
     req.path.startsWith('/api/db') ||
     req.path === '/setup.html' ||
+    req.path === '/floating-menu-demo.html' ||
     req.path.startsWith('/assets/')
   ) {
     return next();
@@ -243,6 +244,7 @@ app.use('/assets', express.static(path.join(frontendDir, 'assets')));
 app.get('/sw.js', (req, res) => res.sendFile(path.join(frontendDir, 'sw.js')));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(frontendDir, 'manifest.json')));
 app.get('/setup.html', pageRateLimit, (req, res) => res.sendFile(path.join(frontendDir, 'setup.html')));
+app.get('/floating-menu-demo.html', pageRateLimit, (req, res) => res.sendFile(path.join(frontendDir, 'floating-menu-demo.html')));
 app.get('*', pageRateLimit, (req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/data/')) {
     return res.sendFile(path.join(frontendDir, 'index.html'));
@@ -1008,6 +1010,7 @@ app.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) => {
     broadcastDataUpdate();
     res.json({ value: updated.data, version: updated.updated });
   } catch (error) {
+    console.error('Transaction endpoint error:', error);
     res.status(error.status || 500).json({ error: error.message || 'Transaction failed' });
   }
 });

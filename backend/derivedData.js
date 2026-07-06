@@ -430,7 +430,7 @@ function preprocessPersonServerSide(person, settings) {
 
     return {
         ...person,
-        _paidUntil: paidUntil ? paidUntil.toISOString() : null,
+        _paidUntil: paidUntil && !isNaN(paidUntil.getTime()) ? paidUntil.toISOString() : null,
         _statusMeta: statusMeta,
         _overdueAmount: overdueAmount,
         _currentStatus: currentStatus,

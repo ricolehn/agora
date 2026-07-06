@@ -68,7 +68,7 @@ async function getPaginatedTransactions(appConfig, page, perPage, search = '') {
     // Benchmarks show a ~100x performance improvement for date search filtering.
     all = all.filter(t => {
       const who = (t.who || '').toLowerCase();
-      const desc = (t.description || '-').toLowerCase();
+      const desc = (t.description || '').toLowerCase();
 
       let formattedDate = 'kein datum';
       if (t.date) {

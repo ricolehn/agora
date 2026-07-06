@@ -692,6 +692,58 @@ window.closeModal = (id, fromPopstate = false) => {
     }
 };
 
+window.closeMultipleModals = (ids) => {
+    let programmaticBacksCount = 0;
+    let finalFocusElement = null;
+
+    ids.forEach(id => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+
+        if (modal._returnFocusTo && !ids.some(closeId => document.getElementById(closeId)?.contains(modal._returnFocusTo))) {
+            finalFocusElement = modal._returnFocusTo;
+        }
+
+        const stackIndex = window._modalStack ? window._modalStack.indexOf(id) : -1;
+        if (stackIndex > -1) {
+            window._modalStack.splice(stackIndex, 1);
+            programmaticBacksCount++;
+        }
+
+        modal.classList.remove('show');
+        modal.style.zIndex = '';
+
+        if (modal._escHandler) {
+            document.removeEventListener('keydown', modal._escHandler);
+            delete modal._escHandler;
+        }
+        delete modal._returnFocusTo;
+    });
+
+    if (finalFocusElement && document.body.contains(finalFocusElement)) {
+        try { finalFocusElement.focus(); } catch (e) {}
+    }
+
+    if (programmaticBacksCount > 0) {
+        window._programmaticBacks = (window._programmaticBacks || 0) + programmaticBacksCount;
+        history.go(-programmaticBacksCount);
+        setTimeout(() => {
+            if (window._programmaticBacks > 0) {
+                window._programmaticBacks = Math.max(0, window._programmaticBacks - programmaticBacksCount);
+            }
+        }, 200);
+    }
+
+    // Re-show the previous modal in the stack if one exists
+    if (window._modalStack && window._modalStack.length > 0) {
+        const prevModalId = window._modalStack[window._modalStack.length - 1];
+        const prevModal = document.getElementById(prevModalId);
+        if (prevModal) {
+            prevModal.classList.add('show');
+        }
+    }
+};
+
 // Web History API event listener for system back gesture
 window.addEventListener('popstate', (e) => {
     if (window._programmaticBacks > 0) {
@@ -2009,7 +2061,7 @@ window.saveEditedPayment = async () => {
             const idx = remoteDonations.findIndex(d => String(d.id) === String(targetDonationId));
 
             if (idx >= 0) {
-                remoteDonations[idx] = { ...remoteDonations[idx], amount, date };
+                remoteDonations[idx] = { ...remoteDonations[idx], amount, date, description };
                 await set(ref(db, 'donations'), { ...remoteDonations });
                 donations = remoteDonations;
             }
@@ -2135,8 +2187,7 @@ window.deleteRecordedPaymentClick = () => {
 window.confirmDeleteRecordedPayment = async () => {
     if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
 
-    closeModal('confirm-delete-modal');
-    closeModal('edit-payment-modal');
+    closeMultipleModals(['confirm-delete-modal', 'edit-payment-modal']);
 
     try {
         if (currentEditedPayment.type === 'payment') {
@@ -2855,17 +2906,10 @@ window.renderHistoryTab = async function(resetLimit = true) {
 
             const hasReceipt = tData.receipt ? `<span style="margin-left:5px" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}">📷</span>` : '';
 
-            const editBtn = isSuperAdmin ? `
-                <button class="btn btn-secondary btn-small" style="padding: 6px; border-radius: 8px; margin-left: 10px;"
-                    onclick="event.stopPropagation(); editRecordedPaymentByIndex(${index})"
-                    aria-label="${escapeHtml(t('edit_end_title', 'Bearbeiten'))}">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                </button>
-            ` : '';
-
             const uidAttr = (tData.type === 'pay' && tData.personUid) ? ` data-uid="${tData.personUid}"` : '';
 
-            let descHtml = tData.description ? escapeHtml(tData.description) : '-';
+            const hasDesc = !!(tData.description && tData.description.trim());
+            const metaHtml = (hasDesc || hasReceipt) ? `<div class="trans-meta">${hasDesc ? escapeHtml(tData.description) : ''}${hasReceipt}</div>` : '';
             html += `
                 <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(tData.id)}" data-type="${escapeHtml(tData.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
                     <div style="display: flex; align-items: center; flex: 1;">
@@ -2874,12 +2918,11 @@ window.renderHistoryTab = async function(resetLimit = true) {
                         </div>
                         <div class="trans-left" style="flex: 1;">
                             <span style="font-weight:600;">${escapeHtml(tData.who)}</span>
-                            <div class="trans-meta">${descHtml} ${hasReceipt}</div>
+                            ${metaHtml}
                         </div>
                     </div>
                     <div style="display: flex; align-items: center;">
                         <div class="trans-amount ${color}" style="font-size: 1.1rem;">${sign}${formatCurrency(tData.amount)}€</div>
-                        ${editBtn}
                     </div>
                 </div>
             `;
@@ -3073,7 +3116,7 @@ window.updateReportPreview = function() {
     if (type === 'annual') {
         const year = document.getElementById('report-year-select').value;
         filtered = allReportTransactions.filter(tData => tData.date && tData.date.startsWith(year));
-        filterDesc = currentLang === 'de' ? `Jahr: ${year}` : `Year: ${year}`;
+        filterDesc = `${t('report_year_filter', 'Year:')} ${year}`;
     } else if (type === 'custom') {
         const from = document.getElementById('report-date-from').value;
         const to = document.getElementById('report-date-to').value;
@@ -3083,7 +3126,7 @@ window.updateReportPreview = function() {
         filterDesc = `${fromFormatted} - ${toFormatted}`;
     } else if (type === 'manual') {
         filtered = allReportTransactions.filter(tData => selectedManualTransactionIds.has(tData.id || tData.paymentId));
-        filterDesc = currentLang === 'de' ? 'Manuelle Auswahl' : 'Manual Selection';
+        filterDesc = t('report_manual_selection', 'Manual Selection');
     } else if (type === 'person') {
         const selectedPersonId = document.getElementById('report-person-select').value;
         selectedPerson = people.find(p => String(p.id) === String(selectedPersonId));
@@ -3149,14 +3192,14 @@ window.updateReportPreview = function() {
                 <span>${escapeHtml(appName)}</span>
             </div>
             <div class="preview-meta">
-                <div>${currentLang === 'de' ? 'Erstellt am:' : 'Created on:'} ${formatDateFast(getTodayStr())}</div>
+                <div>${t('report_created_on', 'Created on:')} ${formatDateFast(getTodayStr())}</div>
                 <div style="font-weight: 600; margin-top: 2px;">${filterDesc}</div>
             </div>
         </div>
         <div class="preview-title-block">
-            <h2>${currentLang === 'de' ? 'Finanzbericht' : 'Financial Report'}</h2>
+            <h2>${t('report_financial_report', 'Financial Report')}</h2>
             <div style="font-size: 0.9rem; color: #718096; margin-top: 5px;">
-                ${currentLang === 'de' ? 'Zusammenfassung der Einnahmen und Ausgaben' : 'Summary of income and expenses'}
+                ${t('report_summary', 'Summary of income and expenses')}
             </div>
         </div>
     `;
@@ -3182,7 +3225,7 @@ window.updateReportPreview = function() {
     } else {
         thirdCardHtml = `
             <div class="preview-stat-card">
-                <div class="preview-stat-label">Saldo</div>
+                <div class="preview-stat-label">${t('report_balance', 'Balance')}</div>
                 <div class="preview-stat-value balance ${netBalance >= 0 ? 'income' : 'expense'}">${netBalance >= 0 ? '+' : ''}${formatCurrency(netBalance)} €</div>
             </div>
         `;
@@ -3206,9 +3249,7 @@ window.updateReportPreview = function() {
     // Table HTML
     let tableHtml = '';
     if (tier !== 'compact') {
-        const headers = currentLang === 'de' 
-            ? `<tr><th>Datum</th><th>Typ</th><th>Beschreibung / Partner</th><th style="text-align: right;">Betrag</th></tr>`
-            : `<tr><th>Date</th><th>Type</th><th>Description / Partner</th><th style="text-align: right;">Amount</th></tr>`;
+        const headers = `<tr><th>${t('report_table_date', 'Date')}</th><th>${t('report_table_type', 'Type')}</th><th>${t('report_table_desc', 'Description / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Amount')}</th></tr>`;
             
         let rowsHtml = '';
         filtered.forEach(tData => {
@@ -3219,20 +3260,20 @@ window.updateReportPreview = function() {
             
             let typeStr = '';
             if (tData.type === 'pay') {
-                typeStr = currentLang === 'de' ? 'Beitrag' : 'Membership';
+                typeStr = t('report_type_membership', 'Membership');
             } else if (tData.type === 'don') {
-                typeStr = currentLang === 'de' ? 'Spende' : 'Donation';
+                typeStr = t('report_type_donation', 'Donation');
             } else {
-                typeStr = currentLang === 'de' ? 'Ausgabe' : 'Expense';
+                typeStr = t('report_type_expense', 'Expense');
             }
             
             let partnerDesc = '';
             if (tData.type === 'pay') {
                 partnerDesc = tData.who;
             } else if (tData.type === 'don') {
-                partnerDesc = tData.who || 'Spende';
+                partnerDesc = tData.who || t('report_type_donation', 'Donation');
             } else {
-                partnerDesc = tData.description || tData.who || 'Ausgabe';
+                partnerDesc = tData.description || tData.who || t('report_type_expense', 'Expense');
             }
             
             rowsHtml += `
@@ -3262,7 +3303,7 @@ window.updateReportPreview = function() {
                         detailContent += `
                             <div class="preview-attachment-indicator">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                <span>${currentLang === 'de' ? 'Beleg vorhanden' : 'Receipt attached'}</span>
+                                <span>${t('report_receipt_attached', 'Receipt attached')}</span>
                             </div>
                         `;
                     }
@@ -3302,11 +3343,11 @@ window.downloadReportPdf = function() {
     if (!element) return;
     
     if (typeof html2pdf === 'undefined') {
-        alert(currentLang === 'de' ? 'PDF-Bibliothek konnte nicht geladen werden.' : 'PDF library failed to load.');
+        alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
         return;
     }
 
-    setButtonLoading('btn-download-pdf', true, currentLang === 'de' ? 'Generiere...' : 'Generating...');
+    setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generating...'));
     
     const appName = config.appName || "Nova";
     const safeAppName = appName.replace(/[^a-zA-Z0-9]/g, '_');
@@ -3325,7 +3366,7 @@ window.downloadReportPdf = function() {
     }).catch(err => {
         console.error('PDF generation failed:', err);
         setButtonLoading('btn-download-pdf', false);
-        alert(currentLang === 'de' ? 'Fehler beim Erstellen der PDF-Datei.' : 'Failed to generate PDF.');
+        alert(t('report_pdf_error', 'Failed to generate PDF.'));
     });
 };
 
@@ -3461,7 +3502,8 @@ window.addDonation = async () => {
         setButtonLoading('btn-add-donation', false);
         return;
     }
-    const newDonation = { amount: amt, name: document.getElementById('donation-name').value, date: document.getElementById('donation-date').value, id: Date.now() };
+    const desc = document.getElementById('donation-desc') ? document.getElementById('donation-desc').value.trim() : '';
+    const newDonation = { amount: amt, name: document.getElementById('donation-name').value, date: document.getElementById('donation-date').value, description: desc, id: Date.now() };
     try {
         const currentData = await apiGet('donations');
         const nextDonations = [...safeList(currentData), newDonation];
@@ -3470,6 +3512,10 @@ window.addDonation = async () => {
         closeModal('add-donation-modal');
         renderStats();
         renderSuperAdminPaymentEditor();
+        document.getElementById('donation-amount').value = '';
+        document.getElementById('donation-name').value = '';
+        document.getElementById('donation-date').value = '';
+        if (document.getElementById('donation-desc')) document.getElementById('donation-desc').value = '';
         showToast(t('toast_donation_saved', 'Spende gespeichert'));
     } catch (err) {
         console.error('Fehler beim Speichern der Spende:', err);
@@ -5490,6 +5536,29 @@ window.showTransactionDetails = async function(id, type) {
     if (listModal) listModal.classList.remove('show');
 
     openModal('transaction-details-modal');
+
+    // Configure details edit button for admins
+    const isSuperAdmin = !!(currentUser && currentUser.admin);
+    const detailsEditBtn = document.getElementById('details-edit-btn');
+    if (detailsEditBtn) {
+        if (isSuperAdmin) {
+            detailsEditBtn.style.display = 'inline-flex';
+            const index = cachedTransactions ? cachedTransactions.findIndex(x => String(x.id) === String(item.id)) : -1;
+            detailsEditBtn.onclick = () => {
+                closeModal('transaction-details-modal');
+                setTimeout(() => {
+                    if (index >= 0) {
+                        editRecordedPaymentByIndex(index);
+                    } else {
+                        console.error("detailsEditBtn: Transaction index not found in cache for ID", item.id);
+                    }
+                }, 50);
+            };
+        } else {
+            detailsEditBtn.style.display = 'none';
+        }
+    }
+
     const content = document.getElementById('transaction-details-content');
 
     // Revoke previous URL if any
@@ -5518,10 +5587,11 @@ window.showTransactionDetails = async function(id, type) {
                 <span class="details-label">${t('details_issued_by', 'Ausgestellt von')}</span>
                 <span class="details-value">${escapeHtml(item.issuer)}</span>
             </div>` : ''}
+            ${(item.description || item.note) ? `
             <div class="details-row">
                 <span class="details-label">${t('details_description', 'Beschreibung')}</span>
-                <span class="details-value">${escapeHtml(item.description || item.note || '-')}</span>
-            </div>
+                <span class="details-value">${escapeHtml(item.description || item.note)}</span>
+            </div>` : ''}
         </div>
         <div id="receipt-container" style="margin-top:20px;"></div>
     `;
