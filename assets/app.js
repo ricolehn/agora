@@ -2324,7 +2324,7 @@ function renderUserView() {
     if (people.length === 0) {
         document.getElementById('user-status-card').innerHTML = `
             <div style="text-align:center; padding: 20px; color: var(--text-secondary);">
-                Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.
+                ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
             </div>
         `;
         return;
@@ -2332,12 +2332,12 @@ function renderUserView() {
 
     const p = people[0]; // User has only one person (themselves)
     const paidUntil = p._paidUntil ? new Date(p._paidUntil) : null;
-    const statusMeta = p._statusMeta || { text: 'Unbekannt', isOverdue: false, isSoonDue: false };
+    const statusMeta = p._statusMeta || { text: t('status_unknown', 'Unbekannt'), isOverdue: false, isSoonDue: false };
     const overdueAmount = p._overdueAmount || 0;
     const currentStatus = p._currentStatus || p.status;
 
     // Format date to show only month and year
-    let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : 'Nie';
+    let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
 
     const statusLabels = getStatusLabels(false);
 
@@ -2357,16 +2357,18 @@ function renderUserView() {
 
     const monthlyRate = settings[currentStatus] || 0;
 
+    const translatedStatusMetaText = translateStatusText(statusMeta.text);
+
     document.getElementById('user-status-card').innerHTML = `
         <!-- Status Hero Card -->
         <div class="user-hero-status ${statusClass}">
             <h2 style="color: ${statusColor}; font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
-                ${escapeHtml(statusMeta.text)}
+                ${escapeHtml(translatedStatusMetaText)}
             </h2>
-            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">Bezahlt bis <strong>${dateText}</strong></div>`}
+            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
             ${statusMeta.isOverdue ? `
                 <div style="margin-top: 15px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
-                    <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 5px; color: var(--danger);">Offener Betrag</div>
+                    <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 5px; color: var(--danger);">${t('user_open_amount', 'Offener Betrag')}</div>
                     <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">${formatCurrency(overdueAmount)} €</div>
                 </div>
             ` : ''}
@@ -2374,11 +2376,11 @@ function renderUserView() {
 
         <div class="user-info-boxes">
             <div class="user-info-box">
-                <div class="user-info-box-label">Monatlicher Beitrag</div>
+                <div class="user-info-box-label">${t('user_monthly_rate', 'Monatlicher Beitrag')}</div>
                 <div class="user-info-box-value">${formatCurrency(monthlyRate)} €</div>
             </div>
             <div class="user-info-box">
-                <div class="user-info-box-label">Aktueller Status</div>
+                <div class="user-info-box-label">${t('user_current_status', 'Aktueller Status')}</div>
                 <div class="user-info-box-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
             </div>
         </div>
@@ -2387,7 +2389,7 @@ function renderUserView() {
     // Combined History (Timeline)
     const timeline = generateTimelineHTML(p);
     document.getElementById('user-payment-history').innerHTML = `
-        <div class="history-header">Verlauf</div>
+        <div class="history-header">${t('user_history_title', 'Verlauf')}</div>
         ${timeline}
     `;
 
@@ -2401,23 +2403,23 @@ function renderUserView() {
             if(req.status === 'rejected') {
                 statusBadge = '❌';
                 statusBg = '#ef444415';
-                statusText = 'Abgelehnt';
+                statusText = t('req_status_rejected', 'Abgelehnt');
             } else if(req.status === 'approved') {
                 statusBadge = '✅';
                 statusBg = '#10b98115'; // A soft green background
-                statusText = 'Genehmigt';
+                statusText = t('req_status_approved', 'Genehmigt');
             } else {
                 statusBadge = '⏳';
                 statusBg = '#f59e0b15';
-                statusText = 'In Prüfung';
+                statusText = t('req_status_pending', 'In Prüfung');
             }
 
             const typeIcons = { payment: '💰', status: '🔄', expense: '💸', standing_order: '🔁' };
-            const typeLabels = { payment: 'Zahlung', status: 'Status', expense: 'Ausgabe', standing_order: 'Dauerauftrag' };
+            const typeLabels = { payment: t('action_payment', 'Zahlung'), status: t('action_status', 'Status'), expense: t('action_expense', 'Ausgabe'), standing_order: t('modal_standing_order', 'Dauerauftrag') };
 
             let details = '';
             if(req.status === 'rejected') {
-                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:var(--danger)10; border-radius:8px;">⚠️ ${escapeHtml(req.rejectionReason) || 'Keine Begründung'}</div>`;
+                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:var(--danger)10; border-radius:8px;">⚠️ ${escapeHtml(req.rejectionReason) || t('user_no_reason', 'Keine Begründung')}</div>`;
             }
 
             return `
@@ -4811,62 +4813,62 @@ window.openUserRequestModal = (type) => {
     const title = document.getElementById('req-modal-title');
 
     if(type === 'payment') {
-        title.innerText = "Zahlung melden";
+        title.innerText = t('user_req_payment_title', "Zahlung melden");
         container.innerHTML = `
             <div class="form-group" style="display:flex; align-items:center; gap:10px;">
                 <label class="switch">
-                    <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? 'Startdatum' : 'Datum'">
+                    <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
                     <span class="slider"></span>
                 </label>
-                <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer">Dauerauftrag</label>
+                <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer">${t('modal_standing_order', 'Dauerauftrag')}</label>
             </div>
             <div class="form-group">
-                <label class="form-label" for="req-amount">Betrag (€)</label>
+                <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
                 <input type="text" inputmode="decimal" id="req-amount" class="form-input">
             </div>
             <div class="form-group">
-                <label class="form-label" id="req-date-label" for="req-date">Datum</label>
+                <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Datum')}</label>
                 <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
             </div>
             <div class="form-group">
-                <label class="form-label" for="req-note">Notiz (Optional)</label>
+                <label class="form-label" for="req-note">${t('req_note_label', 'Notiz (Optional)')}</label>
                 <input type="text" id="req-note" class="form-input">
             </div>
         `;
     } else if(type === 'status') {
-        title.innerText = "Statusänderung beantragen";
+        title.innerText = t('user_req_status_title', "Statusänderung beantragen");
         container.innerHTML = `
             <div class="form-group">
-                <label class="form-label" for="req-status">Neuer Status</label>
+                <label class="form-label" for="req-status">${t('modal_new_status', 'Neuer Status')}</label>
                 <select id="req-status" class="form-select">
-                    <option value="vollverdiener">💼 Vollverdiener</option>
-                    <option value="geringverdiener">📉 Geringverdiener</option>
-                    <option value="keinverdiener">🎓 Keinverdiener</option>
-                    <option value="pausiert">⏸️ Pausiert</option>
+                    <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
+                    <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
+                    <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
+                    <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
                 </select>
             </div>
             <div class="form-group">
-                <label class="form-label" for="req-date">Gültig ab</label>
+                <label class="form-label" for="req-date">${t('req_valid_from', 'Gültig ab')}</label>
                 <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
             </div>
         `;
     } else if(type === 'expense') {
-        title.innerText = "Ausgabe melden";
+        title.innerText = t('user_req_expense_title', "Ausgabe melden");
         container.innerHTML = `
             <div class="form-group">
-                <label class="form-label" for="req-amount">Betrag (€)</label>
+                <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
                 <input type="text" inputmode="decimal" id="req-amount" class="form-input">
             </div>
             <div class="form-group">
-                <label class="form-label" for="req-desc">Beschreibung</label>
+                <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung')}</label>
                 <input type="text" id="req-desc" class="form-input">
             </div>
             <div class="form-group">
-                <label class="form-label" for="req-date">Datum</label>
+                <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
                 <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
             </div>
             <div class="form-group">
-                <label class="form-label" for="req-receipt">Beleg(e) (Optional)</label>
+                <label class="form-label" for="req-receipt">${t('req_receipt_label', 'Beleg(e) (Optional)')}</label>
                 <input type="file" id="req-receipt" accept="image/*,.heic,.heif" class="form-input" multiple>
             </div>
         `;

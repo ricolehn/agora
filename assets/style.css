@@ -1168,29 +1168,37 @@ input:checked + .slider:before { transform: translateX(22px); }
 
 .user-info-boxes {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 15px;
     margin-bottom: 25px;
 }
 .user-info-box {
     background: var(--surface);
     border-radius: 16px;
-    padding: 20px;
+    padding: 15px;
     text-align: center;
     box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100px;
 }
 .user-info-box-label {
-    font-size: 0.85rem;
+    font-size: clamp(0.7rem, 3vw, 0.85rem);
     color: var(--text-secondary);
     margin-bottom: 8px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    word-wrap: break-word;
 }
 .user-info-box-value {
-    font-size: 1.2rem;
+    font-size: clamp(0.9rem, 4vw, 1.2rem);
     font-weight: 800;
     color: var(--text);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
 }
 .user-status-overdue {
     background: rgba(239, 68, 68, 0.05);
