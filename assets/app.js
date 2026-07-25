@@ -2906,7 +2906,7 @@ window.renderHistoryTab = async function(resetLimit = true) {
                 iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>';
             }
 
-            const hasReceipt = tData.receipt ? `<span style="margin-left:5px" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}">📷</span>` : '';
+            const hasReceipt = tData.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></span>` : '';
 
             const uidAttr = (tData.type === 'pay' && tData.personUid) ? ` data-uid="${tData.personUid}"` : '';
 
@@ -5569,33 +5569,59 @@ window.showTransactionDetails = async function(id, type) {
          delete content.dataset.blobUrl;
     }
 
+    let typeBadgeClass = 'badge-person';
+    let typeBadgeStyle = 'color:var(--text); background:var(--surface); border:1px solid var(--border);';
+    let typeIcon = '💳';
+    if (item.type === 'don') {
+        typeBadgeClass = 'badge-donation';
+        typeBadgeStyle = '';
+        typeIcon = '💚';
+    } else if (item.type === 'exp') {
+        typeBadgeClass = 'badge-expense';
+        typeBadgeStyle = '';
+        typeIcon = '🧾';
+    }
+
     let html = `
-        <div style="text-align:center; margin-bottom:20px;">
-            <div style="font-size:2rem; font-weight:800;">${formatCurrency(item.amount)} €</div>
-            <div style="color:var(--text-secondary);">${item.typeName}</div>
-        </div>
-        <div class="details-status-card" style="background:var(--surface-alt); border:1px solid var(--border);">
-            <div class="details-row">
-                <span class="details-label">${t('modal_date', 'Datum')}</span>
-                <span class="details-value">${item.date ? formatDateFast(item.date) : '-'}</span>
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:18px 16px; text-align:center; margin-bottom:14px; display:flex; flex-direction:column; align-items:center; gap:6px;">
+            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:0.8rem; font-weight:700; ${typeBadgeStyle}" class="${typeBadgeClass}">
+                <span>${typeIcon}</span> ${escapeHtml(item.typeName || '')}
             </div>
-            ${item.who ? `
-            <div class="details-row">
-                <span class="details-label">${t('modal_person_name', 'Person')}</span>
-                <span class="details-value">${escapeHtml(item.who)}</span>
-            </div>` : ''}
-             ${item.issuer ? `
-            <div class="details-row">
-                <span class="details-label">${t('details_issued_by', 'Ausgestellt von')}</span>
-                <span class="details-value">${escapeHtml(item.issuer)}</span>
-            </div>` : ''}
-            ${(item.description || item.note) ? `
-            <div class="details-row">
-                <span class="details-label">${t('details_description', 'Beschreibung')}</span>
-                <span class="details-value">${escapeHtml(item.description || item.note)}</span>
-            </div>` : ''}
+            <div style="font-size:2rem; font-weight:800; color:var(--text); letter-spacing:-0.03em;">${formatCurrency(item.amount)} €</div>
         </div>
-        <div id="receipt-container" style="margin-top:20px;"></div>
+
+        <div class="modal-section-card" style="gap:10px;">
+            <div class="modal-section-header">
+                <span>ℹ️</span> <span>${escapeHtml(t('modal_section_info', 'Transaktionsdetails'))}</span>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:10px; font-size:0.9rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">📅 ${escapeHtml(t('modal_date', 'Datum'))}</span>
+                    <span style="font-weight:600; color:var(--text);">${item.date ? formatDateFast(item.date) : '-'}</span>
+                </div>
+
+                ${item.who ? `
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">👤 ${escapeHtml(t('modal_person_name', 'Person'))}</span>
+                    <span style="font-weight:600; color:var(--text);">${escapeHtml(item.who)}</span>
+                </div>` : ''}
+
+                ${item.issuer ? `
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}</span>
+                    <span style="font-weight:600; color:var(--text);">${escapeHtml(item.issuer)}</span>
+                </div>` : ''}
+
+                ${(item.description || item.note) ? `
+                <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
+                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
+                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:8px 12px; border-radius:10px; border:1px solid var(--border);">${escapeHtml(item.description || item.note)}</span>
+                </div>` : ''}
+            </div>
+        </div>
+
+        <div id="receipt-container" style="margin-top:12px;"></div>
     `;
 
     content.innerHTML = html;

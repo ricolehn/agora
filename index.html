@@ -740,86 +740,163 @@
 
 
 <div id="add-person-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-person">
-    <div class="modal-content">
-        <div class="modal-header"><span id="title-add-person" data-i18n="modal_add_person_title">Person hinzufügen</span> <button class="close-btn" onclick="closeModal('add-person-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
-        <div class="form-group">
-            <label class="form-label" for="new-person-name" data-i18n="modal_person_name">Name</label>
-            <input type="text" id="new-person-name" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="new-person-start" data-i18n="modal_person_start">Mitglied Seit</label>
-            <input type="date" id="new-person-start" class="form-input">
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_person_start_desc">
-                Ab diesem Datum werden Beiträge berechnet.
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-person">👤</div>
+                <div>
+                    <div id="title-add-person" class="modal-title-main" data-i18n="modal_add_person_title">Person hinzufügen</div>
+                    <div class="modal-subtitle" data-i18n="modal_add_person_subtitle">Neues Mitglied registrieren</div>
+                </div>
             </div>
+            <button class="close-btn" onclick="closeModal('add-person-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <div class="form-group">
-            <label class="form-label" for="new-person-status" data-i18n="modal_person_status">Status</label>
-            <select id="new-person-status" class="form-select">
-                <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
-                <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
-                <option value="keinverdiener" data-i18n="member_status_none">🎓 Keinverdiener</option>
-                <option value="pausiert" data-i18n="member_status_paused">⏸️ Pausiert</option>
-            </select>
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📋</span> <span data-i18n="modal_section_person_details">Persönliche Daten</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="new-person-name" data-i18n="modal_person_name">Name</label>
+                    <input type="text" id="new-person-name" class="form-input">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="new-person-start" data-i18n="modal_person_start">Mitglied Seit</label>
+                    <input type="date" id="new-person-start" class="form-input">
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_person_start_desc">
+                        Ab diesem Datum werden Beiträge berechnet.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💼</span> <span data-i18n="modal_section_status">Mitgliedsstatus</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="new-person-status" data-i18n="modal_person_status">Status</label>
+                    <select id="new-person-status" class="form-select">
+                        <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
+                        <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
+                        <option value="keinverdiener" data-i18n="member_status_none">🎓 Keinverdiener</option>
+                        <option value="pausiert" data-i18n="member_status_paused">⏸️ Pausiert</option>
+                    </select>
+                </div>
+            </div>
+            <button id="btn-add-person" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addPerson()" data-i18n="btn_add">Hinzufügen</button>
         </div>
-        <button id="btn-add-person" class="btn btn-primary btn-block" onclick="addPerson()" data-i18n="btn_add">Hinzufügen</button>
     </div>
 </div>
 
 <div id="change-status-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-change-status">
-    <div class="modal-content">
-        <div class="modal-header"><span id="title-change-status" data-i18n="modal_change_status_title">Status Ändern</span> <button class="close-btn" onclick="closeModal('change-status-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
-        <div class="form-group">
-            <label class="form-label" for="change-status-select" data-i18n="modal_new_status">Neuer Status</label>
-            <select id="change-status-select" class="form-select">
-                <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
-                <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
-                <option value="keinverdiener" data-i18n="member_status_none">🎓 Keinverdiener</option>
-                <option value="pausiert" data-i18n="member_status_paused">⏸️ Pausiert</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="change-status-date" data-i18n="modal_valid_from">Gültig ab</label>
-            <input type="date" id="change-status-date" class="form-input">
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_status_desc">
-                <strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br>
-                <strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-person">⚡</div>
+                <div>
+                    <div id="title-change-status" class="modal-title-main" data-i18n="modal_change_status_title">Status Ändern</div>
+                    <div class="modal-subtitle" data-i18n="modal_change_status_subtitle">Mitgliedsstatus anpassen</div>
+                </div>
             </div>
+            <button class="close-btn" onclick="closeModal('change-status-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <button class="btn btn-primary btn-block" onclick="saveStatusChange()" data-i18n="btn_save">Status Ändern</button>
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💼</span> <span data-i18n="modal_new_status">Neuer Status</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="change-status-select" data-i18n="modal_new_status">Neuer Status</label>
+                    <select id="change-status-select" class="form-select">
+                        <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
+                        <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
+                        <option value="keinverdiener" data-i18n="member_status_none">🎓 Keinverdiener</option>
+                        <option value="pausiert" data-i18n="member_status_paused">⏸️ Pausiert</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📅</span> <span data-i18n="modal_valid_from">Gültigkeitsdatum</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="change-status-date" data-i18n="modal_valid_from">Gültig ab</label>
+                    <input type="date" id="change-status-date" class="form-input">
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_status_desc">
+                        <strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br>
+                        <strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="saveStatusChange()" data-i18n="btn_save">Status Ändern</button>
+        </div>
     </div>
 </div>
 
 <div id="add-payment-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-payment">
-    <div class="modal-content">
-        <div class="modal-header"><span id="title-add-payment" data-i18n="modal_book_payment_title">Zahlung buchen</span> <button class="close-btn" onclick="closeModal('add-payment-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
-        <div class="form-group" style="display:flex; align-items:center; gap:10px;">
-            <label class="switch">
-                <input type="checkbox" id="payment-is-standing-order" onchange="document.getElementById('payment-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
-                <span class="slider"></span>
-            </label>
-            <label for="payment-is-standing-order" style="margin:0; font-weight:600; cursor:pointer" data-i18n="modal_standing_order">Dauerauftrag</label>
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-donation">💳</div>
+                <div>
+                    <div id="title-add-payment" class="modal-title-main" data-i18n="modal_book_payment_title">Zahlung buchen</div>
+                    <div class="modal-subtitle" data-i18n="modal_book_payment_subtitle">Beitrag & Einzahlung erfassen</div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal('add-payment-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <div class="form-group">
-            <label class="form-label" for="payment-amount" data-i18n="modal_amount">Betrag (€)</label>
-            <input type="text" inputmode="decimal" id="payment-amount" class="form-input">
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💶</span> <span data-i18n="modal_section_amount">Zahlungsbetrag</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="payment-amount" data-i18n="modal_amount">Betrag (€)</label>
+                    <div class="hero-amount-wrapper">
+                        <span class="hero-amount-prefix">€</span>
+                        <input type="text" inputmode="decimal" id="payment-amount" class="form-input hero-amount-input" placeholder="0,00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>⚙️</span> <span data-i18n="modal_section_payment_type">Zahlungsart & Datum</span>
+                </div>
+                <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                    <label class="switch">
+                        <input type="checkbox" id="payment-is-standing-order" onchange="document.getElementById('payment-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
+                        <span class="slider"></span>
+                    </label>
+                    <label for="payment-is-standing-order" style="margin:0; font-weight:600; cursor:pointer; font-size:0.9rem;" data-i18n="modal_standing_order">Dauerauftrag</label>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" id="payment-date-label" for="payment-date" data-i18n="modal_date">Datum</label>
+                    <input type="date" id="payment-date" class="form-input">
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📝</span> <span data-i18n="modal_note">Notiz / Verwendungszweck</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="payment-desc" data-i18n="modal_note">Notiz</label>
+                    <input type="text" id="payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
+                </div>
+            </div>
+            <button id="btn-add-payment" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addPayment()" data-i18n="btn_book">Buchen</button>
         </div>
-        <div class="form-group">
-            <label class="form-label" id="payment-date-label" for="payment-date" data-i18n="modal_date">Datum</label>
-            <input type="date" id="payment-date" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="payment-desc" data-i18n="modal_note">Notiz</label>
-            <input type="text" id="payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
-        </div>
-        <button id="btn-add-payment" class="btn btn-primary btn-block" onclick="addPayment()" data-i18n="btn_book">Buchen</button>
     </div>
 </div>
 
 <div id="edit-payment-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-edit-payment">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span id="title-edit-payment" data-i18n="modal_edit_payment_title">Zahlung bearbeiten</span>
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-person">✏️</div>
+                <div>
+                    <div id="title-edit-payment" class="modal-title-main" data-i18n="modal_edit_payment_title">Zahlung bearbeiten</div>
+                    <div id="edit-payment-person" class="modal-subtitle" style="margin-top:2px;"></div>
+                </div>
+            </div>
             <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
                 <button class="delete-icon-btn" onclick="deleteRecordedPaymentClick()" data-i18n-aria-label="btn_delete" aria-label="Löschen" style="background: none; border: none; color: var(--danger); padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
@@ -827,31 +904,46 @@
                 <button class="close-btn" style="margin: 0; padding: 0 4px; line-height: 1;" onclick="closeModal('edit-payment-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
             </div>
         </div>
-        <div id="edit-payment-person" style="font-weight:700; margin-bottom:10px;"></div>
-        <div class="form-group">
-            <label class="form-label" for="edit-payment-amount" data-i18n="modal_amount">Betrag (€)</label>
-            <input type="text" inputmode="decimal" id="edit-payment-amount" class="form-input">
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💶</span> <span data-i18n="modal_section_amount">Betrag & Datum</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="edit-payment-amount" data-i18n="modal_amount">Betrag (€)</label>
+                    <div class="hero-amount-wrapper">
+                        <span class="hero-amount-prefix">€</span>
+                        <input type="text" inputmode="decimal" id="edit-payment-amount" class="form-input hero-amount-input">
+                    </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="edit-payment-date" data-i18n="modal_date">Datum</label>
+                    <input type="date" id="edit-payment-date" class="form-input">
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📝</span> <span data-i18n="modal_note">Notiz & Empfänger</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="edit-payment-desc" data-i18n="modal_note">Notiz</label>
+                    <input type="text" id="edit-payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
+                </div>
+                <div class="form-group" id="edit-payment-issuer-group" style="display:none; margin:0;">
+                    <label class="form-label" for="edit-payment-issuer" data-i18n="modal_recipient">Wer / Empfänger</label>
+                    <input type="text" id="edit-payment-issuer" class="form-input" data-i18n-placeholder="modal_recipient_placeholder" placeholder="Name">
+                </div>
+            </div>
+            <div class="modal-section-card" id="edit-payment-receipts-group" style="display:none;">
+                <div class="modal-section-header">
+                    <span>📎</span> <span data-i18n="manage_receipts">Belege verwalten</span>
+                </div>
+                <div id="edit-payment-receipts-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;"></div>
+                <label class="form-label" for="edit-payment-new-receipt" style="color: var(--text-secondary); font-size: 0.8rem;" data-i18n="add_receipts">Beleg(e) hinzufügen</label>
+                <input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif,.pdf" class="form-input" multiple>
+            </div>
+            <button class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="saveEditedPayment()" data-i18n="btn_save">Speichern</button>
         </div>
-        <div class="form-group">
-            <label class="form-label" for="edit-payment-date" data-i18n="modal_date">Datum</label>
-            <input type="date" id="edit-payment-date" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="edit-payment-desc" data-i18n="modal_note">Notiz</label>
-            <input type="text" id="edit-payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
-        </div>
-        <div class="form-group" id="edit-payment-issuer-group" style="display:none;">
-            <label class="form-label" for="edit-payment-issuer" data-i18n="modal_recipient">Wer / Empfänger</label>
-            <input type="text" id="edit-payment-issuer" class="form-input" data-i18n-placeholder="modal_recipient_placeholder" placeholder="Name">
-        </div>
-        <div class="form-group" id="edit-payment-receipts-group" style="display:none; border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px;">
-            <label class="form-label" style="font-weight: 600;" data-i18n="manage_receipts">Belege verwalten</label>
-            <div id="edit-payment-receipts-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
-            
-            <label class="form-label" for="edit-payment-new-receipt" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 10px;" data-i18n="add_receipts">Beleg(e) hinzufügen</label>
-            <input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif" class="form-input" multiple>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="saveEditedPayment()" data-i18n="btn_save">Speichern</button>
     </div>
 </div>
 
@@ -880,58 +972,119 @@
 </div>
 
 <div id="add-donation-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-donation">
-    <div class="modal-content">
-        <div class="modal-header"><span id="title-add-donation" data-i18n="btn_add_donation">Spende</span> <button class="close-btn" onclick="closeModal('add-donation-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
-        <div class="form-group">
-            <label for="donation-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
-            <input id="donation-amount" class="form-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="Betrag">
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-donation">💚</div>
+                <div>
+                    <div id="title-add-donation" class="modal-title-main" data-i18n="btn_add_donation">Spende erfassen</div>
+                    <div class="modal-subtitle" data-i18n="modal_add_donation_subtitle">Einmalige oder Zweckspende verbuchen</div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal('add-donation-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <div class="form-group">
-            <label for="donation-name" class="form-label" data-i18n="modal_donor_name">Spender Name</label>
-            <input id="donation-name" class="form-input" data-i18n-placeholder="modal_donor_name" placeholder="Spender Name">
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💶</span> <span data-i18n="modal_section_amount">Spendenbetrag</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="donation-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
+                    <div class="hero-amount-wrapper">
+                        <span class="hero-amount-prefix">€</span>
+                        <input id="donation-amount" class="form-input hero-amount-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="0,00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📝</span> <span data-i18n="modal_section_details">Spenden-Details</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="donation-name" class="form-label" data-i18n="modal_donor_name">Spender Name</label>
+                    <input id="donation-name" class="form-input" data-i18n-placeholder="modal_donor_name" placeholder="Spender Name">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="donation-desc" class="form-label" data-i18n="details_description">Beschreibung</label>
+                    <input id="donation-desc" class="form-input" data-i18n-placeholder="details_description" placeholder="Zweck / Notiz">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="donation-date" class="form-label" data-i18n="modal_date">Datum</label>
+                    <input type="date" id="donation-date" class="form-input">
+                </div>
+            </div>
+            <button id="btn-add-donation" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addDonation()" data-i18n="btn_save">Speichern</button>
         </div>
-        <div class="form-group">
-            <label for="donation-desc" class="form-label" data-i18n="details_description">Beschreibung</label>
-            <input id="donation-desc" class="form-input" data-i18n-placeholder="details_description" placeholder="Beschreibung">
-        </div>
-        <div class="form-group">
-            <label for="donation-date" class="form-label" data-i18n="modal_date">Datum</label>
-            <input type="date" id="donation-date" class="form-input">
-        </div>
-        <button id="btn-add-donation" class="btn btn-primary btn-block" onclick="addDonation()" data-i18n="btn_save">Speichern</button>
     </div>
 </div>
 <div id="add-expense-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-expense">
-    <div class="modal-content">
-        <div class="modal-header"><span id="title-add-expense" data-i18n="modal_add_expense_title">Ausgabe</span> <button class="close-btn" onclick="closeModal('add-expense-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button></div>
-        <div class="form-group">
-            <label for="expense-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
-            <input id="expense-amount" class="form-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="Betrag">
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-expense">🧾</div>
+                <div>
+                    <div id="title-add-expense" class="modal-title-main" data-i18n="modal_add_expense_title">Ausgabe buchen</div>
+                    <div class="modal-subtitle" data-i18n="modal_add_expense_subtitle">Ausgabe & Belege erfassen</div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal('add-expense-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <div class="form-group">
-            <label for="expense-issuer" class="form-label" data-i18n="modal_expense_who">Wer?</label>
-            <input id="expense-issuer" class="form-input" data-i18n-placeholder="modal_expense_who_placeholder" placeholder="Wer?">
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💶</span> <span data-i18n="modal_section_amount">Ausgabenbetrag</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="expense-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
+                    <div class="hero-amount-wrapper">
+                        <span class="hero-amount-prefix">€</span>
+                        <input id="expense-amount" class="form-input hero-amount-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="0,00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>ℹ️</span> <span data-i18n="modal_section_info">Angaben zur Ausgabe</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="expense-issuer" class="form-label" data-i18n="modal_expense_who">Wer?</label>
+                    <input id="expense-issuer" class="form-input" data-i18n-placeholder="modal_expense_who_placeholder" placeholder="Zahlender / Empfänger">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="expense-desc" class="form-label" data-i18n="modal_expense_what">Wofür?</label>
+                    <input id="expense-desc" class="form-input" data-i18n-placeholder="modal_expense_what_placeholder" placeholder="Verwendungszweck">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label for="expense-date" class="form-label" data-i18n="modal_date">Datum</label>
+                    <input type="date" id="expense-date" class="form-input">
+                </div>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📎</span> <span data-i18n="modal_expense_receipt">Beleg anhängen</span>
+                </div>
+                <div class="file-upload-dropzone">
+                    <div class="file-upload-icon">📁</div>
+                    <div class="file-upload-text" data-i18n="modal_expense_receipt_text">Beleg auswählen oder hierhin ziehen</div>
+                    <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
+                    <input type="file" id="expense-receipt" accept="image/*,.heic,.heif,.pdf" multiple>
+                </div>
+            </div>
+            <button id="btn-add-expense" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addExpense()" data-i18n="btn_save">Speichern</button>
         </div>
-        <div class="form-group">
-            <label for="expense-desc" class="form-label" data-i18n="modal_expense_what">Wofür?</label>
-            <input id="expense-desc" class="form-input" data-i18n-placeholder="modal_expense_what_placeholder" placeholder="Wofür?">
-        </div>
-        <div class="form-group">
-            <label for="expense-date" class="form-label" data-i18n="modal_date">Datum</label>
-            <input type="date" id="expense-date" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="expense-receipt" data-i18n="modal_expense_receipt">Beleg</label>
-            <input type="file" id="expense-receipt" accept="image/*,.heic,.heif" class="form-input" multiple>
-        </div>
-        <button id="btn-add-expense" class="btn btn-primary btn-block" onclick="addExpense()" data-i18n="btn_save">Speichern</button>
     </div>
 </div>
 
 <div id="transaction-details-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-transaction-details">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span id="title-transaction-details" data-i18n="modal_details_title">Details</span>
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-person">📋</div>
+                <div>
+                    <div id="title-transaction-details" class="modal-title-main" data-i18n="modal_details_title">Details & Historie</div>
+                    <div class="modal-subtitle" data-i18n="modal_details_subtitle">Transaktionsübersicht</div>
+                </div>
+            </div>
             <div style="display: flex; align-items: center; gap: 12px;">
                 <button id="details-edit-btn" class="btn btn-secondary btn-small" style="display: none; padding: 6px; border-radius: 8px;" aria-label="Bearbeiten">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -939,7 +1092,9 @@
                 <button class="close-btn" onclick="closeModal('transaction-details-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
             </div>
         </div>
-        <div id="transaction-details-content"></div>
+        <div class="modal-body-enhanced">
+            <div id="transaction-details-content"></div>
+        </div>
     </div>
 </div>
 
