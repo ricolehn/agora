@@ -1,6 +1,57 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, remove, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 
+
+if(window.pendingExpenseFiles) { window.pendingExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
+window.pendingExpenseFiles = [];
+
+window.renderExpenseReceiptPreview = function() {
+    const listEl = document.getElementById('expense-receipt-preview-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+
+    if (window.pendingExpenseFiles.length === 0) {
+        listEl.innerHTML = '';
+        return;
+    }
+
+    window.pendingExpenseFiles.forEach((file, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.style = "display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-alt); border:1px solid var(--border); border-radius:12px; padding:8px 12px; transition: transform 0.2s;";
+
+        const isImage = file.type && file.type.startsWith('image/');
+        if (!file.previewUrl && isImage) file.previewUrl = URL.createObjectURL(file);
+        const previewUrl = file.previewUrl || null;
+
+        const previewHtml = isImage
+            ? `<img src="${previewUrl}" style="width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" alt="Beleg">`
+            : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>`;
+
+        itemDiv.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+                ${previewHtml}
+                <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text); font-weight:600;">${escapeHtml(file.name)}</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-danger btn-small" style="padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" onclick="removePendingExpenseFile(${index})" title="Entfernen">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+            </div>
+        `;
+        listEl.appendChild(itemDiv);
+    });
+};
+
+window.removePendingExpenseFile = function(index) {
+    if (index >= 0 && index < window.pendingExpenseFiles.length) {
+        const removed = window.pendingExpenseFiles.splice(index, 1);
+        if(removed[0] && removed[0].previewUrl) URL.revokeObjectURL(removed[0].previewUrl);
+        window.renderExpenseReceiptPreview();
+    }
+};
+
+
 const app = initializeApp(config);
 const db = getDatabase(app);
 const auth = getAuth(app);
@@ -394,6 +445,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
     checkAuth();
 
+
+    const expenseReceiptInput = document.getElementById('expense-receipt');
+    if (expenseReceiptInput) {
+        expenseReceiptInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                const newFiles = Array.from(e.target.files);
+                window.pendingExpenseFiles = window.pendingExpenseFiles.concat(newFiles);
+                window.renderExpenseReceiptPreview();
+                e.target.value = ''; // Reset input to allow selecting the same file again
+            }
+        });
+    }
+
     const today = new Date().toISOString().split('T')[0];
     ['payment-date', 'donation-date', 'expense-date', 'change-status-date', 'new-person-start'].forEach(id => {
         const el = document.getElementById(id);
@@ -621,6 +685,16 @@ window._programmaticBacks = window._programmaticBacks || 0;
 window.openModal = (id) => {
     const modal = document.getElementById(id);
     if (!modal) return;
+
+    if (id === 'add-expense-modal') {
+        if(window.pendingExpenseFiles) { window.pendingExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
+window.pendingExpenseFiles = [];
+        if (typeof window.renderExpenseReceiptPreview === 'function') {
+            window.renderExpenseReceiptPreview();
+        }
+        const fileInput = document.getElementById('expense-receipt');
+        if (fileInput) fileInput.value = '';
+    }
 
     // Web History API integration
     window._modalStack.push(id);
@@ -3543,13 +3617,12 @@ window.addExpense = async () => {
     const desc = document.getElementById('expense-desc').value;
 
     let receiptFilename = null;
-    const fileInput = document.getElementById('expense-receipt');
-    if (fileInput && fileInput.files.length > 0) {
+    if (window.pendingExpenseFiles && window.pendingExpenseFiles.length > 0) {
         try {
             setButtonLoading('btn-add-expense', true, "Lade hoch...");
             const filenames = [];
-            for (let i = 0; i < fileInput.files.length; i++) {
-                const fn = await uploadReceipt(fileInput.files[i], issuer, date);
+            for (let i = 0; i < window.pendingExpenseFiles.length; i++) {
+                const fn = await uploadReceipt(window.pendingExpenseFiles[i], issuer, date);
                 filenames.push(fn);
             }
             receiptFilename = JSON.stringify(filenames);
@@ -3580,7 +3653,11 @@ window.addExpense = async () => {
         document.getElementById('expense-amount').value = '';
         document.getElementById('expense-issuer').value = '';
         document.getElementById('expense-desc').value = '';
+        const fileInput = document.getElementById('expense-receipt');
         if(fileInput) fileInput.value = '';
+        if(window.pendingExpenseFiles) { window.pendingExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
+window.pendingExpenseFiles = [];
+        window.renderExpenseReceiptPreview();
         showToast(t('toast_expense_saved', 'Ausgabe gespeichert'));
     } catch (err) {
         console.error('Fehler beim Speichern der Ausgabe:', err);
