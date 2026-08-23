@@ -395,11 +395,14 @@
   "req_status_pending": "Pending",
   "user_no_reason": "No reason given",
   "user_req_payment_title": "Report payment",
+  "user_req_payment_subtitle": "Report contribution or deposit to admin",
   "req_amount_label": "Amount (€)",
   "req_note_label": "Note (Optional)",
   "user_req_status_title": "Request status change",
+  "user_req_status_subtitle": "Request membership status change",
   "req_valid_from": "Valid from",
   "user_req_expense_title": "Report expense",
+  "user_req_expense_subtitle": "Submit expense for reimbursement",
   "req_desc_label": "Description",
   "req_receipt_label": "Receipt(s) (Optional)"
 }

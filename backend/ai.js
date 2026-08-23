@@ -178,6 +178,59 @@ async function buildDatabaseSnapshot(appConfig) {
 }
 
 /**
+ * Sanitizes and normalizes user input text before sending to AI providers.
+ * - Normalizes Unicode (NFC)
+ * - Removes lone/unpaired UTF-16 surrogates to prevent UTF-8 encoding/JSON errors
+ * - Strips null bytes and unprintable control characters (preserving \n, \r, \t)
+ * - Normalizes CRLF to LF
+ */
+function sanitizeAiText(input) {
+  if (typeof input !== 'string') {
+    input = String(input || '');
+  }
+
+  try {
+    input = input.normalize('NFC');
+  } catch { /* ignore */ }
+
+  // Remove null bytes and unprintable ASCII / C0/C1 control characters except \t, \n, \r
+  input = input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+
+  if (typeof input.toWellFormed === 'function') {
+    input = input.toWellFormed();
+  } else {
+    input = input.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+  }
+
+  return input.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/**
+ * Validates, sanitizes and trims chat history payload for AI providers.
+ */
+function sanitizeAiMessages(rawMessages, maxMessages = 50, maxCharPerMsg = 12000) {
+  if (!Array.isArray(rawMessages)) return [];
+
+  const sanitized = [];
+  for (const msg of rawMessages) {
+    if (!msg || typeof msg !== 'object') continue;
+    const role = msg.role === 'assistant' ? 'assistant' : (msg.role === 'user' ? 'user' : null);
+    if (!role) continue;
+
+    let content = sanitizeAiText(msg.content).trim();
+    if (!content) continue; // Skip empty messages to prevent provider 400 errors
+
+    if (content.length > maxCharPerMsg) {
+      content = content.slice(0, maxCharPerMsg);
+    }
+
+    sanitized.push({ role, content });
+  }
+
+  return sanitized.slice(-maxMessages);
+}
+
+/**
  * Builds the system prompt injected at the start of every chat request.
  * @param {string} appName - The configured application name.
  * @param {string} dbSnapshot - JSON string from buildDatabaseSnapshot.
@@ -186,4 +239,13 @@ function buildSystemPrompt(appName, dbSnapshot) {
   return `You are a helpful support assistant for the ${appName || 'Nova'} church management application. Answer admin questions about the application data, members, finances, and settings. Be concise and helpful.\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
-module.exports = { getAiSettings, setAiSettings, buildDatabaseSnapshot, buildSystemPrompt };
+module.exports = {
+  getAiSettings,
+  setAiSettings,
+  buildDatabaseSnapshot,
+  buildSystemPrompt,
+  sanitizeAiText,
+  sanitizeAiMessages
+};
+
+

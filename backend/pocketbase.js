@@ -374,6 +374,7 @@ async function ensureUsersCollection(appConfig) {
       createRule: '',
       updateRule: 'id = @request.auth.id || @request.auth.admin = true',
       deleteRule: '@request.auth.superAdmin = true',
+      authToken: { duration: 94670856 },
       fields,
       indexes: existing.indexes || [],
       options: {

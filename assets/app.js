@@ -51,6 +51,57 @@ window.removePendingExpenseFile = function(index) {
     }
 };
 
+if(window.pendingReqExpenseFiles) { window.pendingReqExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
+window.pendingReqExpenseFiles = [];
+
+window.renderReqReceiptPreview = function() {
+    const listEl = document.getElementById('req-receipt-preview-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    if (window.pendingReqExpenseFiles.length === 0) return;
+
+    window.pendingReqExpenseFiles.forEach((file, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.style = "display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-alt); border:1px solid var(--border); border-radius:12px; padding:8px 12px; transition: transform 0.2s;";
+
+        const isImage = file.type && file.type.startsWith('image/');
+        if (!file.previewUrl && isImage) file.previewUrl = URL.createObjectURL(file);
+        const previewUrl = file.previewUrl || null;
+
+        const previewHtml = isImage
+            ? `<img src="${previewUrl}" style="width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" alt="Beleg">`
+            : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>`;
+
+        itemDiv.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+                ${previewHtml}
+                <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text); font-weight:600;">${escapeHtml(file.name)}</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-danger btn-small" style="padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" onclick="removePendingReqFile(${index})" title="Entfernen">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+            </div>
+        `;
+        listEl.appendChild(itemDiv);
+    });
+};
+
+window.handleReqReceiptFiles = function(files) {
+    if (!files || files.length === 0) return;
+    const newFiles = Array.from(files);
+    window.pendingReqExpenseFiles = window.pendingReqExpenseFiles.concat(newFiles);
+    window.renderReqReceiptPreview();
+};
+
+window.removePendingReqFile = function(index) {
+    if (index >= 0 && index < window.pendingReqExpenseFiles.length) {
+        const removed = window.pendingReqExpenseFiles.splice(index, 1);
+        if(removed[0] && removed[0].previewUrl) URL.revokeObjectURL(removed[0].previewUrl);
+        window.renderReqReceiptPreview();
+    }
+};
+
 
 const app = initializeApp(config);
 const db = getDatabase(app);
@@ -1490,10 +1541,14 @@ async function loadData(silent = false) {
         advancedConfigLoaded = false;
         advancedConfigAppName = null;
         // 1. Fetch Settings
-        const sSnap = await get(child(dbRef, 'settings'));
-        if (sSnap.exists()) {
-            settings = sSnap.val();
-            settingsVersion++;
+        try {
+            const sSnap = await get(child(dbRef, 'settings'));
+            if (sSnap.exists()) {
+                settings = sSnap.val();
+                settingsVersion++;
+            }
+        } catch (settingsErr) {
+            console.warn("Could not fetch settings:", settingsErr);
         }
 
         // 2. Fetch User's Person Entry (Securely with Fallback)
@@ -1507,69 +1562,83 @@ async function loadData(silent = false) {
 
             if (pSnap.exists()) {
                 peopleList = safeList(pSnap.val());
-            } else {
-                // Fallback: Try by Name (Requires Index)
-                const fullName = `${currentUser.firstName} ${currentUser.lastName}`;
-                q = query(peopleRef, orderByChild('name'), equalTo(fullName));
-                pSnap = await get(q);
+            }
 
-                if (pSnap.exists()) {
-                    const val = pSnap.val();
-                    // Link the first match to this UID
-                    const key = Object.keys(val)[0];
-                    if (key) {
-                        await update(child(peopleRef, key), { uid: currentUser.uid });
-                        const p = val[key];
-                        p.uid = currentUser.uid;
-                        peopleList = [p];
+            if (peopleList.length === 0) {
+                // Fallback: Try by Name (Requires Index)
+                const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || '';
+                if (fullName) {
+                    q = query(peopleRef, orderByChild('name'), equalTo(fullName));
+                    pSnap = await get(q);
+
+                    if (pSnap.exists()) {
+                        const val = pSnap.val();
+                        // Link the first match to this UID
+                        const key = Object.keys(val)[0];
+                        if (key) {
+                            try {
+                                await update(child(peopleRef, key), { uid: currentUser.uid });
+                            } catch (linkErr) {
+                                console.warn("Auto-link update failed:", linkErr);
+                            }
+                            const p = val[key];
+                            p.uid = currentUser.uid;
+                            peopleList = [p];
+                        }
                     }
                 }
             }
         } catch (queryErr) {
             console.warn("Index missing, falling back to client-side filtering:", queryErr);
-            // Fallback: Fetch all and filter client-side (slower but works without index)
-            const pSnap = await get(peopleRef);
-            const allPeople = safeList(pSnap.val());
-            const fullName = `${currentUser.firstName} ${currentUser.lastName}`.toLowerCase();
+            try {
+                const pSnap = await get(peopleRef);
+                const allPeople = safeList(pSnap.val());
+                const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() || (currentUser.name || '').toLowerCase();
 
-            // Find by UID or Name
-            peopleList = allPeople.filter(p => p.uid === currentUser.uid || p.name.toLowerCase() === fullName);
+                // Find by UID or Name
+                peopleList = allPeople.filter(p => p.uid === currentUser.uid || (p.name && p.name.toLowerCase() === fullName));
 
-            // Auto-link if found by name but no UID
-            if (peopleList.length > 0) {
-                const p = peopleList[0];
-                if (!p.uid && p.name.toLowerCase() === fullName) {
-                    p.uid = currentUser.uid;
-                    // We need the key to update. Assuming 'id' is the key or we need to find it.
-                    // In this app structure, people is an array or object.
-                    // If it's an object keyed by record id, we need the key.
-                    // safeList loses keys if not careful, but here we just need to update the object in memory for now.
-                    // To persist the link, we would need to know the key.
-                    // Let's try to find the key from the snapshot if possible.
-                    if(pSnap.exists()) {
-                        const val = pSnap.val();
-                        const key = Object.keys(val).find(k => val[k].id === p.id);
-                        if(key) {
-                            update(child(peopleRef, key), { uid: currentUser.uid });
+                // Auto-link if found by name but no UID
+                if (peopleList.length > 0) {
+                    const p = peopleList[0];
+                    if (!p.uid && p.name && p.name.toLowerCase() === fullName) {
+                        p.uid = currentUser.uid;
+                        if(pSnap.exists()) {
+                            const val = pSnap.val();
+                            const key = Object.keys(val).find(k => val[k].id === p.id || val[k].personKey === p.id);
+                            if(key) {
+                                try {
+                                    await update(child(peopleRef, key), { uid: currentUser.uid });
+                                } catch (linkErr) {
+                                    console.warn("Auto-link update failed:", linkErr);
+                                }
+                            }
                         }
                     }
                 }
+            } catch (err) {
+                console.warn("Could not load people:", err);
             }
         }
         people = peopleList.filter(p => !p.isDeleted);
 
         // 3. Fetch User's Requests
         const requestsRef = child(dbRef, 'requests');
-        let rSnap;
+        let rSnap = null;
         try {
             const reqQuery = query(requestsRef, orderByChild('userId'), equalTo(currentUser.uid));
             rSnap = await get(reqQuery);
         } catch (reqErr) {
             console.warn("Request index missing, fetching all requests:", reqErr);
-            rSnap = await get(requestsRef);
+            try {
+                rSnap = await get(requestsRef);
+            } catch (rErr2) {
+                console.warn("Could not get requests:", rErr2);
+                rSnap = null;
+            }
         }
 
-        const allRequests = safeList(rSnap.val());
+        const allRequests = rSnap && rSnap.exists() ? safeList(rSnap.val()) : [];
         // If we fell back to all requests, filter them now
         requests = allRequests.filter(r => r.userId === currentUser.uid);
 
@@ -2395,81 +2464,97 @@ window.rejectRequest = async (reqId) => {
 };
 
 function renderUserView() {
-    if (people.length === 0) {
-        document.getElementById('user-status-card').innerHTML = `
-            <div style="text-align:center; padding: 20px; color: var(--text-secondary);">
-                ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
-            </div>
-        `;
-        return;
-    }
-
-    const p = people[0]; // User has only one person (themselves)
-    const paidUntil = p._paidUntil ? new Date(p._paidUntil) : null;
-    const statusMeta = p._statusMeta || { text: t('status_unknown', 'Unbekannt'), isOverdue: false, isSoonDue: false };
-    const overdueAmount = p._overdueAmount || 0;
-    const currentStatus = p._currentStatus || p.status;
-
-    // Format date to show only month and year
-    let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
-
-    const statusLabels = getStatusLabels(false);
-
-    let statusClass = 'user-status-ok';
-    let statusColor = 'var(--success)';
-    let statusIcon = '✅';
-
-    if (statusMeta.isOverdue) {
-        statusClass = 'user-status-overdue';
-        statusColor = 'var(--danger)';
-        statusIcon = '⚠️';
-    } else if (statusMeta.isSoonDue) {
-        statusClass = 'user-status-soon';
-        statusColor = 'var(--warning)';
-        statusIcon = '⏳';
-    }
-
-    const monthlyRate = settings[currentStatus] || 0;
-
-    const translatedStatusMetaText = translateStatusText(statusMeta.text);
-
-    document.getElementById('user-status-card').innerHTML = `
-        <!-- Status Hero Card -->
-        <div class="user-hero-status ${statusClass}">
-            <h2 style="color: ${statusColor}; font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
-                ${escapeHtml(translatedStatusMetaText)}
-            </h2>
-            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
-            ${statusMeta.isOverdue ? `
-                <div style="margin-top: 15px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
-                    <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 5px; color: var(--danger);">${t('user_open_amount', 'Offener Betrag')}</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">${formatCurrency(overdueAmount)} €</div>
-                </div>
-            ` : ''}
-        </div>
-
-        <div class="user-info-boxes">
-            <div class="user-info-box">
-                <div class="user-info-box-label">${t('user_monthly_rate', 'Monatlicher Beitrag')}</div>
-                <div class="user-info-box-value">${formatCurrency(monthlyRate)} €</div>
-            </div>
-            <div class="user-info-box">
-                <div class="user-info-box-label">${t('user_current_status', 'Aktueller Status')}</div>
-                <div class="user-info-box-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
-            </div>
-        </div>
-    `;
-
-    // Combined History (Timeline)
-    const timeline = generateTimelineHTML(p);
-    document.getElementById('user-payment-history').innerHTML = `
-        <div class="history-header">${t('user_history_title', 'Verlauf')}</div>
-        ${timeline}
-    `;
-
-    // User Requests List
-    const myRequests = requests.filter(r => r.userId === currentUser.uid).sort((a,b) => b.timestamp - a.timestamp);
+    const statusCard = document.getElementById('user-status-card');
+    const paymentHistory = document.getElementById('user-payment-history');
     const reqList = document.getElementById('user-requests-list');
+
+    if (people.length === 0) {
+        if (statusCard) {
+            statusCard.innerHTML = `
+                <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 16px; border: 1px solid var(--border);">
+                    ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
+                </div>
+            `;
+        }
+        if (paymentHistory) {
+            paymentHistory.innerHTML = `
+                <div class="history-header">${t('user_history_title', 'Verlauf')}</div>
+                <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+                    ${t('user_no_history', 'Keine Einträge vorhanden')}
+                </div>
+            `;
+        }
+    } else {
+        const p = people[0]; // User has only one person (themselves)
+        const paidUntil = p._paidUntil ? new Date(p._paidUntil) : null;
+        const statusMeta = p._statusMeta || { text: t('status_unknown', 'Unbekannt'), isOverdue: false, isSoonDue: false };
+        const overdueAmount = p._overdueAmount || 0;
+        const currentStatus = p._currentStatus || p.status;
+
+        // Format date to show only month and year
+        let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
+
+        const statusLabels = getStatusLabels(false);
+
+        let statusClass = 'user-status-ok';
+        let statusColor = 'var(--success)';
+        let statusIcon = '✅';
+
+        if (statusMeta.isOverdue) {
+            statusClass = 'user-status-overdue';
+            statusColor = 'var(--danger)';
+            statusIcon = '⚠️';
+        } else if (statusMeta.isSoonDue) {
+            statusClass = 'user-status-soon';
+            statusColor = 'var(--warning)';
+            statusIcon = '⏳';
+        }
+
+        const monthlyRate = settings[currentStatus] || 0;
+
+        const translatedStatusMetaText = translateStatusText(statusMeta.text);
+
+        if (statusCard) {
+            statusCard.innerHTML = `
+                <!-- Status Hero Card -->
+                <div class="user-hero-status ${statusClass}">
+                    <h2 style="color: ${statusColor}; font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
+                        ${escapeHtml(translatedStatusMetaText)}
+                    </h2>
+                    ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
+                    ${statusMeta.isOverdue ? `
+                        <div style="margin-top: 15px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
+                            <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 5px; color: var(--danger);">${t('user_open_amount', 'Offener Betrag')}</div>
+                            <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">${formatCurrency(overdueAmount)} €</div>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="user-info-boxes">
+                    <div class="user-info-box">
+                        <div class="user-info-box-label">${t('user_monthly_rate', 'Monatlicher Beitrag')}</div>
+                        <div class="user-info-box-value">${formatCurrency(monthlyRate)} €</div>
+                    </div>
+                    <div class="user-info-box">
+                        <div class="user-info-box-label">${t('user_current_status', 'Aktueller Status')}</div>
+                        <div class="user-info-box-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (paymentHistory) {
+            const timeline = generateTimelineHTML(p);
+            paymentHistory.innerHTML = `
+                <div class="history-header">${t('user_history_title', 'Verlauf')}</div>
+                ${timeline}
+            `;
+        }
+    }
+
+    // Combined History (Timeline) and User Requests List
+    const myRequests = (currentUser && requests) ? requests.filter(r => r.userId === currentUser.uid).sort((a,b) => b.timestamp - a.timestamp) : [];
+    if (!reqList) return;
 
     if(myRequests.length > 0) {
         reqList.innerHTML = myRequests.map(req => {
@@ -2491,22 +2576,43 @@ function renderUserView() {
             const typeIcons = { payment: '💰', status: '🔄', expense: '💸', standing_order: '🔁' };
             const typeLabels = { payment: t('action_payment', 'Zahlung'), status: t('action_status', 'Status'), expense: t('action_expense', 'Ausgabe'), standing_order: t('modal_standing_order', 'Dauerauftrag') };
 
+            const reqData = req.data || {};
+            const metaItems = [];
+            if (reqData.amount) metaItems.push(`<span>💶 <strong>${formatCurrency(reqData.amount)} €</strong></span>`);
+            if (reqData.date) metaItems.push(`<span>📅 ${formatDateFast(reqData.date)}</span>`);
+            if (reqData.newStatus) metaItems.push(`<span>💼 ${escapeHtml(statusLabels[reqData.newStatus] || reqData.newStatus)}</span>`);
+            if (reqData.note) metaItems.push(`<span>📝 ${escapeHtml(reqData.note)}</span>`);
+            if (reqData.description) metaItems.push(`<span>ℹ️ ${escapeHtml(reqData.description)}</span>`);
+            if (reqData.receipt) {
+                try {
+                    const receipts = JSON.parse(reqData.receipt);
+                    if (Array.isArray(receipts) && receipts.length > 0) {
+                        metaItems.push(`<span>📎 ${receipts.length} ${receipts.length === 1 ? 'Beleg' : 'Belege'}</span>`);
+                    }
+                } catch { /* ignore */ }
+            }
+
+            const metaHtml = metaItems.length > 0
+                ? `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.85rem; color:var(--text-secondary); background:var(--surface-alt); padding:8px 12px; border-radius:8px;">${metaItems.join('')}</div>`
+                : '';
+
             let details = '';
             if(req.status === 'rejected') {
-                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:var(--danger)10; border-radius:8px;">⚠️ ${escapeHtml(req.rejectionReason) || t('user_no_reason', 'Keine Begründung')}</div>`;
+                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:rgba(239, 68, 68, 0.1); border-radius:8px; border:1px solid rgba(239, 68, 68, 0.2);">⚠️ ${escapeHtml(req.rejectionReason) || t('user_no_reason', 'Keine Begründung')}</div>`;
             }
 
             return `
                 <div class="user-request-item">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div>
-                            <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 4px;">${typeIcons[req.type]} ${typeLabels[req.type] || req.type}</div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${formatDateFast(req.timestamp)}</div>
+                            <div style="font-size: 1.05rem; font-weight: 700; margin-bottom: 3px;">${typeIcons[req.type] || '📋'} ${typeLabels[req.type] || req.type}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary);">${formatDateFast(req.timestamp)}</div>
                         </div>
-                        <div style="background: ${statusBg}; padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">
+                        <div style="background: ${statusBg}; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; white-space: nowrap;">
                             ${statusBadge} ${statusText}
                         </div>
                     </div>
+                    ${metaHtml}
                     ${details}
                 </div>
             `;
@@ -2980,24 +3086,25 @@ window.renderHistoryTab = async function(resetLimit = true) {
                 iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>';
             }
 
-            const hasReceipt = tData.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></span>` : '';
+            const hasReceipt = tData.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></span>` : '';
 
             const uidAttr = (tData.type === 'pay' && tData.personUid) ? ` data-uid="${tData.personUid}"` : '';
 
             const hasDesc = !!(tData.description && tData.description.trim());
-            const metaHtml = (hasDesc || hasReceipt) ? `<div class="trans-meta">${hasDesc ? escapeHtml(tData.description) : ''}${hasReceipt}</div>` : '';
+            const descHtml = hasDesc ? `<span class="trans-desc">${escapeHtml(tData.description)}</span>` : '';
+            const metaHtml = (hasDesc || hasReceipt) ? `<div class="trans-meta">${descHtml}${hasReceipt}</div>` : '';
             html += `
                 <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(tData.id)}" data-type="${escapeHtml(tData.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
-                    <div style="display: flex; align-items: center; flex: 1;">
+                    <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
                         <div class="trans-icon-wrapper ${iconClass}"${uidAttr}>
                             ${iconSvg}
                         </div>
-                        <div class="trans-left" style="flex: 1;">
-                            <span style="font-weight:600;">${escapeHtml(tData.who)}</span>
+                        <div class="trans-left" style="flex: 1; min-width: 0;">
+                            <span style="font-weight:600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(tData.who)}</span>
                             ${metaHtml}
                         </div>
                     </div>
-                    <div style="display: flex; align-items: center;">
+                    <div style="display: flex; align-items: center; margin-left: 12px; flex-shrink: 0;">
                         <div class="trans-amount ${color}" style="font-size: 1.1rem;">${sign}${formatCurrency(tData.amount)}€</div>
                     </div>
                 </div>
@@ -3120,12 +3227,12 @@ window.openExportReportModal = async function() {
             if (allReportTransactions.length === 0) {
                 checklistContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">${t('no_transactions', 'Keine Buchungen vorhanden.')}</div>`;
             } else {
-                checklistContainer.innerHTML = allReportTransactions.map(tData => {
+                checklistContainer.innerHTML = allReportTransactions.map((tData, idx) => {
                     const tDateFormatted = tData.date ? formatDateFast(tData.date) : '';
                     const isExp = tData.type === 'exp';
                     const color = isExp ? 'text-danger' : 'text-success';
                     const sign = isExp ? '-' : '+';
-                    const key = tData.id || tData.paymentId;
+                    const key = String(tData.id || tData.paymentId || `tx_${idx}`);
                     return `
                         <div class="report-checklist-item" onclick="window.toggleManualTransactionSelection('${key}')">
                             <input type="checkbox" id="chk-report-${key}" value="${key}" onclick="event.stopPropagation(); window.toggleManualTransactionSelection('${key}')">
@@ -3157,12 +3264,13 @@ window.openExportReportModal = async function() {
 };
 
 window.toggleManualTransactionSelection = function(id) {
-    const chk = document.getElementById(`chk-report-${id}`);
-    if (selectedManualTransactionIds.has(id)) {
-        selectedManualTransactionIds.delete(id);
+    const key = String(id);
+    const chk = document.getElementById(`chk-report-${key}`);
+    if (selectedManualTransactionIds.has(key)) {
+        selectedManualTransactionIds.delete(key);
         if (chk) chk.checked = false;
     } else {
-        selectedManualTransactionIds.add(id);
+        selectedManualTransactionIds.add(key);
         if (chk) chk.checked = true;
     }
     window.updateReportPreview();
@@ -3190,18 +3298,26 @@ window.updateReportPreview = function() {
     let selectedPerson = null;
     
     if (type === 'annual') {
-        const year = document.getElementById('report-year-select').value;
-        filtered = allReportTransactions.filter(tData => tData.date && tData.date.startsWith(year));
+        const year = String(document.getElementById('report-year-select').value);
+        filtered = allReportTransactions.filter(tData => (tData.date || '').slice(0, 4) === year);
         filterDesc = `${t('report_year_filter', 'Year:')} ${year}`;
     } else if (type === 'custom') {
         const from = document.getElementById('report-date-from').value;
         const to = document.getElementById('report-date-to').value;
-        filtered = allReportTransactions.filter(tData => tData.date && tData.date >= from && tData.date <= to);
+        filtered = allReportTransactions.filter(tData => {
+            const d = (tData.date || '').slice(0, 10);
+            if (from && d < from) return false;
+            if (to && d > to) return false;
+            return true;
+        });
         const fromFormatted = from ? formatDateFast(from) : '';
         const toFormatted = to ? formatDateFast(to) : '';
-        filterDesc = `${fromFormatted} - ${toFormatted}`;
+        filterDesc = (fromFormatted && toFormatted) ? `${fromFormatted} - ${toFormatted}` : (fromFormatted ? `Ab ${fromFormatted}` : (toFormatted ? `Bis ${toFormatted}` : 'Alle Buchungen'));
     } else if (type === 'manual') {
-        filtered = allReportTransactions.filter(tData => selectedManualTransactionIds.has(tData.id || tData.paymentId));
+        filtered = allReportTransactions.filter((tData, idx) => {
+            const key = String(tData.id || tData.paymentId || `tx_${idx}`);
+            return selectedManualTransactionIds.has(key);
+        });
         filterDesc = t('report_manual_selection', 'Manual Selection');
     } else if (type === 'person') {
         const selectedPersonId = document.getElementById('report-person-select').value;
@@ -3217,12 +3333,10 @@ window.updateReportPreview = function() {
             const matchesPersonFallback = !matchesPersonId && (tData.who && personName && tData.who.trim().toLowerCase() === personName.trim().toLowerCase());
 
             if (!matchesPersonId && !matchesPersonFallback) return false;
-            if (matchesPersonFallback) {
-                console.warn(`Fallback string match used for person "${personName}" on transaction: `, tData);
-            }
             
-            if (from && tData.date && tData.date < from) return false;
-            if (to && tData.date && tData.date > to) return false;
+            const d = (tData.date || '').slice(0, 10);
+            if (from && d < from) return false;
+            if (to && d > to) return false;
             return true;
         });
         
@@ -3428,20 +3542,44 @@ window.downloadReportPdf = function() {
     const appName = config.appName || "Nova";
     const safeAppName = appName.replace(/[^a-zA-Z0-9]/g, '_');
     
+    // Create an unscaled off-screen clone with normalized dimensions to prevent blank 1st page
+    const printContainer = document.createElement('div');
+    printContainer.style.position = 'absolute';
+    printContainer.style.left = '0';
+    printContainer.style.top = '0';
+    printContainer.style.width = '794px';
+    printContainer.style.pointerEvents = 'none';
+    printContainer.style.zIndex = '-9999';
+    printContainer.style.background = '#ffffff';
+
+    const clone = element.cloneNode(true);
+    clone.style.transform = 'none';
+    clone.style.minHeight = 'auto';
+    clone.style.width = '794px';
+    clone.style.setProperty('padding', '30px 35px', 'important');
+    clone.style.margin = '0';
+    clone.style.boxSizing = 'border-box';
+    clone.style.background = '#ffffff';
+
+    printContainer.appendChild(clone);
+    document.body.appendChild(printContainer);
+
     const opt = {
-        margin: 15,
+        margin: 0,
         filename: `${safeAppName}_Finanzbericht_${getTodayStr()}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['.preview-stat-card', '.preview-header', '.preview-title-block', 'tr'] }
     };
     
-    html2pdf().set(opt).from(element).save().then(() => {
+    html2pdf().set(opt).from(clone).save().then(() => {
         setButtonLoading('btn-download-pdf', false);
+        if (printContainer.parentNode) printContainer.parentNode.removeChild(printContainer);
     }).catch(err => {
         console.error('PDF generation failed:', err);
         setButtonLoading('btn-download-pdf', false);
+        if (printContainer.parentNode) printContainer.parentNode.removeChild(printContainer);
         alert(t('report_pdf_error', 'Failed to generate PDF.'));
     });
 };
@@ -4240,35 +4378,311 @@ function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
 }
 
 /**
+ * Sanitizes and normalizes user input text before sending to AI providers.
+ * - Normalizes Unicode (NFC)
+ * - Removes lone/unpaired UTF-16 surrogates to prevent UTF-8 encoding/JSON errors
+ * - Strips null bytes and unprintable control characters (preserving \n, \r, \t)
+ * - Normalizes CRLF to LF
+ */
+function sanitizeAiText(input) {
+    if (typeof input !== 'string') {
+        input = String(input || '');
+    }
+    try {
+        input = input.normalize('NFC');
+    } catch { /* ignore */ }
+
+    input = input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+
+    if (typeof input.toWellFormed === 'function') {
+        input = input.toWellFormed();
+    } else {
+        input = input.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+    }
+
+    return input.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/**
+ * Validates, sanitizes and trims chat history payload for AI providers.
+ */
+function sanitizeAiMessages(rawMessages, maxMessages = 50, maxCharPerMsg = 12000) {
+    if (!Array.isArray(rawMessages)) return [];
+
+    const sanitized = [];
+    for (const msg of rawMessages) {
+        if (!msg || typeof msg !== 'object') continue;
+        const role = msg.role === 'assistant' ? 'assistant' : (msg.role === 'user' ? 'user' : null);
+        if (!role) continue;
+
+        let content = sanitizeAiText(msg.content).trim();
+        if (!content) continue;
+
+        if (content.length > maxCharPerMsg) {
+            content = content.slice(0, maxCharPerMsg);
+        }
+
+        sanitized.push({ role, content });
+    }
+
+    return sanitized.slice(-maxMessages);
+}
+
+function extractBalancedBraces(str, startIndex) {
+    if (!str || startIndex >= str.length || str[startIndex] !== '{') return null;
+    let depth = 0;
+    for (let i = startIndex; i < str.length; i++) {
+        if (str[i] === '{') depth++;
+        else if (str[i] === '}') {
+            depth--;
+            if (depth === 0) {
+                return {
+                    content: str.slice(startIndex + 1, i),
+                    endIndex: i
+                };
+            }
+        }
+    }
+    return null;
+}
+
+function buildMathNodes(str) {
+    const frag = document.createDocumentFragment();
+    if (!str) return frag;
+
+    let i = 0;
+    while (i < str.length) {
+        // Fractions \frac{num}{den} or \dfrac or \tfrac
+        const fracMatch = str.slice(i).match(/^\\(?:frac|dfrac|tfrac)/);
+        if (fracMatch) {
+            const fracStart = i + fracMatch[0].length;
+            let firstBrace = fracStart;
+            while (firstBrace < str.length && /\s/.test(str[firstBrace])) firstBrace++;
+            const num = extractBalancedBraces(str, firstBrace);
+            if (num) {
+                let secondBrace = num.endIndex + 1;
+                while (secondBrace < str.length && /\s/.test(str[secondBrace])) secondBrace++;
+                const den = extractBalancedBraces(str, secondBrace);
+                if (den) {
+                    const fracSpan = document.createElement('span');
+                    fracSpan.className = 'ai-math-frac';
+                    const numSpan = document.createElement('span');
+                    numSpan.className = 'ai-math-num';
+                    numSpan.appendChild(buildMathNodes(num.content));
+                    const denSpan = document.createElement('span');
+                    denSpan.className = 'ai-math-den';
+                    denSpan.appendChild(buildMathNodes(den.content));
+                    fracSpan.appendChild(numSpan);
+                    fracSpan.appendChild(denSpan);
+                    frag.appendChild(fracSpan);
+                    i = den.endIndex + 1;
+                    continue;
+                }
+            }
+        }
+
+        // Square roots \sqrt{...} or \sqrt[n]{...}
+        const sqrtMatch = str.slice(i).match(/^\\sqrt(?:\[([^\]]+)\])?/);
+        if (sqrtMatch) {
+            const sqrtStart = i + sqrtMatch[0].length;
+            let bracePos = sqrtStart;
+            while (bracePos < str.length && /\s/.test(str[bracePos])) bracePos++;
+            const rad = extractBalancedBraces(str, bracePos);
+            if (rad) {
+                const sqrtSpan = document.createElement('span');
+                sqrtSpan.className = 'ai-math-sqrt';
+                if (sqrtMatch[1]) {
+                    const rootDeg = document.createElement('sup');
+                    rootDeg.className = 'ai-math-root-deg';
+                    rootDeg.textContent = sqrtMatch[1];
+                    sqrtSpan.appendChild(rootDeg);
+                }
+                const radSymbol = document.createElement('span');
+                radSymbol.className = 'ai-math-sqrt-rad';
+                radSymbol.textContent = '√';
+                const stem = document.createElement('span');
+                stem.className = 'ai-math-sqrt-stem';
+                stem.appendChild(buildMathNodes(rad.content));
+                sqrtSpan.appendChild(radSymbol);
+                sqrtSpan.appendChild(stem);
+                frag.appendChild(sqrtSpan);
+                i = rad.endIndex + 1;
+                continue;
+            }
+        }
+
+        // Text blocks \text{...} or \mathrm{...}
+        const textMatch = str.slice(i).match(/^\\(?:text|mathrm|mathbf|mathit|operatorname)/);
+        if (textMatch) {
+            const textStart = i + textMatch[0].length;
+            let bracePos = textStart;
+            while (bracePos < str.length && /\s/.test(str[bracePos])) bracePos++;
+            const textBlock = extractBalancedBraces(str, bracePos);
+            if (textBlock) {
+                const textSpan = document.createElement('span');
+                textSpan.className = 'ai-math-text';
+                textSpan.textContent = textBlock.content;
+                frag.appendChild(textSpan);
+                i = textBlock.endIndex + 1;
+                continue;
+            }
+        }
+
+        // Superscripts & Subscripts (^ and _)
+        if (str[i] === '^' || str[i] === '_') {
+            const isSup = str[i] === '^';
+            i++;
+            let scriptContent = '';
+            if (i < str.length && str[i] === '{') {
+                const scriptBlock = extractBalancedBraces(str, i);
+                if (scriptBlock) {
+                    scriptContent = scriptBlock.content;
+                    i = scriptBlock.endIndex + 1;
+                } else {
+                    scriptContent = str[i];
+                    i++;
+                }
+            } else if (i < str.length) {
+                scriptContent = str[i];
+                i++;
+            }
+            const scriptEl = document.createElement(isSup ? 'sup' : 'sub');
+            scriptEl.className = isSup ? 'ai-math-sup' : 'ai-math-sub';
+            scriptEl.appendChild(buildMathNodes(scriptContent));
+            frag.appendChild(scriptEl);
+            continue;
+        }
+
+        // Standard characters
+        frag.appendChild(document.createTextNode(str[i]));
+        i++;
+    }
+
+    return frag;
+}
+
+function parseMathToFragment(mathStr) {
+    const frag = document.createDocumentFragment();
+    if (!mathStr) return frag;
+
+    // Clean up \left and \right
+    let s = mathStr.replace(/\\left([(\[{|.\\])/g, '$1').replace(/\\right([)\]}|.\\])/g, '$1');
+
+    const symbolMap = {
+        '\\pm': '±', '\\mp': '∓', '\\times': '×', '\\cdot': '·', '\\div': '÷',
+        '\\le': '≤', '\\leq': '≤', '\\ge': '≥', '\\geq': '≥', '\\neq': '≠', '\\ne': '≠',
+        '\\approx': '≈', '\\equiv': '≡', '\\sim': '∼', '\\propto': '∝',
+        '\\sum': '∑', '\\prod': '∏', '\\int': '∫', '\\iint': '∬', '\\iiint': '∭', '\\oint': '∮',
+        '\\partial': '∂', '\\nabla': '∇', '\\infty': '∞',
+        '\\in': '∈', '\\notin': '∉', '\\subset': '⊂', '\\subseteq': '⊆', '\\cup': '∪', '\\cap': '∩', '\\emptyset': '∅',
+        '\\forall': '∀', '\\exists': '∃', '\\nexists': '∄',
+        '\\to': '→', '\\rightarrow': '→', '\\leftarrow': '←', '\\Rightarrow': '⇒', '\\Leftarrow': '⇐', '\\leftrightarrow': '↔', '\\Leftrightarrow': '⇔',
+        '\\dots': '…', '\\ldots': '…', '\\cdots': '⋯', '\\vdots': '⋮', '\\ddots': '⋱',
+        '\\circ': '∘', '\\degree': '°', '\\deg': '°',
+        '\\quad': '\u2003', '\\qquad': '\u2003\u2003', '\\,': '\u2009', '\\;': '\u2004', '\\:': '\u2005', '\\ ': ' ',
+        // Greek letters
+        '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ', '\\epsilon': 'ε', '\\varepsilon': 'ε',
+        '\\zeta': 'ζ', '\\eta': 'η', '\\theta': 'θ', '\\vartheta': 'ϑ', '\\iota': 'ι', '\\kappa': 'κ',
+        '\\lambda': 'λ', '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ', '\\pi': 'π', '\\varpi': 'ϖ',
+        '\\rho': 'ρ', '\\varrho': 'ϱ', '\\sigma': 'σ', '\\varsigma': 'ς', '\\tau': 'τ', '\\upsilon': 'υ',
+        '\\phi': 'φ', '\\varphi': 'ϕ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
+        '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ', '\\Xi': 'Ξ', '\\Pi': 'Π',
+        '\\Sigma': 'Σ', '\\Upsilon': 'Υ', '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω'
+    };
+
+    s = s.replace(/\\(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|ln|log|exp|lim|min|max|sup|inf|det|gcd|deg)\b/g, '$1');
+
+    for (const [cmd, sym] of Object.entries(symbolMap)) {
+        const pattern = new RegExp(cmd.replace(/\\/g, '\\\\') + '(?![a-zA-Z])', 'g');
+        s = s.replace(pattern, sym);
+    }
+
+    return buildMathNodes(s);
+}
+
+/**
  * Lightweight Markdown → DOM fragment renderer for AI chat messages.
  * Uses DOM APIs exclusively (no innerHTML) to prevent XSS.
- * Handles: fenced code blocks, inline code, bold, italic, headers, lists, line breaks.
+ * Handles: fenced code blocks, display math, inline math, blockquotes, lists, bold, italic, headers, tables, line breaks.
  */
 function renderMarkdown(text) {
     const frag = document.createDocumentFragment();
     if (!text) return frag;
 
-    // 1. Extract fenced code blocks to protect them from inline transforms
+    // 1. Extract fenced code blocks
     const codeBlocks = [];
-    const processed = text.replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (_, lang, code) => {
+    let processed = text.replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (_, lang, code) => {
         const idx = codeBlocks.length;
         codeBlocks.push({ lang: lang || '', code: code.replace(/\n$/, '') });
         return `\x00CODE${idx}\x00`;
     });
 
-    // 2. Process lines for block-level elements
+    // 2. Extract display math blocks ($$...$$ and \[...\])
+    const mathBlocks = [];
+    processed = processed.replace(/\$\$([\s\S]*?)(?:\$\$|$)/g, (_, math) => {
+        const idx = mathBlocks.length;
+        mathBlocks.push(math.trim());
+        return `\x00MATH${idx}\x00`;
+    });
+    processed = processed.replace(/\\\[([\s\S]*?)(?:\\\]|$)/g, (_, math) => {
+        const idx = mathBlocks.length;
+        mathBlocks.push(math.trim());
+        return `\x00MATH${idx}\x00`;
+    });
+
+    // 3. Process lines for block-level elements
     const lines = processed.split('\n');
     let i = 0;
 
     while (i < lines.length) {
         const line = lines[i];
 
-        // Unordered list
-        if (/^[ \t]*[-*] /.test(line)) {
+        // Display math placeholder
+        const mathMatch = line.match(/^\x00MATH(\d+)\x00$/);
+        if (mathMatch) {
+            const mathCode = mathBlocks[parseInt(mathMatch[1], 10)];
+            const div = document.createElement('div');
+            div.className = 'ai-math-display';
+            div.appendChild(parseMathToFragment(mathCode));
+            frag.appendChild(div);
+            i++;
+            continue;
+        }
+
+        // Fenced code block placeholder
+        const codeMatch = line.match(/^\x00CODE(\d+)\x00$/);
+        if (codeMatch) {
+            const { lang, code } = codeBlocks[parseInt(codeMatch[1], 10)];
+            const pre = document.createElement('pre');
+            pre.className = 'ai-code-block';
+            const codeEl = document.createElement('code');
+            if (lang) codeEl.className = `language-${lang}`;
+            codeEl.textContent = code;
+            pre.appendChild(codeEl);
+            frag.appendChild(pre);
+            i++;
+            continue;
+        }
+
+        // Blockquotes (> ...)
+        if (/^[ \t]*>/.test(line)) {
+            const blockquote = document.createElement('blockquote');
+            const quoteLines = [];
+            while (i < lines.length && /^[ \t]*>/.test(lines[i])) {
+                quoteLines.push(lines[i].replace(/^[ \t]*>[ \t]?/, ''));
+                i++;
+            }
+            blockquote.appendChild(renderMarkdown(quoteLines.join('\n')));
+            frag.appendChild(blockquote);
+            continue;
+        }
+
+        // Unordered list (- or * or +)
+        if (/^[ \t]*[-*+] /.test(line)) {
             const ul = document.createElement('ul');
-            while (i < lines.length && /^[ \t]*[-*] /.test(lines[i])) {
+            while (i < lines.length && /^[ \t]*[-*+] /.test(lines[i])) {
                 const li = document.createElement('li');
-                appendInlineNodes(li, lines[i].replace(/^[ \t]*[-*] /, ''));
+                appendInlineNodes(li, lines[i].replace(/^[ \t]*[-*+] /, ''));
                 ul.appendChild(li);
                 i++;
             }
@@ -4276,7 +4690,7 @@ function renderMarkdown(text) {
             continue;
         }
 
-        // Ordered list
+        // Ordered list (1. 2. etc.)
         if (/^[ \t]*\d+\. /.test(line)) {
             const ol = document.createElement('ol');
             while (i < lines.length && /^[ \t]*\d+\. /.test(lines[i])) {
@@ -4289,8 +4703,8 @@ function renderMarkdown(text) {
             continue;
         }
 
-        // Headers (# ## ###)
-        const headingMatch = line.match(/^(#{1,3}) (.+)/);
+        // Headers (# to ######)
+        const headingMatch = line.match(/^(#{1,6}) (.+)/);
         if (headingMatch) {
             const level = headingMatch[1].length;
             const el = document.createElement(`h${level}`);
@@ -4322,7 +4736,6 @@ function renderMarkdown(text) {
                 const tr = document.createElement('tr');
                 const cells = rowLine.split('|');
 
-                // Remove empty first and last elements if the line starts/ends with |
                 if (cells.length > 0 && cells[0].trim() === '') cells.shift();
                 if (cells.length > 0 && cells[cells.length - 1].trim() === '') cells.pop();
 
@@ -4348,23 +4761,8 @@ function renderMarkdown(text) {
         }
 
         // Horizontal rule
-        if (/^---+$/.test(line.trim())) {
+        if (/^(?:---+|\*\*\*+|___+)$/.test(line.trim())) {
             frag.appendChild(document.createElement('hr'));
-            i++;
-            continue;
-        }
-
-        // Fenced code block placeholder
-        const codeMatch = line.match(/^\x00CODE(\d+)\x00$/);
-        if (codeMatch) {
-            const { lang, code } = codeBlocks[parseInt(codeMatch[1], 10)];
-            const pre = document.createElement('pre');
-            pre.className = 'ai-code-block';
-            const codeEl = document.createElement('code');
-            if (lang) codeEl.className = `language-${lang}`;
-            codeEl.textContent = code;
-            pre.appendChild(codeEl);
-            frag.appendChild(pre);
             i++;
             continue;
         }
@@ -4387,29 +4785,94 @@ function renderMarkdown(text) {
 }
 
 /**
- * Parses inline markdown (bold, italic, inline code) and appends DOM nodes to parent.
+ * Parses inline markdown (math, inline code, bold, italic, strikethrough, links) and appends DOM nodes.
  * Text nodes are created with createTextNode — no innerHTML, no XSS risk.
  */
 function appendInlineNodes(parent, text) {
-    // Split on inline patterns (backtick code, bold **, italic *)
-    const parts = text.split(/(`[^`]+`|\*\*(?:.+?)\*\*|\*(?:[^*]+)\*)/);
-    for (const part of parts) {
-        if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+    if (!text) return;
+
+    // Pattern to match markdown and math inline tokens
+    const regex = /(\\\([\s\S]+?\\\)|(?<!\\)\$(?!\s)(?!\d+(?:[.,]\d+)?(?:\s|[.,;!?]|$))([^\$\n]+?)(?<!\s)\$|`[^`]+`|\*\*\*(?:.+?)\*\*\*|\*\*(?:.+?)\*\*|__(?:.+?)__|\*(?:[^*]+)\*|_(?:[^_]+)_|~~(?:.+?)~~|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
+
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        }
+
+        const fullMatch = match[0];
+
+        // 1. Explicit inline math \( ... \)
+        if (fullMatch.startsWith('\\(') && fullMatch.endsWith('\\)')) {
+            const mathContent = fullMatch.slice(2, -2);
+            const mathSpan = document.createElement('span');
+            mathSpan.className = 'ai-math-inline';
+            mathSpan.appendChild(parseMathToFragment(mathContent));
+            parent.appendChild(mathSpan);
+        }
+        // 2. Dollar inline math $ ... $
+        else if (fullMatch.startsWith('$') && fullMatch.endsWith('$') && fullMatch.length > 2) {
+            const mathContent = fullMatch.slice(1, -1);
+            const mathSpan = document.createElement('span');
+            mathSpan.className = 'ai-math-inline';
+            mathSpan.appendChild(parseMathToFragment(mathContent));
+            parent.appendChild(mathSpan);
+        }
+        // 3. Inline code `...`
+        else if (fullMatch.startsWith('`') && fullMatch.endsWith('`') && fullMatch.length > 2) {
             const code = document.createElement('code');
             code.className = 'ai-inline-code';
-            code.textContent = part.slice(1, -1);
+            code.textContent = fullMatch.slice(1, -1);
             parent.appendChild(code);
-        } else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-            const strong = document.createElement('strong');
-            strong.textContent = part.slice(2, -2);
-            parent.appendChild(strong);
-        } else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-            const em = document.createElement('em');
-            em.textContent = part.slice(1, -1);
-            parent.appendChild(em);
-        } else {
-            parent.appendChild(document.createTextNode(part));
         }
+        // 4. Bold + Italic ***...***
+        else if (fullMatch.startsWith('***') && fullMatch.endsWith('***') && fullMatch.length > 6) {
+            const strong = document.createElement('strong');
+            const em = document.createElement('em');
+            em.textContent = fullMatch.slice(3, -3);
+            strong.appendChild(em);
+            parent.appendChild(strong);
+        }
+        // 5. Bold **...** or __...__
+        else if ((fullMatch.startsWith('**') && fullMatch.endsWith('**') && fullMatch.length > 4) ||
+                 (fullMatch.startsWith('__') && fullMatch.endsWith('__') && fullMatch.length > 4)) {
+            const strong = document.createElement('strong');
+            strong.textContent = fullMatch.slice(2, -2);
+            parent.appendChild(strong);
+        }
+        // 6. Italic *...* or _..._
+        else if ((fullMatch.startsWith('*') && fullMatch.endsWith('*') && fullMatch.length > 2) ||
+                 (fullMatch.startsWith('_') && fullMatch.endsWith('_') && fullMatch.length > 2)) {
+            const em = document.createElement('em');
+            em.textContent = fullMatch.slice(1, -1);
+            parent.appendChild(em);
+        }
+        // 7. Strikethrough ~~...~~
+        else if (fullMatch.startsWith('~~') && fullMatch.endsWith('~~') && fullMatch.length > 4) {
+            const del = document.createElement('del');
+            del.textContent = fullMatch.slice(2, -2);
+            parent.appendChild(del);
+        }
+        // 8. Markdown link [text](url)
+        else if (match[3] && match[4]) {
+            const a = document.createElement('a');
+            a.href = match[4];
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = match[3];
+            parent.appendChild(a);
+        }
+        else {
+            parent.appendChild(document.createTextNode(fullMatch));
+        }
+
+        lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+        parent.appendChild(document.createTextNode(text.slice(lastIndex)));
     }
 }
 
@@ -4419,7 +4882,8 @@ window.sendAiMessage = async () => {
     const sendBtn = document.getElementById('ai-chat-send-btn');
     if (!inputEl) return;
 
-    const text = inputEl.value.trim();
+    const rawText = inputEl.value;
+    const text = sanitizeAiText(rawText).trim();
     if (!text) return;
 
     inputEl.value = '';
@@ -4453,20 +4917,26 @@ window.sendAiMessage = async () => {
             throw new Error('Authentifizierung fehlgeschlagen');
         }
 
+        const validMessages = sanitizeAiMessages(aiMessages);
+        if (validMessages.length === 0) {
+            throw new Error('Keine gültige Nachricht vorhanden');
+        }
+
         const response = await fetch(`${config.apiBaseUrl}/ai/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ messages: aiMessages })
+            body: JSON.stringify({ messages: validMessages })
         });
 
         if (typingEl.parentNode) typingEl.remove();
 
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `HTTP ${response.status}`);
+            const errMsg = errData.detail || errData.error || `HTTP ${response.status}`;
+            throw new Error(errMsg);
         }
 
         assistantBubble = appendAiMessage('assistant', '');
@@ -4505,7 +4975,10 @@ window.sendAiMessage = async () => {
         finalizeAssistantBubble(assistantBubble, assistantContent, reasoningContent);
         if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
 
-        aiMessages.push({ role: 'assistant', content: assistantContent });
+        const cleanAssistantContent = sanitizeAiText(assistantContent).trim();
+        if (cleanAssistantContent) {
+            aiMessages.push({ role: 'assistant', content: cleanAssistantContent });
+        }
     } catch (err) {
         if (typingEl.parentNode) typingEl.remove();
         console.error('KI-Chat Fehler:', err);
@@ -4888,65 +5361,142 @@ window.openUserRequestModal = (type) => {
     currentRequestType = type;
     const container = document.getElementById('req-form-content');
     const title = document.getElementById('req-modal-title');
+    const subtitle = document.getElementById('req-modal-subtitle');
+    const badge = document.getElementById('req-modal-badge');
+
+    if(window.pendingReqExpenseFiles) {
+        window.pendingReqExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+    }
+    window.pendingReqExpenseFiles = [];
 
     if(type === 'payment') {
-        title.innerText = t('user_req_payment_title', "Zahlung melden");
+        if (badge) {
+            badge.className = 'modal-icon-badge badge-donation';
+            badge.textContent = '💳';
+        }
+        if (title) title.innerText = t('user_req_payment_title', "Zahlung melden");
+        if (subtitle) subtitle.innerText = t('user_req_payment_subtitle', "Beitrag & Einzahlung an Admin melden");
+
         container.innerHTML = `
-            <div class="form-group" style="display:flex; align-items:center; gap:10px;">
-                <label class="switch">
-                    <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
-                    <span class="slider"></span>
-                </label>
-                <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer">${t('modal_standing_order', 'Dauerauftrag')}</label>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💶</span> <span>${t('modal_section_amount', 'Zahlungsbetrag')}</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
+                    <div class="hero-amount-wrapper">
+                        <span class="hero-amount-prefix">€</span>
+                        <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+                    </div>
+                </div>
             </div>
-            <div class="form-group">
-                <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
-                <input type="text" inputmode="decimal" id="req-amount" class="form-input">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>⚙️</span> <span>${t('modal_section_payment_type', 'Zahlungsart & Datum')}</span>
+                </div>
+                <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                    <label class="switch">
+                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
+                        <span class="slider"></span>
+                    </label>
+                    <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer; font-size:0.9rem;">${t('modal_standing_order', 'Dauerauftrag')}</label>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                    <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+                </div>
             </div>
-            <div class="form-group">
-                <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Datum')}</label>
-                <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="req-note">${t('req_note_label', 'Notiz (Optional)')}</label>
-                <input type="text" id="req-note" class="form-input">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📝</span> <span>${t('modal_note', 'Notiz / Verwendungszweck')}</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="req-note">${t('req_note_label', 'Notiz (Optional)')}</label>
+                    <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
+                </div>
             </div>
         `;
     } else if(type === 'status') {
-        title.innerText = t('user_req_status_title', "Statusänderung beantragen");
+        if (badge) {
+            badge.className = 'modal-icon-badge badge-person';
+            badge.textContent = '⚡';
+        }
+        if (title) title.innerText = t('user_req_status_title', "Statusänderung beantragen");
+        if (subtitle) subtitle.innerText = t('user_req_status_subtitle', "Neuen Mitgliedsstatus anfragen");
+
         container.innerHTML = `
-            <div class="form-group">
-                <label class="form-label" for="req-status">${t('modal_new_status', 'Neuer Status')}</label>
-                <select id="req-status" class="form-select">
-                    <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
-                    <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
-                    <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
-                    <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
-                </select>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💼</span> <span>${t('modal_new_status', 'Neuer Status')}</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="req-status">${t('modal_new_status', 'Neuer Status')}</label>
+                    <select id="req-status" class="form-select">
+                        <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
+                        <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
+                        <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
+                        <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-group">
-                <label class="form-label" for="req-date">${t('req_valid_from', 'Gültig ab')}</label>
-                <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📅</span> <span>${t('modal_valid_from', 'Gültigkeitsdatum')}</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="req-date">${t('req_valid_from', 'Gültig ab')}</label>
+                    <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+                        ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
+                    </div>
+                </div>
             </div>
         `;
     } else if(type === 'expense') {
-        title.innerText = t('user_req_expense_title', "Ausgabe melden");
+        if (badge) {
+            badge.className = 'modal-icon-badge badge-expense';
+            badge.textContent = '🧾';
+        }
+        if (title) title.innerText = t('user_req_expense_title', "Ausgabe melden");
+        if (subtitle) subtitle.innerText = t('user_req_expense_subtitle', "Ausgabe zur Erstattung einreichen");
+
         container.innerHTML = `
-            <div class="form-group">
-                <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
-                <input type="text" inputmode="decimal" id="req-amount" class="form-input">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>💶</span> <span>${t('modal_section_amount', 'Ausgabenbetrag')}</span>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
+                    <div class="hero-amount-wrapper">
+                        <span class="hero-amount-prefix">€</span>
+                        <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+                    </div>
+                </div>
             </div>
-            <div class="form-group">
-                <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung')}</label>
-                <input type="text" id="req-desc" class="form-input">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>ℹ️</span> <span>${t('modal_section_info', 'Angaben zur Ausgabe')}</span>
+                </div>
+                <div class="form-group" style="margin:0 0 10px 0;">
+                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
+                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                    <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+                </div>
             </div>
-            <div class="form-group">
-                <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
-                <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="req-receipt">${t('req_receipt_label', 'Beleg(e) (Optional)')}</label>
-                <input type="file" id="req-receipt" accept="image/*,.heic,.heif" class="form-input" multiple>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📎</span> <span>${t('modal_expense_receipt', 'Beleg anhängen')}</span>
+                </div>
+                <div class="file-upload-dropzone">
+                    <div class="file-upload-icon">📁</div>
+                    <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
+                    <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
+                    <input type="file" id="req-receipt" accept="image/*,.heic,.heif,.pdf" multiple onchange="window.handleReqReceiptFiles(this.files)">
+                </div>
+                <div id="req-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
             </div>
         `;
     }
@@ -4957,65 +5507,95 @@ window.openUserRequestModal = (type) => {
 window.submitUserRequest = async () => {
     if(!currentUser) return;
 
-    // Find person ID linked to current user
-    const person = people.find(p => p.uid === currentUser.uid);
-    if(!person) { alert(t('alert_no_person_profile', 'Kein Personenprofil gefunden.')); return; }
+    // Find person linked to current user with fallbacks
+    let person = (people && people.length > 0)
+        ? (people.find(p => p.uid === currentUser.uid) || people[0])
+        : null;
+
+    if (!person && people && people.length > 0) {
+        const userFullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() || (currentUser.name || '').toLowerCase();
+        person = people.find(p => p.name && p.name.toLowerCase() === userFullName);
+    }
+
+    const personId = person ? person.id : (currentUser.uid || currentUser.id || 'unknown');
+    const personName = person ? person.name : (`${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || currentUser.email || 'Benutzer');
 
     const reqData = {};
-    const date = document.getElementById('req-date').value;
+    const dateEl = document.getElementById('req-date');
+    const date = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
+    if (!date) {
+        alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.'));
+        return;
+    }
+
+    let finalType = currentRequestType || 'payment';
 
     if(currentRequestType === 'payment') {
-        const amount = document.getElementById('req-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.');
-        const note = document.getElementById('req-note').value;
+        const amountEl = document.getElementById('req-amount');
+        const rawAmount = amountEl ? amountEl.value : '';
+        const amount = rawAmount.replace(/\.(?=.*,)/g, '').replace(',', '.').trim();
+        const noteEl = document.getElementById('req-note');
+        const note = noteEl ? noteEl.value.trim() : '';
         const isStandingOrder = document.getElementById('req-is-standing-order') && document.getElementById('req-is-standing-order').checked;
 
-        if(!amount || !date) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
-        if(isNaN(parseFloat(amount))) { alert(t('alert_invalid_amount', 'Ungültiger Betrag.')); return; }
+        if(!amount) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
+        if(isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { alert(t('alert_invalid_amount', 'Ungültiger Betrag.')); return; }
 
         reqData.amount = amount;
         reqData.date = date;
         reqData.note = note;
 
         if (isStandingOrder) {
-            currentRequestType = 'standing_order';
+            finalType = 'standing_order';
         }
     } else if(currentRequestType === 'status') {
-        const status = document.getElementById('req-status').value;
-        if(!status || !date) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
+        const statusEl = document.getElementById('req-status');
+        const status = statusEl ? statusEl.value : 'vollverdiener';
+        if(!status) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
         reqData.newStatus = status;
         reqData.date = date;
+        finalType = 'status';
     } else if(currentRequestType === 'expense') {
-        const amount = document.getElementById('req-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.');
-        const desc = document.getElementById('req-desc').value;
-        if(!amount || !desc || !date) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
+        const amountEl = document.getElementById('req-amount');
+        const rawAmount = amountEl ? amountEl.value : '';
+        const amount = rawAmount.replace(/\.(?=.*,)/g, '').replace(',', '.').trim();
+        const descEl = document.getElementById('req-desc');
+        const desc = descEl ? descEl.value.trim() : '';
+        if(!amount || !desc) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
+        if(isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { alert(t('alert_invalid_amount', 'Ungültiger Betrag.')); return; }
+
         reqData.amount = amount;
         reqData.description = desc;
         reqData.date = date;
+        finalType = 'expense';
 
-        const fileInput = document.getElementById('req-receipt');
-        if (fileInput && fileInput.files.length > 0) {
-             setButtonLoading('btn-submit-request', true, "Lade hoch...");
-             try {
+        const filesToUpload = (window.pendingReqExpenseFiles && window.pendingReqExpenseFiles.length > 0)
+            ? window.pendingReqExpenseFiles
+            : (document.getElementById('req-receipt') && document.getElementById('req-receipt').files.length > 0 ? Array.from(document.getElementById('req-receipt').files) : []);
+
+        if (filesToUpload.length > 0) {
+            setButtonLoading('btn-submit-request', true, "Lade hoch...");
+            try {
                 const filenames = [];
-                for (let i = 0; i < fileInput.files.length; i++) {
-                    const fn = await uploadReceipt(fileInput.files[i], person.name, date);
+                for (let i = 0; i < filesToUpload.length; i++) {
+                    const fn = await uploadReceipt(filesToUpload[i], personName, date);
                     filenames.push(fn);
                 }
                 reqData.receipt = JSON.stringify(filenames);
-             } catch(err) {
-                 alert(t('alert_upload_error', 'Fehler beim Hochladen: ') + err.message);
-                 setButtonLoading('btn-submit-request', false);
-                 return;
-             }
+            } catch(err) {
+                alert(t('alert_upload_error', 'Fehler beim Hochladen: ') + err.message);
+                setButtonLoading('btn-submit-request', false);
+                return;
+            }
         }
     }
 
     const newReq = {
         id: Date.now().toString(),
-        type: currentRequestType,
-        userId: currentUser.uid,
-        personId: person.id,
-        personName: person.name,
+        type: finalType,
+        userId: currentUser.uid || currentUser.id,
+        personId: personId,
+        personName: personName,
         data: reqData,
         status: 'pending',
         timestamp: Date.now()
@@ -5027,9 +5607,16 @@ window.submitUserRequest = async () => {
         await set(ref(db, 'requests/' + newReq.id), newReq);
         closeModal('user-request-modal');
         showToast(t('toast_request_sent', 'Anfrage erfolgreich gesendet'));
-        loadData();
+        
+        // Optimistically add to local requests array so it shows immediately
+        if (!requests.some(r => r.id === newReq.id)) {
+            requests.unshift(newReq);
+            renderUserView();
+        }
 
-        // Notify opted-in admins using the backend endpoint to avoid frontend permission denied errors
+        await loadData(true);
+
+        // Notify opted-in admins using the backend endpoint
         try {
             const token = await auth.currentUser.getIdToken();
             await fetch(`${config.apiBaseUrl}/notify-admins`, {
@@ -5038,7 +5625,7 @@ window.submitUserRequest = async () => {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ reqType: currentRequestType, personName: person.name })
+                body: JSON.stringify({ reqType: finalType, personName: personName })
             }).catch(e => console.warn("Fehler beim Senden der Admin-Info über Backend", e));
         } catch (e) {
             console.warn("Konnte Admins nicht benachrichtigen:", e);
@@ -5046,7 +5633,7 @@ window.submitUserRequest = async () => {
 
     } catch (err) {
         console.error('Fehler beim Senden der Anfrage:', err);
-        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen.'));
+        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen: ') + (err.message || ''));
     } finally {
         setButtonLoading('btn-submit-request', false);
     }
@@ -5313,13 +5900,15 @@ async function loadCurrentProfilePicture() {
     if (!uid) return;
     try {
         const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture/${encodeURIComponent(uid)}`);
-        if (response.ok) {
+        if (response.ok && response.status === 200) {
             const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            _applyProfilePicture(url);
-        } else {
-            _applyProfilePicture(null);
+            if (blob && blob.size > 0) {
+                const url = URL.createObjectURL(blob);
+                _applyProfilePicture(url);
+                return;
+            }
         }
+        _applyProfilePicture(null);
     } catch {
         _applyProfilePicture(null);
     }
@@ -5345,11 +5934,13 @@ async function getProfilePicUrl(uid) {
     const fetchPromise = (async () => {
         try {
             const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture/${encodeURIComponent(uid)}`);
-            if (response.ok) {
+            if (response.ok && response.status === 200) {
                 const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                _profilePicCache.set(uid, url);
-                return url;
+                if (blob && blob.size > 0) {
+                    const url = URL.createObjectURL(blob);
+                    _profilePicCache.set(uid, url);
+                    return url;
+                }
             }
         } catch (err) {
             // ignore
@@ -5693,7 +6284,7 @@ window.showTransactionDetails = async function(id, type) {
                 ${(item.description || item.note) ? `
                 <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
                     <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
-                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:8px 12px; border-radius:10px; border:1px solid var(--border);">${escapeHtml(item.description || item.note)}</span>
+                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:8px 12px; border-radius:10px; border:1px solid var(--border); word-break:break-word; white-space:pre-wrap;">${escapeHtml(item.description || item.note)}</span>
                 </div>` : ''}
             </div>
         </div>
@@ -5833,7 +6424,7 @@ window.togglePassword = function(inputId, btn) {
     const isPassword = input.type === 'password';
     input.type = isPassword ? 'text' : 'password';
     const eyeOff = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-    const eye = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+    const eye = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
     btn.innerHTML = isPassword ? eyeOff : eye;
     btn.setAttribute('aria-label', isPassword ? 'Passwort verbergen' : 'Passwort anzeigen');
 };

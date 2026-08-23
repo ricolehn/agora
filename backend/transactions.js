@@ -19,40 +19,47 @@ async function getPaginatedTransactions(appConfig, page, perPage, search = '') {
   let all = [];
 
   people.forEach(p => {
-    if (p.data && Array.isArray(p.data.payments)) {
-      p.data.payments.forEach((pay, index) => {
+    const personData = p.data || p;
+    if (personData && Array.isArray(personData.payments)) {
+      personData.payments.forEach((pay, index) => {
+        const payId = pay.id || `pay_${p.personKey || personData.id || p.id || 'p'}_${index}`;
         all.push({
           ...pay,
-          who: p.data.name,
+          id: payId,
+          paymentId: payId,
+          who: personData.name,
           type: 'pay',
-          personId: p.data.id,
-          personUid: p.data.uid || null,
-          paymentId: pay.id,
+          personId: personData.id || p.personKey || p.id,
+          personUid: personData.uid || null,
           paymentIndex: index,
-          personName: p.data.name,
+          personName: personData.name,
           payment: pay
         });
       });
     }
   });
 
-  donations.forEach(d => {
+  donations.forEach((d, index) => {
+    const donId = d.id || `don_${d.key || index}`;
     all.push({
       ...d,
+      id: donId,
       who: d.name || 'Spende',
       type: 'don',
-      paymentId: d.id,
+      paymentId: donId,
       payment: d
     });
   });
 
-  expenses.forEach(e => {
+  expenses.forEach((e, index) => {
     const expenseData = e.data || e;
+    const expId = expenseData.id || e.expenseKey || e.id || `exp_${index}`;
     all.push({
       ...expenseData,
-      who: expenseData.issuer,
+      id: expId,
+      who: expenseData.issuer || expenseData.who,
       type: 'exp',
-      paymentId: expenseData.id,
+      paymentId: expId,
       payment: expenseData
     });
   });

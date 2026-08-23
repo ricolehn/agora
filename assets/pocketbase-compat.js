@@ -43,9 +43,40 @@ function wrapUser(user) {
   };
 }
 
+const AUTH_STORAGE_KEY = 'nova_auth_session';
+
+function getStoredAuth() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.user) {
+      return parsed;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function persistAuth(token, user) {
+  try {
+    if (user) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: token || null, user }));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  } catch { /* ignore */ }
+}
+
+const initialStored = getStoredAuth();
+if (initialStored) {
+  authState.token = initialStored.token || null;
+  authState.currentUser = wrapUser(initialStored.user);
+}
+
 function saveAuth(token, user) {
   authState.token = token || null;
   authState.currentUser = wrapUser(user);
+  persistAuth(token, user);
   notifyAuthListeners();
 }
 
@@ -56,6 +87,11 @@ async function apiFetch(url, options = {}) {
   }
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
+    if (response.status === 401) {
+      if (!url.includes('/api/auth/login') && !url.includes('/api/auth/register')) {
+        saveAuth(null, null);
+      }
+    }
     let message = 'Request failed';
     const responseClone = response.clone();
     try {
@@ -70,14 +106,35 @@ async function apiFetch(url, options = {}) {
   return response.json();
 }
 
-async function restoreAuthState() {
-  try {
-    const data = await apiFetch('/api/auth/me');
-    authState.token = data.token || null;
-    authState.currentUser = wrapUser(data.user);
-  } catch {
-    authState.token = null;
-    authState.currentUser = null;
+async function restoreAuthState(retries = 4, delayMs = 1000) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const headers = {};
+      if (authState.token) {
+        headers.Authorization = `Bearer ${authState.token}`;
+      }
+      const response = await fetch('/api/auth/me', { headers });
+      if (response.ok) {
+        const data = await response.json();
+        saveAuth(data.token, data.user);
+        return;
+      }
+      if (response.status === 401) {
+        saveAuth(null, null);
+        return;
+      }
+      if (response.status === 503 || response.status >= 500) {
+        if (attempt < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+      }
+    } catch (err) {
+      if (attempt < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+    }
   }
 }
 
@@ -245,4 +302,5 @@ export async function updatePassword(user, oldPassword, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ oldPassword, password })
   });
+  saveAuth(null, null);
 }

@@ -214,3 +214,14 @@ test('hydratePersonRecord attaches _childPayments/_childStatusHistory-compatible
   assert.equal(result.totalPaid, 5);
 });
 
+test('decodeTokenPayload handles tokens with expiration far in future', () => {
+  const futureExp = Math.floor(Date.now() / 1000) + 315360000; // 10 years
+  const payload = { id: 'user123', type: 'auth', exp: futureExp };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const token = `eyJhbGciOiJIUzI1NiJ9.${encoded}.signature`;
+  const decoded = decodeTokenPayload(token);
+  assert.equal(decoded.id, 'user123');
+  assert.equal(decoded.exp, futureExp);
+  assert.ok(decoded.exp > Math.floor(Date.now() / 1000) + 300000000);
+});
+

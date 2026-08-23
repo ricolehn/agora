@@ -396,11 +396,14 @@
   "req_status_pending": "In Prüfung",
   "user_no_reason": "Keine Begründung",
   "user_req_payment_title": "Zahlung melden",
+  "user_req_payment_subtitle": "Beitrag & Einzahlung an Admin melden",
   "req_amount_label": "Betrag (€)",
   "req_note_label": "Notiz (Optional)",
   "user_req_status_title": "Statusänderung beantragen",
+  "user_req_status_subtitle": "Neuen Mitgliedsstatus anfragen",
   "req_valid_from": "Gültig ab",
   "user_req_expense_title": "Ausgabe melden",
+  "user_req_expense_subtitle": "Ausgabe zur Erstattung einreichen",
   "req_desc_label": "Beschreibung",
   "req_receipt_label": "Beleg(e) (Optional)"
 }

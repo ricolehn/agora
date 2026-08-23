@@ -917,8 +917,9 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 .trans-item:active {
     transform: scale(0.97);
 }
-.trans-left { display: flex; flex-direction: column; }
-.trans-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+.trans-left { display: flex; flex-direction: column; min-width: 0; }
+.trans-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; display: flex; align-items: center; min-width: 0; }
+.trans-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .trans-amount { font-weight: 700; }
 
 .trans-icon-wrapper {
@@ -1384,19 +1385,34 @@ input:checked + .slider:before { transform: translateX(22px); }
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 20px 10px;
+    padding: 18px 10px;
     gap: 8px;
     height: 100%;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.05));
+}
+.user-action-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+    box-shadow: var(--shadow);
+}
+.user-action-btn:active {
+    transform: scale(0.96);
 }
 .user-action-icon svg {
-    width: 32px;
-    height: 32px;
-    stroke: var(--text-secondary);
+    width: 30px;
+    height: 30px;
+    stroke: var(--primary);
     transition: 0.2s;
 }
 
 .user-action-label {
-    font-size: 0.85rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text);
 }
 
 .user-info-grid {
@@ -1803,14 +1819,43 @@ details[open] .ai-thinking-summary::before {
 
 .ai-chat-bubble-assistant h1,
 .ai-chat-bubble-assistant h2,
-.ai-chat-bubble-assistant h3 {
+.ai-chat-bubble-assistant h3,
+.ai-chat-bubble-assistant h4,
+.ai-chat-bubble-assistant h5,
+.ai-chat-bubble-assistant h6 {
     margin: 10px 0 4px;
     font-weight: 700;
     line-height: 1.3;
 }
-.ai-chat-bubble-assistant h1 { font-size: 1.1rem; }
-.ai-chat-bubble-assistant h2 { font-size: 1rem; }
-.ai-chat-bubble-assistant h3 { font-size: 0.95rem; }
+.ai-chat-bubble-assistant h1 { font-size: 1.15rem; }
+.ai-chat-bubble-assistant h2 { font-size: 1.05rem; }
+.ai-chat-bubble-assistant h3 { font-size: 0.98rem; }
+.ai-chat-bubble-assistant h4,
+.ai-chat-bubble-assistant h5,
+.ai-chat-bubble-assistant h6 { font-size: 0.9rem; }
+
+.ai-chat-bubble-assistant blockquote {
+    border-left: 3px solid var(--primary);
+    margin: 8px 0;
+    padding: 6px 12px;
+    background: rgba(14, 165, 233, 0.08);
+    border-radius: 0 8px 8px 0;
+    color: var(--text-secondary);
+}
+.ai-chat-bubble-assistant blockquote p {
+    margin: 4px 0;
+}
+.ai-chat-bubble-assistant blockquote p:first-child { margin-top: 0; }
+.ai-chat-bubble-assistant blockquote p:last-child { margin-bottom: 0; }
+
+.ai-chat-bubble-assistant a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.ai-chat-bubble-assistant a:hover {
+    opacity: 0.85;
+}
 
 .ai-chat-bubble-assistant ul,
 .ai-chat-bubble-assistant ol {
@@ -1867,6 +1912,94 @@ details[open] .ai-thinking-summary::before {
     padding: 1px 5px;
     font-size: 0.875em;
     font-family: monospace;
+}
+
+/* AI Math Formatting */
+.ai-math-display {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: auto;
+    padding: 10px 14px;
+    margin: 8px 0;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.1rem;
+    color: var(--text);
+    line-height: 1.4;
+}
+
+.ai-math-inline {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.05em;
+    padding: 0 2px;
+    color: var(--text);
+    line-height: 1.2;
+}
+
+.ai-math-frac {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: -0.55em;
+    text-align: center;
+    padding: 0 3px;
+    font-size: 0.88em;
+    line-height: 1.1;
+}
+
+.ai-math-num {
+    border-bottom: 1.5px solid currentColor;
+    padding: 0 2px 1px 2px;
+    display: block;
+}
+
+.ai-math-den {
+    padding: 1px 2px 0 2px;
+    display: block;
+}
+
+.ai-math-sqrt {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: baseline;
+}
+
+.ai-math-root-deg {
+    font-size: 0.65em;
+    margin-right: -2px;
+    margin-bottom: 4px;
+}
+
+.ai-math-sqrt-rad {
+    font-size: 1.1em;
+    margin-right: 1px;
+}
+
+.ai-math-sqrt-stem {
+    border-top: 1.5px solid currentColor;
+    padding: 0 3px;
+    display: inline-block;
+}
+
+.ai-math-text {
+    font-family: var(--font-family, system-ui, -apple-system, sans-serif);
+    font-style: normal;
+}
+
+.ai-math-sup {
+    font-size: 0.75em;
+    vertical-align: super;
+    line-height: 0;
+}
+
+.ai-math-sub {
+    font-size: 0.75em;
+    vertical-align: sub;
+    line-height: 0;
 }
 
 /* --- Login UI Beautification --- */
