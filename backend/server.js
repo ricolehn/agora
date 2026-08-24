@@ -10,6 +10,7 @@ const { isSafeSvg, hasSvgExtension } = require('./svgValidation');
 const { selectChurchLogoFilePath } = require('./logoStorage');
 const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig');
 const { resolveTrustProxySetting } = require('./trustProxy');
+const { securityHeadersMiddleware } = require('./securityHeaders');
 const cron = require('node-cron');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { aggregateStats } = require('./stats');
@@ -54,6 +55,9 @@ const {
 
 const app = express();
 app.set('trust proxy', resolveTrustProxySetting());
+
+// Security middleware: Set essential HTTP security headers
+app.use(securityHeadersMiddleware);
 
 const dataDir = resolveDataDirectory();
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });

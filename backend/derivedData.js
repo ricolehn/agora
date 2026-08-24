@@ -285,8 +285,9 @@ function calculateCostRange(person, startDate, endDate, settings) {
     return totalCost;
 }
 
-function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, settings) {
-    const balance = calculateCurrentBalance(person, settings);
+function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, settings, preCalcBalance) {
+    // ⚡ Bolt: Allow passing pre-computed currentBalance to avoid duplicate calculateCurrentBalance execution.
+    const balance = preCalcBalance !== undefined ? preCalcBalance : calculateCurrentBalance(person, settings);
     return balance < 0 ? Math.abs(balance) : 0;
 }
 
@@ -303,6 +304,12 @@ function getIsoDateDay(dateStr) {
 
 function isPaymentInCurrentMonth(paymentDate, today) {
     if (!paymentDate) return false;
+    // ⚡ Bolt: Fast path for standard YYYY-MM-DD ISO dates to bypass new Date() instantiation overhead.
+    if (typeof paymentDate === 'string' && /^\d{4}-\d{2}/.test(paymentDate)) {
+        const year = parseInt(paymentDate.substring(0, 4), 10);
+        const month = parseInt(paymentDate.substring(5, 7), 10);
+        return year === today.getFullYear() && month === (today.getMonth() + 1);
+    }
     const parsed = new Date(paymentDate);
     if (Number.isNaN(parsed.getTime())) return false;
     return parsed.getFullYear() === today.getFullYear() && parsed.getMonth() === today.getMonth();
@@ -409,7 +416,8 @@ function preprocessPersonServerSide(person, settings) {
     // Substract the anticipated standing order from the absolute balance for the final overdue amount
     let overdueAmount = 0;
     if (!isCurrent) {
-        const rawOverdue = calculateOverdueAmount(person, paidUntil, remainingCredit, settings);
+        // ⚡ Bolt: Pass already computed currentBalance to calculateOverdueAmount to eliminate redundant calculateCurrentBalance execution.
+        const rawOverdue = calculateOverdueAmount(person, paidUntil, remainingCredit, settings, currentBalance);
         overdueAmount = Math.max(0, rawOverdue - anticipated);
     }
 
