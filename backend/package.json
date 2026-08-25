@@ -1,5 +1,5 @@
 {
-  "name": "nova-backend",
+  "name": "agora-backend",
   "version": "1.0.0",
   "description": "Backend API for local file storage",
   "main": "server.js",

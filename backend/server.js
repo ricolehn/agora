@@ -42,6 +42,10 @@ const {
   getUserRecord,
   listUserRecords,
   updateUserRecord,
+  deleteUserRecord,
+  adminResetUserPassword,
+  claimUserAccount,
+  isPlaceholderEmail,
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
@@ -77,7 +81,8 @@ let appConfig = null;
 let setupMode = true;
 let transporter = null;
 let runtimeReady = Promise.resolve();
-const authCookieName = 'nova_auth';
+const authCookieName = 'agora_auth';
+const legacyAuthCookieName = 'nova_auth';
 
 function buildSmtpTransport(smtp) {
   if (!smtp) return null;
@@ -340,12 +345,16 @@ function extractBearerToken(req) {
   }
 
   const cookieHeader = req.headers.cookie || '';
-  const cookie = cookieHeader
+  const entries = cookieHeader
     .split(';')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith(`${authCookieName}=`));
+    .map((entry) => entry.trim());
 
-  return cookie ? decodeURIComponent(cookie.slice(authCookieName.length + 1)) : null;
+  const cookie = entries.find((entry) => entry.startsWith(`${authCookieName}=`))
+    || entries.find((entry) => entry.startsWith(`${legacyAuthCookieName}=`));
+
+  if (!cookie) return null;
+  const name = cookie.startsWith(`${authCookieName}=`) ? authCookieName : legacyAuthCookieName;
+  return decodeURIComponent(cookie.slice(name.length + 1));
 }
 
 function setAuthCookie(req, res, token) {
@@ -366,11 +375,13 @@ function setAuthCookie(req, res, token) {
 }
 
 function clearAuthCookie(req, res) {
-  const attributes = [`${authCookieName}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
-  if (req.secure) {
-    attributes.push('Secure');
-  }
-  res.setHeader('Set-Cookie', attributes.join('; '));
+  const cookiesToClear = [authCookieName, legacyAuthCookieName];
+  const setCookies = cookiesToClear.map(name => {
+    const attributes = [`${name}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+    if (req.secure) attributes.push('Secure');
+    return attributes.join('; ');
+  });
+  res.setHeader('Set-Cookie', setCookies);
 }
 
 async function verifyToken(req, res, next) {
@@ -398,14 +409,16 @@ async function verifyToken(req, res, next) {
 }
 
 function verifyAdmin(req, res, next) {
-  if (req.user?.admin === true) return next();
+  if (req.user?.admin === true || req.user?.owner === true || req.user?.superAdmin === true) return next();
   return res.status(403).json({ error: 'Admin access required' });
 }
 
-function verifySuperAdmin(req, res, next) {
-  if (req.user?.superAdmin === true) return next();
-  return res.status(403).json({ error: 'Super admin access required' });
+function verifyOwner(req, res, next) {
+  if (req.user?.owner === true || req.user?.superAdmin === true) return next();
+  return res.status(403).json({ error: 'Owner access required' });
 }
+
+const verifySuperAdmin = verifyAdmin;
 
 function validateSetupPayload(body = {}) {
   const appName = typeof body.appName === 'string' ? body.appName.trim() : '';
@@ -483,20 +496,23 @@ app.post('/api/setup', setupRateLimit, async (req, res) => {
     await saveOptionalLogo(logoSvg);
     await setRuntimeConfig(newConfig);
 
-    // Register the super-admin user in PocketBase using the superuser token,
+    // Register the owner user in PocketBase using the superuser token,
     // which bypasses PocketBase's default minPasswordLength constraint (8 chars)
     // so that 6-character passwords set in the wizard are accepted.
     const auth = await registerUser({
       email: adminUser.email,
       password: adminUser.password,
       firstName: adminUser.firstName,
-      lastName: adminUser.lastName
+      lastName: adminUser.lastName,
+      admin: true,
+      owner: true,
+      pays: false
     }, newConfig);
 
-    // Instantly promote user to superAdmin and save their UID
+    // Instantly promote user to owner and save their UID
     const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
-    await upsertStateValue(newConfig, 'system', { ...system, superAdminUid: auth.user.id });
-    await updateUserRecord(newConfig, auth.user.id, { admin: true, superAdmin: true });
+    await upsertStateValue(newConfig, 'system', { ...system, ownerUid: auth.user.id, superAdminUid: auth.user.id });
+    await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: false });
 
     // Log the user in automatically by setting the authorization cookie
     setAuthCookie(req, res, auth.token);
@@ -553,6 +569,9 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: 'Missing email or password.' });
   }
+  if (!firstName || !lastName) {
+    return res.status(400).json({ error: 'Vorname und Nachname sind erforderlich.' });
+  }
 
   try {
     const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
@@ -560,7 +579,62 @@ app.post('/api/auth/register', authRateLimit, async (req, res) => {
     if (!inviteCode || inviteCode !== validInviteCode) {
       return res.status(403).json({ error: 'Ungültiger Registrierungscode.' });
     }
-    const auth = await registerUser({ email, password, firstName, lastName });
+
+    const normFirst = firstName.toLowerCase();
+    const normLast = lastName.toLowerCase();
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    // Check if there is an existing unclaimed user matching this name
+    const existingUsers = await listUserRecords(appConfig);
+    const matchingUnclaimedUser = existingUsers.find((u) => {
+      const uFirst = String(u.firstName || '').trim().toLowerCase();
+      const uLast = String(u.lastName || '').trim().toLowerCase();
+      const uName = String(u.name || '').trim().toLowerCase();
+      const isUnclaimed = u.isClaimed === false || isPlaceholderEmail(u.email);
+      if (!isUnclaimed) return false;
+      return (uFirst === normFirst && uLast === normLast) || (uName === `${normFirst} ${normLast}`.trim());
+    });
+
+    let auth;
+    if (matchingUnclaimedUser) {
+      // Claim existing user account!
+      await claimUserAccount(appConfig, matchingUnclaimedUser.id, email, password);
+      await updateUserRecord(appConfig, matchingUnclaimedUser.id, {
+        firstName,
+        lastName,
+        name: fullName
+      });
+      auth = await loginUser(email, password);
+
+      // Ensure linked people record has updated uid and name
+      const people = await listPeopleRecords(appConfig);
+      const linkedPerson = people.find(p => p.uid === matchingUnclaimedUser.id || (p.name && p.name.trim().toLowerCase() === fullName.toLowerCase()));
+      if (linkedPerson) {
+        if (!linkedPerson.uid || linkedPerson.uid !== matchingUnclaimedUser.id) {
+          await upsertPeopleRecord(appConfig, linkedPerson.personKey, { ...(linkedPerson.data || {}), uid: matchingUnclaimedUser.id, name: fullName });
+        }
+      }
+    } else {
+      // Register new user and automatically bind a new person record
+      auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, appConfig);
+
+      // Create immediately bound person record
+      const personKey = auth.user.id;
+      const today = new Date().toISOString().slice(0, 10);
+      await upsertPeopleRecord(appConfig, personKey, {
+        id: personKey,
+        uid: auth.user.id,
+        name: fullName,
+        status: 'vollverdiener',
+        memberSince: today,
+        originalMemberSince: today,
+        totalPaid: 0,
+        pays: true,
+        standingOrders: [],
+        statusHistory: [{ status: 'vollverdiener', startDate: today }]
+      });
+    }
+
     const newCode = String(crypto.randomInt(100000, 1000000));
     await upsertStateValue(appConfig, 'system', { ...system, inviteCode: newCode });
     broadcastDataUpdate();
@@ -754,13 +828,22 @@ async function readLogicalPath(targetPath, query, user) {
 }
 
 function toUserValue(record) {
+  const isOwner = record.owner === true || record.superAdmin === true;
+  const isPlaceholder = isPlaceholderEmail(record.email);
+  const isClaimed = record.isClaimed !== false && !isPlaceholder;
   return {
     firstName: record.firstName || '',
     lastName: record.lastName || '',
-    email: record.email || '',
-    admin: record.admin === true,
-    superAdmin: record.superAdmin === true,
+    name: record.name || `${record.firstName || ''} ${record.lastName || ''}`.trim(),
+    email: isPlaceholder ? '' : (record.email || ''),
+    rawEmail: record.email || '',
+    admin: record.admin === true || isOwner,
+    owner: isOwner,
+    superAdmin: isOwner,
+    pays: record.pays !== false,
+    groups: Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []),
     emailNotifications: record.emailNotifications !== false,
+    isClaimed,
     uid: record.id
   };
 }
@@ -808,17 +891,25 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
       throw Object.assign(new Error('User not found'), { status: 404 });
     }
 
-    // Prevent ordinary admins from modifying a super admin
-    if (existing.superAdmin && !user.superAdmin && id !== user.uid) {
-      throw Object.assign(new Error('Forbidden: Cannot modify super admin'), { status: 403 });
+    const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+    const isTargetOwner = id === ownerUid || existing.owner === true || existing.superAdmin === true;
+
+    // Prevent ordinary admins from modifying owner rights or demoting the owner
+    if (isTargetOwner && !user.owner && id !== user.uid) {
+      if (value && typeof value === 'object' && (value.admin === false || value.owner === false)) {
+        throw Object.assign(new Error('Forbidden: Cannot modify owner permissions'), { status: 403 });
+      }
     }
 
     let updates = {};
     if (user.admin && id !== user.uid && value && typeof value === 'object') {
-      // Only super admin can grant/revoke admin or superAdmin rights via generic DB update
-      if (user.superAdmin) {
-        if (typeof value.admin === 'boolean') updates.admin = value.admin;
-        if (typeof value.superAdmin === 'boolean') updates.superAdmin = value.superAdmin;
+      if (typeof value.admin === 'boolean') updates.admin = isTargetOwner ? true : value.admin;
+      if (typeof value.pays === 'boolean') updates.pays = value.pays;
+      if (Array.isArray(value.groups)) updates.groups = value.groups;
+      if (user.owner && typeof value.owner === 'boolean') {
+        updates.owner = value.owner;
+        updates.superAdmin = value.owner;
       }
     } else {
       updates = sanitizeSelfUserWrite(value);
@@ -1045,28 +1136,34 @@ app.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) => {
 app.post('/api/admin/bootstrap-super-admin', verifyToken, async (req, res) => {
   try {
     const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    let superAdminUid = system?.superAdminUid || null;
+    let ownerUid = system?.ownerUid || system?.superAdminUid || null;
     let createdNow = false;
 
-    if (!superAdminUid) {
-      superAdminUid = req.user.uid;
+    if (!ownerUid) {
+      ownerUid = req.user.uid;
       createdNow = true;
-      await upsertStateValue(appConfig, 'system', { ...system, superAdminUid });
+      await upsertStateValue(appConfig, 'system', { ...system, ownerUid, superAdminUid: ownerUid });
     }
 
-    const isSuperAdmin = superAdminUid === req.user.uid;
-    if (isSuperAdmin) {
-      await updateUserRecord(appConfig, req.user.uid, { admin: true, superAdmin: true });
+    const isOwner = ownerUid === req.user.uid;
+    if (isOwner) {
+      await updateUserRecord(appConfig, req.user.uid, { admin: true, owner: true, superAdmin: true, pays: true });
     }
 
-    res.json({ isSuperAdmin, superAdminUid, createdNow });
+    res.json({
+      isOwner,
+      ownerUid,
+      isSuperAdmin: isOwner,
+      superAdminUid: ownerUid,
+      createdNow
+    });
   } catch (error) {
-    console.error('Failed to bootstrap super admin:', error);
-    res.status(500).json({ error: 'Failed to bootstrap super admin' });
+    console.error('Failed to bootstrap owner:', error);
+    res.status(500).json({ error: 'Failed to bootstrap owner' });
   }
 });
 
-app.get('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, res) => {
+app.get('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res) => {
   if (!appConfig) {
     return res.status(404).json({ error: 'No config found' });
   }
@@ -1083,7 +1180,7 @@ app.get('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, r
   });
 });
 
-app.put('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, res) => {
+app.put('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const appName = String(req.body?.appName || '').trim();
     if (!appName) {
@@ -1127,26 +1224,262 @@ app.put('/api/admin/system-config', verifyToken, verifySuperAdmin, async (req, r
   }
 });
 
-app.put('/api/admin/users/:uid/admin', verifyToken, verifySuperAdmin, async (req, res) => {
+app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const users = await listUserRecords(appConfig);
+    const people = await listPeopleRecords(appConfig);
+    const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+
+    const formatted = users.map((u) => {
+      const isOwner = u.id === ownerUid || u.owner === true || u.superAdmin === true;
+      const isPlaceholder = isPlaceholderEmail(u.email);
+      const isClaimed = u.isClaimed !== false && !isPlaceholder;
+      const linkedPerson = people.find(p => p.uid === u.id || (p.data && p.data.uid === u.id));
+      const memberSince = linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
+      const status = linkedPerson?.status || linkedPerson?.data?.status || '';
+
+      return {
+        uid: u.id,
+        id: u.id,
+        email: isPlaceholder ? '' : (u.email || ''),
+        rawEmail: u.email || '',
+        firstName: u.firstName || '',
+        lastName: u.lastName || '',
+        name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt',
+        admin: u.admin === true || isOwner,
+        owner: isOwner,
+        superAdmin: isOwner,
+        pays: u.pays !== false,
+        groups: Array.isArray(u.groups) ? u.groups : (u.groups ? [String(u.groups)] : []),
+        emailNotifications: u.emailNotifications !== false,
+        isClaimed,
+        memberSince,
+        status
+      };
+    });
+
+    res.json(formatted);
+  } catch (error) {
+    console.error('Failed to list admin users:', error);
+    res.status(500).json({ error: 'Failed to list users' });
+  }
+});
+
+app.post('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, admin, pays, groups, status, memberSince } = req.body || {};
+    const normalizedEmail = String(email || '').trim();
+    const normalizedPassword = String(password || '');
+    const normalizedFirst = String(firstName || '').trim();
+    const normalizedLast = String(lastName || '').trim();
+
+    if (!normalizedFirst || !normalizedLast) {
+      return res.status(400).json({ error: 'Vorname und Nachname erforderlich.' });
+    }
+
+    if (normalizedPassword && normalizedPassword.length < 6) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein.' });
+    }
+
+    const hasRealCredentials = Boolean(normalizedEmail && normalizedPassword);
+
+    const createdAuth = await registerUser({
+      email: normalizedEmail,
+      password: normalizedPassword,
+      firstName: normalizedFirst,
+      lastName: normalizedLast,
+      admin: admin === true,
+      owner: false,
+      pays: pays !== false,
+      groups: Array.isArray(groups) ? groups : [],
+      isClaimed: hasRealCredentials
+    }, appConfig);
+
+    const userUid = createdAuth.user.id || createdAuth.user.uid;
+    const fullName = `${normalizedFirst} ${normalizedLast}`.trim();
+    const today = new Date().toISOString().slice(0, 10);
+    const startDate = String(memberSince || today).trim() || today;
+    const memberStatus = String(status || 'vollverdiener').trim() || 'vollverdiener';
+
+    // Instantly bind a person record for this user
+    const personKey = userUid;
+    await upsertPeopleRecord(appConfig, personKey, {
+      id: personKey,
+      uid: userUid,
+      name: fullName,
+      status: memberStatus,
+      memberSince: startDate,
+      originalMemberSince: startDate,
+      totalPaid: 0,
+      pays: pays !== false,
+      standingOrders: [],
+      statusHistory: [{ status: memberStatus, startDate }]
+    });
+
+    broadcastDataUpdate();
+    res.json({ success: true, user: createdAuth.user });
+  } catch (error) {
+    console.error('Failed to create user:', error);
+    res.status(error.status || 400).json({ error: error.message || 'Failed to create user' });
+  }
+});
+
+app.put('/api/admin/users/:uid/admin', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { uid } = req.params;
     const makeAdmin = req.body?.admin === true;
     const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const superAdminUid = system?.superAdminUid || null;
+    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
 
-    if (uid === superAdminUid && !makeAdmin) {
-      return res.status(400).json({ error: 'Super admin cannot lose admin rights' });
+    if (uid === ownerUid && !makeAdmin) {
+      return res.status(400).json({ error: 'Eigentümer kann keine Administratorrechte verlieren.' });
     }
 
-    await writeLogicalPath(`users/${uid}`, {
-      admin: makeAdmin,
-      superAdmin: uid === superAdminUid
-    }, req.user, 'patch');
+    const isTargetOwner = uid === ownerUid;
+    await updateUserRecord(appConfig, uid, {
+      admin: isTargetOwner ? true : makeAdmin,
+      owner: isTargetOwner,
+      superAdmin: isTargetOwner
+    });
+
     broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to update admin role:', error);
     res.status(500).json({ error: 'Failed to update admin role' });
+  }
+});
+
+app.put('/api/admin/users/:uid/pays', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const pays = req.body?.pays !== false;
+
+    await updateUserRecord(appConfig, uid, { pays });
+
+    // Update or allocate linked person record
+    const people = await listPeopleRecords(appConfig);
+    const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+    if (pays) {
+      if (linkedPerson) {
+        const existingData = linkedPerson.data || {};
+        existingData.pays = true;
+        await upsertPeopleRecord(appConfig, linkedPerson.personKey, existingData);
+      } else {
+        const user = await getUserRecord(appConfig, uid);
+        const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Mitglied') : 'Mitglied';
+        const today = new Date().toISOString().slice(0, 10);
+        const personKey = uid;
+        await upsertPeopleRecord(appConfig, personKey, {
+          id: personKey,
+          uid,
+          name: fullName,
+          status: 'vollverdiener',
+          memberSince: today,
+          originalMemberSince: today,
+          totalPaid: 0,
+          pays: true,
+          standingOrders: [],
+          statusHistory: [{ status: 'vollverdiener', startDate: today }]
+        });
+      }
+    } else {
+      if (linkedPerson) {
+        const existingData = linkedPerson.data || {};
+        existingData.pays = false;
+        await upsertPeopleRecord(appConfig, linkedPerson.personKey, existingData);
+      }
+    }
+
+    broadcastDataUpdate();
+    res.json({ success: true, pays });
+  } catch (error) {
+    console.error('Failed to update pays status:', error);
+    res.status(500).json({ error: 'Failed to update pays status' });
+  }
+});
+
+app.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const memberSince = String(req.body?.memberSince || '').trim();
+    if (!memberSince) {
+      return res.status(400).json({ error: 'Datum erforderlich.' });
+    }
+
+    const people = await listPeopleRecords(appConfig);
+    const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+    if (linkedPerson) {
+      const existingData = linkedPerson.data || {};
+      existingData.memberSince = memberSince;
+      existingData.originalMemberSince = memberSince;
+      if (Array.isArray(existingData.statusHistory) && existingData.statusHistory.length > 0) {
+        existingData.statusHistory[0].startDate = memberSince;
+      }
+      await upsertPeopleRecord(appConfig, linkedPerson.personKey, existingData);
+    } else {
+      const user = await getUserRecord(appConfig, uid);
+      const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Mitglied') : 'Mitglied';
+      const personKey = uid;
+      await upsertPeopleRecord(appConfig, personKey, {
+        id: personKey,
+        uid,
+        name: fullName,
+        status: 'vollverdiener',
+        memberSince,
+        originalMemberSince: memberSince,
+        totalPaid: 0,
+        pays: user?.pays !== false,
+        standingOrders: [],
+        statusHistory: [{ status: 'vollverdiener', startDate: memberSince }]
+      });
+    }
+
+    broadcastDataUpdate();
+    res.json({ success: true, memberSince });
+  } catch (error) {
+    console.error('Failed to update memberSince:', error);
+    res.status(500).json({ error: 'Failed to update memberSince' });
+  }
+});
+
+app.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const newPassword = String(req.body?.password || '');
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein.' });
+    }
+
+    await adminResetUserPassword(appConfig, uid, newPassword);
+    res.json({ success: true, message: 'Passwort erfolgreich geändert.' });
+  } catch (error) {
+    console.error('Failed to reset user password:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Passwort-Zurücksetzen fehlgeschlagen' });
+  }
+});
+
+app.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+
+    if (uid === ownerUid) {
+      return res.status(400).json({ error: 'Der Eigentümer-Account kann nicht gelöscht werden.' });
+    }
+
+    if (uid === req.user.uid) {
+      return res.status(400).json({ error: 'Sie können Ihren eigenen Account hier nicht löschen.' });
+    }
+
+    await deleteUserRecord(appConfig, uid);
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete user' });
   }
 });
 

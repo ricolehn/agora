@@ -7,7 +7,7 @@ const path = require('path');
 const { selectChurchLogoFilePath } = require('./logoStorage');
 
 test('selectChurchLogoFilePath prefers uploaded logo when present', () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-logo-test-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agora-logo-test-'));
   try {
     const uploadedLogoPath = path.join(tempDir, 'uploaded-church-logo.svg');
     const bundledLogoPath = path.join(tempDir, 'bundled-church-logo.svg');
@@ -25,7 +25,7 @@ test('selectChurchLogoFilePath prefers uploaded logo when present', () => {
 });
 
 test('selectChurchLogoFilePath falls back to bundled logo when upload is absent', () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nova-logo-test-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agora-logo-test-'));
   try {
     const uploadedLogoPath = path.join(tempDir, 'uploaded-church-logo.svg');
     const bundledLogoPath = path.join(tempDir, 'bundled-church-logo.svg');

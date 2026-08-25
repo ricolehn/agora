@@ -10,7 +10,7 @@ RUN npm install --omit=dev
 
 WORKDIR /app
 
-RUN apk add --no-cache curl unzip && \
+RUN apk add --no-cache curl unzip dos2unix && \
     case "${TARGETARCH:-amd64}" in \
       amd64) pb_arch="amd64" ;; \
       arm64) pb_arch="arm64" ;; \
@@ -37,7 +37,7 @@ RUN mkdir -p /app/data /app/db /app/html-seed && \
     chown -R node:node /app
 
 COPY --chown=node:node docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
+RUN dos2unix /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
 

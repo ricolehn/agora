@@ -58,13 +58,71 @@ test('toPublicUser falls back to first and last name when the auth record has no
     uid: 'user-1',
     id: 'user-1',
     email: 'ada@example.com',
+    rawEmail: 'ada@example.com',
     firstName: 'Ada',
     lastName: 'Lovelace',
     name: 'Ada Lovelace',
     admin: false,
+    owner: false,
     superAdmin: false,
-    emailNotifications: true
+    pays: true,
+    groups: [],
+    emailNotifications: true,
+    isClaimed: true
   });
+});
+
+test('toPublicUser preserves owner, pays, and groups fields', () => {
+  const user = toPublicUser({
+    id: 'user-2',
+    email: 'owner@example.com',
+    firstName: 'Grace',
+    lastName: 'Hopper',
+    owner: true,
+    pays: false,
+    groups: ['Admins', 'Board']
+  });
+
+  assert.deepEqual(user, {
+    uid: 'user-2',
+    id: 'user-2',
+    email: 'owner@example.com',
+    rawEmail: 'owner@example.com',
+    firstName: 'Grace',
+    lastName: 'Hopper',
+    name: 'Grace Hopper',
+    admin: true,
+    owner: true,
+    superAdmin: true,
+    pays: false,
+    groups: ['Admins', 'Board'],
+    emailNotifications: true,
+    isClaimed: true
+  });
+});
+
+test('toPublicUser handles unclaimed placeholder email accounts', () => {
+  const user = toPublicUser({
+    id: 'user-3',
+    email: 'unclaimed_12345_abcdef@agora.local',
+    firstName: 'John',
+    lastName: 'Doe',
+    isClaimed: false
+  });
+
+  assert.equal(user.email, '');
+  assert.equal(user.rawEmail, 'unclaimed_12345_abcdef@agora.local');
+  assert.equal(user.isClaimed, false);
+  assert.equal(user.name, 'John Doe');
+});
+
+test('isPlaceholderEmail detects generated placeholder emails', () => {
+  const { isPlaceholderEmail } = require('./pocketbase');
+  assert.equal(isPlaceholderEmail('unclaimed_123_abc@agora.local'), true);
+  assert.equal(isPlaceholderEmail('user@agora.local'), true);
+  assert.equal(isPlaceholderEmail(''), true);
+  assert.equal(isPlaceholderEmail(null), true);
+  assert.equal(isPlaceholderEmail('realuser@gmail.com'), false);
 });
 
 test('buildPocketBaseError prefers detailed field validation messages', () => {
@@ -83,7 +141,7 @@ test('buildPocketBaseError prefers detailed field validation messages', () => {
 test('generatePocketBaseCredentials returns docker-local defaults', () => {
   const credentials = generatePocketBaseCredentials();
   assert.equal(credentials.url, 'http://127.0.0.1:8090');
-  assert.match(credentials.adminEmail, /^nova-.*@local\.invalid$/);
+  assert.match(credentials.adminEmail, /^agora-.*@local\.invalid$/);
   assert.ok(credentials.adminPassword.length >= 20);
 });
 
@@ -224,4 +282,13 @@ test('decodeTokenPayload handles tokens with expiration far in future', () => {
   assert.equal(decoded.exp, futureExp);
   assert.ok(decoded.exp > Math.floor(Date.now() / 1000) + 300000000);
 });
+
+test('admin user helper functions are exported correctly', () => {
+  const { adminResetUserPassword, deleteUserRecord, claimUserAccount, isPlaceholderEmail } = require('./pocketbase');
+  assert.equal(typeof adminResetUserPassword, 'function');
+  assert.equal(typeof deleteUserRecord, 'function');
+  assert.equal(typeof claimUserAccount, 'function');
+  assert.equal(typeof isPlaceholderEmail, 'function');
+});
+
 

@@ -43,11 +43,12 @@ function wrapUser(user) {
   };
 }
 
-const AUTH_STORAGE_KEY = 'nova_auth_session';
+const AUTH_STORAGE_KEY = 'agora_auth_session';
+const LEGACY_AUTH_STORAGE_KEY = 'nova_auth_session';
 
 function getStoredAuth() {
   try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && parsed.user) {
@@ -63,6 +64,7 @@ function persistAuth(token, user) {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: token || null, user }));
     } else {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
     }
   } catch { /* ignore */ }
 }

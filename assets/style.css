@@ -2647,3 +2647,179 @@ details[open] .ai-thinking-summary::before {
     }
 }
 
+/* --- System Settings Sub-Navigation --- */
+.sys-subnav {
+    display: flex;
+    gap: 6px;
+    background: var(--surface-alt);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.sys-subnav-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sys-subnav-btn:hover {
+    color: var(--text);
+}
+
+.sys-subnav-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* --- Nextcloud Inspired Accounts Table --- */
+.nextcloud-table-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow-x: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.nextcloud-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.92rem;
+}
+
+.nextcloud-table th {
+    background: var(--surface-alt);
+    padding: 12px 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.nextcloud-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.nextcloud-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.nextcloud-table tbody tr:hover {
+    background: rgba(0, 0, 0, 0.015);
+}
+
+.nc-user-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nc-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--surface-alt);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--primary);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.nc-user-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.nc-user-name {
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.nc-badge-owner {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #d97706;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.nc-badge-group {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    display: inline-block;
+}
+
+.nc-select-pays {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.nc-actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+}
+
+.nc-icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.nc-icon-btn:hover {
+    color: var(--text);
+    border-color: var(--text-secondary);
+}
+
+.nc-icon-btn.danger:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: rgba(239, 68, 68, 0.08);
+}
+

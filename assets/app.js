@@ -311,7 +311,7 @@ function formatDateFast(dateInput) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const appName = config.appName || "Nova";
+    const appName = config.appName || "Agora";
 
     // Update visual elements
     const headerEl = document.getElementById('app-name-header');
@@ -364,7 +364,11 @@ function safeList(val) {
 }
 
 function isSuperAdminUser() {
-    return !!(currentUser && currentUser.superAdmin);
+    return !!(currentUser && (currentUser.admin || currentUser.owner || currentUser.superAdmin));
+}
+
+function isOwnerUser() {
+    return !!(currentUser && (currentUser.owner || currentUser.superAdmin));
 }
 
 async function fetchWithAuth(url, options = {}) {
@@ -1692,7 +1696,15 @@ async function loadData(silent = false) {
             settingsVersion++;
         }
         users = uData
-            ? Object.entries(uData).map(([uid, data]) => ({...data, uid}))
+            ? Object.entries(uData).map(([uid, data]) => {
+                const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+                return {
+                    ...data,
+                    uid,
+                    memberSince: data.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '',
+                    status: data.status || linkedPerson?.status || linkedPerson?.data?.status || ''
+                };
+            })
             : [];
 
         // Show Invite Code
@@ -1804,25 +1816,20 @@ async function renderAll() {
 }
 
 async function renderSuperAdminTools() {
-    const card = document.getElementById('card-super-admin');
     const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
     const sysNavBtnDesktop = document.getElementById('admin-sys-nav-btn-desktop');
     const sysNavBtnBottom = document.getElementById('admin-sys-nav-btn');
-    const isAdmin = !!(currentUser && currentUser.admin);
+    const isAdmin = isSuperAdminUser();
 
     if (sysNavBtnDesktop) sysNavBtnDesktop.style.display = isAdmin ? 'block' : 'none';
     if (sysNavBtnBottom) sysNavBtnBottom.style.display = isAdmin ? 'flex' : 'none';
+    if (sysSettingsBtn) sysSettingsBtn.style.display = isAdmin ? '' : 'none';
 
-    if (!isSuperAdminUser()) {
-        if (card) card.style.display = 'none';
-        if (sysSettingsBtn) sysSettingsBtn.style.display = 'none';
+    if (!isAdmin) {
         return;
     }
 
-    if (card) card.style.display = '';
-    if (sysSettingsBtn) sysSettingsBtn.style.display = '';
-
-    renderSuperAdminUserManagement();
+    renderAccountsTab();
     await renderSuperAdminPaymentEditor();
     if (!advancedConfigLoaded) {
         loadAdvancedSystemConfig();
@@ -1996,41 +2003,135 @@ window.assignUserToPerson = async (uid) => {
     }
 };
 
-function renderSuperAdminUserManagement() {
-    const target = document.getElementById('super-admin-user-management');
-    if (!target || !isSuperAdminUser()) return;
+let currentSysSettingsTab = 'accounts';
+let accountsSearchQuery = '';
+
+window.switchSysSettingsTab = function(tabName) {
+    currentSysSettingsTab = tabName;
+    const tabBtns = {
+        accounts: document.getElementById('sys-subtab-btn-accounts'),
+        config: document.getElementById('sys-subtab-btn-config'),
+        ai: document.getElementById('sys-subtab-btn-ai')
+    };
+    const panels = {
+        accounts: document.getElementById('sys-panel-accounts'),
+        config: document.getElementById('sys-panel-config'),
+        ai: document.getElementById('sys-panel-ai')
+    };
+
+    Object.keys(tabBtns).forEach(k => {
+        if (tabBtns[k]) tabBtns[k].classList.toggle('active', k === tabName);
+        if (panels[k]) panels[k].style.display = k === tabName ? '' : 'none';
+    });
+
+    if (tabName === 'accounts') {
+        renderAccountsTab();
+    } else if (tabName === 'config') {
+        if (!advancedConfigLoaded) loadAdvancedSystemConfig();
+    } else if (tabName === 'ai') {
+        loadAiConfig();
+    }
+};
+
+window.filterAccountsList = function() {
+    const input = document.getElementById('accounts-search');
+    accountsSearchQuery = (input ? input.value : '').toLowerCase().trim();
+    renderAccountsTab();
+};
+
+function renderAccountsTab() {
+    const tbody = document.getElementById('accounts-table-body');
+    if (!tbody || !isSuperAdminUser()) return;
 
     if (!users || users.length === 0) {
-        target.innerHTML = '<div style="color:var(--text-secondary);">Keine Benutzer gefunden.</div>';
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine Benutzer gefunden.</td></tr>`;
         return;
     }
 
-    superAdminUserRows = users
+    const filtered = users
         .slice()
+        .filter(u => {
+            if (!accountsSearchQuery) return true;
+            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            return fullName.includes(accountsSearchQuery) || email.includes(accountsSearchQuery);
+        })
         .sort((a, b) => `${a.firstName || ''} ${a.lastName || ''}`.localeCompare(`${b.firstName || ''} ${b.lastName || ''}`));
 
-    const rows = superAdminUserRows
-        .map((u, index) => {
-            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt';
-            const isSuper = u.superAdmin === true;
-            return `
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px; border:1px solid var(--border); border-radius:10px;">
-                    <div style="flex:1; min-width: 150px;">
-                        <div style="font-weight:700;">${escapeHtml(fullName)} ${isSuper ? '👑' : ''}</div>
-                        <div style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(u.email || '')}</div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <label class="switch" style="flex-shrink: 0;">
-                            <input type="checkbox" ${u.admin ? 'checked' : ''} ${isSuper ? 'disabled' : ''} onchange="setSupervisorAdminByIndex(${index}, this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                        <span style="font-weight:600; font-size: 0.9rem;">Supervisor Admin</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine passenden Benutzer gefunden.</td></tr>`;
+        return;
+    }
 
-    target.innerHTML = rows;
+    const rows = filtered.map(u => {
+        const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt';
+        const isOwner = u.owner === true || u.superAdmin === true;
+        const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
+        const profilePicUrl = `${config.apiBaseUrl}/profile/picture/${u.uid}`;
+        const groupLabel = (Array.isArray(u.groups) && u.groups.length > 0) ? u.groups.join(', ') : t('badge_group_default', 'Standard');
+        const isPays = u.pays !== false;
+        const isUnclaimed = u.isClaimed === false;
+        const displayEmail = u.email ? escapeHtml(u.email) : `<span style="opacity: 0.5; font-style: italic;">${t('accounts_no_login', 'Kein Login hinterlegt')}</span>`;
+        const linkedPerson = people.find(p => p.uid === u.uid || (p.data && p.data.uid === u.uid));
+        const memberSinceVal = u.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
+
+        return `
+            <tr data-uid="${escapeHtml(u.uid)}">
+                <td>
+                    <div class="nc-user-cell">
+                        <div class="nc-avatar" style="position: relative; overflow: hidden;">
+                            <span style="user-select: none;">${escapeHtml(initials)}</span>
+                            <img src="${profilePicUrl}" alt="${escapeHtml(fullName)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'">
+                        </div>
+                        <div class="nc-user-info">
+                            <div class="nc-user-name">
+                                <span>${escapeHtml(fullName)}</span>
+                                ${isOwner ? `<span class="nc-badge-owner">👑 ${t('badge_owner', 'Eigentümer')}</span>` : ''}
+                                ${isUnclaimed ? `<span class="nc-badge-group" style="background: rgba(245, 158, 11, 0.12); color: #d97706; border-color: rgba(245, 158, 11, 0.3); font-size: 0.72rem; padding: 2px 6px;">⏳ ${t('badge_unclaimed', 'Nicht registriert')}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td style="color: var(--text-secondary); font-size: 0.88rem;">${displayEmail}</td>
+                <td>
+                    <span class="nc-badge-group">${escapeHtml(groupLabel)}</span>
+                </td>
+                <td>
+                    <input type="date" class="form-input" style="padding: 3px 6px; font-size: 0.82rem; height: 30px; border-radius: 8px; width: 130px; margin: 0;" value="${escapeHtml(memberSinceVal)}" onchange="window.updateUserMemberSince('${escapeHtml(u.uid)}', this.value)">
+                </td>
+                <td>
+                    <select class="nc-select-pays" onchange="window.toggleUserPays('${escapeHtml(u.uid)}', this.value === 'yes')">
+                        <option value="yes" ${isPays ? 'selected' : ''}>${t('option_yes', 'Ja')}</option>
+                        <option value="no" ${!isPays ? 'selected' : ''}>${t('option_no', 'Nein')}</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="switch" style="margin: 0;">
+                        <input type="checkbox" ${u.admin ? 'checked' : ''} ${isOwner ? 'disabled' : ''} onchange="window.toggleUserSystemAdmin('${escapeHtml(u.uid)}', this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                </td>
+                <td>
+                    <div class="nc-actions-cell">
+                        <button class="nc-icon-btn" title="${t('btn_reset_password', 'Passwort zurücksetzen')}" onclick="window.openResetPasswordModal('${escapeHtml(u.uid)}', '${escapeHtml(fullName)}')">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        </button>
+                        ${!isOwner && u.uid !== currentUser?.uid ? `
+                            <button class="nc-icon-btn danger" title="${t('btn_delete', 'Löschen')}" onclick="window.deleteUserAccount('${escapeHtml(u.uid)}')">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        ` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = rows;
+}
+
+function renderSuperAdminUserManagement() {
+    renderAccountsTab();
 }
 
 async function renderSuperAdminPaymentEditor() {
@@ -2039,7 +2140,40 @@ async function renderSuperAdminPaymentEditor() {
     }
 }
 
-window.setSupervisorAdmin = async (uid, isAdmin) => {
+window.updateUserMemberSince = async (uid, memberSince) => {
+    if (!isSuperAdminUser()) return;
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/member-since`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memberSince })
+        });
+        if (!response.ok) {
+            const msg = await response.text();
+            throw new Error(msg || 'Speichern fehlgeschlagen');
+        }
+        const localUser = users.find(u => u.uid === uid);
+        if (localUser) localUser.memberSince = memberSince;
+        const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+        if (linkedPerson) {
+            linkedPerson.memberSince = memberSince;
+            linkedPerson.originalMemberSince = memberSince;
+            if (linkedPerson.data) {
+                linkedPerson.data.memberSince = memberSince;
+                linkedPerson.data.originalMemberSince = memberSince;
+            }
+        }
+        renderAccountsTab();
+        renderPeople();
+        showToast(t('toast_member_since_updated', 'Mitgliedsdatum aktualisiert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern des Mitgliedsdatums:', err);
+        showToast('Mitgliedsdatum konnte nicht gespeichert werden', 'error');
+        loadData();
+    }
+};
+
+window.toggleUserSystemAdmin = async (uid, isAdmin) => {
     if (!isSuperAdminUser()) return;
     try {
         const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/admin`, {
@@ -2053,19 +2187,173 @@ window.setSupervisorAdmin = async (uid, isAdmin) => {
         }
         const localUser = users.find(u => u.uid === uid);
         if (localUser) localUser.admin = !!isAdmin;
-        renderSuperAdminUserManagement();
-        showToast('Benutzerrechte gespeichert');
+        renderAccountsTab();
+        showToast(t('toast_admin_updated', 'System-Admin Rechte aktualisiert'));
     } catch (err) {
-        console.error('Fehler beim Speichern der Rolle:', err);
+        console.error('Fehler beim Speichern der Admin-Rolle:', err);
         showToast('Benutzerrechte konnten nicht gespeichert werden', 'error');
         loadData();
     }
 };
 
+window.toggleUserPays = async (uid, pays) => {
+    if (!isSuperAdminUser()) return;
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/pays`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pays: !!pays })
+        });
+        if (!response.ok) {
+            const msg = await response.text();
+            throw new Error(msg || 'Speichern fehlgeschlagen');
+        }
+        const localUser = users.find(u => u.uid === uid);
+        if (localUser) localUser.pays = !!pays;
+        const linkedPerson = people.find(p => p.uid === uid);
+        if (linkedPerson) {
+            linkedPerson.pays = !!pays;
+            if (linkedPerson.data) linkedPerson.data.pays = !!pays;
+        }
+        renderAccountsTab();
+        renderPeople();
+        showToast(t('toast_pays_updated', 'Zahlungsstatus aktualisiert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern des Beitragsstatus:', err);
+        showToast('Beitragsstatus konnte nicht gespeichert werden', 'error');
+        loadData();
+    }
+};
+
+window.openCreateUserModal = () => {
+    document.getElementById('new-user-first-name').value = '';
+    document.getElementById('new-user-last-name').value = '';
+    document.getElementById('new-user-email').value = '';
+    document.getElementById('new-user-password').value = '';
+    document.getElementById('new-user-pays').checked = true;
+    document.getElementById('new-user-admin').checked = false;
+    const dateInput = document.getElementById('new-user-start');
+    if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+    const memberFields = document.getElementById('new-user-member-fields');
+    if (memberFields) memberFields.style.display = '';
+    openModal('create-user-modal');
+};
+
+window.submitCreateUser = async () => {
+    const firstName = document.getElementById('new-user-first-name').value.trim();
+    const lastName = document.getElementById('new-user-last-name').value.trim();
+    const email = document.getElementById('new-user-email').value.trim();
+    const password = document.getElementById('new-user-password').value;
+    const pays = document.getElementById('new-user-pays').checked;
+    const admin = document.getElementById('new-user-admin').checked;
+    const status = document.getElementById('new-user-status')?.value || 'vollverdiener';
+    const memberSince = document.getElementById('new-user-start')?.value || new Date().toISOString().slice(0, 10);
+
+    if (!firstName || !lastName) {
+        alert(t('alert_fill_fields', 'Bitte Vor- und Nachnamen ausfüllen.'));
+        return;
+    }
+
+    if (password && password.length < 6) {
+        alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
+        return;
+    }
+
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                firstName,
+                lastName,
+                email,
+                password,
+                pays,
+                admin,
+                status,
+                memberSince,
+                groups: ['Standard']
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Erstellen fehlgeschlagen');
+        }
+
+        await loadData();
+        closeModal('create-user-modal');
+        showToast(t('toast_user_created', 'Benutzer erfolgreich erstellt'));
+    } catch (err) {
+        console.error('Fehler beim Erstellen des Benutzers:', err);
+        alert(err.message || 'Fehler beim Erstellen des Benutzers');
+    }
+};
+
+window.openResetPasswordModal = (uid, fullName) => {
+    document.getElementById('reset-password-uid').value = uid;
+    document.getElementById('reset-password-user-display').textContent = fullName;
+    document.getElementById('reset-password-new').value = '';
+    openModal('reset-password-modal');
+};
+
+window.submitResetPassword = async () => {
+    const uid = document.getElementById('reset-password-uid').value;
+    const password = document.getElementById('reset-password-new').value;
+
+    if (!password || password.length < 6) {
+        alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
+        return;
+    }
+
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/password`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Passwort-Zurücksetzen fehlgeschlagen');
+        }
+
+        closeModal('reset-password-modal');
+        showToast(t('toast_password_reset', 'Passwort erfolgreich geändert'));
+    } catch (err) {
+        console.error('Fehler beim Zurücksetzen des Passworts:', err);
+        alert(err.message || 'Fehler beim Zurücksetzen des Passworts');
+    }
+};
+
+window.deleteUserAccount = async (uid) => {
+    if (!confirm(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
+
+    try {
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Löschen fehlgeschlagen');
+        }
+
+        users = users.filter(u => u.uid !== uid);
+        renderAccountsTab();
+        renderUnlinkedUsers();
+        showToast(t('toast_user_deleted', 'Benutzer erfolgreich gelöscht'));
+    } catch (err) {
+        console.error('Fehler beim Löschen des Benutzers:', err);
+        alert(err.message || 'Fehler beim Löschen des Benutzers');
+    }
+};
+
+window.setSupervisorAdmin = window.toggleUserSystemAdmin;
 window.setSupervisorAdminByIndex = async (index, isAdmin) => {
-    const user = superAdminUserRows[index];
+    const user = users[index];
     if (!user || !user.uid) return;
-    await window.setSupervisorAdmin(user.uid, isAdmin);
+    await window.toggleUserSystemAdmin(user.uid, isAdmin);
 };
 
 window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null, type = 'payment', paymentObj = null) => {
@@ -2468,7 +2756,24 @@ function renderUserView() {
     const paymentHistory = document.getElementById('user-payment-history');
     const reqList = document.getElementById('user-requests-list');
 
-    if (people.length === 0) {
+    if (currentUser && currentUser.pays === false) {
+        if (statusCard) {
+            statusCard.innerHTML = `
+                <div class="user-hero-status user-status-ok" style="border-color: var(--border);">
+                    <div style="font-size: 2rem; margin-bottom: 8px;">👤</div>
+                    <h2 style="color: var(--text); font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
+                        ${t('user_account_non_paying_title', 'Benutzerkonto')}
+                    </h2>
+                    <div style="font-size: 0.95rem; color: var(--text-secondary);">
+                        ${t('user_account_non_paying_desc', 'Aktives Benutzerkonto (Keine Beitragspflicht)')}
+                    </div>
+                </div>
+            `;
+        }
+        if (paymentHistory) {
+            paymentHistory.innerHTML = '';
+        }
+    } else if (people.length === 0) {
         if (statusCard) {
             statusCard.innerHTML = `
                 <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 16px; border: 1px solid var(--border);">
@@ -2630,7 +2935,13 @@ function renderPeople() {
     const list = document.getElementById('peopleList');
     const empty = document.getElementById('emptyState');
 
-    if(people.length === 0) {
+    const payingPeople = people.filter(p => {
+        if (p.isDeleted || (p.data && p.data.isDeleted)) return false;
+        if (p.pays === false || (p.data && p.data.pays === false)) return false;
+        return true;
+    });
+
+    if(payingPeople.length === 0) {
         list.innerHTML = '';
         empty.style.display = 'block';
         return;
@@ -2638,7 +2949,7 @@ function renderPeople() {
     empty.style.display = 'none';
 
     // Data is pre-calculated by backend now
-    const processed = people.map(p => {
+    const processed = payingPeople.map(p => {
         return {
             p,
             paidUntil: p._paidUntil ? new Date(p._paidUntil) : null,
@@ -2864,13 +3175,6 @@ function generatePersonHTML(p, preCalcData = null) {
                     <div class="history-header">${t('history_label', 'Verlauf')}</div>
                     <div id="timeline-${p.id}">
                         <div style="padding:10px; color:var(--text-secondary); font-size:0.8rem; font-style:italic;">${t('loading_history', 'Lade Verlauf...')}</div>
-                    </div>
-
-                    <div style="display: ${!(currentUser && currentUser.admin) ? 'none' : 'flex'}; justify-content: flex-end; margin-top: 20px;">
-                        <button class="btn btn-secondary btn-small" style="border-color: var(--danger); color: var(--danger); font-size: 0.85rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" data-id="${escapeHtml(p.id)}" onclick="deletePersonClick(this.dataset.id)">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            ${t('delete_member_btn', 'Mitglied löschen')}
-                        </button>
                     </div>
                 </div>
             </div>
@@ -3372,7 +3676,7 @@ window.updateReportPreview = function() {
     });
     const netBalance = totalIncome - totalExpenses;
     
-    const appName = config.appName || "Nova";
+    const appName = config.appName || "Agora";
     
     // Header HTML
     const headerHtml = `
@@ -3539,7 +3843,7 @@ window.downloadReportPdf = function() {
 
     setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generating...'));
     
-    const appName = config.appName || "Nova";
+    const appName = config.appName || "Agora";
     const safeAppName = appName.replace(/[^a-zA-Z0-9]/g, '_');
     
     // Create an unscaled off-screen clone with normalized dimensions to prevent blank 1st page
@@ -3616,30 +3920,40 @@ window.addPerson = async () => {
     if (!validateRequired(['new-person-name', 'new-person-start'])) return;
 
     setButtonLoading('btn-add-person', true, "Speichert...");
-    const name = document.getElementById('new-person-name').value;
+    const name = document.getElementById('new-person-name').value.trim();
     const status = document.getElementById('new-person-status').value;
     const start = document.getElementById('new-person-start').value;
 
-    const newP = {
-        id: Date.now().toString(),
-        name,
-        status,
-        memberSince: start,
-        originalMemberSince: start,
-        totalPaid: 0,
-        statusHistory: [],
-        payments: []
-    };
+    const nameParts = name.split(/\s+/);
+    const firstName = nameParts[0] || name;
+    const lastName = nameParts.slice(1).join(' ') || '';
 
     try {
-        await saveNewPerson(newP);
-        await renderAll();
+        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                firstName,
+                lastName,
+                pays: true,
+                status,
+                memberSince: start,
+                admin: false
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Speichern fehlgeschlagen');
+        }
+
+        await loadData();
         closeModal('add-person-modal');
-        document.getElementById('new-person-name').value = ''; // Clear input on success
+        document.getElementById('new-person-name').value = '';
         showToast(t('toast_person_added', 'Person hinzugefügt'));
     } catch (err) {
         console.error('Fehler beim Anlegen der Person:', err);
-        alert(t('alert_save_failed', 'Speichern fehlgeschlagen. Bitte erneut versuchen.'));
+        alert(err.message || t('alert_save_failed', 'Speichern fehlgeschlagen. Bitte erneut versuchen.'));
     } finally {
         setButtonLoading('btn-add-person', false);
     }
@@ -3805,29 +4119,6 @@ window.pendingExpenseFiles = [];
     }
 };
 
-window.deletePersonClick = (id) => {
-    editingPersonId = id;
-    openModal('confirm-delete-person-modal');
-};
-
-window.confirmDeletePerson = async () => {
-    if (!editingPersonId) return;
-
-    closeModal('confirm-delete-person-modal');
-
-    try {
-        await remove(ref(db, 'people/' + editingPersonId));
-        people = people.filter(p => String(p.id) !== String(editingPersonId));
-        await renderAll();
-        showToast('Mitglied erfolgreich gelöscht');
-    } catch (err) {
-        console.error('Fehler beim Löschen der Person:', err);
-        showToast('Mitglied konnte nicht gelöscht werden', 'error');
-    } finally {
-        editingPersonId = null;
-    }
-};
-
 let editingSoId = null;
 let editingPersonId = null;
 
@@ -3968,9 +4259,73 @@ window.openPaymentModal = (id) => {
     openModal('add-payment-modal');
 };
 
+function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
+    const memberSinceStr = person.originalMemberSince || person.memberSince || changeDateStr;
+    const changeDateObj = new Date(changeDateStr);
+    const memberSinceObj = new Date(memberSinceStr);
+
+    if (changeDateObj < memberSinceObj) {
+        throw new Error('Änderungsdatum liegt vor Beginn der Mitgliedschaft.');
+    }
+
+    const oldHistory = safeList(person.statusHistory);
+    const newHistory = [];
+
+    if (changeDateStr <= memberSinceStr) {
+        newHistory.push({
+            status: newStatus,
+            startDate: memberSinceStr
+        });
+    } else {
+        for (const entry of oldHistory) {
+            const entryStart = entry.startDate ? new Date(entry.startDate) : memberSinceObj;
+            if (entryStart < changeDateObj) {
+                if (entry.endDate && new Date(entry.endDate) <= changeDateObj) {
+                    newHistory.push({ ...entry });
+                } else {
+                    newHistory.push({
+                        ...entry,
+                        endDate: changeDateStr
+                    });
+                }
+            }
+        }
+
+        if (newHistory.length === 0 || (newHistory[newHistory.length - 1].endDate && newHistory[newHistory.length - 1].endDate < changeDateStr)) {
+            const priorStart = newHistory.length > 0 && newHistory[newHistory.length - 1].endDate
+                ? newHistory[newHistory.length - 1].endDate
+                : memberSinceStr;
+            if (priorStart < changeDateStr) {
+                newHistory.push({
+                    status: person.status || 'vollverdiener',
+                    startDate: priorStart,
+                    endDate: changeDateStr
+                });
+            }
+        }
+
+        newHistory.push({
+            status: newStatus,
+            startDate: changeDateStr
+        });
+    }
+
+    return {
+        ...person,
+        status: newStatus,
+        statusHistory: newHistory
+    };
+}
+
 window.openChangeStatusModal = (id) => {
     currentPersonId = id;
-    document.getElementById('change-status-date').value = new Date().toISOString().split('T')[0];
+    const person = people.find(p => String(p.id) === String(id));
+    if (person) {
+        const select = document.getElementById('change-status-select');
+        if (select) select.value = person.status || 'vollverdiener';
+    }
+    const dateInput = document.getElementById('change-status-date');
+    if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
     openModal('change-status-modal');
 };
 
@@ -4002,7 +4357,7 @@ window.sendStatusEmail = async (personId) => {
 
     const statusLabels = getStatusLabels(false);
     const readableStatus = statusLabels[currentStatus] || currentStatus;
-    const appName = config.appName || "Nova";
+    const appName = config.appName || "Agora";
 
     const paidUntilDate = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
     const paidUntilText = paidUntilDate ? monthYearFormatter.format(paidUntilDate) : 'Nie';
@@ -4096,40 +4451,7 @@ window.saveStatusChange = async () => {
 
     try {
         const updated = await mutatePerson(currentPersonId, (person) => {
-            const changeDateObj = new Date(changeDate);
-            const memberSinceDate = new Date(person.originalMemberSince || person.memberSince);
-
-            if (changeDateObj < memberSinceDate) {
-                throw new Error('Änderungsdatum liegt vor Mitgliedschaft.');
-            }
-
-            let history = safeList(person.statusHistory)
-                .filter(entry => new Date(entry.startDate) < changeDateObj)
-                .map(entry => {
-                    if (entry.endDate) {
-                        const entryEnd = new Date(entry.endDate);
-                        if (entryEnd > changeDateObj) {
-                            return { ...entry, endDate: changeDate };
-                        }
-                    }
-                    return entry;
-                });
-
-            let currentStatusStartDate = person.originalMemberSince || person.memberSince;
-            const sortedHistory = history.slice().sort((a, b) => new Date(b.endDate || 0) - new Date(a.endDate || 0));
-            if (sortedHistory.length > 0 && sortedHistory[0].endDate) {
-                currentStatusStartDate = sortedHistory[0].endDate;
-            }
-
-            if (new Date(currentStatusStartDate) < changeDateObj) {
-                history.push({
-                    status: person.status,
-                    startDate: currentStatusStartDate,
-                    endDate: changeDate
-                });
-            }
-
-            return { ...person, status: newStatus, statusHistory: history };
+            return applyStatusChangeToHistory(person, newStatus, changeDate);
         });
 
         if (!updated) {
@@ -5147,12 +5469,13 @@ async function saveNewPerson(person) {
 }
 
 function initTheme() {
-    const t = localStorage.getItem('nova-theme') || 'system';
+    const t = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
     window.setTheme(t);
 
     // Listen for OS theme changes if 'system' is active
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-        if (localStorage.getItem('nova-theme') === 'system') {
+        const activeT = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
+        if (activeT === 'system') {
             applyActualTheme('system');
         }
     });
@@ -5168,7 +5491,7 @@ function applyActualTheme(t) {
 }
 
 window.setTheme = (t) => {
-    localStorage.setItem('nova-theme', t);
+    localStorage.setItem('agora-theme', t);
     applyActualTheme(t);
 
     // Update active button state
@@ -5203,10 +5526,11 @@ async function bootstrapSuperAdmin(user) {
         });
         if (!response.ok) return;
         const result = await response.json();
-        if (result.isSuperAdmin) {
+        if (result.isSuperAdmin || result.isOwner) {
             currentUser = {
                 ...(currentUser || {}),
                 admin: true,
+                owner: true,
                 superAdmin: true
             };
             const freshProfile = await fetchUserProfile(user.uid, 2);
@@ -5225,7 +5549,7 @@ onAuthStateChanged(auth, async (user) => {
         if(loader) loader.style.display = 'flex';
         setLoadingMessage('Profil wird geladen...');
 
-        localStorage.setItem('nova-is-logged-in', 'true');
+        localStorage.setItem('agora-is-logged-in', 'true');
         const profile = await fetchUserProfile(user.uid, 2);
         if(profile) {
             currentUser = profile;
@@ -5245,6 +5569,7 @@ onAuthStateChanged(auth, async (user) => {
         const loader = document.getElementById('loading-overlay');
         if(loader) loader.style.display = 'none';
 
+        localStorage.removeItem('agora-is-logged-in');
         localStorage.removeItem('nova-is-logged-in');
         isAuthenticated = false;
         advancedConfigLoaded = false;

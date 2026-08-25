@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
 
 const DEFAULT_SYSTEM_STATE = {
   inviteCode: '123456',
+  ownerUid: null,
   superAdminUid: null
 };
 
@@ -148,7 +149,7 @@ const DEFAULT_COLLECTION_SPECS = [
     viewRule: '@request.auth.admin = true',
     createRule: '@request.auth.admin = true',
     updateRule: '@request.auth.admin = true',
-    deleteRule: '@request.auth.superAdmin = true',
+    deleteRule: '@request.auth.owner = true || @request.auth.superAdmin = true || @request.auth.admin = true',
     indexes: [
       'CREATE UNIQUE INDEX idx_app_state_key ON app_state (key)'
     ],
@@ -175,7 +176,7 @@ function generatePocketBaseCredentials() {
   return {
     url: getPocketBaseBaseUrl(),
     // Internal-only superuser used by the bundled backend to provision PocketBase.
-    adminEmail: `nova-${crypto.randomUUID()}@local.invalid`,
+    adminEmail: `agora-${crypto.randomUUID()}@local.invalid`,
     adminPassword: crypto.randomBytes(24).toString('base64url')
   };
 }
@@ -205,18 +206,32 @@ function decodeTokenPayload(token) {
   }
 }
 
+function isPlaceholderEmail(email) {
+  if (!email) return true;
+  const str = String(email).toLowerCase().trim();
+  return str.endsWith('@agora.local') || str.endsWith('@local.invalid') || str.startsWith('unclaimed_');
+}
+
 function toPublicUser(record) {
   if (!record) return null;
+  const isOwner = record.owner === true || record.superAdmin === true;
+  const isPlaceholder = isPlaceholderEmail(record.email);
+  const isClaimed = record.isClaimed !== false && !isPlaceholder;
   return {
     uid: record.id,
     id: record.id,
-    email: record.email || '',
+    email: isPlaceholder ? '' : (record.email || ''),
+    rawEmail: record.email || '',
     firstName: record.firstName || '',
     lastName: record.lastName || '',
     name: record.name || `${record.firstName || ''} ${record.lastName || ''}`.trim(),
-    admin: record.admin === true,
-    superAdmin: record.superAdmin === true,
-    emailNotifications: record.emailNotifications !== false
+    admin: record.admin === true || isOwner,
+    owner: isOwner,
+    superAdmin: isOwner,
+    pays: record.pays !== false,
+    groups: Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []),
+    emailNotifications: record.emailNotifications !== false,
+    isClaimed
   };
 }
 
@@ -354,8 +369,12 @@ async function ensureUsersCollection(appConfig) {
     { name: 'firstName', type: 'text' },
     { name: 'lastName', type: 'text' },
     { name: 'admin', type: 'bool' },
+    { name: 'owner', type: 'bool' },
     { name: 'superAdmin', type: 'bool' },
-    { name: 'emailNotifications', type: 'bool' }
+    { name: 'pays', type: 'bool' },
+    { name: 'groups', type: 'json' },
+    { name: 'emailNotifications', type: 'bool' },
+    { name: 'isClaimed', type: 'bool' }
   ];
 
   for (const field of wantedFields) {
@@ -369,11 +388,11 @@ async function ensureUsersCollection(appConfig) {
     token,
     body: {
       ...existing,
-      listRule: '@request.auth.admin = true',
-      viewRule: 'id = @request.auth.id || @request.auth.admin = true',
+      listRule: '@request.auth.admin = true || @request.auth.owner = true',
+      viewRule: 'id = @request.auth.id || @request.auth.admin = true || @request.auth.owner = true',
       createRule: '',
-      updateRule: 'id = @request.auth.id || @request.auth.admin = true',
-      deleteRule: '@request.auth.superAdmin = true',
+      updateRule: 'id = @request.auth.id || @request.auth.admin = true || @request.auth.owner = true',
+      deleteRule: '@request.auth.owner = true || @request.auth.superAdmin = true || @request.auth.admin = true',
       authToken: { duration: 94670856 },
       fields,
       indexes: existing.indexes || [],
@@ -841,12 +860,93 @@ async function migrateLegacyExpensesData(appConfig) {
 }
 
 
+async function migrateUserAndOwnerSchema(appConfig) {
+  const systemRecord = await getStateRecord(appConfig, 'system');
+  const system = systemRecord?.value || {};
+  let ownerUid = system.ownerUid || system.superAdminUid || null;
+  let systemNeedsUpdate = false;
+
+  if (system.superAdminUid && !system.ownerUid) {
+    system.ownerUid = system.superAdminUid;
+    systemNeedsUpdate = true;
+  }
+
+  const users = await listAllRecords('users', '', appConfig);
+
+  if (!ownerUid && users.length > 0) {
+    const existingOwner = users.find((u) => u.owner === true || u.superAdmin === true) || users[0];
+    ownerUid = existingOwner.id;
+    system.ownerUid = ownerUid;
+    systemNeedsUpdate = true;
+  }
+
+  if (systemNeedsUpdate) {
+    await upsertStateValue(appConfig, 'system', { ...DEFAULT_SYSTEM_STATE, ...system, ownerUid });
+  }
+
+  await runInBatches(users, MIGRATION_BATCH_SIZE, async (userRecord) => {
+    const isOwner = userRecord.id === ownerUid || userRecord.owner === true || userRecord.superAdmin === true;
+    const updates = {};
+    let needsPatch = false;
+
+    if (isOwner) {
+      if (userRecord.owner !== true) { updates.owner = true; needsPatch = true; }
+      if (userRecord.admin !== true) { updates.admin = true; needsPatch = true; }
+      if (userRecord.superAdmin !== true) { updates.superAdmin = true; needsPatch = true; }
+    } else {
+      if (userRecord.owner === undefined || userRecord.owner === null) { updates.owner = false; needsPatch = true; }
+      if (userRecord.superAdmin !== false && userRecord.superAdmin !== undefined) { updates.superAdmin = false; needsPatch = true; }
+    }
+
+    if (userRecord.pays === undefined || userRecord.pays === null) {
+      updates.pays = true;
+      needsPatch = true;
+    }
+
+    if (userRecord.groups === undefined || userRecord.groups === null) {
+      updates.groups = [];
+      needsPatch = true;
+    }
+
+    if (needsPatch) {
+      try {
+        await updateUserRecord(appConfig, userRecord.id, updates);
+      } catch (err) {
+        console.warn(`[PocketBase Migration] Could not patch user ${userRecord.id}:`, err.message);
+      }
+    }
+  });
+
+  // Link any legacy people records that were created without uid
+  try {
+    const people = await listPeopleRecords(appConfig);
+    for (const p of people) {
+      if (!p.uid && p.name) {
+        const normPersonName = p.name.trim().toLowerCase();
+        const match = users.find(u => {
+          const uFull = `${u.firstName || ''} ${u.lastName || ''}`.trim().toLowerCase();
+          const uName = String(u.name || '').trim().toLowerCase();
+          return uFull === normPersonName || uName === normPersonName;
+        });
+        if (match) {
+          const existingData = p.data || {};
+          existingData.uid = match.id;
+          await upsertPeopleRecord(appConfig, p.personKey, existingData);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[PocketBase Migration] Could not link legacy people records:', err.message);
+  }
+}
+
 async function ensurePocketBaseSchema(appConfig) {
   await ensureUsersCollection(appConfig);
   for (const spec of DEFAULT_COLLECTION_SPECS) {
     await ensureCollection(appConfig, spec);
   }
   await ensureStateDefaults(appConfig);
+  await migrateUserAndOwnerSchema(appConfig);
   await migrateLegacyPeopleData(appConfig);
   await migrateLegacyExpensesData(appConfig);
 }
@@ -864,46 +964,89 @@ async function verifyUserToken(token) {
   return toPublicUser(userRecord);
 }
 
-async function registerUser({ email, password, firstName = '', lastName = '' }, appConfig = null) {
+async function registerUser({ email = '', password = '', firstName = '', lastName = '', admin = false, owner = false, pays = true, groups = [], isClaimed = null }, appConfig = null) {
   const normalizedFirstName = String(firstName || '').trim();
   const normalizedLastName = String(lastName || '').trim();
   const name = `${normalizedFirstName} ${normalizedLastName}`.trim();
+
+  const isRealAccount = Boolean(email && password);
+  const finalIsClaimed = isClaimed !== null ? isClaimed : isRealAccount;
+  const randomSuffix = crypto.randomBytes(6).toString('hex');
+  const finalEmail = isRealAccount ? String(email).trim() : `unclaimed_${Date.now()}_${randomSuffix}@agora.local`;
+  const finalPassword = isRealAccount ? String(password) : crypto.randomBytes(16).toString('hex');
 
   // When appConfig is provided (e.g. during initial setup), use the superuser token
   // to create the record. This bypasses the collection's minPasswordLength constraint
   // so that passwords shorter than PocketBase's default 8-character minimum are accepted.
   const superuserToken = appConfig ? await authenticateSuperuser(appConfig) : null;
 
+  const isOwner = owner === true;
+  const isAdmin = admin === true || isOwner;
+
   const created = await pocketBaseRequest('/api/collections/users/records', {
     method: 'POST',
     token: superuserToken || undefined,
     body: {
-      email,
-      password,
-      passwordConfirm: password,
+      email: finalEmail,
+      password: finalPassword,
+      passwordConfirm: finalPassword,
       firstName: normalizedFirstName,
       lastName: normalizedLastName,
       name,
       emailVisibility: false,
-      admin: false,
-      superAdmin: false,
-      emailNotifications: true
+      admin: isAdmin,
+      owner: isOwner,
+      superAdmin: isOwner,
+      pays: pays !== false,
+      groups: Array.isArray(groups) ? groups : [],
+      emailNotifications: true,
+      isClaimed: finalIsClaimed
     }
   });
 
-  const auth = await pocketBaseRequest('/api/collections/users/auth-with-password', {
-    method: 'POST',
-    body: {
-      identity: email,
-      password
+  let token = null;
+  let publicUser = toPublicUser(created);
+
+  if (isRealAccount) {
+    try {
+      const auth = await pocketBaseRequest('/api/collections/users/auth-with-password', {
+        method: 'POST',
+        body: {
+          identity: finalEmail,
+          password: finalPassword
+        }
+      });
+      token = auth.token;
+      publicUser = toPublicUser(auth.record);
+    } catch {
+      // Superuser-created account without direct auth
     }
-  });
+  }
 
   return {
     created,
-    token: auth.token,
-    user: toPublicUser(auth.record)
+    token,
+    user: publicUser
   };
+}
+
+async function claimUserAccount(appConfig, uid, newEmail, newPassword) {
+  const token = await authenticateSuperuser(appConfig);
+  const normalizedEmail = String(newEmail || '').trim();
+  const normalizedPassword = String(newPassword || '');
+
+  const patched = await pocketBaseRequest(`/api/collections/users/records/${uid}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      email: normalizedEmail,
+      password: normalizedPassword,
+      passwordConfirm: normalizedPassword,
+      isClaimed: true
+    }
+  });
+
+  return toPublicUser(patched);
 }
 
 async function loginUser(email, password) {
@@ -933,6 +1076,18 @@ async function updateOwnPassword(token, userId, oldPassword, password) {
   });
 }
 
+async function adminResetUserPassword(appConfig, uid, newPassword) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/users/records/${uid}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      password: newPassword,
+      passwordConfirm: newPassword
+    }
+  });
+}
+
 async function getUserRecord(appConfig, uid) {
   const token = await authenticateSuperuser(appConfig);
   return pocketBaseRequest(`/api/collections/users/records/${uid}`, {
@@ -947,6 +1102,10 @@ async function listUserRecords(appConfig) {
 
 async function updateUserRecord(appConfig, uid, body) {
   return updateRecord('users', uid, body, appConfig);
+}
+
+async function deleteUserRecord(appConfig, uid) {
+  return deleteRecord('users', uid, appConfig);
 }
 
 function buildPersonRecordPayload(personKey, value) {
@@ -1153,6 +1312,10 @@ module.exports = {
   getUserRecord,
   listUserRecords,
   updateUserRecord,
+  deleteUserRecord,
+  adminResetUserPassword,
+  claimUserAccount,
+  isPlaceholderEmail,
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
