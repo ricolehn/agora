@@ -959,11 +959,14 @@ input:checked + .slider:before { transform: translateX(22px); }
 /* NEU: Loading Overlay */
 #loading-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: #ffffff;
-    z-index: 9999; display: none; align-items: center; justify-content: center; flex-direction: column;
+    background: var(--bg, #ffffff);
+    z-index: 9999; display: flex; align-items: center; justify-content: center; flex-direction: column;
     transition: opacity 0.3s;
 }
 [data-theme="dark"] #loading-overlay { background: var(--bg); }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #loading-overlay { background: #0f172a; }
+}
 
 .loading-footer {
     position: absolute;
@@ -1124,15 +1127,18 @@ input:checked + .slider:before { transform: translateX(22px); }
         align-items: start;
     }
 
-    /* User View: Solid Desktop Version */
-    #user-view {
-        max-width: 600px;
+    /* Centered content for user tabs */
+    #user-overview,
+    #user-history,
+    #user-requests,
+    #user-settings {
+        max-width: 650px;
         margin: 0 auto;
     }
 
-    /* Admin View: Centered content for tabs */
-    #overview {
-        max-width: 100%;
+    #finances {
+        max-width: 900px;
+        margin: 0 auto;
     }
 
     #settings {
@@ -1140,13 +1146,7 @@ input:checked + .slider:before { transform: translateX(22px); }
         margin: 0 auto;
     }
 
-    #user-settings {
-        width: 100%;
-    }
-
-    /* Ensure Hero and Stats are not too wide on full width */
-    #overview .hero-card,
-    #overview .stats-grid {
+    #finances .hero-card {
         max-width: none;
         width: 100%;
         margin-bottom: 25px;
@@ -2821,5 +2821,52 @@ details[open] .ai-thinking-summary::before {
     color: var(--danger);
     border-color: var(--danger);
     background: rgba(239, 68, 68, 0.08);
+}
+
+/* --- Finances Subpage Segmented Navigation --- */
+.finance-subnav {
+    display: flex;
+    background: var(--surface-alt);
+    padding: 4px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+    gap: 4px;
+}
+
+.finance-subnav-btn {
+    flex: 1;
+    padding: 9px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.finance-subnav-btn:hover {
+    color: var(--text);
+}
+
+.finance-subnav-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+}
+
+.finance-subpage-content {
+    display: none;
+    animation: fadeIn 0.25s ease-in-out;
+}
+
+.finance-subpage-content.active {
+    display: block;
 }
 

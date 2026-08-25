@@ -371,6 +371,288 @@ function isOwnerUser() {
     return !!(currentUser && (currentUser.owner || currentUser.superAdmin));
 }
 
+function canManageFinances() {
+    return !!(currentUser && (currentUser.canManageFinances || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_finances'))));
+}
+
+function canViewFinances() {
+    return canManageFinances() || !!(currentUser && (currentUser.canViewFinances || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('view_finances'))));
+}
+
+function isSystemAdmin() {
+    return isSuperAdminUser();
+}
+
+let systemGroups = [];
+
+async function loadSystemGroups() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`);
+        if (res.ok) {
+            systemGroups = await res.json();
+            renderSystemGroups();
+        }
+    } catch (err) {
+        console.error('Failed to load groups:', err);
+    }
+}
+
+function renderSystemGroups() {
+    const container = document.getElementById('groups-list-container');
+    if (!container) return;
+
+    if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
+        container.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; font-style: italic; padding: 6px 0;">${t('no_groups_created', 'Noch keine Gruppen erstellt. Klicken Sie auf \'Neue Gruppe\', um eine Berechtigungsgruppe anzulegen.')}</div>`;
+        return;
+    }
+
+    container.innerHTML = systemGroups.map(g => {
+        const perms = Array.isArray(g.permissions) ? g.permissions : [];
+        const hasManage = perms.includes('manage_finances');
+        const hasView = perms.includes('view_finances');
+        
+        let permBadges = [];
+        if (hasManage) {
+            permBadges.push(`<span class="nc-badge-group" style="background: rgba(16, 185, 129, 0.12); color: #059669; border-color: rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 2px 6px;">🛠️ ${t('perm_manage_finances_title', 'Finanzen verwalten')}</span>`);
+        } else if (hasView) {
+            permBadges.push(`<span class="nc-badge-group" style="background: rgba(59, 130, 246, 0.12); color: #2563eb; border-color: rgba(59, 130, 246, 0.3); font-size: 0.72rem; padding: 2px 6px;">👁️ ${t('perm_view_finances_title', 'Finanzen einsehen')}</span>`);
+        } else {
+            permBadges.push(`<span class="nc-badge-group" style="font-size: 0.72rem; opacity: 0.7; padding: 2px 6px;">Keine Rechte</span>`);
+        }
+
+        return `
+            <div class="group-card" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 8px;">
+                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text);">${escapeHtml(g.name)}</div>
+                <div>${permBadges.join(' ')}</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">${g.memberCount || 0} ${t('label_members_count', 'Mitgl.')}</div>
+                <div style="display: flex; gap: 4px; margin-left: 4px;">
+                    <button class="nc-icon-btn" title="${t('modal_edit_group_title', 'Bearbeiten')}" onclick="window.openEditGroupModal('${escapeHtml(g.id)}')" style="width: 26px; height: 26px;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    </button>
+                    <button class="nc-icon-btn danger" title="${t('btn_delete', 'Löschen')}" onclick="window.deleteGroupRecord('${escapeHtml(g.id)}')" style="width: 26px; height: 26px;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+window.openCreateGroupModal = () => {
+    document.getElementById('group-modal-id').value = '';
+    document.getElementById('group-modal-name').value = '';
+    document.getElementById('group-perm-manage-finances').checked = false;
+    document.getElementById('group-perm-view-finances').checked = false;
+    document.getElementById('create-group-modal-title').textContent = t('modal_create_group_title', 'Neue Gruppe erstellen');
+    openModal('create-group-modal');
+};
+
+window.openEditGroupModal = (groupId) => {
+    const group = systemGroups.find(g => g.id === groupId);
+    if (!group) return;
+    document.getElementById('group-modal-id').value = group.id;
+    document.getElementById('group-modal-name').value = group.name;
+    const perms = Array.isArray(group.permissions) ? group.permissions : [];
+    document.getElementById('group-perm-manage-finances').checked = perms.includes('manage_finances');
+    document.getElementById('group-perm-view-finances').checked = perms.includes('view_finances') || perms.includes('manage_finances');
+    document.getElementById('create-group-modal-title').textContent = t('modal_edit_group_title', 'Gruppe bearbeiten');
+    openModal('create-group-modal');
+};
+
+window.submitGroupForm = async () => {
+    const id = document.getElementById('group-modal-id').value;
+    const name = document.getElementById('group-modal-name').value.trim();
+    if (!name) return;
+
+    const manageFinances = document.getElementById('group-perm-manage-finances').checked;
+    const viewFinances = document.getElementById('group-perm-view-finances').checked;
+    const permissions = [];
+    if (manageFinances) {
+        permissions.push('manage_finances');
+        permissions.push('view_finances');
+    } else if (viewFinances) {
+        permissions.push('view_finances');
+    }
+
+    try {
+        const url = id ? `${config.apiBaseUrl}/admin/groups/${id}` : `${config.apiBaseUrl}/admin/groups`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetchWithAuth(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, permissions })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Fehler beim Speichern der Gruppe');
+        }
+        closeModal('create-group-modal');
+        showToast(t('saved_success', 'Gruppe gespeichert.'), 'success');
+        await loadSystemGroups();
+        await reloadUsersData();
+        await refreshCurrentUser();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+window.deleteGroupRecord = async (groupId) => {
+    if (!confirm(t('confirm_delete_group', 'Möchten Sie diese Gruppe wirklich löschen? Benutzer verlieren die zugewiesenen Rechte dieser Gruppe.'))) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups/${groupId}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Fehler beim Löschen der Gruppe');
+        }
+        showToast(t('group_deleted', 'Gruppe gelöscht.'), 'success');
+        await loadSystemGroups();
+        await reloadUsersData();
+        await refreshCurrentUser();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+window.openAssignGroupModal = (uid) => {
+    const user = users.find(u => u.uid === uid);
+    if (!user) return;
+    document.getElementById('assign-group-user-uid').value = uid;
+    const displayName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+    document.getElementById('assign-group-user-display').textContent = `${t('label_user', 'Benutzer')}: ${displayName}`;
+
+    const container = document.getElementById('assign-group-checkboxes-container');
+    if (!container) return;
+
+    if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
+        container.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; font-style: italic;">${t('no_groups_created', 'Noch keine Gruppen angelegt.')}</div>`;
+    } else {
+        const userGroupIds = Array.isArray(user.groups) ? user.groups : [];
+        container.innerHTML = systemGroups.map(g => {
+            const isChecked = userGroupIds.includes(g.id) || userGroupIds.includes(g.name);
+            const perms = Array.isArray(g.permissions) ? g.permissions : [];
+            const permText = perms.includes('manage_finances') ? '🛠️ Finanzen verwalten' : (perms.includes('view_finances') ? '👁️ Finanzen einsehen' : '');
+
+            return `
+                <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">
+                    <input type="checkbox" class="user-group-checkbox" value="${escapeHtml(g.id)}" ${isChecked ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                    <div style="flex: 1;">
+                        <span style="font-weight: 600; color: var(--text);">${escapeHtml(g.name)}</span>
+                        ${permText ? `<span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;">${permText}</span>` : ''}
+                    </div>
+                </label>
+            `;
+        }).join('');
+    }
+
+    openModal('assign-group-modal');
+};
+
+window.submitUserGroups = async () => {
+    const uid = document.getElementById('assign-group-user-uid').value;
+    if (!uid) return;
+
+    const checkboxes = document.querySelectorAll('#assign-group-checkboxes-container .user-group-checkbox');
+    const selectedGroupIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/groups`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groups: selectedGroupIds })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Fehler beim Zuweisen der Gruppen');
+        }
+        closeModal('assign-group-modal');
+        showToast(t('saved_success', 'Gruppen aktualisiert.'), 'success');
+        await reloadUsersData();
+        await loadSystemGroups();
+        if (currentUser && currentUser.uid === uid) {
+            await refreshCurrentUser();
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+async function reloadUsersData() {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/users`);
+        if (res.ok) {
+            users = await res.json();
+            renderAccountsTab();
+        }
+    } catch (err) {
+        console.warn('Failed to reload users:', err);
+    }
+}
+
+async function refreshCurrentUser() {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/auth/me`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data?.user) {
+                currentUser = {
+                    ...currentUser,
+                    ...data.user
+                };
+                updateNavVisibility();
+            }
+        }
+    } catch (err) {
+        console.warn('Could not refresh current user info:', err);
+    }
+}
+
+function updateNavVisibility() {
+    const hasFinances = canViewFinances() || canManageFinances();
+    const isSysAdmin = isSystemAdmin();
+    const canManage = canManageFinances();
+
+    // Finances tab
+    const financesDesktop = document.getElementById('admin-finances-nav-btn-desktop');
+    const financesBottom = document.getElementById('admin-finances-nav-btn-bottom');
+    if (financesDesktop) financesDesktop.style.display = hasFinances ? '' : 'none';
+    if (financesBottom) financesBottom.style.display = hasFinances ? '' : 'none';
+
+    // Personal user history & requests tabs
+    const userHistoryDesktop = document.getElementById('user-history-nav-btn-desktop');
+    const userHistoryBottom = document.getElementById('user-history-nav-btn-bottom');
+    const userRequestsDesktop = document.getElementById('user-requests-nav-btn-desktop');
+    const userRequestsBottom = document.getElementById('user-requests-nav-btn-bottom');
+
+    if (userHistoryDesktop) userHistoryDesktop.style.display = hasFinances ? 'none' : '';
+    if (userHistoryBottom) userHistoryBottom.style.display = hasFinances ? 'none' : '';
+    if (userRequestsDesktop) userRequestsDesktop.style.display = '';
+    if (userRequestsBottom) userRequestsBottom.style.display = '';
+
+    // AI tab
+    if (typeof updateAiNavVisibility === 'function') updateAiNavVisibility();
+
+    // Settings tab in nav
+    const settingsDesktop = document.getElementById('admin-settings-nav-btn-desktop');
+    const settingsBottom = document.getElementById('admin-settings-nav-btn-bottom');
+    if (settingsDesktop) settingsDesktop.style.display = (isSysAdmin || hasFinances) ? '' : 'none';
+    if (settingsBottom) settingsBottom.style.display = (isSysAdmin || hasFinances) ? '' : 'none';
+
+    // System Settings button
+    const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
+    if (sysSettingsBtn) sysSettingsBtn.style.display = isSysAdmin ? '' : 'none';
+
+    // FAB / quick actions
+    const desktopFab = document.getElementById('desktop-fab');
+    if (desktopFab) desktopFab.style.display = canManage ? '' : 'none';
+    const mobileFabItem = document.getElementById('mobile-fab-nav-item');
+    if (mobileFabItem) mobileFabItem.style.display = canManage ? '' : 'none';
+    const fabMenu = document.getElementById('fabMenu');
+    if (fabMenu) fabMenu.style.display = canManage ? '' : 'none';
+}
+
 async function fetchWithAuth(url, options = {}) {
     let token;
     try {
@@ -520,16 +802,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 });
 
-window.switchTab = function(tabName, btn) {
-    // Some buttons might not pass `btn` or it might not be in a nav, determine scope by string
-    const isUserNav = (btn && !!btn.closest('#user-desktop-nav')) || tabName.startsWith('user-');
-    const scope = isUserNav ? document.getElementById('user-view') : document.getElementById('admin-view');
-    if (!scope) return;
+window.switchFinanceSubpage = function(subpage, btn) {
+    const historySubpage = document.getElementById('finances-subpage-history');
+    const membersSubpage = document.getElementById('finances-subpage-members');
+    const historyBtn = document.getElementById('finances-sub-btn-history');
+    const membersBtn = document.getElementById('finances-sub-btn-members');
 
-    const navSelector = isUserNav
-        ? '#user-desktop-nav [data-tab]'
-        : '#admin-desktop-nav [data-tab]';
-    const navButtonsDesktop = Array.from(document.querySelectorAll(navSelector));
+    if (subpage === 'members') {
+        if (historySubpage) historySubpage.classList.remove('active');
+        if (membersSubpage) membersSubpage.classList.add('active');
+        if (historyBtn) historyBtn.classList.remove('active');
+        if (membersBtn) membersBtn.classList.add('active');
+        if (typeof window.renderPeople === 'function') window.renderPeople();
+    } else {
+        if (membersSubpage) membersSubpage.classList.remove('active');
+        if (historySubpage) historySubpage.classList.add('active');
+        if (membersBtn) membersBtn.classList.remove('active');
+        if (historyBtn) historyBtn.classList.add('active');
+        if (typeof window.renderHistoryTab === 'function') window.renderHistoryTab(true);
+        if (typeof renderStats === 'function') renderStats();
+    }
+};
+
+window.switchTab = function(tabName, btn) {
+    // Handle alias redirects for backward compatibility
+    if (tabName === 'overview' || tabName === 'payment-history') {
+        tabName = 'finances';
+        window.switchFinanceSubpage('history');
+    } else if (tabName === 'people-view') {
+        tabName = 'finances';
+        window.switchFinanceSubpage('members');
+    }
+
+    const allTabs = Array.from(document.querySelectorAll('.tab-content'));
+    const navButtonsDesktop = Array.from(document.querySelectorAll('#desktop-nav [data-tab], .desktop-nav [data-tab]'));
 
     let currentIndex = -1;
     let targetIndex = -1;
@@ -540,15 +846,15 @@ window.switchTab = function(tabName, btn) {
         if (el.dataset.tab === tabName) targetIndex = index;
     });
 
-    // Hide only the tab contents inside the current scope (admin vs user)
-    scope.querySelectorAll('.tab-content').forEach(el => {
+    // Hide all tab contents
+    allTabs.forEach(el => {
         el.classList.remove('active', 'slide-in-right', 'slide-in-left');
-        if (el.id === 'payment-history' || el.id === 'user-history' || el.id === 'user-requests') el.style.display = 'none';
+        if (el.id === 'user-history' || el.id === 'user-requests') el.style.display = 'none';
     });
 
-    // Show the selected tab content only if it belongs to the same scope
+    // Show target tab content
     const targetContent = document.getElementById(tabName);
-    if (targetContent && scope.contains(targetContent)) {
+    if (targetContent) {
         targetContent.classList.add('active');
 
         if (currentIndex !== -1 && targetIndex !== -1 && currentIndex !== targetIndex) {
@@ -558,15 +864,17 @@ window.switchTab = function(tabName, btn) {
                 targetContent.classList.add('slide-in-right');
             }
         } else {
-            targetContent.classList.add('slide-in-right'); // fallback
+            targetContent.classList.add('slide-in-right');
         }
 
-        if (tabName === 'payment-history' || tabName === 'user-history' || tabName === 'user-requests') targetContent.style.display = 'block';
+        if (tabName === 'user-history' || tabName === 'user-requests') {
+            targetContent.style.display = 'block';
+        }
     }
 
     const appContainer = document.querySelector('.container');
     if (appContainer) {
-        const isAiChatActive = !isUserNav && tabName === 'ai-chat';
+        const isAiChatActive = tabName === 'ai-chat';
         appContainer.classList.toggle('ai-chat-active', isAiChatActive);
         if (isAiChatActive) {
             requestAnimationFrame(() => {
@@ -578,10 +886,7 @@ window.switchTab = function(tabName, btn) {
         }
     }
 
-    const allNavSelector = isUserNav
-        ? '#user-desktop-nav [data-tab], #user-bottom-nav [data-tab]'
-        : '#admin-desktop-nav [data-tab], #admin-bottom-nav [data-tab]';
-    const allNavButtons = document.querySelectorAll(allNavSelector);
+    const allNavButtons = document.querySelectorAll('#desktop-nav [data-tab], #bottom-nav [data-tab], .desktop-nav [data-tab], .bottom-nav [data-tab]');
     allNavButtons.forEach(el => {
         const isActive = el.dataset.tab === tabName;
         if (isActive) {
@@ -593,8 +898,16 @@ window.switchTab = function(tabName, btn) {
         }
     });
 
-    if (tabName === 'payment-history') {
-        window.renderHistoryTab(true);
+    if (tabName === 'finances') {
+        const membersActive = document.getElementById('finances-subpage-members')?.classList.contains('active');
+        if (membersActive) {
+            if (typeof window.renderPeople === 'function') window.renderPeople();
+        } else {
+            if (typeof window.renderHistoryTab === 'function') window.renderHistoryTab(true);
+            if (typeof renderStats === 'function') renderStats();
+        }
+    } else if (tabName === 'user-overview') {
+        if (typeof renderUserView === 'function') renderUserView();
     }
 };
 
@@ -658,49 +971,27 @@ window.openSystemSettingsTab = function() {
 };
 
 window.openSettingsTab = function() {
-    // Close the profile menu
     const menu = document.getElementById('profileDropdown');
     if (menu) {
         menu.classList.remove('show');
         document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
     }
 
-    // Determine current view mode
-    const isAdmin = currentUser && currentUser.admin;
-
-    // Find the corresponding nav button and trigger switchTab
-    let btn;
-    if (isAdmin) {
-        btn = document.querySelector('#admin-desktop-nav [data-tab="settings"]') ||
-              document.querySelector('#admin-bottom-nav [data-tab="settings"]');
-        if(btn) switchTab('settings', btn);
+    const isAdminView = canViewFinances() || isSystemAdmin();
+    if (isAdminView) {
+        switchTab('settings');
     } else {
-        btn = document.querySelector('#user-desktop-nav [data-tab="user-settings"]');
-        if(btn) switchTab('user-settings', btn);
+        switchTab('user-settings');
     }
 };
 
 window.openHomeTab = function() {
-    // Close the profile menu
     const menu = document.getElementById('profileDropdown');
     if (menu) {
         menu.classList.remove('show');
         document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
     }
-
-    // Determine current view mode
-    const isAdmin = currentUser && currentUser.admin;
-
-    // Find the corresponding nav button and trigger switchTab
-    let btn;
-    if (isAdmin) {
-        btn = document.querySelector('#admin-desktop-nav [data-tab="overview"]') ||
-              document.querySelector('#admin-bottom-nav [data-tab="overview"]');
-        if(btn) switchTab('overview', btn);
-    } else {
-        btn = document.querySelector('#user-desktop-nav [data-tab="user-overview"]');
-        if(btn) switchTab('user-overview', btn);
-    }
+    switchTab('user-overview');
 };
 
 // Close profile menu when clicking outside
@@ -1540,278 +1831,291 @@ async function loadData(silent = false) {
     const dbRef = ref(db);
 
     try {
-        // Non-admin: fetch only what is needed for their view (people + settings + their requests)
-    if (currentUser && !currentUser.admin) {
-        advancedConfigLoaded = false;
-        advancedConfigAppName = null;
-        // 1. Fetch Settings
-        try {
-            const sSnap = await get(child(dbRef, 'settings'));
-            if (sSnap.exists()) {
-                settings = sSnap.val();
-                settingsVersion++;
-            }
-        } catch (settingsErr) {
-            console.warn("Could not fetch settings:", settingsErr);
-        }
+        const hasFinances = canViewFinances();
+        const isSysAdmin = isSystemAdmin();
+        const canManage = canManageFinances();
 
-        // 2. Fetch User's Person Entry (Securely with Fallback)
-        const peopleRef = child(dbRef, 'people');
-        let peopleList = [];
-
-        try {
-            // Try by UID first (Requires Index)
-            let q = query(peopleRef, orderByChild('uid'), equalTo(currentUser.uid));
-            let pSnap = await get(q);
-
-            if (pSnap.exists()) {
-                peopleList = safeList(pSnap.val());
-            }
-
-            if (peopleList.length === 0) {
-                // Fallback: Try by Name (Requires Index)
-                const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || '';
-                if (fullName) {
-                    q = query(peopleRef, orderByChild('name'), equalTo(fullName));
-                    pSnap = await get(q);
-
-                    if (pSnap.exists()) {
-                        const val = pSnap.val();
-                        // Link the first match to this UID
-                        const key = Object.keys(val)[0];
-                        if (key) {
-                            try {
-                                await update(child(peopleRef, key), { uid: currentUser.uid });
-                            } catch (linkErr) {
-                                console.warn("Auto-link update failed:", linkErr);
-                            }
-                            const p = val[key];
-                            p.uid = currentUser.uid;
-                            peopleList = [p];
-                        }
-                    }
-                }
-            }
-        } catch (queryErr) {
-            console.warn("Index missing, falling back to client-side filtering:", queryErr);
+        if (!hasFinances && !isSysAdmin) {
+            advancedConfigLoaded = false;
+            advancedConfigAppName = null;
+            // 1. Fetch Settings
             try {
-                const pSnap = await get(peopleRef);
-                const allPeople = safeList(pSnap.val());
-                const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() || (currentUser.name || '').toLowerCase();
+                const sSnap = await get(child(dbRef, 'settings'));
+                if (sSnap.exists()) {
+                    settings = sSnap.val();
+                    settingsVersion++;
+                }
+            } catch (settingsErr) {
+                console.warn("Could not fetch settings:", settingsErr);
+            }
 
-                // Find by UID or Name
-                peopleList = allPeople.filter(p => p.uid === currentUser.uid || (p.name && p.name.toLowerCase() === fullName));
+            // 2. Fetch User's Person Entry (Securely with Fallback)
+            const peopleRef = child(dbRef, 'people');
+            let peopleList = [];
 
-                // Auto-link if found by name but no UID
-                if (peopleList.length > 0) {
-                    const p = peopleList[0];
-                    if (!p.uid && p.name && p.name.toLowerCase() === fullName) {
-                        p.uid = currentUser.uid;
-                        if(pSnap.exists()) {
+            try {
+                // Try by UID first (Requires Index)
+                let q = query(peopleRef, orderByChild('uid'), equalTo(currentUser.uid));
+                let pSnap = await get(q);
+
+                if (pSnap.exists()) {
+                    peopleList = safeList(pSnap.val());
+                }
+
+                if (peopleList.length === 0) {
+                    // Fallback: Try by Name (Requires Index)
+                    const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || '';
+                    if (fullName) {
+                        q = query(peopleRef, orderByChild('name'), equalTo(fullName));
+                        pSnap = await get(q);
+
+                        if (pSnap.exists()) {
                             const val = pSnap.val();
-                            const key = Object.keys(val).find(k => val[k].id === p.id || val[k].personKey === p.id);
-                            if(key) {
+                            // Link the first match to this UID
+                            const key = Object.keys(val)[0];
+                            if (key) {
                                 try {
                                     await update(child(peopleRef, key), { uid: currentUser.uid });
                                 } catch (linkErr) {
                                     console.warn("Auto-link update failed:", linkErr);
                                 }
+                                const p = val[key];
+                                p.uid = currentUser.uid;
+                                peopleList = [p];
                             }
                         }
                     }
                 }
-            } catch (err) {
-                console.warn("Could not load people:", err);
-            }
-        }
-        people = peopleList.filter(p => !p.isDeleted);
+            } catch (queryErr) {
+                console.warn("Index missing, falling back to client-side filtering:", queryErr);
+                try {
+                    const pSnap = await get(peopleRef);
+                    const allPeople = safeList(pSnap.val());
+                    const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() || (currentUser.name || '').toLowerCase();
 
-        // 3. Fetch User's Requests
-        const requestsRef = child(dbRef, 'requests');
-        let rSnap = null;
-        try {
-            const reqQuery = query(requestsRef, orderByChild('userId'), equalTo(currentUser.uid));
-            rSnap = await get(reqQuery);
-        } catch (reqErr) {
-            console.warn("Request index missing, fetching all requests:", reqErr);
+                    // Find by UID or Name
+                    peopleList = allPeople.filter(p => p.uid === currentUser.uid || (p.name && p.name.toLowerCase() === fullName));
+
+                    // Auto-link if found by name but no UID
+                    if (peopleList.length > 0) {
+                        const p = peopleList[0];
+                        if (!p.uid && p.name && p.name.toLowerCase() === fullName) {
+                            p.uid = currentUser.uid;
+                            if(pSnap.exists()) {
+                                const val = pSnap.val();
+                                const key = Object.keys(val).find(k => val[k].id === p.id || val[k].personKey === p.id);
+                                if(key) {
+                                    try {
+                                        await update(child(peopleRef, key), { uid: currentUser.uid });
+                                    } catch (linkErr) {
+                                        console.warn("Auto-link update failed:", linkErr);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Could not load people:", err);
+                }
+            }
+            people = peopleList.filter(p => !p.isDeleted);
+
+            // 3. Fetch User's Requests
+            const requestsRef = child(dbRef, 'requests');
+            let rSnap = null;
             try {
-                rSnap = await get(requestsRef);
-            } catch (rErr2) {
-                console.warn("Could not get requests:", rErr2);
-                rSnap = null;
+                const reqQuery = query(requestsRef, orderByChild('userId'), equalTo(currentUser.uid));
+                rSnap = await get(reqQuery);
+            } catch (reqErr) {
+                console.warn("Request index missing, fetching all requests:", reqErr);
+                try {
+                    rSnap = await get(requestsRef);
+                } catch (rErr2) {
+                    console.warn("Could not get requests:", rErr2);
+                    rSnap = null;
+                }
             }
+
+            const allRequests = rSnap && rSnap.exists() ? safeList(rSnap.val()) : [];
+            requests = allRequests.filter(r => r.userId === currentUser.uid);
+        } else if (!hasFinances && isSysAdmin) {
+            // Pure System Admin (no finance permissions assigned)
+            advancedConfigLoaded = false;
+            advancedConfigAppName = null;
+            const [sData, cData, uData] = await Promise.all([
+                apiGet('settings').catch(() => null),
+                apiGet('system/inviteCode').catch(() => null),
+                apiGet('users').catch(() => null)
+            ]);
+
+            people = [];
+            donations = [];
+            expenses = [];
+            requests = [];
+
+            if (sData) {
+                settings = sData;
+                settingsVersion++;
+            }
+            users = uData
+                ? Object.entries(uData).map(([uid, data]) => ({ ...data, uid }))
+                : [];
+
+            const code = cData ? cData : '123456';
+            const codeInput = document.getElementById('admin-invite-code');
+            if(codeInput) codeInput.value = code;
+            const codeDisplay = document.getElementById('admin-invite-code-display');
+            if(codeDisplay) codeDisplay.textContent = code;
+        } else {
+            advancedConfigLoaded = false;
+            advancedConfigAppName = null;
+            // Admin with finance view
+            const [pData, sData, cData, rData, uData] = await Promise.all([
+                apiGet('people').catch(() => null),
+                apiGet('settings').catch(() => null),
+                apiGet('system/inviteCode').catch(() => null),
+                apiGet('requests').catch(() => null),
+                apiGet('users').catch(() => null)
+            ]);
+
+            people = safeList(pData).filter(p => !p.isDeleted);
+            donations = [];
+            expenses = [];
+            requests = safeList(rData);
+
+            if (sData) {
+                settings = sData;
+                settingsVersion++;
+            }
+            users = uData
+                ? Object.entries(uData).map(([uid, data]) => {
+                    const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+                    return {
+                        ...data,
+                        uid,
+                        memberSince: data.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '',
+                        status: data.status || linkedPerson?.status || linkedPerson?.data?.status || ''
+                    };
+                })
+                : [];
+
+            // Show Invite Code
+            const code = cData ? cData : '123456';
+            const codeInput = document.getElementById('admin-invite-code');
+            if(codeInput) codeInput.value = code;
+            const codeDisplay = document.getElementById('admin-invite-code-display');
+            if(codeDisplay) codeDisplay.textContent = code;
+
+            // Fetch AI enabled state
+            fetchWithAuth(`${config.apiBaseUrl}/admin/ai-status`).then(r => {
+                if (r.ok) return r.json();
+            }).then(data => {
+                if (data) {
+                    aiEnabled = !!data.enabled;
+                    updateAiNavVisibility();
+                }
+            }).catch(() => {});
         }
 
-        const allRequests = rSnap && rSnap.exists() ? safeList(rSnap.val()) : [];
-        // If we fell back to all requests, filter them now
-        requests = allRequests.filter(r => r.userId === currentUser.uid);
-
-        // UI toggles
-        document.getElementById('admin-view').style.display = 'none';
-        document.getElementById('user-view').style.display = 'block';
-        const adminDesktopNav = document.getElementById('admin-desktop-nav');
-        const userDesktopNav = document.getElementById('user-desktop-nav');
-        if (adminDesktopNav) adminDesktopNav.style.display = 'none';
-        if (userDesktopNav) userDesktopNav.style.display = '';
-
-        // Hide desktop FAB for non-admins
-        const desktopFab = document.getElementById('desktop-fab');
-        if(desktopFab) desktopFab.style.display = 'none';
-
-        const adminBottomNav = document.getElementById('admin-bottom-nav');
-        if(adminBottomNav) adminBottomNav.style.display = 'none';
-        const userBottomNav = document.getElementById('user-bottom-nav');
-        if(userBottomNav) userBottomNav.style.display = 'flex';
-
-        document.getElementById('settings').style.display = 'none';
-
-        const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
-        if (sysSettingsBtn) sysSettingsBtn.style.display = 'none';
-
-        // Populate User View basic info
-        document.getElementById('user-name-display').innerText = `${currentUser.firstName} ${currentUser.lastName}`;
-        document.getElementById('user-email-display').innerText = currentUser.email;
-
-    } else {
-        advancedConfigLoaded = false;
-        advancedConfigAppName = null;
-        // Admin: fetch full dataset
-        const [pData, sData, cData, rData, uData] = await Promise.all([
-            apiGet('people').catch(() => null),
-            apiGet('settings').catch(() => null),
-            apiGet('system/inviteCode').catch(() => null),
-            apiGet('requests').catch(() => null),
-            apiGet('users').catch(() => null)
-        ]);
-
-        people = safeList(pData).filter(p => !p.isDeleted);
-        // We no longer need to load all donations and expenses on startup for the Admin!
-        // The stats endpoint and transaction pagination handle this data now.
-        donations = [];
-        expenses = [];
-        requests = safeList(rData);
-
-        if (sData) {
-            settings = sData;
-            settingsVersion++;
+        // Populate User View basic info for all users
+        const userNameDisplay = document.getElementById('user-name-display');
+        if (userNameDisplay) {
+            userNameDisplay.innerText = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || '';
         }
-        users = uData
-            ? Object.entries(uData).map(([uid, data]) => {
-                const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
-                return {
-                    ...data,
-                    uid,
-                    memberSince: data.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '',
-                    status: data.status || linkedPerson?.status || linkedPerson?.data?.status || ''
-                };
-            })
-            : [];
+        const userEmailDisplay = document.getElementById('user-email-display');
+        if (userEmailDisplay) {
+            userEmailDisplay.innerText = currentUser.email || '';
+        }
 
-        // Show Invite Code
-        const code = cData ? cData : '123456';
-        const codeInput = document.getElementById('admin-invite-code');
-        if(codeInput) codeInput.value = code;
-        const codeDisplay = document.getElementById('admin-invite-code-display');
-        if(codeDisplay) codeDisplay.textContent = code;
+        // Update nav bar visibility based on user privileges
+        updateNavVisibility();
 
-        // UI toggles
-        document.getElementById('admin-view').style.display = 'block';
-        document.getElementById('user-view').style.display = 'none';
-        const adminDesktopNav = document.getElementById('admin-desktop-nav');
-        const userDesktopNav = document.getElementById('user-desktop-nav');
-        if (adminDesktopNav) adminDesktopNav.style.display = '';
-        if (userDesktopNav) userDesktopNav.style.display = 'none';
+        // Default to Home page (user-overview)
+        switchTab('user-overview');
 
-        // Show desktop FAB for admins (CSS handles layout)
-        const desktopFab = document.getElementById('desktop-fab');
-        if(desktopFab) desktopFab.style.display = '';
+        // Normalize people data
+        people.forEach(person => preprocessPerson(person));
 
-        const adminBottomNav = document.getElementById('admin-bottom-nav');
-        if(adminBottomNav) adminBottomNav.style.display = 'flex';
-        const userBottomNav = document.getElementById('user-bottom-nav');
-        if(userBottomNav) userBottomNav.style.display = 'none';
+        // Check standing orders (canManage only to prevent conflicts)
+        if (canManageFinances()) {
+            const updates = [];
+            people.forEach(person => {
+                const result = checkAndExecuteStandingOrders(person);
+                if (result) {
+                    const newTotal = calculateTotalPaidLoop(safeList(result.payments));
+                    updates.push(update(ref(db, 'people/' + person.id), {
+                        payments: result.payments,
+                        standingOrders: result.standingOrders,
+                        totalPaid: newTotal
+                    }));
+                    Object.assign(person, result, { totalPaid: newTotal });
+                }
+            });
+            if (updates.length > 0) await Promise.all(updates);
+        }
 
-        document.getElementById('settings').style.display = '';
-
-        // Fetch AI enabled state for all admins to show/hide AI nav button
-        fetchWithAuth(`${config.apiBaseUrl}/admin/ai-status`).then(r => {
-            if (r.ok) return r.json();
-        }).then(data => {
-            if (data) {
-                aiEnabled = !!data.enabled;
-                updateAiNavVisibility();
-            }
-        }).catch(() => {});
-    }
-
-    // Normalize people data
-    people.forEach(person => preprocessPerson(person));
-
-    // Check standing orders (Admin only to prevent conflicts)
-    if (currentUser && currentUser.admin) {
-        const updates = [];
-        people.forEach(person => {
-            const result = checkAndExecuteStandingOrders(person);
-            if (result) {
-                const newTotal = calculateTotalPaidLoop(safeList(result.payments));
-                // Update in DB
-                updates.push(update(ref(db, 'people/' + person.id), {
-                    payments: result.payments,
-                    standingOrders: result.standingOrders,
-                    totalPaid: newTotal
-                }));
-                // Update in memory
-                Object.assign(person, result, { totalPaid: newTotal });
-            }
-        });
-        if (updates.length > 0) await Promise.all(updates);
-    }
-
-    if (!silent) {
-        await renderAll();
-    } else {
-        await updateActiveViews();
-    }
+        if (!silent) {
+            await renderAll();
+        } else {
+            await updateActiveViews();
+        }
     } catch (err) {
         console.error("Ladefehler:", err);
         alert(t('alert_error_loading_data', 'Fehler beim Laden der Daten. Bitte Seite neu laden.'));
     } finally {
-        // Ladebildschirm ausblenden
         if(loader && !silent) loader.style.display = 'none';
     }
 }
 
 async function updateActiveViews() {
-    if (currentUser && !currentUser.admin) {
+    const hasFinances = canViewFinances();
+    const isSysAdmin = isSystemAdmin();
+
+    if (!hasFinances && !isSysAdmin) {
         renderUserView();
     } else {
-        renderPeople();
-        await renderStats();
-        renderAdminRequests();
-        renderUnlinkedUsers();
-        if (typeof isSuperAdminUser === 'function' && isSuperAdminUser()) {
+        if (hasFinances) {
+            renderPeople();
+            await renderStats();
+            renderAdminRequests();
+            renderUnlinkedUsers();
+        }
+        if (isSysAdmin) {
+            await loadSystemGroups();
             renderSuperAdminUserManagement();
         }
+        updateNavVisibility();
     }
 }
 
 async function renderAll() {
-    if (currentUser && !currentUser.admin) {
+    const hasFinances = canViewFinances();
+    const isSysAdmin = isSystemAdmin();
+
+    if (!hasFinances && !isSysAdmin) {
         renderUserView();
     } else {
-        renderPeople();
-        await renderStats();
-        renderAdminRequests();
-        renderUnlinkedUsers();
-        document.getElementById('rate-vollverdiener').value = settings.vollverdiener;
-        document.getElementById('rate-geringverdiener').value = settings.geringverdiener;
-        document.getElementById('rate-keinverdiener').value = settings.keinverdiener;
-        document.getElementById('report-start-date').value = settings.reportStartDate || '';
+        if (hasFinances) {
+            renderPeople();
+            await renderStats();
+            renderAdminRequests();
+            renderUnlinkedUsers();
+        }
+        if (settings) {
+            if (document.getElementById('rate-vollverdiener')) document.getElementById('rate-vollverdiener').value = settings.vollverdiener || 0;
+            if (document.getElementById('rate-geringverdiener')) document.getElementById('rate-geringverdiener').value = settings.geringverdiener || 0;
+            if (document.getElementById('rate-keinverdiener')) document.getElementById('rate-keinverdiener').value = settings.keinverdiener || 0;
+            if (document.getElementById('report-start-date')) document.getElementById('report-start-date').value = settings.reportStartDate || '';
+        }
 
-        if (currentUser) {
+        if (currentUser && document.getElementById('admin-email-notifications')) {
             document.getElementById('admin-email-notifications').checked = !!currentUser.emailNotifications;
         }
-        await renderSuperAdminTools();
+        if (isSysAdmin) {
+            await loadSystemGroups();
+            await renderSuperAdminTools();
+        }
+        updateNavVisibility();
     }
 }
 
@@ -1898,6 +2202,7 @@ function renderAdminRequests() {
                     <span style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; background: var(--surface-alt); padding: 4px 8px; border-radius: 12px;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
                 </div>
                 <div style="margin-bottom:16px; font-size: 0.95rem; color: var(--text); line-height: 1.5;">${details}</div>
+                ${canManageFinances() ? `
                 <div style="display:flex; gap:10px;">
                     <button class="btn btn-primary btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; border-radius: 12px; padding: 8px 0;" data-id="${escapeHtml(req.id)}" onclick="approveRequest(this.dataset.id)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -1908,6 +2213,7 @@ function renderAdminRequests() {
                         Ablehnen
                     </button>
                 </div>
+                ` : ''}
             </div>
         `;
     };
@@ -2040,11 +2346,12 @@ window.filterAccountsList = function() {
 };
 
 function renderAccountsTab() {
+    renderSystemGroups();
     const tbody = document.getElementById('accounts-table-body');
     if (!tbody || !isSuperAdminUser()) return;
 
     if (!users || users.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine Benutzer gefunden.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine Benutzer gefunden.</td></tr>`;
         return;
     }
 
@@ -2059,7 +2366,7 @@ function renderAccountsTab() {
         .sort((a, b) => `${a.firstName || ''} ${a.lastName || ''}`.localeCompare(`${b.firstName || ''} ${b.lastName || ''}`));
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine passenden Benutzer gefunden.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine passenden Benutzer gefunden.</td></tr>`;
         return;
     }
 
@@ -2068,12 +2375,22 @@ function renderAccountsTab() {
         const isOwner = u.owner === true || u.superAdmin === true;
         const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
         const profilePicUrl = `${config.apiBaseUrl}/profile/picture/${u.uid}`;
-        const groupLabel = (Array.isArray(u.groups) && u.groups.length > 0) ? u.groups.join(', ') : t('badge_group_default', 'Standard');
         const isPays = u.pays !== false;
         const isUnclaimed = u.isClaimed === false;
         const displayEmail = u.email ? escapeHtml(u.email) : `<span style="opacity: 0.5; font-style: italic;">${t('accounts_no_login', 'Kein Login hinterlegt')}</span>`;
         const linkedPerson = people.find(p => p.uid === u.uid || (p.data && p.data.uid === u.uid));
         const memberSinceVal = u.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
+
+        const userGroupObjs = Array.isArray(u.groupObjects) && u.groupObjects.length > 0
+            ? u.groupObjects
+            : (Array.isArray(u.groups) ? u.groups.map(gid => {
+                const found = systemGroups.find(g => g.id === gid || g.name === gid);
+                return found || { id: gid, name: gid, permissions: [] };
+              }) : []);
+
+        const groupBadges = userGroupObjs.length > 0
+            ? userGroupObjs.map(g => `<span class="nc-badge-group" style="cursor:pointer; margin: 2px;" onclick="window.openAssignGroupModal('${escapeHtml(u.uid)}')">${escapeHtml(g.name)}</span>`).join(' ')
+            : `<span class="nc-badge-group" style="cursor:pointer; opacity:0.6; border-style:dashed; margin: 2px;" onclick="window.openAssignGroupModal('${escapeHtml(u.uid)}')">+ ${t('modal_assign_group_title', 'Zuweisen')}</span>`;
 
         return `
             <tr data-uid="${escapeHtml(u.uid)}">
@@ -2093,8 +2410,8 @@ function renderAccountsTab() {
                     </div>
                 </td>
                 <td style="color: var(--text-secondary); font-size: 0.88rem;">${displayEmail}</td>
-                <td>
-                    <span class="nc-badge-group">${escapeHtml(groupLabel)}</span>
+                <td style="cursor: pointer;" onclick="window.openAssignGroupModal('${escapeHtml(u.uid)}')" title="${t('modal_assign_group_title', 'Gruppen zuweisen')}">
+                    ${groupBadges}
                 </td>
                 <td>
                     <input type="date" class="form-input" style="padding: 3px 6px; font-size: 0.82rem; height: 30px; border-radius: 8px; width: 130px; margin: 0;" value="${escapeHtml(memberSinceVal)}" onchange="window.updateUserMemberSince('${escapeHtml(u.uid)}', this.value)">
@@ -2135,7 +2452,7 @@ function renderSuperAdminUserManagement() {
 }
 
 async function renderSuperAdminPaymentEditor() {
-    if (document.getElementById('payment-history')?.classList.contains('active')) {
+    if (document.getElementById('finances')?.classList.contains('active') || document.getElementById('payment-history')?.classList.contains('active')) {
         renderHistoryTab(true);
     }
 }
@@ -2357,7 +2674,7 @@ window.setSupervisorAdminByIndex = async (index, isAdmin) => {
 };
 
 window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null, type = 'payment', paymentObj = null) => {
-    if (!(currentUser && currentUser.admin)) return;
+    if (!canManageFinances()) return;
 
     let payment = paymentObj;
     let targetIndex = paymentIndex;
@@ -2441,7 +2758,7 @@ window.editRecordedPaymentByIndex = function(index) {
 };
 
 window.saveEditedPayment = async () => {
-    if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
+    if (!canManageFinances() || !currentEditedPayment) return;
 
     const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(/\.(?=.*,)/g, '').replace(',', '.'));
     const date = document.getElementById('edit-payment-date').value;
@@ -2611,12 +2928,12 @@ window.deleteEditReceipt = function(filename) {
 };
 
 window.deleteRecordedPaymentClick = () => {
-    if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
+    if (!canManageFinances() || !currentEditedPayment) return;
     openModal('confirm-delete-modal');
 };
 
 window.confirmDeleteRecordedPayment = async () => {
-    if (!(currentUser && currentUser.admin) || !currentEditedPayment) return;
+    if (!canManageFinances() || !currentEditedPayment) return;
 
     closeMultipleModals(['confirm-delete-modal', 'edit-payment-modal']);
 
@@ -3099,7 +3416,7 @@ function generatePersonHTML(p, preCalcData = null) {
                                 ${so.endDate ? `<br>Ende: ${formatDateFast(so.endDate)}` : ''}
                             </div>
                         </div>
-                        ${(true) ? `
+                        ${canManageFinances() ? `
                         <button class="btn-icon text-danger" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Bearbeiten/Beenden'))}" style="background:none; border:none; padding:4px;">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         </button>
@@ -3155,7 +3472,7 @@ function generatePersonHTML(p, preCalcData = null) {
 
                     ${soListHtml}
 
-                    <div class="details-actions" style="${(currentUser && !currentUser.admin) ? 'display:none' : ''}">
+                    <div class="details-actions" style="${!canManageFinances() ? 'display:none' : ''}">
                         <button class="btn btn-primary" data-id="${escapeHtml(p.id)}" onclick="openPaymentModal(this.dataset.id)">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12"></path><path d="M4 14h9"></path><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"></path></svg>
                             ${t('record_payment_btn', 'Zahlung erfassen')}
@@ -3188,10 +3505,14 @@ async function renderStats() {
         if (!response.ok) throw new Error('Stats fetch failed');
         const data = await response.json();
 
-        // ⚡ Bolt: Using persistent currencyFormatter
-        document.getElementById('heroAmount').textContent = currencyFormatter.format(data.totalBalance || 0);
-        document.getElementById('totalIncome').textContent = currencyFormatter.format(data.totalIncome || 0);
-        document.getElementById('totalExpenses').textContent = currencyFormatter.format(data.totalExpenses || 0);
+        const heroEl = document.getElementById('heroAmount');
+        if (heroEl) heroEl.textContent = currencyFormatter.format(data.totalBalance || 0);
+
+        const incEl = document.getElementById('totalIncome');
+        if (incEl) incEl.textContent = currencyFormatter.format(data.totalIncome || 0);
+
+        const expEl = document.getElementById('totalExpenses');
+        if (expEl) expEl.textContent = currencyFormatter.format(data.totalExpenses || 0);
 
         const totalMembers = people.length;
         let totalOverdue = 0;
@@ -3199,8 +3520,11 @@ async function renderStats() {
             totalOverdue += (p._overdueAmount || 0);
         });
 
-        document.getElementById('totalMembers').textContent = totalMembers;
-        document.getElementById('totalOverdue').textContent = currencyFormatter.format(totalOverdue);
+        const memEl = document.getElementById('totalMembers');
+        if (memEl) memEl.textContent = totalMembers;
+
+        const dueEl = document.getElementById('totalOverdue');
+        if (dueEl) dueEl.textContent = currencyFormatter.format(totalOverdue);
 
         if (data.chartData && Array.isArray(data.chartData.dataPoints)) {
             chartDataCache = {
@@ -4330,7 +4654,7 @@ window.openChangeStatusModal = (id) => {
 };
 
 window.sendStatusEmail = async (personId) => {
-    if (!currentUser || !currentUser.admin) return;
+    if (!canManageFinances()) return;
 
     const person = people.find(p => String(p.id) === String(personId));
     if (!person) {
@@ -4592,13 +4916,13 @@ window.saveAiConfig = async () => {
 };
 
 function updateAiNavVisibility() {
-    const show = aiEnabled && !!(currentUser && currentUser.admin);
+    const show = aiEnabled && (isSystemAdmin() || canViewFinances());
     const bottomBtn = document.getElementById('admin-ai-nav-btn');
     const desktopBtn = document.getElementById('admin-ai-nav-btn-desktop');
     const spacer = document.getElementById('admin-nav-spacer');
     if (bottomBtn) bottomBtn.style.display = show ? '' : 'none';
     if (desktopBtn) desktopBtn.style.display = show ? '' : 'none';
-    if (spacer) spacer.style.display = !show ? '' : 'none'; // Show spacer when AI is off to keep 5-item flex balanced (History is always right, so we need a spacer if AI is missing)
+    if (spacer) spacer.style.display = !show ? '' : 'none';
 }
 
 window.clearAiChat = () => {
@@ -5544,7 +5868,8 @@ async function bootstrapSuperAdmin(user) {
 // Auth Listener
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // Ensure spinner is visible while fetching user profile
+        // Ensure modal is closed immediately and spinner is visible
+        document.getElementById('login-modal').classList.remove('show');
         const loader = document.getElementById('loading-overlay');
         if(loader) loader.style.display = 'flex';
         setLoadingMessage('Profil wird geladen...');
@@ -5612,8 +5937,12 @@ window.attemptLogin = async () => {
     }
 
     try {
+        errDiv.style.display = 'none';
         await signInWithEmailAndPassword(auth, email, pass);
-        // Reset button state on success so it's ready for next login after logout
+        document.getElementById('login-modal').classList.remove('show');
+        const loader = document.getElementById('loading-overlay');
+        if(loader) loader.style.display = 'flex';
+        setLoadingMessage('Profil wird geladen...');
         setButtonLoading('btn-login', false);
     } catch (error) {
         console.error(error);
@@ -5649,26 +5978,18 @@ window.attemptRegister = async () => {
     }
 
     try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, p1, {
+        errDiv.style.display = 'none';
+        document.getElementById('login-modal').classList.remove('show');
+        const loader = document.getElementById('loading-overlay');
+        if(loader) loader.style.display = 'flex';
+        setLoadingMessage('Profil wird initialisiert...');
+
+        await createUserWithEmailAndPassword(auth, email, p1, {
             inviteCode: code,
             firstName: first,
             lastName: last,
             name: `${first} ${last}`.trim()
         });
-        const user = userCredential.user;
-        // Persist basic user profile
-        await set(ref(db, 'users/' + user.uid), {
-            firstName: first,
-            lastName: last,
-            email,
-            admin: false
-        });
-
-        errDiv.style.display = 'none';
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'flex';
-        setLoadingMessage('Profil wird initialisiert...');
-        document.getElementById('login-modal').classList.remove('show');
     } catch (error) {
         console.error(error);
         if (error.message && error.message.includes('Ungültiger Registrierungscode')) {
@@ -5677,6 +5998,9 @@ window.attemptRegister = async () => {
             errDiv.innerText = "Registrierung fehlgeschlagen: " + error.message;
         }
         errDiv.style.display = 'block';
+        const loader = document.getElementById('loading-overlay');
+        if(loader) loader.style.display = 'none';
+        document.getElementById('login-modal').classList.add('show');
     }
 };
 
@@ -6532,11 +6856,11 @@ window.showTransactionDetails = async function(id, type) {
 
     openModal('transaction-details-modal');
 
-    // Configure details edit button for admins
-    const isSuperAdmin = !!(currentUser && currentUser.admin);
+    // Configure details edit button for admins with finance management rights
+    const canManage = canManageFinances();
     const detailsEditBtn = document.getElementById('details-edit-btn');
     if (detailsEditBtn) {
-        if (isSuperAdmin) {
+        if (canManage) {
             detailsEditBtn.style.display = 'inline-flex';
             const index = cachedTransactions ? cachedTransactions.findIndex(x => String(x.id) === String(item.id)) : -1;
             detailsEditBtn.onclick = () => {

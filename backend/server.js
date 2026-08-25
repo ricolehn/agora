@@ -46,6 +46,12 @@ const {
   adminResetUserPassword,
   claimUserAccount,
   isPlaceholderEmail,
+  listGroupRecords,
+  getGroupRecord,
+  createGroupRecord,
+  updateGroupRecord,
+  deleteGroupRecord,
+  resolveUserPermissions,
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
@@ -218,15 +224,17 @@ const pageRateLimit = rateLimit({
 });
 const setupRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 100,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen zur Ersteinrichtung. Bitte versuchen Sie es in wenigen Minuten erneut.' }
 });
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 100,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anmeldeversuche. Bitte warten Sie einen Moment.' }
 });
 const dbRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -400,6 +408,14 @@ async function verifyToken(req, res, next) {
 
   try {
     const user = await verifyUserToken(token);
+    let allGroups = [];
+    try {
+      allGroups = await listGroupRecords(appConfig);
+    } catch { /* ignore */ }
+    const groupPerms = resolveUserPermissions(user.groups, allGroups);
+    user.permissions = groupPerms.permissions;
+    user.canManageFinances = user.admin === true || user.owner === true || groupPerms.canManageFinances;
+    user.canViewFinances = user.admin === true || user.owner === true || groupPerms.canViewFinances;
     req.user = user;
     req.authToken = token;
     next();
@@ -416,6 +432,16 @@ function verifyAdmin(req, res, next) {
 function verifyOwner(req, res, next) {
   if (req.user?.owner === true || req.user?.superAdmin === true) return next();
   return res.status(403).json({ error: 'Owner access required' });
+}
+
+function verifyManageFinances(req, res, next) {
+  if (req.user?.canManageFinances === true) return next();
+  return res.status(403).json({ error: 'Finanzverwaltungsrechte erforderlich' });
+}
+
+function verifyViewFinances(req, res, next) {
+  if (req.user?.canViewFinances === true) return next();
+  return res.status(403).json({ error: 'Finanzzugriffsrechte erforderlich' });
 }
 
 const verifySuperAdmin = verifyAdmin;
@@ -452,6 +478,10 @@ function validateSetupPayload(body = {}) {
   }
 
   const logoSvg = typeof body.logoSvg === 'string' ? body.logoSvg : null;
+  const adminMemberSince = typeof adminUser.memberSince === 'string' && adminUser.memberSince.trim()
+    ? adminUser.memberSince.trim()
+    : new Date().toISOString().slice(0, 10);
+
   return {
     appName,
     smtp,
@@ -460,7 +490,8 @@ function validateSetupPayload(body = {}) {
       email: adminEmail,
       password: adminPassword,
       firstName: adminFirstName,
-      lastName: adminLastName
+      lastName: adminLastName,
+      memberSince: adminMemberSince
     }
   };
 }
@@ -506,18 +537,40 @@ app.post('/api/setup', setupRateLimit, async (req, res) => {
       lastName: adminUser.lastName,
       admin: true,
       owner: true,
-      pays: false
+      pays: true
     }, newConfig);
 
     // Instantly promote user to owner and save their UID
     const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
     await upsertStateValue(newConfig, 'system', { ...system, ownerUid: auth.user.id, superAdminUid: auth.user.id });
-    await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: false });
+    await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: true });
+
+    // Create linked person record in people collection for owner profile
+    const personKey = auth.user.id;
+    const memberSinceDate = adminUser.memberSince || new Date().toISOString().slice(0, 10);
+    const fullName = `${adminUser.firstName} ${adminUser.lastName}`.trim();
+    await upsertPeopleRecord(newConfig, personKey, {
+      id: personKey,
+      uid: auth.user.id,
+      name: fullName,
+      status: 'vollverdiener',
+      memberSince: memberSinceDate,
+      originalMemberSince: memberSinceDate,
+      totalPaid: 0,
+      pays: true,
+      standingOrders: [],
+      statusHistory: [{ status: 'vollverdiener', startDate: memberSinceDate }]
+    });
 
     // Log the user in automatically by setting the authorization cookie
     setAuthCookie(req, res, auth.token);
 
-    res.json({ success: true, message: 'Setup completed successfully.' });
+    res.json({
+      success: true,
+      message: 'Setup completed successfully.',
+      token: auth.token,
+      user: auth.user
+    });
   } catch (error) {
     console.error('Error saving configuration:', error);
     res.status(400).json({ error: error.message || 'Failed to save configuration.' });
@@ -736,8 +789,8 @@ async function readLogicalPath(targetPath, query, user) {
   }
 
   if (root === 'donations' || root === 'expenses') {
-    if (!user.admin) {
-      const error = new Error('Admin access required');
+    if (!user.canViewFinances) {
+      const error = new Error('Financial access required');
       error.status = 403;
       throw error;
     }
@@ -782,7 +835,7 @@ async function readLogicalPath(targetPath, query, user) {
     if (id) {
       const record = await getPeopleRecord(appConfig, id);
       const value = record?.data || null;
-      if (value && !user.admin && value.uid !== user.uid && !isOwnFullNameMatch(user, value.name || record?.name)) {
+      if (value && !user.canViewFinances && value.uid !== user.uid && !isOwnFullNameMatch(user, value.name || record?.name)) {
         const error = new Error('Forbidden');
         error.status = 403;
         throw error;
@@ -791,7 +844,7 @@ async function readLogicalPath(targetPath, query, user) {
     }
 
     let people = await listPeopleRecords(appConfig, query);
-    if (!user.admin) {
+    if (!user.canViewFinances) {
       people = people.filter((record) => record.uid === user.uid || (record.data && record.data.uid === user.uid) || isOwnFullNameMatch(user, record.name || record.data?.name));
     }
     return {
@@ -804,7 +857,7 @@ async function readLogicalPath(targetPath, query, user) {
     if (id) {
       const record = await getRequestRecord(appConfig, id);
       const value = record?.data || null;
-      if (value && !user.admin && value.userId !== user.uid && record?.userId !== user.uid) {
+      if (value && !user.canViewFinances && value.userId !== user.uid && record?.userId !== user.uid) {
         const error = new Error('Forbidden');
         error.status = 403;
         throw error;
@@ -813,7 +866,7 @@ async function readLogicalPath(targetPath, query, user) {
     }
 
     let requests = await listRequestRecords(appConfig, query);
-    if (!user.admin) {
+    if (!user.canViewFinances) {
       requests = requests.filter((record) => record.userId === user.uid || record.data?.userId === user.uid);
     }
     return {
@@ -827,10 +880,23 @@ async function readLogicalPath(targetPath, query, user) {
   throw error;
 }
 
-function toUserValue(record) {
+function toUserValue(record, allGroups = null) {
   const isOwner = record.owner === true || record.superAdmin === true;
+  const isAdminUser = record.admin === true || isOwner;
   const isPlaceholder = isPlaceholderEmail(record.email);
-  const isClaimed = record.isClaimed !== false && !isPlaceholder;
+  const isClaimed = !isPlaceholder;
+  const rawGroups = Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []);
+
+  let permissions = [];
+  let canManageFinances = isAdminUser;
+  let canViewFinances = isAdminUser;
+  if (Array.isArray(allGroups)) {
+    const res = resolveUserPermissions(rawGroups, allGroups);
+    permissions = res.permissions;
+    canManageFinances = isAdminUser || res.canManageFinances;
+    canViewFinances = isAdminUser || res.canViewFinances;
+  }
+
   return {
     firstName: record.firstName || '',
     lastName: record.lastName || '',
@@ -841,7 +907,10 @@ function toUserValue(record) {
     owner: isOwner,
     superAdmin: isOwner,
     pays: record.pays !== false,
-    groups: Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []),
+    groups: rawGroups,
+    permissions,
+    canManageFinances,
+    canViewFinances,
     emailNotifications: record.emailNotifications !== false,
     isClaimed,
     uid: record.id
@@ -872,7 +941,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
   }
 
   if ((root === 'donations' || root === 'expenses') && !id) {
-    if (!user.admin) throw Object.assign(new Error('Admin access required'), { status: 403 });
+    if (!user.canManageFinances) throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
     if (root === 'expenses') {
       await syncExpenseRecords(appConfig, value || {});
       return;
@@ -936,12 +1005,12 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
   if (root === 'people' && id) {
     const existing = await getPeopleRecord(appConfig, id);
     const existingValue = existing?.data || null;
-    if (!user.admin) {
+    if (!user.canManageFinances) {
       const requestedUid = value && typeof value === 'object' ? value.uid : undefined;
       const onlyUidUpdate = value && typeof value === 'object' && Object.keys(value).every((key) => key === 'uid');
       const isAllowedLink = existingValue && onlyUidUpdate && requestedUid === user.uid && (!existingValue.uid || existingValue.uid === user.uid) && isOwnFullNameMatch(user, existingValue.name || existing?.name);
       if (!isAllowedLink) {
-        throw Object.assign(new Error('Admin access required'), { status: 403 });
+        throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
       }
     }
     const nextValue = method === 'patch' && existingValue && value && typeof value === 'object'
@@ -1000,6 +1069,14 @@ async function verifyOptionalUser(req) {
   if (!token) return null;
   try {
     const user = await verifyUserToken(token);
+    let allGroups = [];
+    try {
+      allGroups = await listGroupRecords(appConfig);
+    } catch { /* ignore */ }
+    const groupPerms = resolveUserPermissions(user.groups, allGroups);
+    user.permissions = groupPerms.permissions;
+    user.canManageFinances = user.admin === true || user.owner === true || groupPerms.canManageFinances;
+    user.canViewFinances = user.admin === true || user.owner === true || groupPerms.canViewFinances;
     return { user, token };
   } catch {
     return null;
@@ -1080,8 +1157,8 @@ app.delete('/api/db', dbRateLimit, verifyToken, async (req, res) => {
 
 app.get('/api/stats', dbRateLimit, verifyToken, async (req, res) => {
   try {
-    if (!req.user.admin) {
-      return res.status(403).json({ error: 'Admin access required' });
+    if (!req.user.canViewFinances) {
+      return res.status(403).json({ error: 'Finanzzugriffsrechte erforderlich' });
     }
     const stats = await aggregateStats(appConfig);
     res.json(stats);
@@ -1092,8 +1169,8 @@ app.get('/api/stats', dbRateLimit, verifyToken, async (req, res) => {
 
 app.get('/api/transactions', dbRateLimit, verifyToken, async (req, res) => {
   try {
-    if (!req.user.admin) {
-      return res.status(403).json({ error: 'Admin access required' });
+    if (!req.user.canViewFinances) {
+      return res.status(403).json({ error: 'Finanzzugriffsrechte erforderlich' });
     }
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.perPage, 10) || 150;
@@ -1120,8 +1197,8 @@ app.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) => {
     }
 
     const nextValue = req.body?.value;
-    if (!req.user.admin) {
-      return res.status(403).json({ error: 'Admin access required' });
+    if (!req.user.canManageFinances) {
+      return res.status(403).json({ error: 'Finanzverwaltungsrechte erforderlich' });
     }
 
     const updated = await upsertPeopleRecord(appConfig, id, nextValue, currentVersion);
@@ -1228,16 +1305,23 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const users = await listUserRecords(appConfig);
     const people = await listPeopleRecords(appConfig);
+    const groups = await listGroupRecords(appConfig);
     const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
     const ownerUid = system?.ownerUid || system?.superAdminUid || null;
 
     const formatted = users.map((u) => {
       const isOwner = u.id === ownerUid || u.owner === true || u.superAdmin === true;
       const isPlaceholder = isPlaceholderEmail(u.email);
-      const isClaimed = u.isClaimed !== false && !isPlaceholder;
+      const isClaimed = !isPlaceholder;
       const linkedPerson = people.find(p => p.uid === u.id || (p.data && p.data.uid === u.id));
       const memberSince = linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
       const status = linkedPerson?.status || linkedPerson?.data?.status || '';
+      const userGroupIds = Array.isArray(u.groups) ? u.groups : (u.groups ? [String(u.groups)] : []);
+      const userGroupObjects = userGroupIds.map(gid => {
+        const match = groups.find(g => g.id === gid || g.name === gid);
+        return match ? { id: match.id, name: match.name, permissions: match.permissions } : { id: gid, name: gid, permissions: [] };
+      });
+      const resolved = resolveUserPermissions(userGroupIds, groups);
 
       return {
         uid: u.id,
@@ -1251,7 +1335,11 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
         owner: isOwner,
         superAdmin: isOwner,
         pays: u.pays !== false,
-        groups: Array.isArray(u.groups) ? u.groups : (u.groups ? [String(u.groups)] : []),
+        groups: userGroupIds,
+        groupObjects: userGroupObjects,
+        permissions: resolved.permissions,
+        canManageFinances: u.admin === true || isOwner || resolved.canManageFinances,
+        canViewFinances: u.admin === true || isOwner || resolved.canViewFinances,
         emailNotifications: u.emailNotifications !== false,
         isClaimed,
         memberSince,
@@ -1263,6 +1351,82 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
   } catch (error) {
     console.error('Failed to list admin users:', error);
     res.status(500).json({ error: 'Failed to list users' });
+  }
+});
+
+app.get('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const groups = await listGroupRecords(appConfig);
+    const users = await listUserRecords(appConfig);
+
+    const formatted = groups.map(g => {
+      const memberCount = users.filter(u => Array.isArray(u.groups) && u.groups.includes(g.id)).length;
+      return {
+        id: g.id,
+        name: g.name,
+        permissions: Array.isArray(g.permissions) ? g.permissions : [],
+        memberCount
+      };
+    });
+
+    res.json(formatted);
+  } catch (error) {
+    console.error('Failed to list groups:', error);
+    res.status(500).json({ error: error.message || 'Failed to list groups' });
+  }
+});
+
+app.post('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Gruppenname ist erforderlich.' });
+    const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+    const group = await createGroupRecord(appConfig, { name, permissions });
+    broadcastDataUpdate();
+    res.json(group);
+  } catch (error) {
+    console.error('Failed to create group:', error);
+    res.status(500).json({ error: error.message || 'Failed to create group' });
+  }
+});
+
+app.put('/api/admin/groups/:id', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
+    if (name !== undefined && !name) return res.status(400).json({ error: 'Gruppenname darf nicht leer sein.' });
+    const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : undefined;
+    const group = await updateGroupRecord(appConfig, id, { name, permissions });
+    broadcastDataUpdate();
+    res.json(group);
+  } catch (error) {
+    console.error('Failed to update group:', error);
+    res.status(500).json({ error: error.message || 'Failed to update group' });
+  }
+});
+
+app.delete('/api/admin/groups/:id', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteGroupRecord(appConfig, id);
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete group:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete group' });
+  }
+});
+
+app.put('/api/admin/users/:uid/groups', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
+    await updateUserRecord(appConfig, uid, { groups });
+    broadcastDataUpdate();
+    res.json({ success: true, groups });
+  } catch (error) {
+    console.error('Failed to update user groups:', error);
+    res.status(500).json({ error: error.message || 'Failed to update user groups' });
   }
 });
 
@@ -1470,11 +1634,19 @@ app.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, async (req, res) =
       return res.status(400).json({ error: 'Der Eigentümer-Account kann nicht gelöscht werden.' });
     }
 
-    if (uid === req.user.uid) {
-      return res.status(400).json({ error: 'Sie können Ihren eigenen Account hier nicht löschen.' });
+    await deleteUserRecord(appConfig, uid);
+
+    // Also remove from people/paylist
+    try {
+      const people = await listPeopleRecords(appConfig);
+      const matchingPeople = people.filter(p => p.uid === uid || (p.data && p.data.uid === uid) || p.personKey === uid);
+      for (const p of matchingPeople) {
+        await removePeopleRecord(appConfig, p.personKey);
+      }
+    } catch (err) {
+      console.warn(`[PocketBase] Failed to clean up linked person for deleted user ${uid}:`, err.message);
     }
 
-    await deleteUserRecord(appConfig, uid);
     broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
@@ -1843,7 +2015,7 @@ app.post('/api/ai/chat', aiChatRateLimit, verifyToken, verifyAdmin, async (req, 
   }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });

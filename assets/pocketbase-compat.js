@@ -75,11 +75,13 @@ if (initialStored) {
   authState.currentUser = wrapUser(initialStored.user);
 }
 
-function saveAuth(token, user) {
+function saveAuth(token, user, notify = true) {
   authState.token = token || null;
   authState.currentUser = wrapUser(user);
   persistAuth(token, user);
-  notifyAuthListeners();
+  if (notify) {
+    notifyAuthListeners();
+  }
 }
 
 async function apiFetch(url, options = {}) {
@@ -90,7 +92,7 @@ async function apiFetch(url, options = {}) {
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     if (response.status === 401) {
-      if (!url.includes('/api/auth/login') && !url.includes('/api/auth/register')) {
+      if (!url.includes('/api/auth/login') && !url.includes('/api/auth/register') && !url.includes('/api/auth/me')) {
         saveAuth(null, null);
       }
     }
@@ -118,11 +120,11 @@ async function restoreAuthState(retries = 4, delayMs = 1000) {
       const response = await fetch('/api/auth/me', { headers });
       if (response.ok) {
         const data = await response.json();
-        saveAuth(data.token, data.user);
+        saveAuth(data.token, data.user, false);
         return;
       }
       if (response.status === 401) {
-        saveAuth(null, null);
+        saveAuth(null, null, false);
         return;
       }
       if (response.status === 503 || response.status >= 500) {
@@ -140,7 +142,9 @@ async function restoreAuthState(retries = 4, delayMs = 1000) {
   }
 }
 
+let authReadyResolved = false;
 authState.ready = restoreAuthState().then(() => {
+  authReadyResolved = true;
   notifyAuthListeners();
 });
 
@@ -258,7 +262,9 @@ export function getAuth(app) {
 
 export function onAuthStateChanged(auth, callback) {
   authState.listeners.add(callback);
-  authState.ready.then(() => callback(authState.currentUser));
+  if (authReadyResolved) {
+    callback(authState.currentUser);
+  }
   return () => authState.listeners.delete(callback);
 }
 

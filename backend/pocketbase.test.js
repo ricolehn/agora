@@ -283,12 +283,53 @@ test('decodeTokenPayload handles tokens with expiration far in future', () => {
   assert.ok(decoded.exp > Math.floor(Date.now() / 1000) + 300000000);
 });
 
-test('admin user helper functions are exported correctly', () => {
-  const { adminResetUserPassword, deleteUserRecord, claimUserAccount, isPlaceholderEmail } = require('./pocketbase');
+test('admin user and group helper functions are exported correctly', () => {
+  const {
+    adminResetUserPassword,
+    deleteUserRecord,
+    claimUserAccount,
+    isPlaceholderEmail,
+    listGroupRecords,
+    getGroupRecord,
+    createGroupRecord,
+    updateGroupRecord,
+    deleteGroupRecord,
+    resolveUserPermissions
+  } = require('./pocketbase');
   assert.equal(typeof adminResetUserPassword, 'function');
   assert.equal(typeof deleteUserRecord, 'function');
   assert.equal(typeof claimUserAccount, 'function');
   assert.equal(typeof isPlaceholderEmail, 'function');
+  assert.equal(typeof listGroupRecords, 'function');
+  assert.equal(typeof getGroupRecord, 'function');
+  assert.equal(typeof createGroupRecord, 'function');
+  assert.equal(typeof updateGroupRecord, 'function');
+  assert.equal(typeof deleteGroupRecord, 'function');
+  assert.equal(typeof resolveUserPermissions, 'function');
+});
+
+test('resolveUserPermissions merges permissions and determines finance access', () => {
+  const { resolveUserPermissions } = require('./pocketbase');
+  const allGroups = [
+    { id: 'g1', name: 'Finance Team', permissions: ['view_finances'] },
+    { id: 'g2', name: 'Treasury', permissions: ['manage_finances'] },
+    { id: 'g3', name: 'Regular', permissions: [] }
+  ];
+
+  const resEmpty = resolveUserPermissions([], allGroups);
+  assert.deepEqual(resEmpty.permissions, []);
+  assert.equal(resEmpty.canManageFinances, false);
+  assert.equal(resEmpty.canViewFinances, false);
+
+  const resView = resolveUserPermissions(['g1'], allGroups);
+  assert.deepEqual(resView.permissions, ['view_finances']);
+  assert.equal(resView.canManageFinances, false);
+  assert.equal(resView.canViewFinances, true);
+
+  const resManage = resolveUserPermissions(['g2'], allGroups);
+  assert.deepEqual(resManage.permissions, ['manage_finances']);
+  assert.equal(resManage.canManageFinances, true);
+  assert.equal(resManage.canViewFinances, true);
 });
 
 

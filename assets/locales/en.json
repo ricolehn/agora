@@ -1,6 +1,9 @@
 {
   "app_title": "Agora",
   "nav_overview": "Overview",
+  "nav_finances": "Finances",
+  "finances_sub_history": "Overview & History",
+  "finances_sub_members": "Pay Members",
   "nav_people": "Members",
   "nav_history": "History",
   "nav_ai": "AI Support",
@@ -220,6 +223,8 @@
   "setup_admin_password_placeholder": "Enter password",
   "setup_admin_password_confirm": "Confirm password",
   "setup_admin_password_confirm_placeholder": "Confirm password",
+  "setup_admin_member_since": "Member since",
+  "setup_admin_member_since_desc": "Date from which the membership is effective for the profile.",
   "setup_step3_title": "3. Email Settings (Optional)",
   "setup_step3_desc": "These settings are required for email notifications. You can skip this step.",
   "setup_smtp_host": "SMTP Server",

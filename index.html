@@ -11,14 +11,23 @@
     <link rel="modulepreload" href="assets/app.js">
     <link rel="modulepreload" href="assets/pocketbase-compat.js">
     <link rel="stylesheet" href="assets/style.css">
+    <script>
+        (function() {
+            try {
+                var stored = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
+                var theme = stored === 'system' ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : stored;
+                if (theme) document.documentElement.setAttribute('data-theme', theme);
+            } catch(e) {}
+        })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 
-<div id="loading-overlay">
+<div id="loading-overlay" style="display: flex;">
     <div class="spinner"></div>
-    <div id="loading-message" style="font-weight:600; color:#333; margin-top: 20px;" data-i18n="loading">Lade Daten...</div>
+    <div id="loading-message" style="font-weight:600; color:var(--text); margin-top: 20px;" data-i18n="loading">Lade Daten...</div>
     <div class="loading-footer"><span id="app-name-footer">Agora</span> &copy; 2026</div>
 </div>
 
@@ -35,42 +44,28 @@
                     <img src="assets/church-logo.svg" alt="Agora Logo">
                     <h1 id="app-name-header">Agora</h1>
                 </div>
-                <nav id="admin-desktop-nav" class="desktop-nav">
-                    <button class="nav-btn active" data-tab="overview" onclick="switchTab('overview', this)">
+                <nav id="desktop-nav" class="desktop-nav">
+                    <button class="nav-btn active" data-tab="user-overview" onclick="switchTab('user-overview', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                         <span class="nav-label" data-i18n="nav_home">Startseite</span>
                     </button>
-                    <button class="nav-btn" data-tab="people-view" onclick="switchTab('people-view', this)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                        <span class="nav-label" data-i18n="nav_people">Personen</span>
+                    <button id="admin-finances-nav-btn-desktop" class="nav-btn" data-tab="finances" onclick="switchTab('finances', this)" style="display:none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        <span class="nav-label" data-i18n="nav_finances">Finanzen</span>
                     </button>
-                    <button id="admin-sys-nav-btn-desktop" class="nav-btn" data-tab="payment-history" onclick="switchTab('payment-history', this)" style="display:none;">
+                    <button id="user-history-nav-btn-desktop" class="nav-btn" data-tab="user-history" onclick="switchTab('user-history', this)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
                         <span class="nav-label" data-i18n="nav_history">Historie</span>
+                    </button>
+                    <button id="user-requests-nav-btn-desktop" class="nav-btn" data-tab="user-requests" onclick="switchTab('user-requests', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <span class="nav-label" data-i18n="nav_requests">Anfragen</span>
                     </button>
                     <button id="admin-ai-nav-btn-desktop" class="nav-btn" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         <span class="nav-label" data-i18n="nav_ai">KI-Support</span>
                     </button>
-                    <button class="nav-btn" data-tab="settings" onclick="switchTab('settings', this)" style="display:none;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        <span class="nav-label" data-i18n="nav_settings">Einstellungen</span>
-                    </button>
-                </nav>
-                <nav id="user-desktop-nav" class="desktop-nav" style="display:none;">
-                    <button class="nav-btn active" data-tab="user-overview" onclick="switchTab('user-overview', this)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        <span class="nav-label" data-i18n="nav_home">Startseite</span>
-                    </button>
-                    <button class="nav-btn" data-tab="user-history" onclick="switchTab('user-history', this)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
-                        <span class="nav-label" data-i18n="nav_history">Historie</span>
-                    </button>
-                    <button class="nav-btn" data-tab="user-requests" onclick="switchTab('user-requests', this)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        <span class="nav-label" data-i18n="nav_requests">Anfragen</span>
-                    </button>
-                    <button class="nav-btn" data-tab="user-settings" onclick="switchTab('user-settings', this)" style="display:none;">
+                    <button id="admin-settings-nav-btn-desktop" class="nav-btn" data-tab="settings" onclick="switchTab('settings', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                         <span class="nav-label" data-i18n="nav_settings">Einstellungen</span>
                     </button>
@@ -105,90 +100,89 @@
             </div>
         </header>
 
-        <!-- ADMIN VIEW -->
-    <div id="admin-view">
-        <div id="overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-overview">
-            <div class="dashboard-top-section">
-                <div class="dashboard-left">
-                    <div class="hero-card" role="button" tabindex="0" data-i18n-aria-label="nav_history" aria-label="Transaktionsverlauf anzeigen" onclick="switchTab('payment-history')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); switchTab('payment-history');}">
-                        <span class="hero-label" data-i18n="total_balance">Aktueller Kassenstand</span>
-                        <div class="hero-amount" id="heroAmount">0,00 €</div>
-                        <div class="hero-subtitle" data-i18n="hero_subtitle">Tippen für Details</div>
-                    </div>
-
-                    <div class="stats-grid">
-                        <div class="stat-box">
-                            <div class="stat-icon success">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
-                            </div>
-                            <div>
-                                <div class="stat-label" data-i18n="nav_income">Einnahmen</div>
-                                <div class="stat-value text-success" id="totalIncome">0,00 €</div>
-                            </div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-icon danger">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-                            </div>
-                            <div>
-                                <div class="stat-label" data-i18n="nav_expenses">Ausgaben</div>
-                                <div class="stat-value text-danger" id="totalExpenses">0,00 €</div>
-                            </div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-icon info">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            </div>
-                            <div>
-                                <div class="stat-label" data-i18n="nav_members">Mitglieder</div>
-                                <div class="stat-value text-info" id="totalMembers">0</div>
-                            </div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-icon warning">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                            </div>
-                            <div>
-                                <div class="stat-label" data-i18n="nav_overdue">Überfällig</div>
-                                <div class="stat-value text-warning" id="totalOverdue">0,00 €</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-right">
-                    <div class="chart-card">
-                        <div class="chart-header" data-i18n="chart_title">Verlauf (90 Tage)</div>
-                    <div class="chart-container">
-                            <canvas id="balanceChart" role="img" aria-label="Kontostandsverlauf über 90 Tage"></canvas>
-                        </div>
-                    </div>
-                </div>
+        <!-- USER OVERVIEW (Default Home Page for all users) -->
+        <div id="user-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-user-overview">
+            <div class="hero-card" style="cursor:default;">
+                <span class="hero-label" data-i18n="welcome_title">Willkommen</span>
+                <div class="hero-amount" id="user-name-display">—</div>
+                <div class="hero-subtitle" id="user-email-display">—</div>
             </div>
 
-            <div class="overview-right">
-                <div id="admin-requests-inline"></div>
+            <!-- Main Status Card -->
+            <div id="user-status-card">
+                <div style="text-align:center; padding: 40px 20px; color: var(--text-secondary);">
+                    <div class="spinner" style="margin: 0 auto 15px;"></div>
+                    <div data-i18n="loading">Lade Daten...</div>
+                </div>
             </div>
         </div>
 
-        <div id="people-view" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-people-view">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_people">Mitglieder</h2>
+        <!-- FINANCES VIEW (Consolidated Financial Components with Subpage Selector) -->
+        <div id="finances" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-finances">
+            <!-- Subpage Selector -->
+            <div class="finance-subnav" role="tablist">
+                <button type="button" class="finance-subnav-btn active" id="finances-sub-btn-history" onclick="switchFinanceSubpage('history', this)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+                    <span data-i18n="finances_sub_history">Übersicht & Historie</span>
+                </button>
+                <button type="button" class="finance-subnav-btn" id="finances-sub-btn-members" onclick="switchFinanceSubpage('members', this)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    <span data-i18n="finances_sub_members">Beitragsliste</span>
+                </button>
             </div>
-            <div class="form-group">
-                <label for="people-search" class="sr-only" data-i18n="search_placeholder">Mitglieder suchen</label>
-                <div class="input-with-icon search-bar-wrapper">
-                    <div class="input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    </div>
-                    <input type="text" id="people-search" class="form-input search-input" data-i18n-placeholder="search_placeholder" placeholder="Suche..." oninput="window.filterPeople()">
+
+            <!-- Subpage 1: Total Balance & History -->
+            <div id="finances-subpage-history" class="finance-subpage-content active">
+                <div class="hero-card" style="cursor: default; margin-bottom: 25px;">
+                    <span class="hero-label" data-i18n="total_balance">Aktueller Kassenstand</span>
+                    <div class="hero-amount" id="heroAmount">0,00 €</div>
                 </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_history">Historie</h2>
+                    <button class="btn btn-secondary btn-small" onclick="openExportReportModal()" style="display: flex; align-items: center; gap: 6px;" id="btn-open-export-report">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <span data-i18n="btn_create_report">Bericht erstellen</span>
+                    </button>
+                </div>
+                <div class="form-group">
+                    <label for="history-search" class="sr-only" data-i18n="search_placeholder">Historie suchen</label>
+                    <div class="input-with-icon search-bar-wrapper">
+                        <div class="input-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </div>
+                        <input type="text" id="history-search" class="form-input search-input" data-i18n-placeholder="search_placeholder" placeholder="Suche..." oninput="window.filterHistory()">
+                    </div>
+                </div>
+                <div id="history-page-list"></div>
             </div>
-            <div id="unlinkedUsers"></div>
-            <div id="peopleList"></div>
-            <div id="emptyState" style="text-align:center; padding:40px; color:var(--text-secondary); display:none;">
-                <div style="font-size:3rem; margin-bottom:10px;">👥</div>
-                <p data-i18n="no_members_yet">Noch keine Mitglieder.</p>
+
+            <!-- Subpage 2: Pay Members List -->
+            <div id="finances-subpage-members" class="finance-subpage-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_people">Mitglieder</h2>
+                </div>
+                <div class="form-group">
+                    <label for="people-search" class="sr-only" data-i18n="search_placeholder">Mitglieder suchen</label>
+                    <div class="input-with-icon search-bar-wrapper">
+                        <div class="input-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </div>
+                        <input type="text" id="people-search" class="form-input search-input" data-i18n-placeholder="search_placeholder" placeholder="Suche..." oninput="window.filterPeople()">
+                    </div>
+                </div>
+                <div id="unlinkedUsers"></div>
+                <div id="peopleList"></div>
+                <div id="emptyState" style="text-align:center; padding:40px; color:var(--text-secondary); display:none;">
+                    <div style="font-size:3rem; margin-bottom:10px;">👥</div>
+                    <p data-i18n="no_members_yet">Noch keine Mitglieder.</p>
+                </div>
             </div>
         </div>
 
@@ -510,32 +504,6 @@
             </div>
         </div>
 
-        <div id="payment-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-payment-history">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="font-size: 1.2rem; font-weight: 800;" data-i18n="nav_history">Historie</h2>
-                <button class="btn btn-secondary btn-small" onclick="openExportReportModal()" style="display: flex; align-items: center; gap: 6px;" id="btn-open-export-report">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
-                    </svg>
-                    <span data-i18n="btn_create_report">Bericht erstellen</span>
-                </button>
-            </div>
-            <div class="form-group">
-                <label for="history-search" class="sr-only" data-i18n="search_placeholder">Historie suchen</label>
-                <div class="input-with-icon search-bar-wrapper">
-                    <div class="input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    </div>
-                    <input type="text" id="history-search" class="form-input search-input" data-i18n-placeholder="search_placeholder" placeholder="Suche..." oninput="window.filterHistory()">
-                </div>
-            </div>
-            <div id="history-page-list"></div>
-        </div>
-
         <div id="ai-chat" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-ai-chat" style="height: 100%;">
             <div id="card-ai-chat" class="ai-chat-layout">
                 <div class="card-header ai-chat-header-styled">
@@ -561,26 +529,6 @@
                     </button>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- USER VIEW (Non-Admin) -->
-    <div id="user-view" style="display:none;">
-        <div id="user-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-user-overview">
-            <div class="hero-card" style="cursor:default;">
-                <span class="hero-label" data-i18n="welcome_title">Willkommen</span>
-                <div class="hero-amount" id="user-name-display">—</div>
-                <div class="hero-subtitle" id="user-email-display">—</div>
-            </div>
-
-            <!-- Main Status Card -->
-            <div id="user-status-card">
-                <div style="text-align:center; padding: 40px 20px; color: var(--text-secondary);">
-                    <div class="spinner" style="margin: 0 auto 15px;"></div>
-                    <div data-i18n="loading">Lade Daten...</div>
-                </div>
-            </div>
-
         </div>
 
         <div id="user-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-history">
@@ -727,50 +675,31 @@
     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 </button>
 
-<nav id="admin-bottom-nav" class="bottom-nav" style="display:none;">
-    <button class="nav-item active" data-tab="overview" onclick="switchTab('overview', this)" data-i18n-aria-label="nav_overview" aria-label="Übersicht">
+<nav id="bottom-nav" class="bottom-nav">
+    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" data-i18n-aria-label="nav_home" aria-label="Startseite">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
     </button>
-    <button class="nav-item" data-tab="people-view" onclick="switchTab('people-view', this)" data-i18n-aria-label="nav_people" aria-label="Personen">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+    <button id="admin-finances-nav-btn-bottom" class="nav-item" data-tab="finances" onclick="switchTab('finances', this)" data-i18n-aria-label="nav_finances" aria-label="Finanzen" style="display:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
     </button>
-    <button class="nav-item mobile-fab" onclick="toggleFab()" data-i18n-aria-label="user_quick_actions" aria-label="Aktionen" aria-expanded="false" aria-haspopup="true" aria-controls="fabMenu">
+    <button id="user-history-nav-btn-bottom" class="nav-item" data-tab="user-history" onclick="switchTab('user-history', this)" data-i18n-aria-label="nav_history" aria-label="Historie">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
+    </button>
+    <button id="mobile-fab-nav-item" class="nav-item mobile-fab" onclick="toggleFab()" data-i18n-aria-label="user_quick_actions" aria-label="Aktionen" aria-expanded="false" aria-haspopup="true" aria-controls="fabMenu" style="display:none;">
         <div class="nav-action-bg">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </div>
     </button>
-    <button id="admin-sys-nav-btn" class="nav-item" data-tab="payment-history" onclick="switchTab('payment-history', this)" data-i18n-aria-label="nav_history" aria-label="Historie" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
-    </button>
-    <button id="admin-ai-nav-btn" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" data-i18n-aria-label="nav_ai" aria-label="KI-Support" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-    </button>
-    <div id="admin-nav-spacer" class="nav-item" style="display:none; pointer-events:none; opacity: 0.2;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>
-    </div>
-    <button class="nav-item" data-tab="settings" onclick="switchTab('settings', this)" data-i18n-aria-label="nav_settings" aria-label="Einstellungen" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-    </button>
-</nav>
-
-<nav id="user-bottom-nav" class="bottom-nav" style="display:none;">
-    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" data-i18n-aria-label="nav_home" aria-label="Startseite">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-    </button>
-    <button class="nav-item" data-tab="user-history" onclick="switchTab('user-history', this)" data-i18n-aria-label="nav_history" aria-label="Historie">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
-    </button>
-    <button class="nav-item" data-tab="user-requests" onclick="switchTab('user-requests', this)" data-i18n-aria-label="nav_requests" aria-label="Anfragen">
+    <button id="user-requests-nav-btn-bottom" class="nav-item" data-tab="user-requests" onclick="switchTab('user-requests', this)" data-i18n-aria-label="nav_requests" aria-label="Anfragen">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
     </button>
-    <div id="user-nav-spacer" class="nav-item" style="display:none; pointer-events:none;"></div>
-    <button class="nav-item" data-tab="user-settings" onclick="switchTab('user-settings', this)" data-i18n-aria-label="nav_settings" aria-label="Einstellungen" style="display:none;">
+    <button id="admin-ai-nav-btn-bottom" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" data-i18n-aria-label="nav_ai" aria-label="KI-Support" style="display:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    </button>
+    <button id="admin-settings-nav-btn-bottom" class="nav-item" data-tab="settings" onclick="switchTab('settings', this)" data-i18n-aria-label="nav_settings" aria-label="Einstellungen" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
 </nav>
-
-
-
 
 <div id="change-status-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-change-status">
     <div class="modal-content modal-content-enhanced">
@@ -1346,7 +1275,7 @@
     </div>
 </div>
 
-<div id="login-modal" class="modal show" style="z-index:2000;" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+<div id="login-modal" class="modal" style="z-index:2000;" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="modal-content" style="max-width: 400px;">
         <div class="login-header">
             <div class="login-brand">
