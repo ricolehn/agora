@@ -1129,6 +1129,7 @@ input:checked + .slider:before { transform: translateX(22px); }
 
     /* Centered content for user tabs */
     #user-overview,
+    #user-finances,
     #user-history,
     #user-requests,
     #user-settings {

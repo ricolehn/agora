@@ -53,21 +53,13 @@
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                         <span class="nav-label" data-i18n="nav_finances">Finanzen</span>
                     </button>
-                    <button id="user-history-nav-btn-desktop" class="nav-btn" data-tab="user-history" onclick="switchTab('user-history', this)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"></path></svg>
-                        <span class="nav-label" data-i18n="nav_history">Historie</span>
-                    </button>
-                    <button id="user-requests-nav-btn-desktop" class="nav-btn" data-tab="user-requests" onclick="switchTab('user-requests', this)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        <span class="nav-label" data-i18n="nav_requests">Anfragen</span>
+                    <button id="user-finances-nav-btn-desktop" class="nav-btn" data-tab="user-finances" onclick="switchTab('user-finances', this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        <span class="nav-label" data-i18n="nav_finances">Finanzen</span>
                     </button>
                     <button id="admin-ai-nav-btn-desktop" class="nav-btn" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         <span class="nav-label" data-i18n="nav_ai">KI-Support</span>
-                    </button>
-                    <button id="admin-settings-nav-btn-desktop" class="nav-btn" data-tab="settings" onclick="switchTab('settings', this)" style="display:none;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        <span class="nav-label" data-i18n="nav_settings">Einstellungen</span>
                     </button>
                 </nav>
             </div>
@@ -133,6 +125,7 @@
 
             <!-- Subpage 1: Total Balance & History -->
             <div id="finances-subpage-history" class="finance-subpage-content active">
+                <div id="admin-requests-inline" style="margin-bottom: 20px;"></div>
                 <div class="hero-card" style="cursor: default; margin-bottom: 25px;">
                     <span class="hero-label" data-i18n="total_balance">Aktueller Kassenstand</span>
                     <div class="hero-amount" id="heroAmount">0,00 €</div>
@@ -531,44 +524,26 @@
             </div>
         </div>
 
-        <div id="user-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-history">
-            <!-- Payment History -->
-            <div id="user-payment-history" style="margin-top: 25px;"></div>
-        </div>
+        <div id="user-finances" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-finances">
+            <!-- 1. Top: Status Badge / Hero Card -->
+            <div id="user-finances-status-card" style="margin-bottom: 20px;"></div>
 
-        <div id="user-requests" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-requests">
-            <!-- Quick Actions -->
-            <div style="margin-top: 25px;">
-                <h3 class="list-section-title" data-i18n="user_quick_actions">Schnellaktionen</h3>
-                <div class="user-quick-actions-grid">
-                    <button class="btn btn-secondary user-action-btn" onclick="openUserRequestModal('payment')">
-                        <div class="user-action-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-                        </div>
-                        <div class="user-action-label" data-i18n="action_payment">Zahlung</div>
-                    </button>
-                    <button class="btn btn-secondary user-action-btn" onclick="openUserRequestModal('status')">
-                        <div class="user-action-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                        </div>
-                        <div class="user-action-label" data-i18n="action_status">Status</div>
-                    </button>
-                    <button class="btn btn-secondary user-action-btn" onclick="openUserRequestModal('expense')">
-                        <div class="user-action-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        </div>
-                        <div class="user-action-label" data-i18n="action_expense">Ausgabe</div>
-                    </button>
+            <!-- 2. Middle: Requests List -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span data-i18n="user_requests_title">Meine Anfragen</span>
+                    <button class="btn btn-primary btn-small" onclick="openUserRequestModal('payment')">+ Neue Anfrage</button>
+                </div>
+                <div class="card-body">
+                    <div id="user-requests-list"></div>
                 </div>
             </div>
 
-            <!-- Requests List -->
-            <div style="margin-top: 25px;">
-                <h3 class="list-section-title" data-i18n="user_requests_title">Meine Anfragen</h3>
-                <div id="user-requests-list">
-                    <div style="text-align:center; padding: 30px 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px;" data-i18n="no_open_requests">
-                        Keine offenen Anfragen
-                    </div>
+            <!-- 3. Bottom: Payment History Timeline -->
+            <div class="card">
+                <div class="card-header" data-i18n="user_history_title">Verlauf</div>
+                <div class="card-body">
+                    <div id="user-payment-history"></div>
                 </div>
             </div>
         </div>
@@ -682,22 +657,16 @@
     <button id="admin-finances-nav-btn-bottom" class="nav-item" data-tab="finances" onclick="switchTab('finances', this)" data-i18n-aria-label="nav_finances" aria-label="Finanzen" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
     </button>
-    <button id="user-history-nav-btn-bottom" class="nav-item" data-tab="user-history" onclick="switchTab('user-history', this)" data-i18n-aria-label="nav_history" aria-label="Historie">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
+    <button id="user-finances-nav-btn-bottom" class="nav-item" data-tab="user-finances" onclick="switchTab('user-finances', this)" data-i18n-aria-label="nav_finances" aria-label="Finanzen">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
     </button>
     <button id="mobile-fab-nav-item" class="nav-item mobile-fab" onclick="toggleFab()" data-i18n-aria-label="user_quick_actions" aria-label="Aktionen" aria-expanded="false" aria-haspopup="true" aria-controls="fabMenu" style="display:none;">
         <div class="nav-action-bg">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </div>
     </button>
-    <button id="user-requests-nav-btn-bottom" class="nav-item" data-tab="user-requests" onclick="switchTab('user-requests', this)" data-i18n-aria-label="nav_requests" aria-label="Anfragen">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-    </button>
     <button id="admin-ai-nav-btn-bottom" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" data-i18n-aria-label="nav_ai" aria-label="KI-Support" style="display:none;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-    </button>
-    <button id="admin-settings-nav-btn-bottom" class="nav-item" data-tab="settings" onclick="switchTab('settings', this)" data-i18n-aria-label="nav_settings" aria-label="Einstellungen" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
 </nav>
 
