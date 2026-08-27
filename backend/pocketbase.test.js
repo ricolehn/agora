@@ -332,4 +332,16 @@ test('resolveUserPermissions merges permissions and determines finance access', 
   assert.equal(resManage.canViewFinances, true);
 });
 
+test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
+  const { SYSTEM_PERMISSIONS } = require('./pocketbase');
+  assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
+  assert.ok(SYSTEM_PERMISSIONS.length >= 5);
+  const ids = SYSTEM_PERMISSIONS.map(p => p.id);
+  assert.ok(ids.includes('view_finances'));
+  assert.ok(ids.includes('manage_finances'));
+  assert.ok(ids.includes('manage_members'));
+  assert.ok(ids.includes('manage_system'));
+  assert.ok(ids.includes('access_ai'));
+});
+
 

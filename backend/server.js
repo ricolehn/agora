@@ -60,7 +60,8 @@ const {
   syncExpenseRecords,
   listRequestRecords,
   getRequestRecord,
-  upsertRequestRecord
+  upsertRequestRecord,
+  SYSTEM_PERMISSIONS
 } = require('./pocketbase');
 
 const app = express();
@@ -244,7 +245,7 @@ const dbRateLimit = rateLimit({
 });
 const protectedActionRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -340,7 +341,7 @@ const profileUpload = multer({
 
 const adminRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -1354,13 +1355,17 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/permissions', verifyToken, verifyAdmin, (req, res) => {
+  res.json(SYSTEM_PERMISSIONS);
+});
+
 app.get('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const groups = await listGroupRecords(appConfig);
     const users = await listUserRecords(appConfig);
 
     const formatted = groups.map(g => {
-      const memberCount = users.filter(u => Array.isArray(u.groups) && u.groups.includes(g.id)).length;
+      const memberCount = users.filter(u => Array.isArray(u.groups) && (u.groups.includes(g.id) || u.groups.includes(g.name))).length;
       return {
         id: g.id,
         name: g.name,
@@ -1380,6 +1385,13 @@ app.post('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Gruppenname ist erforderlich.' });
+    
+    // Check if group name already exists
+    const existingGroups = await listGroupRecords(appConfig);
+    if (existingGroups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      return res.status(400).json({ error: 'Eine Gruppe mit diesem Namen existiert bereits.' });
+    }
+
     const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
     const group = await createGroupRecord(appConfig, { name, permissions });
     broadcastDataUpdate();

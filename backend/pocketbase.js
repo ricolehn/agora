@@ -459,7 +459,7 @@ async function ensureCollection(appConfig, spec) {
   });
 }
 
-async function listAllRecords(collectionName, filter, appConfig) {
+async function listAllRecords(collectionName, filter, appConfig, sort = '') {
   const token = await authenticateSuperuser(appConfig);
   const items = [];
   let page = 1;
@@ -468,6 +468,7 @@ async function listAllRecords(collectionName, filter, appConfig) {
   while (true) {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
     if (filter) params.set('filter', filter);
+    if (sort) params.set('sort', sort);
     const result = await pocketBaseRequest(`/api/collections/${collectionName}/records?${params.toString()}`, { token });
     items.push(...(result.items || []));
     if (page >= (result.totalPages || 1)) break;
@@ -1364,13 +1365,14 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
 
 async function listGroupRecords(appConfig = null) {
   try {
-    const records = await listAllRecords('groups', 'name ASC', appConfig);
+    const records = await listAllRecords('groups', '', appConfig, '+name');
     return records.map((r) => ({
       id: r.id,
       name: r.name || '',
       permissions: Array.isArray(r.permissions) ? r.permissions : []
-    }));
-  } catch {
+    })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } catch (err) {
+    console.error('Failed to list group records:', err);
     return [];
   }
 }
@@ -1419,12 +1421,39 @@ async function updateGroupRecord(appConfig, id, { name, permissions }) {
   };
 }
 
+const SYSTEM_PERMISSIONS = [
+  { id: 'view_finances', name: 'Finanzübersicht & Historie einsehen', description: 'Erlaubt die Einsicht in die Kassenstände, Historie und Berichte' },
+  { id: 'manage_finances', name: 'Finanzen verwalten & buchen', description: 'Erlaubt das Erfassen, Bearbeiten und Löschen von Zahlungen, Spenden und Ausgaben' },
+  { id: 'manage_members', name: 'Mitglieder verwalten', description: 'Erlaubt das Anlegen und Bearbeiten von Mitgliedern und deren Status' },
+  { id: 'manage_system', name: 'Systemeinstellungen verwalten', description: 'Erlaubt das Konfigurieren von Systemparametern, Logos und Mailserver' },
+  { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt die Nutzung des integrierten KI-Assistenten' }
+];
+
 async function deleteGroupRecord(appConfig, id) {
   const token = await authenticateSuperuser(appConfig);
+  let groupName = '';
+  try {
+    const existing = await pocketBaseRequest(`/api/collections/groups/records/${id}`, { token, allow404: true });
+    if (existing) groupName = existing.name || '';
+  } catch {}
+
   await pocketBaseRequest(`/api/collections/groups/records/${id}`, {
     method: 'DELETE',
     token
   });
+
+  try {
+    const users = await listAllRecords('users', '', appConfig);
+    for (const u of users) {
+      if (Array.isArray(u.groups) && (u.groups.includes(id) || (groupName && u.groups.includes(groupName)))) {
+        const nextGroups = u.groups.filter((g) => g !== id && g !== groupName);
+        await updateUserRecord(appConfig, u.id, { groups: nextGroups });
+      }
+    }
+  } catch (err) {
+    console.warn('[PocketBase] Failed to clean up user groups after group deletion:', err.message);
+  }
+
   return true;
 }
 
@@ -1478,5 +1507,6 @@ module.exports = {
   syncExpenseRecords,
   listRequestRecords,
   getRequestRecord,
-  upsertRequestRecord
+  upsertRequestRecord,
+  SYSTEM_PERMISSIONS
 };

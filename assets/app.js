@@ -384,14 +384,39 @@ function isSystemAdmin() {
 }
 
 let systemGroups = [];
+let systemPermissions = [];
+let activeGroupFilter = null;
+
+async function loadSystemPermissions() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/permissions`);
+        if (res.ok) {
+            systemPermissions = await res.json();
+        }
+    } catch (err) {
+        console.warn('Failed to load permissions list:', err);
+    }
+    if (!Array.isArray(systemPermissions) || systemPermissions.length === 0) {
+        systemPermissions = [
+            { id: 'view_finances', name: 'Finanzübersicht & Historie einsehen', description: 'Erlaubt die Einsicht in die Kassenstände, Historie und Berichte' },
+            { id: 'manage_finances', name: 'Finanzen verwalten & buchen', description: 'Erlaubt das Erfassen, Bearbeiten und Löschen von Zahlungen, Spenden und Ausgaben' },
+            { id: 'manage_members', name: 'Mitglieder verwalten', description: 'Erlaubt das Anlegen und Bearbeiten von Mitgliedern und deren Status' },
+            { id: 'manage_system', name: 'Systemeinstellungen verwalten', description: 'Erlaubt das Konfigurieren von Systemparametern, Logos und Mailserver' },
+            { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt die Nutzung des integrierten KI-Assistenten' }
+        ];
+    }
+}
 
 async function loadSystemGroups() {
     if (!isSuperAdminUser()) return;
     try {
+        await loadSystemPermissions();
         const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`);
         if (res.ok) {
             systemGroups = await res.json();
             renderSystemGroups();
+            renderAccountsTab();
         }
     } catch (err) {
         console.error('Failed to load groups:', err);
@@ -399,81 +424,150 @@ async function loadSystemGroups() {
 }
 
 function renderSystemGroups() {
-    const container = document.getElementById('groups-list-container');
-    if (!container) return;
+    const listEl = document.getElementById('nc-groups-list');
+    if (!listEl) return;
 
-    if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; font-style: italic; padding: 6px 0;">${t('no_groups_created', 'Noch keine Gruppen erstellt. Klicken Sie auf \'Neue Gruppe\', um eine Berechtigungsgruppe anzulegen.')}</div>`;
+    const totalUsersCount = Array.isArray(users) ? users.length : 0;
+    const isAllActive = activeGroupFilter === null;
+
+    let itemsHtml = `
+        <div class="nc-group-item ${isAllActive ? 'active' : ''}" onclick="window.filterByGroup(null)">
+            <div class="nc-group-item-name">
+                <span>👥</span>
+                <span data-i18n="group_all_users">${t('group_all_users', 'Alle Benutzer')}</span>
+            </div>
+            <div class="nc-group-item-actions">
+                <span class="nc-group-count">${totalUsersCount}</span>
+            </div>
+        </div>
+    `;
+
+    if (Array.isArray(systemGroups) && systemGroups.length > 0) {
+        systemGroups.forEach(g => {
+            const isGroupActive = activeGroupFilter === g.id || activeGroupFilter === g.name;
+            const count = g.memberCount !== undefined ? g.memberCount : 0;
+            itemsHtml += `
+                <div class="nc-group-item ${isGroupActive ? 'active' : ''}" onclick="window.filterByGroup('${escapeHtml(g.id)}')">
+                    <div class="nc-group-item-name">
+                        <span>🏷️</span>
+                        <span>${escapeHtml(g.name)}</span>
+                    </div>
+                    <div class="nc-group-item-actions">
+                        <span class="nc-group-count">${count}</span>
+                        <button type="button" class="nc-group-action-btn" title="${t('modal_manage_group_title', 'Gruppe verwalten')}" onclick="event.stopPropagation(); window.openManageGroupModal('${escapeHtml(g.id)}');">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    listEl.innerHTML = itemsHtml;
+}
+
+window.filterByGroup = function(groupId) {
+    activeGroupFilter = groupId;
+    renderSystemGroups();
+    renderAccountsTab();
+};
+
+window.clearGroupFilter = function() {
+    activeGroupFilter = null;
+    renderSystemGroups();
+    renderAccountsTab();
+};
+
+window.submitQuickAddGroup = async function() {
+    const input = document.getElementById('nc-new-group-name');
+    if (!input) return;
+    const name = input.value.trim();
+    if (!name) return;
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, permissions: [] })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Fehler beim Erstellen der Gruppe');
+        }
+        input.value = '';
+        showToast(t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
+        await loadSystemGroups();
+        await reloadUsersData();
+    } catch (err) {
+        alert(err.message || 'Fehler beim Erstellen der Gruppe');
+    }
+};
+
+window.openCreateGroupModal = function() {
+    document.getElementById('manage-group-id').value = '';
+    document.getElementById('manage-group-name').value = '';
+    document.getElementById('manage-group-modal-title').textContent = t('modal_create_group_title', 'Neue Gruppe erstellen');
+    const deleteBtn = document.getElementById('btn-delete-group');
+    if (deleteBtn) deleteBtn.style.display = 'none';
+
+    renderGroupPermissionsChecklist([]);
+    openModal('manage-group-modal');
+};
+
+window.openCreateGroupFromAssignModal = function() {
+    closeModal('assign-group-modal');
+    setTimeout(() => {
+        window.openCreateGroupModal();
+    }, 60);
+};
+
+window.openManageGroupModal = function(groupId) {
+    const group = systemGroups.find(g => g.id === groupId);
+    if (!group) return;
+
+    document.getElementById('manage-group-id').value = group.id;
+    document.getElementById('manage-group-name').value = group.name;
+    document.getElementById('manage-group-modal-title').textContent = t('modal_manage_group_title', 'Gruppe verwalten');
+    const deleteBtn = document.getElementById('btn-delete-group');
+    if (deleteBtn) deleteBtn.style.display = 'inline-block';
+
+    renderGroupPermissionsChecklist(group.permissions || []);
+    openModal('manage-group-modal');
+};
+
+function renderGroupPermissionsChecklist(activePermissions = []) {
+    const list = document.getElementById('manage-group-permissions-list');
+    if (!list) return;
+
+    if (!Array.isArray(systemPermissions) || systemPermissions.length === 0) {
+        list.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem;">Keine Berechtigungs-Definitionen gefunden.</div>`;
         return;
     }
 
-    container.innerHTML = systemGroups.map(g => {
-        const perms = Array.isArray(g.permissions) ? g.permissions : [];
-        const hasManage = perms.includes('manage_finances');
-        const hasView = perms.includes('view_finances');
-        
-        let permBadges = [];
-        if (hasManage) {
-            permBadges.push(`<span class="nc-badge-group" style="background: rgba(16, 185, 129, 0.12); color: #059669; border-color: rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 2px 6px;">🛠️ ${t('perm_manage_finances_title', 'Finanzen verwalten')}</span>`);
-        } else if (hasView) {
-            permBadges.push(`<span class="nc-badge-group" style="background: rgba(59, 130, 246, 0.12); color: #2563eb; border-color: rgba(59, 130, 246, 0.3); font-size: 0.72rem; padding: 2px 6px;">👁️ ${t('perm_view_finances_title', 'Finanzen einsehen')}</span>`);
-        } else {
-            permBadges.push(`<span class="nc-badge-group" style="font-size: 0.72rem; opacity: 0.7; padding: 2px 6px;">Keine Rechte</span>`);
-        }
-
+    list.innerHTML = systemPermissions.map(p => {
+        const isChecked = activePermissions.includes(p.id);
         return `
-            <div class="group-card" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 8px;">
-                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text);">${escapeHtml(g.name)}</div>
-                <div>${permBadges.join(' ')}</div>
-                <div style="font-size: 0.75rem; color: var(--text-secondary);">${g.memberCount || 0} ${t('label_members_count', 'Mitgl.')}</div>
-                <div style="display: flex; gap: 4px; margin-left: 4px;">
-                    <button class="nc-icon-btn" title="${t('modal_edit_group_title', 'Bearbeiten')}" onclick="window.openEditGroupModal('${escapeHtml(g.id)}')" style="width: 26px; height: 26px;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    </button>
-                    <button class="nc-icon-btn danger" title="${t('btn_delete', 'Löschen')}" onclick="window.deleteGroupRecord('${escapeHtml(g.id)}')" style="width: 26px; height: 26px;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
+            <label class="nc-permission-item">
+                <input type="checkbox" class="group-permission-cb" value="${escapeHtml(p.id)}" ${isChecked ? 'checked' : ''}>
+                <div class="nc-permission-info">
+                    <span class="nc-permission-name">${escapeHtml(p.name)}</span>
+                    <span class="nc-permission-desc">${escapeHtml(p.description || '')}</span>
                 </div>
-            </div>
+            </label>
         `;
     }).join('');
 }
 
-window.openCreateGroupModal = () => {
-    document.getElementById('group-modal-id').value = '';
-    document.getElementById('group-modal-name').value = '';
-    document.getElementById('group-perm-manage-finances').checked = false;
-    document.getElementById('group-perm-view-finances').checked = false;
-    document.getElementById('create-group-modal-title').textContent = t('modal_create_group_title', 'Neue Gruppe erstellen');
-    openModal('create-group-modal');
-};
-
-window.openEditGroupModal = (groupId) => {
-    const group = systemGroups.find(g => g.id === groupId);
-    if (!group) return;
-    document.getElementById('group-modal-id').value = group.id;
-    document.getElementById('group-modal-name').value = group.name;
-    const perms = Array.isArray(group.permissions) ? group.permissions : [];
-    document.getElementById('group-perm-manage-finances').checked = perms.includes('manage_finances');
-    document.getElementById('group-perm-view-finances').checked = perms.includes('view_finances') || perms.includes('manage_finances');
-    document.getElementById('create-group-modal-title').textContent = t('modal_edit_group_title', 'Gruppe bearbeiten');
-    openModal('create-group-modal');
-};
-
-window.submitGroupForm = async () => {
-    const id = document.getElementById('group-modal-id').value;
-    const name = document.getElementById('group-modal-name').value.trim();
-    if (!name) return;
-
-    const manageFinances = document.getElementById('group-perm-manage-finances').checked;
-    const viewFinances = document.getElementById('group-perm-view-finances').checked;
-    const permissions = [];
-    if (manageFinances) {
-        permissions.push('manage_finances');
-        permissions.push('view_finances');
-    } else if (viewFinances) {
-        permissions.push('view_finances');
+window.submitSaveGroup = async function() {
+    const id = document.getElementById('manage-group-id').value;
+    const name = document.getElementById('manage-group-name').value.trim();
+    if (!name) {
+        alert(t('alert_fill_fields', 'Bitte Gruppennamen eingeben.'));
+        return;
     }
+
+    const checkboxes = document.querySelectorAll('#manage-group-permissions-list .group-permission-cb');
+    const permissions = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
 
     try {
         const url = id ? `${config.apiBaseUrl}/admin/groups/${id}` : `${config.apiBaseUrl}/admin/groups`;
@@ -483,64 +577,82 @@ window.submitGroupForm = async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, permissions })
         });
+
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || 'Fehler beim Speichern der Gruppe');
         }
-        closeModal('create-group-modal');
-        showToast(t('saved_success', 'Gruppe gespeichert.'), 'success');
+
+        closeModal('manage-group-modal');
+        showToast(id ? t('toast_group_updated', 'Gruppe erfolgreich aktualisiert') : t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
         await loadSystemGroups();
         await reloadUsersData();
         await refreshCurrentUser();
     } catch (err) {
-        showToast(err.message, 'error');
+        console.error('Fehler beim Speichern der Gruppe:', err);
+        alert(err.message || 'Fehler beim Speichern der Gruppe');
     }
 };
 
-window.deleteGroupRecord = async (groupId) => {
-    if (!confirm(t('confirm_delete_group', 'Möchten Sie diese Gruppe wirklich löschen? Benutzer verlieren die zugewiesenen Rechte dieser Gruppe.'))) return;
+window.deleteCurrentGroup = async function() {
+    const id = document.getElementById('manage-group-id').value;
+    if (!id) return;
+
+    if (!confirm(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) {
+        return;
+    }
+
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups/${groupId}`, {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups/${id}`, {
             method: 'DELETE'
         });
+
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || 'Fehler beim Löschen der Gruppe');
         }
-        showToast(t('group_deleted', 'Gruppe gelöscht.'), 'success');
+
+        if (activeGroupFilter === id) {
+            activeGroupFilter = null;
+        }
+
+        closeModal('manage-group-modal');
+        showToast(t('toast_group_deleted', 'Gruppe erfolgreich gelöscht'), 'success');
         await loadSystemGroups();
         await reloadUsersData();
         await refreshCurrentUser();
     } catch (err) {
-        showToast(err.message, 'error');
+        console.error('Fehler beim Löschen der Gruppe:', err);
+        alert(err.message || 'Fehler beim Löschen der Gruppe');
     }
 };
 
-window.openAssignGroupModal = (uid) => {
+window.openAssignGroupModal = function(uid) {
     const user = users.find(u => u.uid === uid);
     if (!user) return;
-    document.getElementById('assign-group-user-uid').value = uid;
-    const displayName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
-    document.getElementById('assign-group-user-display').textContent = `${t('label_user', 'Benutzer')}: ${displayName}`;
 
-    const container = document.getElementById('assign-group-checkboxes-container');
-    if (!container) return;
+    document.getElementById('assign-group-uid').value = uid;
+    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Benutzer';
+    document.getElementById('assign-group-user-display').textContent = `${fullName} (${user.email || 'Kein Login'})`;
+
+    const list = document.getElementById('assign-group-checklist');
+    if (!list) return;
 
     if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; font-style: italic;">${t('no_groups_created', 'Noch keine Gruppen angelegt.')}</div>`;
+        list.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">Keine Gruppen vorhanden. Erstellen Sie zuerst eine Gruppe.</div>`;
     } else {
         const userGroupIds = Array.isArray(user.groups) ? user.groups : [];
-        container.innerHTML = systemGroups.map(g => {
+        list.innerHTML = systemGroups.map(g => {
             const isChecked = userGroupIds.includes(g.id) || userGroupIds.includes(g.name);
             const perms = Array.isArray(g.permissions) ? g.permissions : [];
-            const permText = perms.includes('manage_finances') ? '🛠️ Finanzen verwalten' : (perms.includes('view_finances') ? '👁️ Finanzen einsehen' : '');
+            const permSummary = perms.length > 0 ? `${perms.length} Berechtigungen` : 'Standard-Zugriff';
 
             return `
-                <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">
-                    <input type="checkbox" class="user-group-checkbox" value="${escapeHtml(g.id)}" ${isChecked ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
-                    <div style="flex: 1;">
-                        <span style="font-weight: 600; color: var(--text);">${escapeHtml(g.name)}</span>
-                        ${permText ? `<span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;">${permText}</span>` : ''}
+                <label class="nc-group-check-item">
+                    <input type="checkbox" class="user-group-assign-cb" value="${escapeHtml(g.id)}" ${isChecked ? 'checked' : ''}>
+                    <div class="nc-group-check-info">
+                        <span class="nc-group-check-name">${escapeHtml(g.name)}</span>
+                        <span class="nc-group-check-desc">${permSummary}</span>
                     </div>
                 </label>
             `;
@@ -550,11 +662,11 @@ window.openAssignGroupModal = (uid) => {
     openModal('assign-group-modal');
 };
 
-window.submitUserGroups = async () => {
-    const uid = document.getElementById('assign-group-user-uid').value;
+window.submitAssignGroups = async function() {
+    const uid = document.getElementById('assign-group-uid').value;
     if (!uid) return;
 
-    const checkboxes = document.querySelectorAll('#assign-group-checkboxes-container .user-group-checkbox');
+    const checkboxes = document.querySelectorAll('#assign-group-checklist .user-group-assign-cb');
     const selectedGroupIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
 
     try {
@@ -563,19 +675,28 @@ window.submitUserGroups = async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ groups: selectedGroupIds })
         });
+
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || 'Fehler beim Zuweisen der Gruppen');
         }
+
+        const localUser = users.find(u => u.uid === uid);
+        if (localUser) {
+            localUser.groups = selectedGroupIds;
+            localUser.groupObjects = selectedGroupIds.map(gid => systemGroups.find(g => g.id === gid || g.name === gid) || { id: gid, name: gid });
+        }
+
         closeModal('assign-group-modal');
-        showToast(t('saved_success', 'Gruppen aktualisiert.'), 'success');
-        await reloadUsersData();
+        showToast(t('toast_user_groups_updated', 'Benutzergruppen erfolgreich aktualisiert'), 'success');
         await loadSystemGroups();
+        await reloadUsersData();
         if (currentUser && currentUser.uid === uid) {
             await refreshCurrentUser();
         }
     } catch (err) {
-        showToast(err.message, 'error');
+        console.error('Fehler beim Zuweisen der Gruppen:', err);
+        alert(err.message || 'Fehler beim Zuweisen der Gruppen');
     }
 };
 
@@ -894,6 +1015,13 @@ window.switchTab = function(tabName, btn) {
         }
     } else if (tabName === 'user-overview') {
         if (typeof renderUserView === 'function') renderUserView();
+    } else if (tabName === 'super-admin-settings') {
+        if (typeof window.switchSysSettingsTab === 'function') {
+            window.switchSysSettingsTab(currentSysSettingsTab || 'accounts');
+        }
+        if (typeof loadSystemGroups === 'function') {
+            loadSystemGroups();
+        }
     }
 };
 
@@ -1029,8 +1157,10 @@ window.pendingExpenseFiles = [];
     }
 
     // Web History API integration
-    window._modalStack.push(id);
-    history.pushState({ isModal: true, modalId: id }, "");
+    if (!window._modalStack.includes(id)) {
+        window._modalStack.push(id);
+        history.pushState({ isModal: true, modalId: id }, "");
+    }
 
     // Store current focus on the modal instance itself to handle nesting
     modal._returnFocusTo = document.activeElement;
@@ -1065,12 +1195,6 @@ window.closeModal = (id, fromPopstate = false) => {
         if (!fromPopstate) {
             window._programmaticBacks = (window._programmaticBacks || 0) + 1;
             history.back();
-            // Fallback if history.back() does not trigger popstate
-            setTimeout(() => {
-                if (window._programmaticBacks > 0) {
-                    window._programmaticBacks--;
-                }
-            }, 200);
         }
     }
 
@@ -1133,11 +1257,6 @@ window.closeMultipleModals = (ids) => {
     if (programmaticBacksCount > 0) {
         window._programmaticBacks = (window._programmaticBacks || 0) + programmaticBacksCount;
         history.go(-programmaticBacksCount);
-        setTimeout(() => {
-            if (window._programmaticBacks > 0) {
-                window._programmaticBacks = Math.max(0, window._programmaticBacks - programmaticBacksCount);
-            }
-        }, 200);
     }
 
     // Re-show the previous modal in the stack if one exists
@@ -2016,8 +2135,11 @@ async function loadData(silent = false) {
         // Update nav bar visibility based on user privileges
         updateNavVisibility();
 
-        // Default to Home page (user-overview)
-        switchTab('user-overview');
+        // Default to Home page (user-overview) only if no tab is currently active
+        const hasActiveTab = document.querySelector('.tab-content.active');
+        if (!hasActiveTab) {
+            switchTab('user-overview');
+        }
 
         // Normalize people data
         people.forEach(person => preprocessPerson(person));
@@ -2054,55 +2176,48 @@ async function loadData(silent = false) {
 }
 
 async function updateActiveViews() {
+    renderUserView();
     const hasFinances = canViewFinances();
     const isSysAdmin = isSystemAdmin();
 
-    if (!hasFinances && !isSysAdmin) {
-        renderUserView();
-    } else {
-        if (hasFinances) {
-            renderPeople();
-            await renderStats();
-            renderAdminRequests();
-            renderUnlinkedUsers();
-        }
-        if (isSysAdmin) {
-            await loadSystemGroups();
-            renderSuperAdminUserManagement();
-        }
-        updateNavVisibility();
+    if (hasFinances) {
+        renderPeople();
+        await renderStats();
+        renderAdminRequests();
+        renderUnlinkedUsers();
     }
+    if (isSysAdmin) {
+        await loadSystemGroups();
+        renderSuperAdminUserManagement();
+    }
+    updateNavVisibility();
 }
 
 async function renderAll() {
+    renderUserView();
     const hasFinances = canViewFinances();
     const isSysAdmin = isSystemAdmin();
 
-    if (!hasFinances && !isSysAdmin) {
-        renderUserView();
-    } else {
-        if (hasFinances) {
-            renderPeople();
-            await renderStats();
-            renderAdminRequests();
-            renderUnlinkedUsers();
-        }
-        if (settings) {
-            if (document.getElementById('rate-vollverdiener')) document.getElementById('rate-vollverdiener').value = settings.vollverdiener || 0;
-            if (document.getElementById('rate-geringverdiener')) document.getElementById('rate-geringverdiener').value = settings.geringverdiener || 0;
-            if (document.getElementById('rate-keinverdiener')) document.getElementById('rate-keinverdiener').value = settings.keinverdiener || 0;
-            if (document.getElementById('report-start-date')) document.getElementById('report-start-date').value = settings.reportStartDate || '';
-        }
-
-        if (currentUser && document.getElementById('admin-email-notifications')) {
-            document.getElementById('admin-email-notifications').checked = !!currentUser.emailNotifications;
-        }
-        if (isSysAdmin) {
-            await loadSystemGroups();
-            await renderSuperAdminTools();
-        }
-        updateNavVisibility();
+    if (hasFinances) {
+        renderPeople();
+        await renderStats();
+        renderAdminRequests();
+        renderUnlinkedUsers();
     }
+    if (settings) {
+        if (document.getElementById('rate-vollverdiener')) document.getElementById('rate-vollverdiener').value = settings.vollverdiener || 0;
+        if (document.getElementById('rate-geringverdiener')) document.getElementById('rate-geringverdiener').value = settings.geringverdiener || 0;
+        if (document.getElementById('rate-keinverdiener')) document.getElementById('rate-keinverdiener').value = settings.keinverdiener || 0;
+    }
+
+    if (currentUser && document.getElementById('admin-email-notifications')) {
+        document.getElementById('admin-email-notifications').checked = !!currentUser.emailNotifications;
+    }
+    if (isSysAdmin) {
+        await loadSystemGroups();
+        await renderSuperAdminTools();
+    }
+    updateNavVisibility();
 }
 
 async function renderSuperAdminTools() {
@@ -2319,6 +2434,7 @@ window.switchSysSettingsTab = function(tabName) {
     });
 
     if (tabName === 'accounts') {
+        loadSystemGroups();
         renderAccountsTab();
     } else if (tabName === 'config') {
         if (!advancedConfigLoaded) loadAdvancedSystemConfig();
@@ -2343,15 +2459,39 @@ function renderAccountsTab() {
         return;
     }
 
+    const banner = document.getElementById('nc-active-group-banner');
+    const bannerName = document.getElementById('nc-active-group-name');
+    const bannerCount = document.getElementById('nc-active-group-count');
+
+    let activeGroupObj = null;
+    if (activeGroupFilter) {
+        activeGroupObj = systemGroups.find(g => g.id === activeGroupFilter || g.name === activeGroupFilter);
+    }
+
     const filtered = users
         .slice()
         .filter(u => {
+            if (activeGroupFilter) {
+                const userGroups = Array.isArray(u.groups) ? u.groups : [];
+                const inGroup = userGroups.includes(activeGroupFilter) || (activeGroupObj && userGroups.includes(activeGroupObj.name)) || (activeGroupObj && userGroups.includes(activeGroupObj.id));
+                if (!inGroup) return false;
+            }
             if (!accountsSearchQuery) return true;
             const fullName = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
             const email = (u.email || '').toLowerCase();
             return fullName.includes(accountsSearchQuery) || email.includes(accountsSearchQuery);
         })
         .sort((a, b) => `${a.firstName || ''} ${a.lastName || ''}`.localeCompare(`${b.firstName || ''} ${b.lastName || ''}`));
+
+    if (banner && bannerName && bannerCount) {
+        if (activeGroupObj) {
+            banner.style.display = 'flex';
+            bannerName.textContent = activeGroupObj.name;
+            bannerCount.textContent = `(${filtered.length} ${filtered.length === 1 ? 'Benutzer' : 'Benutzer'})`;
+        } else {
+            banner.style.display = 'none';
+        }
+    }
 
     if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine passenden Benutzer gefunden.</td></tr>`;
@@ -2377,8 +2517,8 @@ function renderAccountsTab() {
               }) : []);
 
         const groupBadges = userGroupObjs.length > 0
-            ? userGroupObjs.map(g => `<span class="nc-badge-group" style="cursor:pointer; margin: 2px;" onclick="window.openAssignGroupModal('${escapeHtml(u.uid)}')">${escapeHtml(g.name)}</span>`).join(' ')
-            : `<span class="nc-badge-group" style="cursor:pointer; opacity:0.6; border-style:dashed; margin: 2px;" onclick="window.openAssignGroupModal('${escapeHtml(u.uid)}')">+ ${t('modal_assign_group_title', 'Zuweisen')}</span>`;
+            ? userGroupObjs.map(g => `<span class="nc-badge-group" style="margin: 2px;">${escapeHtml(g.name)}</span>`).join(' ')
+            : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('modal_assign_group_title', 'Zuweisen')}</span>`;
 
         return `
             <tr data-uid="${escapeHtml(u.uid)}">
@@ -4917,7 +5057,7 @@ window.saveAiConfig = async () => {
 
 function updateAiNavVisibility() {
     const show = aiEnabled && (isSystemAdmin() || canViewFinances());
-    const bottomBtn = document.getElementById('admin-ai-nav-btn');
+    const bottomBtn = document.getElementById('admin-ai-nav-btn-bottom') || document.getElementById('admin-ai-nav-btn');
     const desktopBtn = document.getElementById('admin-ai-nav-btn-desktop');
     const spacer = document.getElementById('admin-nav-spacer');
     if (bottomBtn) bottomBtn.style.display = show ? '' : 'none';
@@ -5704,7 +5844,6 @@ window.saveSettings = async () => {
     settings.vollverdiener = parseFloat(document.getElementById('rate-vollverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
     settings.geringverdiener = parseFloat(document.getElementById('rate-geringverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
     settings.keinverdiener = parseFloat(document.getElementById('rate-keinverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    settings.reportStartDate = document.getElementById('report-start-date').value || null;
     settingsVersion++;
 
     const emailNotifications = document.getElementById('admin-email-notifications').checked;
@@ -6007,147 +6146,197 @@ window.attemptRegister = async () => {
 let currentRequestType = null;
 
 window.openUserRequestModal = (type) => {
-    currentRequestType = type;
+    currentRequestType = type || null;
     const container = document.getElementById('req-form-content');
     const title = document.getElementById('req-modal-title');
     const subtitle = document.getElementById('req-modal-subtitle');
     const badge = document.getElementById('req-modal-badge');
+    const submitBtn = document.getElementById('btn-submit-request');
+    const backBtn = document.getElementById('req-modal-back-btn');
 
     if(window.pendingReqExpenseFiles) {
         window.pendingReqExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
     }
     window.pendingReqExpenseFiles = [];
 
-    if(type === 'payment') {
+    if (!type) {
+        if (backBtn) backBtn.style.display = 'none';
+        if (submitBtn) submitBtn.style.display = 'none';
         if (badge) {
             badge.className = 'modal-icon-badge badge-donation';
-            badge.textContent = '💳';
+            badge.textContent = '📝';
         }
-        if (title) title.innerText = t('user_req_payment_title', "Zahlung melden");
-        if (subtitle) subtitle.innerText = t('user_req_payment_subtitle', "Beitrag & Einzahlung an Admin melden");
+        if (title) title.innerText = t('user_request_modal_title', "Anfrage");
+        if (subtitle) subtitle.innerText = t('user_req_select_subtitle', "Wähle die Art der Anfrage");
 
         container.innerHTML = `
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>💶</span> <span>${t('modal_section_amount', 'Zahlungsbetrag')}</span>
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
-                    <div class="hero-amount-wrapper">
-                        <span class="hero-amount-prefix">€</span>
-                        <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
+                <button type="button" onclick="openUserRequestModal('payment')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; cursor: pointer;">
+                    <div class="fab-menu-icon" style="background: rgba(6, 182, 212, 0.15); color: var(--primary); font-size: 1.25rem;">
+                        💳
                     </div>
-                </div>
-            </div>
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>⚙️</span> <span>${t('modal_section_payment_type', 'Zahlungsart & Datum')}</span>
-                </div>
-                <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
-                    <label class="switch">
-                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
-                        <span class="slider"></span>
-                    </label>
-                    <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer; font-size:0.9rem;">${t('modal_standing_order', 'Dauerauftrag')}</label>
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Datum')}</label>
-                    <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                </div>
-            </div>
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>📝</span> <span>${t('modal_note', 'Notiz / Verwendungszweck')}</span>
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="req-note">${t('req_note_label', 'Notiz (Optional)')}</label>
-                    <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
-                </div>
-            </div>
-        `;
-    } else if(type === 'status') {
-        if (badge) {
-            badge.className = 'modal-icon-badge badge-person';
-            badge.textContent = '⚡';
-        }
-        if (title) title.innerText = t('user_req_status_title', "Statusänderung beantragen");
-        if (subtitle) subtitle.innerText = t('user_req_status_subtitle', "Neuen Mitgliedsstatus anfragen");
+                    <div class="fab-menu-text">
+                        <div style="color: var(--text); font-weight: 700;">${t('user_req_type_payment', 'Einzahlung / Zahlung')}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.85rem;">${t('user_req_type_payment_desc', 'Beitrag oder Einzahlung melden.')}</div>
+                    </div>
+                </button>
 
-        container.innerHTML = `
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>💼</span> <span>${t('modal_new_status', 'Neuer Status')}</span>
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="req-status">${t('modal_new_status', 'Neuer Status')}</label>
-                    <select id="req-status" class="form-select">
-                        <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
-                        <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
-                        <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
-                        <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
-                    </select>
-                </div>
-            </div>
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>📅</span> <span>${t('modal_valid_from', 'Gültigkeitsdatum')}</span>
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="req-date">${t('req_valid_from', 'Gültig ab')}</label>
-                    <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
-                        ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
+                <button type="button" onclick="openUserRequestModal('status')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; cursor: pointer;">
+                    <div class="fab-menu-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; font-size: 1.25rem;">
+                        ⚡
                     </div>
-                </div>
-            </div>
-        `;
-    } else if(type === 'expense') {
-        if (badge) {
-            badge.className = 'modal-icon-badge badge-expense';
-            badge.textContent = '🧾';
-        }
-        if (title) title.innerText = t('user_req_expense_title', "Ausgabe melden");
-        if (subtitle) subtitle.innerText = t('user_req_expense_subtitle', "Ausgabe zur Erstattung einreichen");
+                    <div class="fab-menu-text">
+                        <div style="color: var(--text); font-weight: 700;">${t('user_req_type_status', 'Statuswechsel')}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.85rem;">${t('user_req_type_status_desc', 'Änderung des Mitgliedsstatus beantragen.')}</div>
+                    </div>
+                </button>
 
-        container.innerHTML = `
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>💶</span> <span>${t('modal_section_amount', 'Ausgabenbetrag')}</span>
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
-                    <div class="hero-amount-wrapper">
-                        <span class="hero-amount-prefix">€</span>
-                        <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+                <button type="button" onclick="openUserRequestModal('expense')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; cursor: pointer;">
+                    <div class="fab-menu-icon" style="background: rgba(239, 68, 68, 0.15); color: var(--danger); font-size: 1.25rem;">
+                        🧾
                     </div>
-                </div>
-            </div>
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>ℹ️</span> <span>${t('modal_section_info', 'Angaben zur Ausgabe')}</span>
-                </div>
-                <div class="form-group" style="margin:0 0 10px 0;">
-                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
-                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
-                </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
-                    <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                </div>
-            </div>
-            <div class="modal-section-card">
-                <div class="modal-section-header">
-                    <span>📎</span> <span>${t('modal_expense_receipt', 'Beleg anhängen')}</span>
-                </div>
-                <div class="file-upload-dropzone">
-                    <div class="file-upload-icon">📁</div>
-                    <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
-                    <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
-                    <input type="file" id="req-receipt" accept="image/*,.heic,.heif,.pdf" multiple onchange="window.handleReqReceiptFiles(this.files)">
-                </div>
-                <div id="req-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
+                    <div class="fab-menu-text">
+                        <div style="color: var(--text); font-weight: 700;">${t('user_req_type_expense', 'Ausgabe')}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.85rem;">${t('user_req_type_expense_desc', 'Ausgabe zur Erstattung einreichen (mit Beleg).')}</div>
+                    </div>
+                </button>
             </div>
         `;
+    } else {
+        if (backBtn) backBtn.style.display = 'inline-flex';
+        if (submitBtn) submitBtn.style.display = 'block';
+
+        if(type === 'payment') {
+            if (badge) {
+                badge.className = 'modal-icon-badge badge-donation';
+                badge.textContent = '💳';
+            }
+            if (title) title.innerText = t('user_req_payment_title', "Zahlung melden");
+            if (subtitle) subtitle.innerText = t('user_req_payment_subtitle', "Beitrag & Einzahlung an Admin melden");
+
+            container.innerHTML = `
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>💶</span> <span>${t('modal_section_amount', 'Zahlungsbetrag')}</span>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
+                        <div class="hero-amount-wrapper">
+                            <span class="hero-amount-prefix">€</span>
+                            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>⚙️</span> <span>${t('modal_section_payment_type', 'Zahlungsart & Datum')}</span>
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                        <label class="switch">
+                            <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
+                            <span class="slider"></span>
+                        </label>
+                        <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer; font-size:0.9rem;">${t('modal_standing_order', 'Dauerauftrag')}</label>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                        <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                </div>
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>📝</span> <span>${t('modal_note', 'Notiz / Verwendungszweck')}</span>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="req-note">${t('req_note_label', 'Notiz (Optional)')}</label>
+                        <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
+                    </div>
+                </div>
+            `;
+        } else if(type === 'status') {
+            if (badge) {
+                badge.className = 'modal-icon-badge badge-person';
+                badge.textContent = '⚡';
+            }
+            if (title) title.innerText = t('user_req_status_title', "Statusänderung beantragen");
+            if (subtitle) subtitle.innerText = t('user_req_status_subtitle', "Neuen Mitgliedsstatus anfragen");
+
+            container.innerHTML = `
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>💼</span> <span>${t('modal_new_status', 'Neuer Status')}</span>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="req-status">${t('modal_new_status', 'Neuer Status')}</label>
+                        <select id="req-status" class="form-select">
+                            <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
+                            <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
+                            <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
+                            <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>📅</span> <span>${t('modal_valid_from', 'Gültigkeitsdatum')}</span>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="req-date">${t('req_valid_from', 'Gültig ab')}</label>
+                        <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+                            ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if(type === 'expense') {
+            if (badge) {
+                badge.className = 'modal-icon-badge badge-expense';
+                badge.textContent = '🧾';
+            }
+            if (title) title.innerText = t('user_req_expense_title', "Ausgabe melden");
+            if (subtitle) subtitle.innerText = t('user_req_expense_subtitle', "Ausgabe zur Erstattung einreichen");
+
+            container.innerHTML = `
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>💶</span> <span>${t('modal_section_amount', 'Ausgabenbetrag')}</span>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
+                        <div class="hero-amount-wrapper">
+                            <span class="hero-amount-prefix">€</span>
+                            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>ℹ️</span> <span>${t('modal_section_info', 'Angaben zur Ausgabe')}</span>
+                    </div>
+                    <div class="form-group" style="margin:0 0 10px 0;">
+                        <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
+                        <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                        <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                </div>
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>📎</span> <span>${t('modal_expense_receipt', 'Beleg anhängen')}</span>
+                    </div>
+                    <div class="file-upload-dropzone">
+                        <div class="file-upload-icon">📁</div>
+                        <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
+                        <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
+                        <input type="file" id="req-receipt" accept="image/*,.heic,.heif,.pdf" multiple onchange="window.handleReqReceiptFiles(this.files)">
+                    </div>
+                    <div id="req-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
+                </div>
+            `;
+        }
     }
 
     openModal('user-request-modal');
