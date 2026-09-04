@@ -285,6 +285,7 @@
   "profile_crop_title": "Crop Profile Picture",
   "profile_crop_desc": "Drag and zoom image to choose crop area",
   "login_subtitle": "Sign in to continue",
+  "register_subtitle": "Create a new account",
   "login_tab": "Log In",
   "register_tab": "Register",
   "btn_login": "Log In",

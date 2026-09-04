@@ -1510,9 +1510,15 @@
 <script>
     // Optimistic UI: Check if we expect to be logged in to avoid flash of login screen
     if (localStorage.getItem('agora-is-logged-in') === 'true' || localStorage.getItem('nova-is-logged-in') === 'true') {
-        document.getElementById('login-modal').classList.remove('show');
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'flex';
+        var loginModal = document.getElementById('login-modal');
+        if (loginModal) loginModal.classList.remove('show');
+        var loader = document.getElementById('loading-overlay');
+        if (loader) loader.style.display = 'flex';
+    } else {
+        var loginModal = document.getElementById('login-modal');
+        if (loginModal) loginModal.classList.add('show');
+        var loader = document.getElementById('loading-overlay');
+        if (loader) loader.style.display = 'none';
     }
 </script>
 

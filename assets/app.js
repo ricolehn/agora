@@ -328,7 +328,11 @@ window.showLogin = () => {
     document.getElementById('register-form').style.display = 'none';
     document.getElementById('btn-show-login').classList.add('active');
     document.getElementById('btn-show-register').classList.remove('active');
-    document.getElementById('auth-subtitle').innerText = 'Melden Sie sich an, um fortzufahren';
+    const authSub = document.getElementById('auth-subtitle');
+    if (authSub) {
+        authSub.setAttribute('data-i18n', 'login_subtitle');
+        authSub.innerText = t('login_subtitle', 'Melden Sie sich an, um fortzufahren');
+    }
     document.getElementById('auth-error').style.display = 'none';
 };
 
@@ -337,7 +341,11 @@ window.showRegister = () => {
     document.getElementById('register-form').style.display = 'block';
     document.getElementById('btn-show-register').classList.add('active');
     document.getElementById('btn-show-login').classList.remove('active');
-    document.getElementById('auth-subtitle').innerText = 'Erstellen Sie ein neues Konto';
+    const authSub = document.getElementById('auth-subtitle');
+    if (authSub) {
+        authSub.setAttribute('data-i18n', 'register_subtitle');
+        authSub.innerText = t('register_subtitle', 'Erstellen Sie ein neues Konto');
+    }
     document.getElementById('auth-error').style.display = 'none';
     setButtonLoading('btn-login', false, null); // Reset login button state
 };
@@ -2251,6 +2259,8 @@ function renderAdminRequests() {
         return;
     }
 
+    const statusLabels = getStatusLabels(false);
+
     const grouped = pending.reduce((acc, req) => {
         const key = req.personName || 'Unbekannt';
         if (!acc[key]) acc[key] = [];
@@ -2271,7 +2281,7 @@ function renderAdminRequests() {
         } else if (req.type === 'status') {
             typeLabel = 'Statusänderung';
             typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-            details = `Neu: <strong>${escapeHtml(req.data.newStatus)}</strong> ab ${formatDateFast(req.data.date)}`;
+            details = `Neu: <strong>${escapeHtml(statusLabels[req.data.newStatus] || req.data.newStatus)}</strong> ab ${formatDateFast(req.data.date)}`;
         } else if (req.type === 'expense') {
             typeLabel = 'Ausgabe';
             typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 14h-8"/><path d="M16 18h-8"/><path d="M16 10h-8"/></svg>';
@@ -3201,6 +3211,7 @@ function renderUserView() {
     const financeStatusCard = document.getElementById('user-finances-status-card');
     const paymentHistory = document.getElementById('user-payment-history');
     const reqList = document.getElementById('user-requests-list');
+    const statusLabels = getStatusLabels(false);
 
     if (currentUser && currentUser.pays === false) {
         const nonPayingHtml = `
@@ -3253,8 +3264,6 @@ function renderUserView() {
 
         // Format date to show only month and year
         let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
-
-        const statusLabels = getStatusLabels(false);
 
         let statusClass = 'user-status-ok';
         let statusColor = 'var(--success)';
@@ -6029,17 +6038,18 @@ onAuthStateChanged(auth, async (user) => {
         loadData();
         loadCurrentProfilePicture();
     } else {
-        // Hide spinner if we are not logged in (e.g. session expired)
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'none';
-
         localStorage.removeItem('agora-is-logged-in');
         localStorage.removeItem('nova-is-logged-in');
         isAuthenticated = false;
         advancedConfigLoaded = false;
         advancedConfigAppName = null;
         currentUser = null;
-        document.getElementById('login-modal').classList.add('show');
+
+        const loginModal = document.getElementById('login-modal');
+        if (loginModal) loginModal.classList.add('show');
+        const loader = document.getElementById('loading-overlay');
+        if(loader) loader.style.display = 'none';
+
         showLogin();
     }
 });

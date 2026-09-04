@@ -286,6 +286,7 @@
   "profile_crop_title": "Profilbild zuschneiden",
   "profile_crop_desc": "Bild verschieben und zoomen, um den Bildausschnitt zu wählen",
   "login_subtitle": "Melden Sie sich an, um fortzufahren",
+  "register_subtitle": "Erstellen Sie ein neues Konto",
   "login_tab": "Login",
   "register_tab": "Registrieren",
   "btn_login": "Anmelden",
