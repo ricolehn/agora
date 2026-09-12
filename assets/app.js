@@ -179,9 +179,9 @@ function translateStatusText(text) {
     if (!text) return '';
     const cleanText = text.trim();
     if (cleanText === 'Dauerauftrag läuft' || cleanText === 'Dauerauftrag läuft für den Beitrag' || cleanText === 'Dauerauftrag aktiv') {
-        return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft'));
+        return t('status_standing_order_active', 'Dauerauftrag läuft');
     }
-    if (cleanText === 'Alles in Ordnung') return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft'));
+    if (cleanText === 'Alles in Ordnung') return t('status_all_ok', 'Alles in Ordnung');
     if (cleanText === 'Zahlung überfällig') return t('status_payment_overdue', 'Zahlung überfällig');
     if (cleanText === 'Keine Zahlungen') return t('status_no_payments', 'Keine Zahlungen');
     if (cleanText === 'läuft diesen Monat ab') return t('status_expires_this_month', 'läuft diesen Monat ab');
@@ -211,6 +211,7 @@ function translateStatusText(text) {
     
     return text;
 }
+window.translateStatusText = translateStatusText;
 
 function getStatusLabels(withEmoji = false) {
     const raw = {
@@ -278,6 +279,7 @@ window.changeAppLanguage = async function(lang) {
 };
 
 // Initialize immediately
+window.loadLanguage = loadLanguage;
 loadLanguage(currentLang);
 
 let sseConnection = null;
