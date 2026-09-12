@@ -3658,25 +3658,43 @@ details[open] .ai-thinking-summary::before {
 }
 
 .mentor-card-avatar {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
     border-radius: 50%;
+    box-sizing: border-box;
+    padding: 2.5px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mentor-card-avatar-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-alt);
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 800;
-    font-size: 1.1rem;
-    color: white;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    position: relative;
-    overflow: hidden;
+    font-size: 1.05rem;
+    color: var(--text);
 }
-.mentor-card-avatar img {
+
+.mentor-card-avatar-inner img {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
+    background: var(--surface);
 }
 
 .mentor-card-title {
@@ -3716,6 +3734,9 @@ details[open] .ai-thinking-summary::before {
     padding-top: 4px;
     gap: 10px;
 }
+.mentor-card-footer button {
+    margin-left: auto;
+}
 
 .mentor-capacity {
     font-size: 0.8rem;
@@ -3724,6 +3745,18 @@ details[open] .ai-thinking-summary::before {
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+.mentor-badge-full {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    margin-left: 6px;
 }
 
 /* Chat & Threads Layout */
@@ -3768,19 +3801,51 @@ details[open] .ai-thinking-summary::before {
 .mentoring-thread-item {
     padding: 14px 16px;
     border-bottom: 1px solid var(--border-light);
+    border-left: 4px solid transparent;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
     display: flex;
     flex-direction: column;
     gap: 4px;
+    position: relative;
 }
+
 .mentoring-thread-item:hover {
     background: rgba(168, 85, 247, 0.04);
 }
+
+/* Gelesen / Ungelesen Indikator als Streifen an der Seite */
+.mentoring-thread-item.unread {
+    border-left: 4px solid #a855f7 !important;
+    background: rgba(168, 85, 247, 0.06);
+}
+
+.mentoring-thread-item.unread .mentoring-thread-name {
+    font-weight: 800;
+    color: var(--text);
+}
+
+.mentoring-thread-item.unread .mentoring-thread-snippet {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.mentoring-thread-item.read {
+    border-left: 4px solid transparent !important;
+}
+
 .mentoring-thread-item.active {
-    background: var(--surface);
-    border-left: 4px solid #a855f7;
+    background: rgba(168, 85, 247, 0.1) !important;
     box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+[data-theme="dark"] .mentoring-thread-item.unread {
+    border-left: 4px solid #c084fc !important;
+    background: rgba(168, 85, 247, 0.12);
+}
+
+[data-theme="dark"] .mentoring-thread-item.active {
+    background: rgba(168, 85, 247, 0.18) !important;
 }
 
 .mentoring-thread-name {
@@ -3818,7 +3883,7 @@ details[open] .ai-thinking-summary::before {
 }
 
 .mentoring-back-btn {
-    display: none;
+    display: none; /* Desktop 2-pane layout keeps sidebar visible */
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
@@ -4232,4 +4297,232 @@ details[open] .ai-thinking-summary::before {
         justify-content: center;
         height: 42px;
     }
+
+    /* Mobile Full-Screen Foreground Chat Window */
+    body.mentoring-mobile-chat-open {
+        overflow: hidden !important;
+    }
+
+    body.mentoring-mobile-chat-open .header {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        height: 60px !important;
+        padding: 12px 16px !important;
+        margin: 0 !important;
+        background: var(--surface) !important;
+        border-bottom: 1px solid var(--border-light) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        z-index: 1005 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
+
+    body.mentoring-mobile-chat-open .bottom-nav {
+        z-index: 1005 !important;
+    }
+
+    body.mentoring-mobile-chat-open .mentoring-threads-layout.in-chat .mentoring-chat-pane {
+        position: fixed !important;
+        top: 60px !important;
+        bottom: var(--mobile-bottom-nav-offset) !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100vw !important;
+        height: calc(100dvh - 60px - var(--mobile-bottom-nav-offset)) !important;
+        z-index: 1002 !important;
+        background: var(--bg) !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+    }
+
+    body.mentoring-mobile-chat-open .mentoring-chat-header {
+        flex-shrink: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border-light);
+        padding: 10px 14px;
+        min-height: 52px;
+    }
+
+    body.mentoring-mobile-chat-open .mentoring-chat-messages {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 14px 14px 8px;
+    }
+
+    body.mentoring-mobile-chat-open .mentoring-chat-input-bar {
+        flex-shrink: 0;
+        background: var(--surface);
+        border-top: 1px solid var(--border-light);
+        padding: 8px 12px;
+    }
+
+    body.mentoring-mobile-chat-open .mentoring-chat-closed-bar {
+        flex-shrink: 0;
+        background: var(--surface);
+        border-top: 1px solid var(--border-light);
+        padding: 10px 14px;
+    }
+}
+
+/* ==========================================================
+   Home Page Mentoring Card (Unread Messages & Teaser)
+   ========================================================== */
+.home-mentoring-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px 18px;
+    cursor: pointer;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    margin-top: 16px;
+}
+
+.home-mentoring-card:hover {
+    border-color: rgba(168, 85, 247, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(168, 85, 247, 0.16);
+}
+
+.home-mentoring-card-unread {
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    background: linear-gradient(135deg, var(--surface) 0%, rgba(168, 85, 247, 0.06) 100%);
+    box-shadow: 0 4px 18px -3px rgba(168, 85, 247, 0.14);
+}
+
+[data-theme="dark"] .home-mentoring-card-unread {
+    background: linear-gradient(135deg, var(--surface) 0%, rgba(168, 85, 247, 0.12) 100%);
+    border-color: rgba(168, 85, 247, 0.35);
+}
+
+.home-mentoring-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.home-mentoring-sender-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.home-mentoring-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #a855f7;
+    box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.7);
+    animation: mentoringPulse 2s infinite;
+    flex-shrink: 0;
+}
+
+@keyframes mentoringPulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.7);
+    }
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 8px rgba(168, 85, 247, 0);
+    }
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(168, 85, 247, 0);
+    }
+}
+
+.home-mentoring-sender-name {
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.home-mentoring-role-pill {
+    font-size: 0.72rem;
+    color: #9333ea;
+    font-weight: 700;
+    background: rgba(168, 85, 247, 0.12);
+    padding: 2px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] .home-mentoring-role-pill {
+    color: #c084fc;
+    background: rgba(168, 85, 247, 0.22);
+}
+
+.home-mentoring-time {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.home-mentoring-snippet-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.home-mentoring-snippet {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.45;
+    word-break: break-word;
+    font-style: italic;
+    flex: 1;
+}
+
+.home-mentoring-arrow {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(168, 85, 247, 0.1);
+    color: #a855f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.home-mentoring-card:hover .home-mentoring-arrow {
+    transform: translateX(3px);
+    background: #a855f7;
+    color: #fff;
+}
+
+.home-mentoring-extra-bar {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(168, 85, 247, 0.12);
+    font-size: 0.78rem;
+    color: var(--text-secondary);
 }

@@ -1437,7 +1437,7 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
   const canManageFinances = permissions.includes('manage_finances');
   const canViewFinances = canManageFinances || permissions.includes('view_finances');
   const canAccessAi = permissions.includes('access_ai');
-  const canParticipateMentoring = permissions.includes('mentoring_participate') || permissions.includes('manage_mentoring');
+  const canParticipateMentoring = true;
   const canManageMentoring = permissions.includes('manage_mentoring');
   return {
     permissions,
@@ -1511,7 +1511,6 @@ const SYSTEM_PERMISSIONS = [
   { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
   { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
   { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-  { id: 'mentoring_participate', name: 'Mentorteilnahme', description: 'Berechtigt dazu, sich als Mentor zu bewerben oder freigegebene Mentoren vertraulich zu kontaktieren' },
   { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' }
 ];
 
@@ -1575,8 +1574,15 @@ async function deleteMentorRecord(appConfig, id) {
 }
 
 // Mentoring Threads
-async function listMentoringThreadsForUser(appConfig, userId) {
-  const filter = userId ? `${pbFilterEquals('mentor', userId)} || ${pbFilterEquals('mentee', userId)}` : '';
+async function listMentoringThreadsForUser(appConfig, userIds) {
+  const ids = Array.isArray(userIds) ? userIds : [userIds].filter(Boolean);
+  if (ids.length === 0) return [];
+  const parts = [];
+  ids.forEach(id => {
+    parts.push(pbFilterEquals('mentor', id));
+    parts.push(pbFilterEquals('mentee', id));
+  });
+  const filter = parts.join(' || ');
   const records = await listAllRecords('mentoring_threads', filter, appConfig, '');
   return records.sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
 }

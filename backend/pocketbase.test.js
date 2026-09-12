@@ -324,7 +324,7 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
   assert.equal(resEmpty.canManageFinances, false);
   assert.equal(resEmpty.canViewFinances, false);
   assert.equal(resEmpty.canAccessAi, false);
-  assert.equal(resEmpty.canParticipateMentoring, false);
+  assert.equal(resEmpty.canParticipateMentoring, true);
   assert.equal(resEmpty.canManageMentoring, false);
 
   const resView = resolveUserPermissions(['g1'], allGroups);
@@ -369,9 +369,9 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
 test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
   const { SYSTEM_PERMISSIONS } = require('./pocketbase');
   assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
-  assert.equal(SYSTEM_PERMISSIONS.length, 5);
+  assert.equal(SYSTEM_PERMISSIONS.length, 4);
   const ids = SYSTEM_PERMISSIONS.map(p => p.id);
-  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'mentoring_participate', 'manage_mentoring']);
+  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'manage_mentoring']);
 });
 
 

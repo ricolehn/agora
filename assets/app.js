@@ -165,14 +165,23 @@ async function loadLanguage(lang) {
     }
 }
 
-function t(key, fallback = '') {
-    return translations[key] || fallback;
+function t(key, fallback = '', params = null) {
+    let str = translations[key] !== undefined ? translations[key] : fallback;
+    if (params && typeof params === 'object') {
+        for (const [k, v] of Object.entries(params)) {
+            str = str.replaceAll(`{${k}}`, v);
+        }
+    }
+    return str;
 }
 
 function translateStatusText(text) {
     if (!text) return '';
     const cleanText = text.trim();
-    if (cleanText === 'Alles in Ordnung') return t('status_all_ok', 'Alles in Ordnung');
+    if (cleanText === 'Dauerauftrag läuft für den Beitrag' || cleanText === 'Dauerauftrag aktiv') {
+        return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft für den Beitrag'));
+    }
+    if (cleanText === 'Alles in Ordnung') return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft für den Beitrag'));
     if (cleanText === 'Zahlung überfällig') return t('status_payment_overdue', 'Zahlung überfällig');
     if (cleanText === 'Keine Zahlungen') return t('status_no_payments', 'Keine Zahlungen');
     if (cleanText === 'läuft diesen Monat ab') return t('status_expires_this_month', 'läuft diesen Monat ab');
@@ -243,6 +252,11 @@ function applyTranslations() {
         const key = el.getAttribute('data-i18n-aria-label');
         if (translations[key]) el.setAttribute('aria-label', translations[key]);
     });
+    // Translate elements with data-i18n-title
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        const key = el.getAttribute('data-i18n-title');
+        if (translations[key]) el.setAttribute('title', translations[key]);
+    });
     // Sync language selection dropdowns
     const langSelect = document.getElementById('settings-language');
     if (langSelect) langSelect.value = currentLang;
@@ -256,6 +270,11 @@ window.changeAppLanguage = async function(lang) {
     renderStats();
     renderHistory();
     renderSuperAdminPaymentEditor();
+    if (typeof renderUserView === 'function') renderUserView();
+    if (typeof renderHomeMentoringCard === 'function') renderHomeMentoringCard();
+    if (typeof loadMentoringData === 'function' && (canParticipateMentoring() || canManageMentoring())) {
+        loadMentoringData();
+    }
 };
 
 // Initialize immediately
@@ -393,7 +412,7 @@ function canAccessAi() {
 }
 
 function canParticipateMentoring() {
-    return !!(currentUser && (currentUser.canParticipateMentoring || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('mentoring_participate'))));
+    return !!currentUser;
 }
 
 function canManageMentoring() {
@@ -440,7 +459,6 @@ async function loadSystemPermissions() {
             { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
             { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
             { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-            { id: 'mentoring_participate', name: 'Mentorteilnahme', description: 'Berechtigt dazu, sich als Mentor zu bewerben oder freigegebene Mentoren vertraulich zu kontaktieren' },
             { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' }
         ];
     }
@@ -1012,6 +1030,9 @@ window.switchFinanceSubpage = function(subpage, btn) {
 };
 
 window.switchTab = function(tabName, btn) {
+    if (tabName !== 'mentoring' && typeof window.closeMentoringChatMobile === 'function') {
+        window.closeMentoringChatMobile(true);
+    }
     // Handle alias redirects for backward compatibility
     if (tabName === 'overview' || tabName === 'payment-history') {
         tabName = 'finances';
@@ -1113,6 +1134,9 @@ window.switchTab = function(tabName, btn) {
             loadSystemGroups();
         }
     } else if (tabName === 'mentoring') {
+        if (!window._openingDirectChat) {
+            currentMentoringSubTab = 'chats';
+        }
         if (typeof window.loadMentoringData === 'function') {
             window.loadMentoringData();
         }
@@ -1368,6 +1392,16 @@ window.addEventListener('popstate', (e) => {
     if (window._programmaticBacks > 0) {
         window._programmaticBacks--;
         return;
+    }
+
+    // Check if mentoring mobile chat is open
+    const mentoringLayout = document.getElementById('mentoring-threads-layout');
+    if (mentoringLayout && mentoringLayout.classList.contains('in-chat') && window.matchMedia('(max-width: 768px)').matches) {
+        window._mentoringChatHistoryPushed = false;
+        if (typeof window.backToMentoringThreadList === 'function') {
+            window.backToMentoringThreadList(true);
+            return;
+        }
     }
 
     if (window._modalStack && window._modalStack.length > 0) {
@@ -1729,7 +1763,7 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
             // If trueMissingAmount <= totalSOAmount, then after SO executes, they will owe 0.
             if (trueMissingAmount <= totalSOAmount) {
                 return {
-                    text: 'Alles in Ordnung',
+                    text: 'Dauerauftrag läuft für den Beitrag',
                     isOverdue: false,
                     isSoonDue: true, // Mark them as soon due since the standing order is expected this month
                     isActiveStandingOrder: true
@@ -1753,7 +1787,7 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
 
     if (hasActiveSO) {
         return {
-            text: 'Alles in Ordnung',
+            text: 'Dauerauftrag läuft für den Beitrag',
             isOverdue: false,
             isSoonDue: false,
             isActiveStandingOrder: true
@@ -2256,6 +2290,10 @@ async function loadData(silent = false) {
 
         // Update nav bar visibility based on user privileges
         updateNavVisibility();
+
+        if (isAuthenticated && typeof window.loadMentoringThreads === 'function' && (canParticipateMentoring() || canManageMentoring())) {
+            window.loadMentoringThreads(false).catch(() => {});
+        }
 
         // Default to Home page (user-overview) only if no tab is currently active
         const hasActiveTab = document.querySelector('.tab-content.active');
@@ -3322,6 +3360,9 @@ window.rejectRequest = async (reqId) => {
 };
 
 function renderUserView() {
+    if (typeof renderHomeMentoringCard === 'function') {
+        renderHomeMentoringCard();
+    }
     const statusCard = document.getElementById('user-status-card');
     const financeStatusCard = document.getElementById('user-finances-status-card');
     const paymentHistory = document.getElementById('user-payment-history');
@@ -3413,23 +3454,37 @@ function renderUserView() {
             </div>
         `;
 
+        const isManager = (typeof canViewFinances === 'function' && canViewFinances()) ||
+                          (typeof canManageFinances === 'function' && canManageFinances()) ||
+                          (typeof isSystemAdmin === 'function' && isSystemAdmin());
+
+        // On Homepage (statusCard): Only show the main hero status banner for all users (including admins).
+        // Current Status and Monthly Rate info boxes are NEVER shown on the Homepage!
         if (statusCard) {
-            statusCard.innerHTML = statusHtml + `
-                <div class="user-info-boxes">
-                    <div class="user-info-box">
-                        <div class="user-info-box-label">${t('user_monthly_rate', 'Monatlicher Beitrag')}</div>
-                        <div class="user-info-box-value">${formatCurrency(monthlyRate)} €</div>
-                    </div>
-                    <div class="user-info-box">
-                        <div class="user-info-box-label">${t('user_current_status', 'Aktueller Status')}</div>
-                        <div class="user-info-box-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
-                    </div>
-                </div>
-            `;
+            statusCard.style.display = 'block';
+            statusCard.innerHTML = statusHtml;
         }
 
+        // On Finance page (financeStatusCard):
+        // For non-managers, display statusHtml AND the info boxes (Monthly Rate & Current Status).
+        // For managers/admins, they can look it up in the member list, so info boxes are omitted.
         if (financeStatusCard) {
-            financeStatusCard.innerHTML = statusHtml;
+            if (isManager) {
+                financeStatusCard.innerHTML = statusHtml;
+            } else {
+                financeStatusCard.innerHTML = statusHtml + `
+                    <div class="user-info-boxes">
+                        <div class="user-info-box">
+                            <div class="user-info-box-label">${t('user_monthly_rate', 'Monatlicher Beitrag')}</div>
+                            <div class="user-info-box-value">${formatCurrency(monthlyRate)} €</div>
+                        </div>
+                        <div class="user-info-box">
+                            <div class="user-info-box-label">${t('user_current_status', 'Aktueller Status')}</div>
+                            <div class="user-info-box-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
         if (paymentHistory) {
@@ -7463,7 +7518,7 @@ window.showToast = (msg, type='success') => {
 let mentoringMentors = [];
 let mentoringThreads = [];
 let activeMentoringThreadId = null;
-let currentMentoringSubTab = 'find';
+let currentMentoringSubTab = 'chats';
 let mentoringChatPollTimer = null;
 let myMentorProfile = null;
 
@@ -7481,6 +7536,10 @@ window.switchMentoringSubTab = function(subTab) {
     if (chatsTabBtn) chatsTabBtn.classList.toggle('active', subTab === 'chats');
     if (reviewTabBtn) reviewTabBtn.classList.toggle('active', subTab === 'review');
 
+    if (findTabBtn) findTabBtn.setAttribute('aria-selected', subTab === 'find' ? 'true' : 'false');
+    if (chatsTabBtn) chatsTabBtn.setAttribute('aria-selected', subTab === 'chats' ? 'true' : 'false');
+    if (reviewTabBtn) reviewTabBtn.setAttribute('aria-selected', subTab === 'review' ? 'true' : 'false');
+
     if (findView) findView.style.display = subTab === 'find' ? '' : 'none';
     if (chatsView) chatsView.style.display = subTab === 'chats' ? '' : 'none';
     if (reviewView) reviewView.style.display = subTab === 'review' ? '' : 'none';
@@ -7488,7 +7547,14 @@ window.switchMentoringSubTab = function(subTab) {
     if (subTab === 'find') {
         window.loadMentorsList();
     } else if (subTab === 'chats') {
-        window.loadMentoringThreads();
+        if (!window._openingDirectChat && !activeMentoringThreadId && window.matchMedia('(max-width: 768px)').matches) {
+            const layout = document.getElementById('mentoring-threads-layout');
+            if (layout) layout.classList.remove('in-chat');
+            const chatPane = document.getElementById('mentoring-chat-pane');
+            if (chatPane) chatPane.classList.remove('mobile-open');
+            document.body.classList.remove('mentoring-mobile-chat-open');
+        }
+        window.loadMentoringThreads(false, activeMentoringThreadId);
     } else if (subTab === 'review') {
         window.loadMentoringReviewList();
     }
@@ -7499,9 +7565,13 @@ window.loadMentoringData = async function() {
 
     // Check manager status to show/hide review pill
     const reviewTabBtn = document.getElementById('mentoring-tab-review');
+    const navBar = document.querySelector('.mentoring-nav-bar');
     const isManager = canManageMentoring();
     if (reviewTabBtn) {
         reviewTabBtn.style.display = isManager ? 'inline-flex' : 'none';
+    }
+    if (navBar) {
+        navBar.style.display = 'block';
     }
 
     // Load user's own mentor profile
@@ -7514,14 +7584,14 @@ window.loadMentoringData = async function() {
             if (applyBtn) {
                 if (myMentorProfile) {
                     if (myMentorProfile.status === 'approved') {
-                        applyBtn.innerHTML = '💜 Mein Mentoren-Profil';
+                        applyBtn.innerHTML = t('mentoring_my_profile_btn', '💜 Mein Mentoren-Profil');
                     } else if (myMentorProfile.status === 'pending') {
-                        applyBtn.innerHTML = '⏳ Bewerbung in Prüfung';
+                        applyBtn.innerHTML = t('mentoring_pending_profile_btn', '⏳ Bewerbung in Prüfung');
                     } else {
-                        applyBtn.innerHTML = 'Als Mentor bewerben';
+                        applyBtn.innerHTML = t('mentoring_apply_btn', 'Als Mentor bewerben');
                     }
                 } else {
-                    applyBtn.innerHTML = 'Als Mentor bewerben';
+                    applyBtn.innerHTML = t('mentoring_apply_btn', 'Als Mentor bewerben');
                 }
             }
         }
@@ -7547,10 +7617,7 @@ window.loadMentoringData = async function() {
         }
     }
 
-    // Load threads to update unread badge
-    window.loadMentoringThreads(false);
-
-    // Render current active subtab
+    // Render current active subtab (loads threads when subTab === 'chats')
     window.switchMentoringSubTab(currentMentoringSubTab);
 };
 
@@ -7563,11 +7630,11 @@ window.loadMentorsList = async function() {
             mentoringMentors = await res.json();
             window.renderMentorsGrid();
         } else {
-            grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">Mentoren konnten nicht geladen werden.</div>`;
+            grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">${t('mentoring_load_error', 'Mentoren konnten nicht geladen werden.')}</div>`;
         }
     } catch (err) {
         console.warn('Failed to load mentors:', err);
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--danger);">Netzwerkfehler beim Laden der Mentoren.</div>`;
+        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--danger);">${t('mentoring_network_error', 'Netzwerkfehler beim Laden der Mentoren.')}</div>`;
     }
 };
 
@@ -7575,66 +7642,87 @@ window.renderMentorsGrid = function() {
     const grid = document.getElementById('mentors-grid');
     if (!grid) return;
 
-    if (!Array.isArray(mentoringMentors) || mentoringMentors.length === 0) {
+    const isManager = typeof canManageMentoring === 'function' && canManageMentoring();
+    const currentUid = currentUser?.uid || currentUser?.id;
+
+    // For regular users: filter out mentors who are fully booked (isFull === true), but keep user's own mentor card if applicable
+    const visibleMentors = Array.isArray(mentoringMentors) ? mentoringMentors.filter(m => {
+        if (isManager) return true;
+        const isSelf = currentUid && (m.user_id === currentUid || m.user === currentUid);
+        if (isSelf) return true;
+        const maxMentees = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
+        const activeMentees = typeof m.active_mentees === 'number' ? m.active_mentees : (typeof m.activeMentees === 'number' ? m.activeMentees : 0);
+        const isFull = m.isFull === true || (typeof m.active_mentees === 'number' && activeMentees >= maxMentees) || m.isAccepting === false;
+        return !isFull;
+    }) : [];
+
+    if (visibleMentors.length === 0) {
         grid.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-secondary);">
                 <div style="font-size: 2.5rem; margin-bottom: 10px;">👥</div>
-                <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 6px;">Derzeit keine Mentoren verfügbar</div>
-                <div style="font-size: 0.9rem;">Sobald Bewerbungen freigegeben wurden, erscheinen die Mentoren hier.</div>
+                <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 6px;">${t('mentoring_no_mentors_title', 'Derzeit keine Mentoren verfügbar')}</div>
+                <div style="font-size: 0.9rem;">${isManager ? t('mentoring_no_mentors_desc_manager', 'Sobald Bewerbungen freigegeben wurden, erscheinen die Mentoren hier.') : t('mentoring_no_mentors_desc_user', 'Aktuell sind alle Mentoren vollständig ausgelastet oder es liegen keine freigegebenen Profile vor.')}</div>
             </div>
         `;
         return;
     }
 
-    grid.innerHTML = mentoringMentors.map(m => {
-        const name = escapeHtml(m.name || m.mentorName || 'Mentor');
+    grid.innerHTML = visibleMentors.map(m => {
+        const name = escapeHtml(m.name || m.mentorName || t('mentoring_partner_mentor', 'Mentor'));
         const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         const avatarUrl = m.avatar_url || (m.user_id ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(m.user_id)}` : '');
-        const isSelf = currentUser && (m.user_id === currentUser.uid || m.user_id === currentUser.id);
+        const isSelf = currentUid && (m.user_id === currentUid || m.user === currentUid);
 
-        const bioHtml = escapeHtml(m.bio || 'Keine Beschreibung vorhanden.');
-        const maxMentees = m.max_mentees || 3;
-        const activeMentees = m.active_mentees || m.activeMentees || 0;
-        const isFull = activeMentees >= maxMentees;
+        const bioHtml = escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Beschreibung vorhanden.'));
+        const maxMentees = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
+        const activeMentees = typeof m.active_mentees === 'number' ? m.active_mentees : (typeof m.activeMentees === 'number' ? m.activeMentees : 0);
+        const isFull = m.isFull === true || (typeof m.active_mentees === 'number' && activeMentees >= maxMentees) || m.isAccepting === false;
+
+        // Capacity indicator: ONLY rendered for mentor managers!
+        const capacityHtml = isManager ? `
+            <div class="mentor-capacity" title="${t('mentoring_capacity_title', 'Auslastung: Begleitungen')}">
+                <span>${t('mentoring_capacity_active', '👥 {active} / {max} aktiv', { active: activeMentees, max: maxMentees })}</span>
+                ${isFull ? `<span class="mentor-badge-full">${t('mentoring_badge_full', 'Ausgelastet')}</span>` : ''}
+            </div>
+        ` : '';
 
         return `
             <div class="mentor-card">
                 <div class="mentor-card-header">
                     <div class="mentor-card-avatar avatar-ring-mentor">
-                        <span>${escapeHtml(initials)}</span>
-                        ${avatarUrl ? `<img src="${avatarUrl}" alt="${name}" onerror="this.style.display='none'">` : ''}
+                        <div class="mentor-card-avatar-inner">
+                            <span style="user-select: none;">${escapeHtml(initials)}</span>
+                            ${avatarUrl ? `<img src="${avatarUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'">` : ''}
+                        </div>
                     </div>
                     <div class="mentor-card-title">
                         <h3>${name}</h3>
-                        <span class="mentor-role-badge">💜 Geprüfter Mentor</span>
+                        <span class="mentor-role-badge">${t('mentoring_verified_badge', '💜 Geprüfter Mentor')}</span>
                     </div>
                 </div>
 
                 <div class="mentor-card-bio">${bioHtml}</div>
 
                 <div class="mentor-card-footer">
-                    <div class="mentor-capacity" title="Kapazität: Begleitungen">
-                        <span>👥 ${activeMentees} / ${maxMentees} aktiv</span>
-                    </div>
+                    ${capacityHtml}
                     ${(() => {
-                        const currentUid = currentUser?.uid || currentUser?.id;
                         const mentorUserId = m.user || m.user_id || m.id;
                         const existingThread = Array.isArray(mentoringThreads)
-                            ? mentoringThreads.find(t => (t.mentor === mentorUserId || t.mentor === m.user || t.mentor === m.id) && t.mentee === currentUid)
+                            ? mentoringThreads.find(th => (th.mentor === mentorUserId || th.mentor === m.user || th.mentor === m.id) && th.mentee === currentUid)
                             : null;
 
                         if (isSelf) {
-                            return `<button type="button" class="btn btn-secondary btn-small" onclick="window.openMentorApplicationModal()">Profil bearbeiten</button>`;
+                            return `<button type="button" class="btn btn-secondary btn-small" onclick="window.openMentorApplicationModal()">${t('mentoring_btn_edit_profile', 'Profil bearbeiten')}</button>`;
                         } else if (existingThread) {
                             return `
-                                <button type="button" class="btn btn-secondary btn-small" onclick="openMentoringSubTab('chats'); openMentoringThread('${escapeHtml(existingThread.id)}')" title="${existingThread.status === 'closed' ? 'Abgeschlossenes Gespräch anzeigen' : 'Laufendes Gespräch öffnen'}">
-                                    ${existingThread.status === 'closed' ? '📁 Zum Gespräch' : '💬 Zum Gespräch'}
+                                <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect('${escapeHtml(existingThread.id)}', 'find')" title="${existingThread.status === 'closed' ? t('mentoring_btn_open_closed_chat', 'Abgeschlossenes Gespräch anzeigen') : t('mentoring_btn_open_chat', 'Laufendes Gespräch öffnen')}">
+                                    ${existingThread.status === 'closed' ? t('mentoring_btn_open_closed_chat', '📁 Zum Gespräch') : t('mentoring_btn_open_chat', '💬 Zum Gespräch')}
                                 </button>
                             `;
                         } else {
                             return `
                                 <button type="button" class="btn btn-mentor-primary btn-small" ${isFull ? 'disabled' : ''} onclick="window.openMentorContactModal('${escapeHtml(mentorUserId)}', '${escapeHtml(name)}')">
-                                    ${isFull ? 'Voll belegt' : 'Anonym kontaktieren'}
+                                    ${isFull ? t('mentoring_btn_full', 'Voll belegt') : t('mentoring_btn_contact', 'Anonym kontaktieren')}
                                 </button>
                             `;
                         }
@@ -7648,19 +7736,20 @@ window.renderMentorsGrid = function() {
 window.openMentorContactModal = function(userId, mentorName) {
     const currentUid = currentUser?.uid || currentUser?.id;
     const existingThread = Array.isArray(mentoringThreads)
-        ? mentoringThreads.find(t => (t.mentor === userId) && t.mentee === currentUid)
+        ? mentoringThreads.find(th => (th.mentor === userId) && th.mentee === currentUid)
         : null;
 
     if (existingThread) {
         if (typeof showToast === 'function') {
             showToast(existingThread.status === 'closed'
-                ? 'Du hast bereits ein früheres Gespräch mit diesem Mentor.'
-                : 'Du hast bereits eine aktive Begleitung mit diesem Mentor.', 'info');
+                ? t('mentoring_toast_existing_closed', 'Du hast bereits ein früheres Gespräch mit diesem Mentor.')
+                : t('mentoring_toast_existing_active', 'Du hast bereits eine aktive Begleitung mit diesem Mentor.'), 'info');
         } else {
-            alert('Du hast bereits ein Gespräch mit diesem Mentor.');
+            alert(existingThread.status === 'closed'
+                ? t('mentoring_toast_existing_closed', 'Du hast bereits ein früheres Gespräch mit diesem Mentor.')
+                : t('mentoring_toast_existing_active', 'Du hast bereits eine aktive Begleitung mit diesem Mentor.'));
         }
-        window.openMentoringSubTab('chats');
-        window.openMentoringThread(existingThread.id);
+        window.openMentoringChatDirect(existingThread.id, 'find');
         return;
     }
 
@@ -7669,7 +7758,7 @@ window.openMentorContactModal = function(userId, mentorName) {
     const msgInput = document.getElementById('mentor-contact-message');
 
     if (uidInput) uidInput.value = userId;
-    if (targetTitle) targetTitle.innerText = `Anfrage an ${mentorName}`;
+    if (targetTitle) targetTitle.innerText = t('mentor_contact_modal_subtitle', 'Anfrage an {name}', { name: mentorName });
     if (msgInput) msgInput.value = '';
 
     openModal('mentor-contact-modal');
@@ -7683,11 +7772,11 @@ window.submitMentorContact = async function() {
     const message = msgInput ? msgInput.value.trim() : '';
 
     if (!mentorId) {
-        alert('Kein Mentor ausgewählt.');
+        alert(t('mentor_contact_error_no_mentor', 'Kein Mentor ausgewählt.'));
         return;
     }
     if (!message) {
-        alert('Bitte gib eine Erstnachricht für den Mentor ein.');
+        alert(t('mentor_contact_error_no_msg', 'Bitte gib eine Erstnachricht für den Mentor ein.'));
         return;
     }
 
@@ -7703,31 +7792,29 @@ window.submitMentorContact = async function() {
             if (err.threadId) {
                 closeModal('mentor-contact-modal');
                 if (typeof showToast === 'function') {
-                    showToast(err.error || 'Bestehendes Gespräch geöffnet.', 'info');
+                    showToast(err.error || t('mentoring_toast_existing_active', 'Bestehendes Gespräch geöffnet.'), 'info');
                 }
-                window.openMentoringSubTab('chats');
-                window.openMentoringThread(err.threadId);
+                window.openMentoringChatDirect(err.threadId, 'find');
                 return;
             }
-            throw new Error(err.error || err.message || 'Fehler beim Erstellen der Anfrage.');
+            throw new Error(err.error || err.message || t('mentoring_req_error', 'Fehler beim Erstellen der Anfrage.'));
         }
 
         const data = await res.json();
         closeModal('mentor-contact-modal');
         if (typeof showToast === 'function') {
-            showToast('Vertrauliche Anfrage erfolgreich gesendet!', 'success');
+            showToast(t('mentoring_toast_req_sent', 'Vertrauliche Anfrage erfolgreich gesendet!'), 'success');
         }
 
-        window.switchMentoringSubTab('chats');
         const newThreadId = data.threadId || (data.thread && data.thread.id);
         if (newThreadId) {
             await window.loadMentoringThreads(true, newThreadId);
-            window.openMentoringThread(newThreadId);
+            window.openMentoringChatDirect(newThreadId, 'find');
         } else {
             window.loadMentoringThreads(true);
         }
     } catch (err) {
-        alert(err.message || 'Fehler beim Senden der Anfrage.');
+        alert(err.message || t('mentoring_req_error', 'Fehler beim Senden der Anfrage.'));
     }
 };
 
@@ -7737,14 +7824,20 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
 
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads`);
-        if (!res.ok) return;
+        if (!res.ok) {
+            console.warn('Failed to fetch mentoring threads, status:', res.status);
+            return;
+        }
 
         mentoringThreads = await res.json();
+        if (!Array.isArray(mentoringThreads)) {
+            mentoringThreads = [];
+        }
 
         // Calculate unread
         let totalUnread = 0;
-        mentoringThreads.forEach(t => {
-            if (t.unread_count > 0) totalUnread += t.unread_count;
+        mentoringThreads.forEach(thread => {
+            if ((thread.unread_count || 0) > 0) totalUnread += thread.unread_count;
         });
         const unreadBadge = document.getElementById('mentoring-unread-badge');
         if (unreadBadge) {
@@ -7752,34 +7845,40 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
             unreadBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
         }
 
+        // Keep Home Mentoring Card in sync
+        if (typeof renderHomeMentoringCard === 'function') {
+            renderHomeMentoringCard();
+        }
+
         if (mentoringThreads.length === 0) {
             listEl.innerHTML = `
                 <div style="text-align:center; padding: 40px 16px; color: var(--text-secondary); font-size: 0.9rem;">
                     <div style="font-size: 2rem; margin-bottom: 8px;">💬</div>
-                    <div style="font-weight: 600; margin-bottom: 4px;">Keine aktiven Begleitungen</div>
-                    <div style="font-size: 0.8rem; margin-bottom: 12px;">Kontaktiere einen Mentor, um ein vertrauliches Gespräch zu beginnen.</div>
-                    <button class="btn btn-secondary btn-small" onclick="window.switchMentoringSubTab('find')">Mentoren finden</button>
+                    <div style="font-weight: 600; margin-bottom: 4px;">${t('mentoring_no_threads_title', 'Keine aktiven Begleitungen')}</div>
+                    <div style="font-size: 0.8rem; margin-bottom: 12px;">${t('mentoring_no_threads_desc', 'Kontaktiere einen Mentor, um ein vertrauliches Gespräch zu beginnen.')}</div>
+                    <button class="btn btn-secondary btn-small" onclick="window.switchMentoringSubTab('find')">${t('mentoring_tab_find', 'Mentoren finden')}</button>
                 </div>
             `;
             return;
         }
 
-        listEl.innerHTML = mentoringThreads.map(t => {
-            const isActive = activeMentoringThreadId === t.id;
-            const isMentor = currentUser && (t.mentor === currentUser.uid || t.mentor === currentUser.id);
+        listEl.innerHTML = mentoringThreads.map(thread => {
+            const isActive = activeMentoringThreadId === thread.id;
+            const isMentor = currentUser && (thread.mentor === currentUser.uid || thread.mentor === currentUser.id);
 
             // Anonymity / Pseudonym display
             const partnerName = isMentor
-                ? (t.mentee_alias || 'Anonymer Suchender')
-                : (t.mentor_name || 'Mentor');
+                ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender'))
+                : (thread.mentor_name || t('mentoring_partner_mentor', 'Mentor'));
 
-            const partnerRole = isMentor ? 'Suchender (anonym)' : 'Dein Mentor';
-            const unreadCount = t.unread_count || 0;
-            const lastMsg = t.last_message || (t.status === 'closed' ? 'Gespräch beendet' : 'Noch keine Nachrichten');
-            const dateStr = t.updated ? new Date(t.updated).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+            const partnerRole = isMentor ? t('mentoring_role_seeker', 'Suchender (anonym)') : t('mentoring_role_mentor', 'Dein Mentor');
+            const unreadCount = thread.unread_count || 0;
+            const isUnread = unreadCount > 0;
+            const lastMsg = thread.last_message || (thread.status === 'closed' ? t('mentoring_sub_closed', 'Gespräch beendet') : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
+            const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
 
             return `
-                <div class="mentoring-thread-item ${isActive ? 'active' : ''}" onclick="window.openMentoringThread('${escapeHtml(t.id)}')">
+                <div class="mentoring-thread-item ${isActive ? 'active' : ''} ${isUnread ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread('${escapeHtml(thread.id)}')">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:3px;">
                         <div class="mentoring-thread-name">${escapeHtml(partnerName)}</div>
                         <div style="font-size:0.72rem; color:var(--text-secondary);">${escapeHtml(dateStr)}</div>
@@ -7794,9 +7893,11 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
         }).join('');
 
         const isDesktop = !window.matchMedia('(max-width: 768px)').matches;
-        if (shouldSelect || (isDesktop && !activeMentoringThreadId && mentoringThreads.length > 0)) {
-            const idToOpen = selectThreadId || (mentoringThreads[0] ? mentoringThreads[0].id : null);
-            if (idToOpen) window.openMentoringThread(idToOpen);
+        if (selectThreadId) {
+            await window.openMentoringThread(selectThreadId);
+        } else if (shouldSelect || (isDesktop && !activeMentoringThreadId && mentoringThreads.length > 0)) {
+            const idToOpen = mentoringThreads[0] ? mentoringThreads[0].id : null;
+            if (idToOpen) await window.openMentoringThread(idToOpen);
         }
     } catch (err) {
         console.warn('Failed to load mentoring threads:', err);
@@ -7810,6 +7911,7 @@ window.autoResizeMentoringInput = function(el) {
 };
 
 window.openMentoringThread = async function(threadId) {
+    if (!threadId) return;
     activeMentoringThreadId = threadId;
 
     const layout = document.getElementById('mentoring-threads-layout');
@@ -7818,24 +7920,54 @@ window.openMentoringThread = async function(threadId) {
     const chatPane = document.getElementById('mentoring-chat-pane');
     if (chatPane) chatPane.classList.add('mobile-open');
 
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        document.body.classList.add('mentoring-mobile-chat-open');
+        if (!window._mentoringChatHistoryPushed) {
+            history.pushState({ view: 'mentoring-chat' }, '');
+            window._mentoringChatHistoryPushed = true;
+        }
+    }
+
     const items = document.querySelectorAll('.mentoring-thread-item');
     items.forEach(el => el.classList.remove('active'));
 
-    const thread = mentoringThreads.find(t => t.id === threadId);
-    if (!thread) return;
+    const activeEl = document.querySelector(`.mentoring-thread-item[data-thread-id="${threadId}"]`);
+    if (activeEl) {
+        activeEl.classList.add('active');
+        activeEl.classList.remove('unread');
+        activeEl.classList.add('read');
+        const badge = activeEl.querySelector('.mentoring-badge-count');
+        if (badge) badge.remove();
+    }
 
-    const isMentor = currentUser && (thread.mentor === currentUser.uid || thread.mentor === currentUser.id);
-    const partnerName = isMentor
-        ? (thread.mentee_alias || 'Anonymer Suchender')
-        : (thread.mentor_name || 'Mentor');
+    let thread = Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === threadId) : null;
+    if (!thread) {
+        try {
+            const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads`);
+            if (res.ok) {
+                mentoringThreads = await res.json();
+                thread = Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === threadId) : null;
+            }
+        } catch (err) {
+            console.warn('Failed to reload threads in openMentoringThread:', err);
+        }
+    }
+
+    const isMentor = currentUser && thread && (thread.mentor === currentUser.uid || thread.mentor === currentUser.id);
+    const partnerName = thread
+        ? (isMentor
+            ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender'))
+            : (thread.mentor_name || t('mentoring_partner_mentor', 'Mentor')))
+        : t('mentoring_partner_mentor', 'Mentor');
 
     const titleEl = document.getElementById('mentoring-chat-title');
     const subEl = document.getElementById('mentoring-chat-subtitle');
     if (titleEl) titleEl.innerText = partnerName;
     if (subEl) {
-        subEl.innerText = thread.status === 'closed'
-            ? 'Gespräch beendet'
-            : (isMentor ? 'Vertraulich & Anonym' : 'Dein vertraulicher Mentor');
+        const isClosed = thread ? thread.status === 'closed' : false;
+        subEl.innerText = isClosed
+            ? t('mentoring_sub_closed', 'Gespräch beendet')
+            : (isMentor ? t('mentoring_sub_active_seeker', 'Vertraulich & Anonym') : t('mentoring_sub_active_mentee', 'Dein vertraulicher Mentor'));
     }
 
     const actionsEl = document.getElementById('mentoring-chat-actions');
@@ -7844,7 +7976,7 @@ window.openMentoringThread = async function(threadId) {
     const menuDropdown = document.getElementById('mentoring-chat-menu-dropdown');
     if (menuDropdown) menuDropdown.style.display = 'none';
 
-    const isClosed = thread.status === 'closed';
+    const isClosed = thread ? thread.status === 'closed' : false;
 
     if (actionsEl) {
         actionsEl.style.display = 'flex';
@@ -7879,11 +8011,29 @@ window.openMentoringThread = async function(threadId) {
     }, 3500);
 };
 
-window.closeMentoringChatMobile = function() {
+window.closeMentoringChatMobile = function(fromHistory = false) {
+    activeMentoringThreadId = null;
+    if (mentoringChatPollTimer) {
+        clearInterval(mentoringChatPollTimer);
+        mentoringChatPollTimer = null;
+    }
+
     const layout = document.getElementById('mentoring-threads-layout');
     if (layout) layout.classList.remove('in-chat');
     const chatPane = document.getElementById('mentoring-chat-pane');
     if (chatPane) chatPane.classList.remove('mobile-open');
+    document.body.classList.remove('mentoring-mobile-chat-open');
+
+    const items = document.querySelectorAll('.mentoring-thread-item');
+    items.forEach(el => el.classList.remove('active'));
+
+    if (!fromHistory && window._mentoringChatHistoryPushed) {
+        window._mentoringChatHistoryPushed = false;
+        window._programmaticBacks = (window._programmaticBacks || 0) + 1;
+        history.back();
+    }
+
+    window.loadMentoringThreads(false);
 };
 window.backToMentoringThreadList = window.closeMentoringChatMobile;
 
@@ -7895,7 +8045,7 @@ window.loadMentoringMessages = async function(threadId, isPoll = false) {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads/${threadId}/messages`);
         if (!res.ok) {
             if (res.status === 403) {
-                messagesEl.innerHTML = `<div style="text-align:center; color:var(--danger); margin:auto; padding:20px;">Zugriff verweigert (Geschützte Verbindung).</div>`;
+                messagesEl.innerHTML = `<div style="text-align:center; color:var(--danger); margin:auto; padding:20px;">${t('mentoring_access_denied', 'Zugriff verweigert (Geschützte Verbindung).')}</div>`;
             }
             return;
         }
@@ -7906,14 +8056,40 @@ window.loadMentoringMessages = async function(threadId, isPoll = false) {
         }
         if (!Array.isArray(messages)) return;
 
+        // Instantly mark thread as read locally, remove side strip/badge & keep Home Card in sync
+        const currentThread = Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === threadId) : null;
+        if (currentThread && currentThread.unread_count > 0) {
+            currentThread.unread_count = 0;
+            const threadEl = document.querySelector(`.mentoring-thread-item[data-thread-id="${threadId}"]`);
+            if (threadEl) {
+                threadEl.classList.remove('unread');
+                threadEl.classList.add('read');
+                const badgeEl = threadEl.querySelector('.mentoring-badge-count');
+                if (badgeEl) badgeEl.remove();
+            }
+
+            let totalUnread = 0;
+            mentoringThreads.forEach(th => {
+                if (th.unread_count > 0) totalUnread += th.unread_count;
+            });
+            const unreadBadge = document.getElementById('mentoring-unread-badge');
+            if (unreadBadge) {
+                unreadBadge.innerText = String(totalUnread);
+                unreadBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
+            }
+            if (typeof renderHomeMentoringCard === 'function') {
+                renderHomeMentoringCard();
+            }
+        }
+
         const isScrolledToBottom = messagesEl.scrollHeight - messagesEl.scrollTop <= messagesEl.clientHeight + 120;
 
         if (messages.length === 0) {
             messagesEl.innerHTML = `
                 <div class="mentoring-chat-empty-notice">
                     <div style="font-size:2rem; margin-bottom:8px;">✨</div>
-                    <div style="font-weight:600; margin-bottom:4px;">Noch keine Nachrichten</div>
-                    <div style="font-size:0.85rem; color:var(--text-secondary);">Beginne das Gespräch! Alles was du schreibst, ist absolut vertraulich.</div>
+                    <div style="font-weight:600; margin-bottom:4px;">${t('mentoring_no_messages_yet', 'Noch keine Nachrichten')}</div>
+                    <div style="font-size:0.85rem; color:var(--text-secondary);">${t('mentoring_start_conversation_desc', 'Beginne das Gespräch! Alles was du schreibst, ist absolut vertraulich.')}</div>
                 </div>
             `;
             return;
@@ -7924,7 +8100,7 @@ window.loadMentoringMessages = async function(threadId, isPoll = false) {
             const timeStr = m.created ? new Date(m.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             return `
                 <div class="mentoring-message ${isMe ? 'outgoing msg-mine' : 'incoming msg-other'}">
-                    ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || 'Gesprächspartner')}</div>` : ''}
+                    ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_mentor', 'Gesprächspartner'))}</div>` : ''}
                     <div class="mentoring-message-bubble">${escapeHtml(m.message || m.text || '')}</div>
                     <div class="mentoring-message-time">${escapeHtml(timeStr)}</div>
                 </div>
@@ -7960,7 +8136,7 @@ window.sendMentoringMessage = async function() {
     optimisticNode.className = 'mentoring-message outgoing msg-mine';
     optimisticNode.innerHTML = `
         <div class="mentoring-message-bubble">${escapeHtml(text)}</div>
-        <div class="mentoring-message-time">${escapeHtml(timeStr)} • Wird gesendet…</div>
+        <div class="mentoring-message-time">${escapeHtml(timeStr)} • ${t('mentoring_sending_optimistic', 'Wird gesendet…')}</div>
     `;
     messagesEl.appendChild(optimisticNode);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -7977,7 +8153,7 @@ window.sendMentoringMessage = async function() {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.message || err.error || 'Fehler beim Senden.');
+            throw new Error(err.message || err.error || t('mentoring_send_error', 'Fehler beim Senden.'));
         }
 
         await window.loadMentoringMessages(activeMentoringThreadId);
@@ -7986,9 +8162,9 @@ window.sendMentoringMessage = async function() {
         const pendingEl = document.getElementById(tempId);
         if (pendingEl) {
             const timeEl = pendingEl.querySelector('.mentoring-message-time');
-            if (timeEl) timeEl.innerHTML = `<span style="color:#ef4444;">⚠️ Fehler beim Senden</span>`;
+            if (timeEl) timeEl.innerHTML = `<span style="color:#ef4444;">${t('mentoring_send_error', '⚠️ Fehler beim Senden')}</span>`;
         }
-        alert(err.message || 'Nachricht konnte nicht gesendet werden.');
+        alert(err.message || t('mentoring_send_error', 'Nachricht konnte nicht gesendet werden.'));
     }
 };
 
@@ -8022,7 +8198,7 @@ document.addEventListener('click', (e) => {
 
 window.toggleCloseCurrentThread = async function(forcedStatus) {
     if (!activeMentoringThreadId) return;
-    const thread = mentoringThreads.find(t => t.id === activeMentoringThreadId);
+    const thread = mentoringThreads.find(th => th.id === activeMentoringThreadId);
     if (!thread) return;
 
     const menuDropdown = document.getElementById('mentoring-chat-menu-dropdown');
@@ -8030,8 +8206,8 @@ window.toggleCloseCurrentThread = async function(forcedStatus) {
 
     const newStatus = forcedStatus || (thread.status === 'closed' ? 'active' : 'closed');
     const confirmMsg = newStatus === 'closed'
-        ? 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.'
-        : 'Möchtest du diese Begleitung wiedereröffnen?';
+        ? t('mentoring_confirm_close', 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.')
+        : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?');
 
     if (!confirm(confirmMsg)) return;
 
@@ -8044,17 +8220,17 @@ window.toggleCloseCurrentThread = async function(forcedStatus) {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.message || 'Fehler beim Ändern des Status.');
+            throw new Error(err.message || t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
         }
 
         thread.status = newStatus;
         window.openMentoringThread(activeMentoringThreadId);
         window.loadMentoringThreads();
         if (typeof showToast === 'function') {
-            showToast(newStatus === 'closed' ? 'Gespräch beendet.' : 'Gespräch wiedereröffnet.', 'info');
+            showToast(newStatus === 'closed' ? t('mentoring_toast_closed', 'Gespräch beendet.') : t('mentoring_toast_reopened', 'Gespräch wiedereröffnet.'), 'info');
         }
     } catch (err) {
-        alert(err.message || 'Fehler beim Aktualisieren.');
+        alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
     }
 };
 
@@ -8066,11 +8242,11 @@ window.openMentorApplicationModal = async function() {
     if (myMentorProfile) {
         if (bioEl) bioEl.value = myMentorProfile.bio || '';
         if (maxEl) maxEl.value = myMentorProfile.max_mentees || 3;
-        if (submitBtn) submitBtn.innerText = 'Profil aktualisieren';
+        if (submitBtn) submitBtn.innerText = t('mentor_app_btn_update', 'Profil aktualisieren');
     } else {
         if (bioEl) bioEl.value = '';
         if (maxEl) maxEl.value = 3;
-        if (submitBtn) submitBtn.innerText = 'Bewerbung absenden';
+        if (submitBtn) submitBtn.innerText = t('mentor_app_btn_submit', 'Bewerbung absenden');
     }
 
     openModal('mentor-application-modal');
@@ -8084,7 +8260,7 @@ window.submitMentorApplication = async function() {
     const max_mentees = maxEl ? parseInt(maxEl.value, 10) : 3;
 
     if (!bio) {
-        alert('Bitte gib eine persönliche Vorstellung ein, was du über dich sagst und dich beschreibt.');
+        alert(t('mentor_app_error_no_bio', 'Bitte gib eine persönliche Vorstellung ein, was du über dich sagst und dich beschreibt.'));
         return;
     }
 
@@ -8101,7 +8277,7 @@ window.submitMentorApplication = async function() {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.message || 'Fehler beim Einreichen der Bewerbung.');
+            throw new Error(err.message || t('mentor_app_error_generic', 'Fehler beim Einreichen der Bewerbung.'));
         }
 
         const data = await res.json();
@@ -8109,12 +8285,12 @@ window.submitMentorApplication = async function() {
 
         closeModal('mentor-application-modal');
         if (typeof showToast === 'function') {
-            showToast(isUpdate ? 'Mentoren-Profil aktualisiert!' : 'Bewerbung erfolgreich eingereicht! Die Leitung wird sie prüfen.', 'success');
+            showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentoren-Profil aktualisiert!') : t('mentor_app_toast_submitted', 'Bewerbung erfolgreich eingereicht! Die Leitung wird sie prüfen.'), 'success');
         }
 
         window.loadMentoringData();
     } catch (err) {
-        alert(err.message || 'Fehler bei der Bewerbung.');
+        alert(err.message || t('mentor_app_error_generic', 'Fehler bei der Bewerbung.'));
     }
 };
 
@@ -8125,37 +8301,38 @@ window.loadMentoringReviewList = async function() {
     const statusFilter = filterEl ? filterEl.value : 'pending';
 
     if (!listEl) return;
-    listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Lade Bewerbungen...</div>';
+    listEl.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-secondary);">${t('mentoring_review_loading', 'Lade Bewerbungen...')}</div>`;
 
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/mentors?status=${encodeURIComponent(statusFilter)}`);
         if (!res.ok) {
-            listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger);">Fehler beim Laden der Bewerbungen.</div>';
+            listEl.innerHTML = `<div style="text-align:center; padding:20px; color:var(--danger);">${t('mentoring_review_load_error', 'Fehler beim Laden der Bewerbungen.')}</div>`;
             return;
         }
 
         const mentors = await res.json();
         if (!Array.isArray(mentors) || mentors.length === 0) {
+            const filterLabel = t(`mentoring_filter_${statusFilter}`, statusFilter);
             listEl.innerHTML = `
                 <div style="text-align:center; padding:30px; color:var(--text-secondary);">
-                    Keine Bewerbungen mit Status "${escapeHtml(statusFilter)}" vorhanden.
+                    ${t('mentoring_review_none', 'Keine Bewerbungen mit Status "{status}" vorhanden.', { status: filterLabel })}
                 </div>
             `;
             return;
         }
 
         listEl.innerHTML = mentors.map(m => {
-            const name = escapeHtml(m.name || m.mentorName || 'Bewerber');
+            const name = escapeHtml(m.name || m.mentorName || t('mentoring_applicant_fallback', 'Bewerber'));
             const email = escapeHtml(m.email || m.userEmail || '');
-            const bio = escapeHtml(m.bio || 'Keine Personenbeschreibung hinterlegt.');
+            const bio = escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Personenbeschreibung hinterlegt.'));
             const maxMentees = m.max_mentees || 3;
             const status = m.status || 'pending';
             const dateStr = m.created ? new Date(m.created).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 
             const statusColors = {
-                pending: { bg: 'rgba(234, 179, 8, 0.15)', text: '#eab308', label: 'Ausstehend' },
-                approved: { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', label: 'Freigegeben' },
-                rejected: { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', label: 'Abgelehnt' }
+                pending: { bg: 'rgba(234, 179, 8, 0.15)', text: '#eab308', label: t('mentoring_filter_pending', 'Ausstehend') },
+                approved: { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', label: t('mentoring_filter_approved', 'Freigegeben') },
+                rejected: { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', label: t('mentoring_filter_rejected', 'Abgelehnt') }
             };
             const sMeta = statusColors[status] || statusColors.pending;
 
@@ -8170,25 +8347,25 @@ window.loadMentoringReviewList = async function() {
                                 </span>
                             </div>
                             <div style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;">
-                                ${email ? `${email} • ` : ''}Eingereicht: ${dateStr} • Kapazität: max. ${maxMentees} Mentees
+                                ${email ? `${email} • ` : ''}${t('mentoring_review_submitted', 'Eingereicht: {date} • Kapazität: max. {max} Mentees', { date: dateStr, max: maxMentees })}
                             </div>
                         </div>
                         <div style="display:flex; gap:8px;">
                             ${status !== 'approved' ? `
                                 <button type="button" class="btn btn-primary btn-small" onclick="window.setMentorStatus('${escapeHtml(m.id)}', 'approved')">
-                                    ✓ Genehmigen
+                                    ${t('mentoring_btn_approve', '✓ Genehmigen')}
                                 </button>
                             ` : ''}
                             ${status !== 'rejected' ? `
                                 <button type="button" class="btn btn-secondary btn-small" style="color:var(--danger);" onclick="window.setMentorStatus('${escapeHtml(m.id)}', 'rejected')">
-                                    ✗ Ablehnen
+                                    ${t('mentoring_btn_reject', '✗ Ablehnen')}
                                 </button>
                             ` : ''}
                         </div>
                     </div>
 
                     <div style="background:var(--surface-alt); padding:12px 14px; border-radius:8px; font-size:0.92rem; line-height:1.5;">
-                        <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Über sich / Selbstbeschreibung:</div>
+                        <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${t('mentoring_review_bio_label', 'Über sich / Selbstbeschreibung:')}</div>
                         ${bio}
                     </div>
                 </div>
@@ -8200,8 +8377,8 @@ window.loadMentoringReviewList = async function() {
 };
 
 window.setMentorStatus = async function(mentorId, status) {
-    const actionLabel = status === 'approved' ? 'genehmigen' : 'ablehnen';
-    if (!confirm(`Möchtest du diese Bewerbung wirklich ${actionLabel}?`)) return;
+    const actionLabel = status === 'approved' ? t('mentoring_action_approve', 'genehmigen') : t('mentoring_action_reject', 'ablehnen');
+    if (!confirm(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action: actionLabel }))) return;
 
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/manage/${mentorId}/status`, {
@@ -8212,17 +8389,101 @@ window.setMentorStatus = async function(mentorId, status) {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.message || 'Status konnte nicht geändert werden.');
+            throw new Error(err.message || t('mentoring_status_error', 'Status konnte nicht geändert werden.'));
         }
 
         if (typeof showToast === 'function') {
-            showToast(`Bewerbung erfolgreich ${status === 'approved' ? 'freigegeben' : 'abgelehnt'}!`, 'success');
+            showToast(status === 'approved' ? t('mentoring_toast_approved', 'Bewerbung erfolgreich freigegeben!') : t('mentoring_toast_rejected', 'Bewerbung erfolgreich abgelehnt!'), 'success');
         }
 
         window.loadMentoringReviewList();
         window.loadMentoringData();
     } catch (err) {
-        alert(err.message || 'Fehler beim Aktualisieren.');
+        alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
     }
+};
+
+window.renderHomeMentoringCard = function() {
+    const container = document.getElementById('user-mentoring-home-card');
+    if (!container) return;
+
+    if (!currentUser || (!canParticipateMentoring() && !canManageMentoring())) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    const threads = Array.isArray(mentoringThreads) ? mentoringThreads : [];
+    const unreadThreads = threads.filter(th => (th.unread_count || 0) > 0);
+
+    // Strictly hide when there are no unread messages
+    if (unreadThreads.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+
+    const tItem = unreadThreads[0];
+    const isMentor = currentUser && (tItem.mentor === currentUser.uid || tItem.mentor === currentUser.id);
+    const senderName = isMentor
+        ? (tItem.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender'))
+        : (tItem.mentor_name || t('mentoring_partner_mentor', 'Mentor'));
+    const senderRole = isMentor
+        ? t('mentoring_role_seeker', 'Suchender (anonym)')
+        : t('mentoring_role_mentor', 'Dein Mentor');
+    const snippet = tItem.last_message || t('mentoring_start_conversation_desc', 'Neue vertrauliche Nachricht');
+    const timeStr = tItem.updated ? new Date(tItem.updated).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+    container.innerHTML = `
+        <div class="home-mentoring-card home-mentoring-card-unread" onclick="window.openMentoringChatDirect('${escapeHtml(tItem.id)}', 'home')" role="button" tabindex="0">
+            <div class="home-mentoring-top-row">
+                <div class="home-mentoring-sender-info">
+                    <span class="home-mentoring-pulse-dot"></span>
+                    <span class="home-mentoring-sender-name">${escapeHtml(senderName)}</span>
+                    <span class="home-mentoring-role-pill">${escapeHtml(senderRole)}</span>
+                </div>
+                ${timeStr ? `<span class="home-mentoring-time">${escapeHtml(timeStr)}</span>` : ''}
+            </div>
+            <div class="home-mentoring-snippet-box">
+                <div class="home-mentoring-snippet">"${escapeHtml(snippet)}"</div>
+                <div class="home-mentoring-arrow" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </div>
+            </div>
+            ${unreadThreads.length > 1 ? `
+                <div class="home-mentoring-extra-bar">
+                    <span>+${unreadThreads.length - 1} ${t('home_mentoring_more_unread', 'weitere ungelesene Unterhaltungen')}</span>
+                </div>
+            ` : ''}
+        </div>
+    `;
+};
+
+window.openMentoringChatDirect = async function(threadId, origin = 'home') {
+    window._chatOrigin = origin;
+    window._openingDirectChat = true;
+    currentMentoringSubTab = 'chats';
+
+    // 1. Switch to mentoring tab so DOM containers are active
+    window.switchTab('mentoring');
+
+    // 2. Switch subtab to 'chats'
+    window.switchMentoringSubTab('chats');
+
+    // 3. Load threads and open the requested thread
+    if (threadId) {
+        await window.loadMentoringThreads(true, threadId);
+    } else {
+        await window.loadMentoringThreads(true);
+    }
+
+    // Keep direct chat opening flag true long enough for transitions and any pending data loads
+    setTimeout(() => {
+        window._openingDirectChat = false;
+    }, 400);
 };
 
