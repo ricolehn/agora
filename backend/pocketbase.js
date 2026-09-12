@@ -199,11 +199,11 @@ const DEFAULT_COLLECTION_SPECS = [
   {
     name: 'mentoring_threads',
     type: 'base',
-    listRule: '@request.auth.id = mentor || @request.auth.id = mentee',
-    viewRule: '@request.auth.id = mentor || @request.auth.id = mentee',
-    createRule: '@request.auth.id = mentee',
-    updateRule: '@request.auth.id = mentor || @request.auth.id = mentee',
-    deleteRule: '@request.auth.id = mentor || @request.auth.id = mentee',
+    listRule: null,
+    viewRule: null,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
     indexes: [
       'CREATE INDEX idx_mentoring_threads_mentor ON mentoring_threads (mentor)',
       'CREATE INDEX idx_mentoring_threads_mentee ON mentoring_threads (mentee)'
@@ -1608,10 +1608,17 @@ function getMentoringEncryptionKey() {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    fs.writeFileSync(keyPath, newKeyHex, { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(keyPath, newKeyHex, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     cachedMentoringKey = Buffer.from(newKeyHex, 'hex');
     return cachedMentoringKey;
   } catch (err) {
+    if (err.code === 'EEXIST' && fs.existsSync(keyPath)) {
+      const hex = fs.readFileSync(keyPath, 'utf8').trim();
+      if (hex.length === 64) {
+        cachedMentoringKey = Buffer.from(hex, 'hex');
+        return cachedMentoringKey;
+      }
+    }
     throw new Error(`[PocketBase] Failed to initialize mentoring encryption key: data directory is not writable (${err.message}) and MENTORING_ENCRYPTION_KEY environment variable is not set.`);
   }
 }
@@ -1673,7 +1680,7 @@ async function listMentoringThreadsForUser(appConfig, userIds) {
   return records
     .map(t => {
       if (t.last_message) {
-        return { ...t, last_message: decryptMentoringText(t.last_message, appConfig) };
+        return { ...t, last_message: decryptMentoringText(t.last_message) };
       }
       return t;
     })
@@ -1684,7 +1691,7 @@ async function getMentoringThread(appConfig, id) {
   const token = await authenticateSuperuser(appConfig);
   const record = await pocketBaseRequest(`/api/collections/mentoring_threads/records/${id}`, { token, allow404: true });
   if (record && record.last_message) {
-    return { ...record, last_message: decryptMentoringText(record.last_message, appConfig) };
+    return { ...record, last_message: decryptMentoringText(record.last_message) };
   }
   return record;
 }
@@ -1697,12 +1704,12 @@ async function createMentoringThread(appConfig, data) {
     ...data
   };
   if (payload.last_message) {
-    payload.last_message = encryptMentoringText(payload.last_message, appConfig);
+    payload.last_message = encryptMentoringText(payload.last_message);
   }
   try {
     const created = await createRecord('mentoring_threads', payload, appConfig);
     if (created && created.last_message) {
-      return { ...created, last_message: decryptMentoringText(created.last_message, appConfig) };
+      return { ...created, last_message: decryptMentoringText(created.last_message) };
     }
     return created;
   } catch (err) {
@@ -1720,12 +1727,12 @@ async function updateMentoringThread(appConfig, id, data) {
     ...data
   };
   if (payload.last_message) {
-    payload.last_message = encryptMentoringText(payload.last_message, appConfig);
+    payload.last_message = encryptMentoringText(payload.last_message);
   }
   try {
     const updated = await updateRecord('mentoring_threads', id, payload, appConfig);
     if (updated && updated.last_message) {
-      return { ...updated, last_message: decryptMentoringText(updated.last_message, appConfig) };
+      return { ...updated, last_message: decryptMentoringText(updated.last_message) };
     }
     return updated;
   } catch (err) {
@@ -1744,7 +1751,7 @@ async function listMentoringMessages(appConfig, threadId) {
   return records
     .map(m => ({
       ...m,
-      text: decryptMentoringText(m.text, appConfig)
+      text: decryptMentoringText(m.text)
     }))
     .sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
 }
@@ -1755,12 +1762,12 @@ async function createMentoringMessage(appConfig, data) {
     ...data
   };
   if (payload.text) {
-    payload.text = encryptMentoringText(payload.text, appConfig);
+    payload.text = encryptMentoringText(payload.text);
   }
   const created = await createRecord('mentoring_messages', payload, appConfig);
   return {
     ...created,
-    text: decryptMentoringText(created.text, appConfig)
+    text: decryptMentoringText(created.text)
   };
 }
 

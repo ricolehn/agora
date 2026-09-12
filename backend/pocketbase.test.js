@@ -467,6 +467,45 @@ test('decryptMentoringText handles legacy hex enc:v1: ciphertexts', () => {
   }
 });
 
+test('encryptMentoringText handles EEXIST when file already exists concurrently', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const crypto = require('crypto');
+  const { encryptMentoringText, decryptMentoringText, clearMentoringKeyCache } = require('./pocketbase');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agora-race-test-'));
+  const keyPath = path.join(tmpDir, 'mentoring.key');
+  const existingKeyHex = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(keyPath, existingKeyHex, { encoding: 'utf8' });
+
+  const originalDataDir = process.env.DATA_DIR;
+  const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
+
+  delete process.env.MENTORING_ENCRYPTION_KEY;
+  process.env.DATA_DIR = tmpDir;
+
+  try {
+    clearMentoringKeyCache();
+    const message = 'Test concurrent key file read';
+    const encrypted = encryptMentoringText(message);
+    assert.equal(decryptMentoringText(encrypted), message);
+  } finally {
+    if (originalDataDir !== undefined) {
+      process.env.DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.DATA_DIR;
+    }
+    if (originalEnvKey !== undefined) {
+      process.env.MENTORING_ENCRYPTION_KEY = originalEnvKey;
+    } else {
+      delete process.env.MENTORING_ENCRYPTION_KEY;
+    }
+    clearMentoringKeyCache();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('encryptMentoringText throws fail-fast error when key cannot be initialized or saved', () => {
   const fs = require('fs');
   const os = require('os');
