@@ -1,13 +1,25 @@
 const { listPeopleRecords, upsertPeopleRecord } = require('./pocketbase');
 
+function parseUtcDate(str) {
+    if (!str) return new Date();
+    if (str instanceof Date) return new Date(str.getTime());
+    const s = String(str).trim().slice(0, 10);
+    const parts = s.split('-').map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    }
+    return new Date(str);
+}
+
 function checkAndExecuteStandingOrders(person) {
     if (!person.standingOrders || !Array.isArray(person.standingOrders) || person.standingOrders.length === 0) return null;
 
     let modified = false;
     const payments = person.payments ? [...person.payments] : [];
     const standingOrders = [...person.standingOrders];
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
+
+    const now = new Date();
+    const limitDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
 
     const existingPaymentIds = new Set(payments.map(p => p.id));
     const updatedStandingOrders = [];
@@ -15,20 +27,18 @@ function checkAndExecuteStandingOrders(person) {
     for (const so of standingOrders) {
         let soModified = false;
         let currentSO = { ...so };
-        const startDate = new Date(currentSO.startDate);
-        const dayOfMonth = startDate.getDate();
-        let lastAuto = currentSO.lastAutoPayment ? new Date(currentSO.lastAutoPayment) : null;
+        const startDate = parseUtcDate(currentSO.startDate);
+        const dayOfMonth = startDate.getUTCDate();
+        let lastAuto = currentSO.lastAutoPayment ? parseUtcDate(currentSO.lastAutoPayment) : null;
 
-        let limitDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+        let soEndDate = null;
         let isExpired = false;
 
         if (currentSO.endDate) {
-            const end = new Date(currentSO.endDate);
-            end.setHours(23, 59, 59, 999);
+            const end = parseUtcDate(currentSO.endDate);
+            end.setUTCHours(23, 59, 59, 999);
+            soEndDate = end;
             if (end < limitDate) {
-                limitDate = end;
-            }
-            if (end < today) {
                 isExpired = true;
             }
         }
@@ -38,19 +48,23 @@ function checkAndExecuteStandingOrders(person) {
             nextDueDate = new Date(startDate);
         } else {
             nextDueDate = new Date(lastAuto);
-            nextDueDate.setDate(1);
-            nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-            const maxDays = new Date(nextDueDate.getFullYear(), nextDueDate.getMonth() + 1, 0).getDate();
-            nextDueDate.setDate(Math.min(dayOfMonth, maxDays));
+            nextDueDate.setUTCDate(1);
+            nextDueDate.setUTCMonth(nextDueDate.getUTCMonth() + 1);
+            const maxDays = new Date(Date.UTC(nextDueDate.getUTCFullYear(), nextDueDate.getUTCMonth() + 1, 0)).getUTCDate();
+            nextDueDate.setUTCDate(Math.min(dayOfMonth, maxDays));
         }
 
         let safety = 0;
         while (safety < 1200) {
+            if (soEndDate && nextDueDate > soEndDate) {
+                break;
+            }
+
             let executionDate = new Date(nextDueDate);
             const dayOfWeek = executionDate.getUTCDay();
-            if (dayOfWeek === 6) { // Saturday
+            if (dayOfWeek === 6) { // Saturday -> Monday
                 executionDate.setUTCDate(executionDate.getUTCDate() + 2);
-            } else if (dayOfWeek === 0) { // Sunday
+            } else if (dayOfWeek === 0) { // Sunday -> Monday
                 executionDate.setUTCDate(executionDate.getUTCDate() + 1);
             }
 
@@ -76,10 +90,10 @@ function checkAndExecuteStandingOrders(person) {
             }
 
             lastAuto = new Date(nextDueDate);
-            nextDueDate.setDate(1);
-            nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-            const maxDays = new Date(nextDueDate.getFullYear(), nextDueDate.getMonth() + 1, 0).getDate();
-            nextDueDate.setDate(Math.min(dayOfMonth, maxDays));
+            nextDueDate.setUTCDate(1);
+            nextDueDate.setUTCMonth(nextDueDate.getUTCMonth() + 1);
+            const maxDays = new Date(Date.UTC(nextDueDate.getUTCFullYear(), nextDueDate.getUTCMonth() + 1, 0)).getUTCDate();
+            nextDueDate.setUTCDate(Math.min(dayOfMonth, maxDays));
             safety++;
         }
 

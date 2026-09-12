@@ -173,6 +173,68 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'name', type: 'text', required: true },
       { name: 'permissions', type: 'json' }
     ]
+  },
+  {
+    name: 'mentors',
+    type: 'base',
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.admin = true || @request.auth.id = user',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_mentors_user ON mentors (user)',
+      'CREATE INDEX idx_mentors_status ON mentors (status)'
+    ],
+    fields: [
+      { name: 'user', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'bio', type: 'text' },
+      { name: 'max_mentees', type: 'number' },
+      { name: 'is_accepting', type: 'bool' },
+      { name: 'created', type: 'text' }
+    ]
+  },
+  {
+    name: 'mentoring_threads',
+    type: 'base',
+    listRule: '@request.auth.id = mentor || @request.auth.id = mentee',
+    viewRule: '@request.auth.id = mentor || @request.auth.id = mentee',
+    createRule: '@request.auth.id = mentee',
+    updateRule: '@request.auth.id = mentor || @request.auth.id = mentee',
+    deleteRule: '@request.auth.id = mentor || @request.auth.id = mentee',
+    indexes: [
+      'CREATE INDEX idx_mentoring_threads_mentor ON mentoring_threads (mentor)',
+      'CREATE INDEX idx_mentoring_threads_mentee ON mentoring_threads (mentee)'
+    ],
+    fields: [
+      { name: 'mentor', type: 'text', required: true },
+      { name: 'mentee', type: 'text', required: true },
+      { name: 'mentee_alias', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'last_message', type: 'text' },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  {
+    name: 'mentoring_messages',
+    type: 'base',
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    indexes: [
+      'CREATE INDEX idx_mentoring_messages_thread ON mentoring_messages (thread)'
+    ],
+    fields: [
+      { name: 'thread', type: 'text', required: true },
+      { name: 'sender_role', type: 'text', required: true },
+      { name: 'text', type: 'text', required: true },
+      { name: 'read', type: 'bool' },
+      { name: 'created', type: 'text' }
+    ]
   }
 ];
 
@@ -901,6 +963,20 @@ async function migrateUserAndOwnerSchema(appConfig) {
     await upsertStateValue(appConfig, 'system', { ...DEFAULT_SYSTEM_STATE, ...system, ownerUid });
   }
 
+  let financeGroup = null;
+  try {
+    const allGroups = await listGroupRecords(appConfig);
+    financeGroup = allGroups.find(g => Array.isArray(g.permissions) && g.permissions.includes('manage_finances'));
+    if (!financeGroup && ownerUid) {
+      financeGroup = await createGroupRecord(appConfig, {
+        name: 'Finanzverwaltung',
+        permissions: ['manage_finances']
+      });
+    }
+  } catch (err) {
+    console.warn('[PocketBase Migration] Could not ensure default finance group for owner:', err.message);
+  }
+
   await runInBatches(users, MIGRATION_BATCH_SIZE, async (userRecord) => {
     const isOwner = userRecord.id === ownerUid || userRecord.owner === true || userRecord.superAdmin === true;
     const updates = {};
@@ -921,7 +997,11 @@ async function migrateUserAndOwnerSchema(appConfig) {
     }
 
     if (userRecord.groups === undefined || userRecord.groups === null) {
-      updates.groups = [];
+      const defaultGroups = (isOwner && financeGroup) ? [financeGroup.id] : [];
+      updates.groups = defaultGroups;
+      needsPatch = true;
+    } else if (isOwner && financeGroup && Array.isArray(userRecord.groups) && userRecord.groups.length === 0) {
+      updates.groups = [financeGroup.id];
       needsPatch = true;
     }
 
@@ -1356,10 +1436,16 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
   const permissions = Array.from(permSet);
   const canManageFinances = permissions.includes('manage_finances');
   const canViewFinances = canManageFinances || permissions.includes('view_finances');
+  const canAccessAi = permissions.includes('access_ai');
+  const canParticipateMentoring = true;
+  const canManageMentoring = permissions.includes('manage_mentoring');
   return {
     permissions,
     canManageFinances,
-    canViewFinances
+    canViewFinances,
+    canAccessAi,
+    canParticipateMentoring,
+    canManageMentoring
   };
 }
 
@@ -1422,11 +1508,10 @@ async function updateGroupRecord(appConfig, id, { name, permissions }) {
 }
 
 const SYSTEM_PERMISSIONS = [
-  { id: 'view_finances', name: 'Finanzübersicht & Historie einsehen', description: 'Erlaubt die Einsicht in die Kassenstände, Historie und Berichte' },
-  { id: 'manage_finances', name: 'Finanzen verwalten & buchen', description: 'Erlaubt das Erfassen, Bearbeiten und Löschen von Zahlungen, Spenden und Ausgaben' },
-  { id: 'manage_members', name: 'Mitglieder verwalten', description: 'Erlaubt das Anlegen und Bearbeiten von Mitgliedern und deren Status' },
-  { id: 'manage_system', name: 'Systemeinstellungen verwalten', description: 'Erlaubt das Konfigurieren von Systemparametern, Logos und Mailserver' },
-  { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt die Nutzung des integrierten KI-Assistenten' }
+  { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
+  { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
+  { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
+  { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {
@@ -1455,6 +1540,114 @@ async function deleteGroupRecord(appConfig, id) {
   }
 
   return true;
+}
+
+// Mentors
+async function listMentorRecords(appConfig, filter = '', sort = '') {
+  const records = await listAllRecords('mentors', filter, appConfig, sort);
+  return records.sort((a, b) => (b.created || b.id || '').localeCompare(a.created || a.id || ''));
+}
+
+async function getMentorRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/mentors/records/${id}`, { token, allow404: true });
+}
+
+async function getMentorByUserId(appConfig, userId) {
+  return getFirstRecord('mentors', pbFilterEquals('user', userId), appConfig);
+}
+
+async function createMentorRecord(appConfig, data) {
+  const payload = {
+    created: new Date().toISOString(),
+    ...data
+  };
+  return createRecord('mentors', payload, appConfig);
+}
+
+async function updateMentorRecord(appConfig, id, data) {
+  return updateRecord('mentors', id, data, appConfig);
+}
+
+async function deleteMentorRecord(appConfig, id) {
+  return deleteRecord('mentors', id, appConfig);
+}
+
+// Mentoring Threads
+async function listMentoringThreadsForUser(appConfig, userIds) {
+  const ids = Array.isArray(userIds) ? userIds : [userIds].filter(Boolean);
+  if (ids.length === 0) return [];
+  const parts = [];
+  ids.forEach(id => {
+    parts.push(pbFilterEquals('mentor', id));
+    parts.push(pbFilterEquals('mentee', id));
+  });
+  const filter = parts.join(' || ');
+  const records = await listAllRecords('mentoring_threads', filter, appConfig, '');
+  return records.sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
+}
+
+async function getMentoringThread(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/mentoring_threads/records/${id}`, { token, allow404: true });
+}
+
+async function createMentoringThread(appConfig, data) {
+  const now = new Date().toISOString();
+  const payload = {
+    created: now,
+    updated: now,
+    ...data
+  };
+  try {
+    return await createRecord('mentoring_threads', payload, appConfig);
+  } catch (err) {
+    if (payload.last_message !== undefined) {
+      delete payload.last_message;
+      return await createRecord('mentoring_threads', payload, appConfig);
+    }
+    throw err;
+  }
+}
+
+async function updateMentoringThread(appConfig, id, data) {
+  const payload = {
+    updated: new Date().toISOString(),
+    ...data
+  };
+  try {
+    return await updateRecord('mentoring_threads', id, payload, appConfig);
+  } catch (err) {
+    if (payload.last_message !== undefined) {
+      delete payload.last_message;
+      return await updateRecord('mentoring_threads', id, payload, appConfig).catch(() => null);
+    }
+    throw err;
+  }
+}
+
+// Mentoring Messages
+async function listMentoringMessages(appConfig, threadId) {
+  const filter = pbFilterEquals('thread', threadId);
+  const records = await listAllRecords('mentoring_messages', filter, appConfig, '');
+  return records.sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
+}
+
+async function createMentoringMessage(appConfig, data) {
+  const payload = {
+    created: new Date().toISOString(),
+    ...data
+  };
+  return createRecord('mentoring_messages', payload, appConfig);
+}
+
+async function markMentoringMessagesRead(appConfig, threadId, currentRole) {
+  const otherRole = currentRole === 'mentor' ? 'mentee' : 'mentor';
+  const filter = `${pbFilterEquals('thread', threadId)} && ${pbFilterEquals('sender_role', otherRole)} && read = false`;
+  const unreadMessages = await listAllRecords('mentoring_messages', filter, appConfig, '');
+  for (const msg of unreadMessages) {
+    await updateRecord('mentoring_messages', msg.id, { read: true }, appConfig).catch(() => {});
+  }
 }
 
 module.exports = {
@@ -1508,5 +1701,18 @@ module.exports = {
   listRequestRecords,
   getRequestRecord,
   upsertRequestRecord,
-  SYSTEM_PERMISSIONS
+  SYSTEM_PERMISSIONS,
+  listMentorRecords,
+  getMentorRecord,
+  getMentorByUserId,
+  createMentorRecord,
+  updateMentorRecord,
+  deleteMentorRecord,
+  listMentoringThreadsForUser,
+  getMentoringThread,
+  createMentoringThread,
+  updateMentoringThread,
+  listMentoringMessages,
+  createMentoringMessage,
+  markMentoringMessagesRead
 };

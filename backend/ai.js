@@ -37,15 +37,17 @@ async function setAiSettings(appConfig, patch) {
  * Builds a full database context snapshot for the AI system prompt.
  * Includes all member, expense, request, and user records.
  */
-async function buildDatabaseSnapshot(appConfig) {
+async function buildDatabaseSnapshot(appConfig, options = {}) {
   try {
+    const canViewFinances = options.canViewFinances === true;
+
     const [people, expenses, users, settings, requests, donations] = await Promise.all([
       listPeopleRecords(appConfig).catch(() => []),
-      listExpenseRecords(appConfig).catch(() => []),
+      canViewFinances ? listExpenseRecords(appConfig).catch(() => []) : Promise.resolve([]),
       listUserRecords(appConfig).catch(() => []),
       getStateValue(appConfig, 'settings', {}).catch(() => ({})),
       listRequestRecords(appConfig).catch(() => []),
-      getStateValue(appConfig, 'donations', {}).catch(() => ({}))
+      canViewFinances ? getStateValue(appConfig, 'donations', {}).catch(() => ({})) : Promise.resolve({})
     ]);
 
     const today = new Date();
@@ -61,33 +63,48 @@ async function buildDatabaseSnapshot(appConfig) {
       const status = p.status || 'unknown';
       membersByStatus[status] = (membersByStatus[status] || 0) + 1;
 
-      const payments = Array.isArray(p.data?.payments) ? p.data.payments : [];
-      for (const pay of payments) {
-        const payDateStr = toDateStr(pay.date);
-        if (payDateStr <= todayStr) {
-          totalPaidAcrossMembers += Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+      if (canViewFinances) {
+        const payments = Array.isArray(p.data?.payments) ? p.data.payments : [];
+        for (const pay of payments) {
+          const payDateStr = toDateStr(pay.date);
+          if (payDateStr <= todayStr) {
+            totalPaidAcrossMembers += Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+          }
         }
       }
     }
 
     let totalExpenses = 0;
-    for (const e of expenses) {
-      const eDateStr = toDateStr(e.date);
-      if (eDateStr <= todayStr) {
-        totalExpenses += Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    if (canViewFinances) {
+      for (const e of expenses) {
+        const eDateStr = toDateStr(e.date);
+        if (eDateStr <= todayStr) {
+          totalExpenses += Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+        }
       }
     }
 
     let totalDonations = 0;
-    for (const d of Object.values(donations || {})) {
-      const dDateStr = toDateStr(d.date);
-      if (dDateStr <= todayStr) {
-        totalDonations += Number(String(d.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    if (canViewFinances) {
+      for (const d of Object.values(donations || {})) {
+        const dDateStr = toDateStr(d.date);
+        if (dDateStr <= todayStr) {
+          totalDonations += Number(String(d.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+        }
       }
     }
 
-    // Build full member records (no uid, no raw data blob)
+    // Build member records: strip financial details if !canViewFinances
     const memberRecords = people.map((p) => {
+      if (!canViewFinances) {
+        return {
+          id: p.personKey,
+          name: p.name || '',
+          status: p.status || '',
+          memberSince: p.memberSince || '',
+          originalMemberSince: p.originalMemberSince || p.memberSince || ''
+        };
+      }
       const payments = Array.isArray(p.data?.payments) ? p.data.payments : [];
       return {
         id: p.personKey,
@@ -117,24 +134,26 @@ async function buildDatabaseSnapshot(appConfig) {
       };
     });
 
-    // Build expense records (no receipt field)
-    const expenseRecords = expenses.map((e) => ({
+    // Build expense records (empty if not authorized)
+    const expenseRecords = canViewFinances ? expenses.map((e) => ({
       id: e.expenseKey,
       amount: Math.round(Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
       date: e.date || '',
       issuer: e.issuer || '',
       description: e.description || ''
-    }));
+    })) : [];
 
-    // Include all requests (no userId)
-    const requestRecords = requests.map((r) => ({
+    // Filter requests
+    const requestRecords = requests
+      .filter((r) => canViewFinances || (options.user && String(r.userId) === String(options.user.uid)))
+      .map((r) => ({
         id: r.requestKey,
         type: r.type || '',
         personName: r.personName || '',
         status: r.status || '',
         timestamp: r.timestamp || null,
-        data: r.data || {}
-    }));
+        data: canViewFinances ? (r.data || {}) : {}
+      }));
 
     // Include user records (strip password, token, etc)
     const userRecords = users.map((u) => ({
@@ -150,28 +169,38 @@ async function buildDatabaseSnapshot(appConfig) {
         groups: Array.isArray(u.groups) ? u.groups : []
     }));
 
+    const summary = {
+      totalMembers: people.length,
+      membersByStatus,
+      totalUsers: users.length,
+      adminCount: users.filter((u) => u.admin === true).length
+    };
+
+    if (canViewFinances) {
+      summary.totalMemberPaymentsEur = Math.round(totalPaidAcrossMembers * 100) / 100;
+      summary.totalExpensesEur = Math.round(totalExpenses * 100) / 100;
+      summary.estimatedBalanceEur = Math.round((totalPaidAcrossMembers + totalDonations - totalExpenses) * 100) / 100;
+    }
+
     const snapshot = {
-      summary: {
-        totalMembers: people.length,
-        membersByStatus,
-        totalMemberPaymentsEur: Math.round(totalPaidAcrossMembers * 100) / 100,
-        totalExpensesEur: Math.round(totalExpenses * 100) / 100,
-        estimatedBalanceEur: Math.round((totalPaidAcrossMembers + totalDonations - totalExpenses) * 100) / 100,
-        totalUsers: users.length,
-        adminCount: users.filter((u) => u.admin === true).length
-      },
-      contributionRates: {
+      summary,
+      members: memberRecords,
+      users: userRecords
+    };
+
+    if (canViewFinances) {
+      snapshot.contributionRates = {
         vollverdiener: settings.vollverdiener ?? null,
         geringverdiener: settings.geringverdiener ?? null,
         keinverdiener: settings.keinverdiener ?? null,
         pausiert: settings.pausiert ?? null
-      },
-      members: memberRecords,
-      expenses: expenseRecords,
-      donations: donations,
-      requests: requestRecords,
-      users: userRecords
-    };
+      };
+      snapshot.expenses = expenseRecords;
+      snapshot.donations = donations;
+      snapshot.requests = requestRecords;
+    } else if (requestRecords.length > 0) {
+      snapshot.myRequests = requestRecords;
+    }
 
     return JSON.stringify(snapshot, null, 2);
   } catch (err) {
@@ -238,8 +267,13 @@ function sanitizeAiMessages(rawMessages, maxMessages = 50, maxCharPerMsg = 12000
  * @param {string} appName - The configured application name.
  * @param {string} dbSnapshot - JSON string from buildDatabaseSnapshot.
  */
-function buildSystemPrompt(appName, dbSnapshot) {
-  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer admin questions about the application data, members, finances, and settings. Be concise and helpful.\n\nCurrent database context:\n${dbSnapshot}`;
+function buildSystemPrompt(appName, dbSnapshot, options = {}) {
+  const canViewFinances = options.canViewFinances === true;
+  if (!canViewFinances) {
+    return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, and general app usage. Be concise and helpful.
+IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.\n\nCurrent database context:\n${dbSnapshot}`;
+  }
+  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, and settings. Be concise and helpful.\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
 module.exports = {
