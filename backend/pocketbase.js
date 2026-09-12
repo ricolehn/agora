@@ -221,11 +221,11 @@ const DEFAULT_COLLECTION_SPECS = [
   {
     name: 'mentoring_messages',
     type: 'base',
-    listRule: '@request.auth.admin = true',
-    viewRule: '@request.auth.admin = true',
-    createRule: '@request.auth.admin = true',
-    updateRule: '@request.auth.admin = true',
-    deleteRule: '@request.auth.admin = true',
+    listRule: null,
+    viewRule: null,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
     indexes: [
       'CREATE INDEX idx_mentoring_messages_thread ON mentoring_messages (thread)'
     ],
@@ -1575,55 +1575,62 @@ async function deleteMentorRecord(appConfig, id) {
 }
 
 const ENCRYPTION_PREFIX = 'enc:v1:';
+let cachedMentoringKey = null;
 
-function getMentoringEncryptionKey(appConfig = null) {
+function clearMentoringKeyCache() {
+  cachedMentoringKey = null;
+}
+
+function getMentoringEncryptionKey() {
+  if (cachedMentoringKey) {
+    return cachedMentoringKey;
+  }
+
   if (process.env.MENTORING_ENCRYPTION_KEY) {
-    return crypto.createHash('sha256').update(process.env.MENTORING_ENCRYPTION_KEY).digest();
+    cachedMentoringKey = crypto.createHash('sha256').update(process.env.MENTORING_ENCRYPTION_KEY).digest();
+    return cachedMentoringKey;
+  }
+
+  const dataDir = resolveDataDirectory();
+  const keyPath = path.join(dataDir, 'mentoring.key');
+
+  if (fs.existsSync(keyPath)) {
+    const hex = fs.readFileSync(keyPath, 'utf8').trim();
+    if (hex.length !== 64) {
+      throw new Error(`[PocketBase] Invalid key format in ${keyPath}. Expected 64-char hex string.`);
+    }
+    cachedMentoringKey = Buffer.from(hex, 'hex');
+    return cachedMentoringKey;
   }
 
   try {
-    const dataDir = resolveDataDirectory();
-    const keyPath = path.join(dataDir, 'mentoring.key');
-    if (fs.existsSync(keyPath)) {
-      const hex = fs.readFileSync(keyPath, 'utf8').trim();
-      if (hex.length === 64) {
-        return Buffer.from(hex, 'hex');
-      }
-    } else {
-      const newKeyHex = crypto.randomBytes(32).toString('hex');
-      try {
-        if (!fs.existsSync(dataDir)) {
-          fs.mkdirSync(dataDir, { recursive: true });
-        }
-        fs.writeFileSync(keyPath, newKeyHex, { encoding: 'utf8', mode: 0o600 });
-        return Buffer.from(newKeyHex, 'hex');
-      } catch (writeErr) {
-        console.warn('[PocketBase] Could not persist mentoring encryption key to file:', writeErr.message);
-      }
+    const newKeyHex = crypto.randomBytes(32).toString('hex');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
     }
+    fs.writeFileSync(keyPath, newKeyHex, { encoding: 'utf8', mode: 0o600 });
+    cachedMentoringKey = Buffer.from(newKeyHex, 'hex');
+    return cachedMentoringKey;
   } catch (err) {
-    console.warn('[PocketBase] Failed to resolve key file:', err.message);
+    throw new Error(`[PocketBase] Failed to initialize mentoring encryption key: data directory is not writable (${err.message}) and MENTORING_ENCRYPTION_KEY environment variable is not set.`);
   }
-
-  const fallbackSeed = appConfig?.pocketbase?.adminPassword || 'agora-default-mentoring-secret-seed';
-  return crypto.createHash('sha256').update(`agora-mentoring-fallback:${fallbackSeed}`).digest();
 }
 
-function encryptMentoringText(text, appConfig = null) {
+function encryptMentoringText(text) {
   if (text === undefined || text === null || text === '') return '';
   const str = String(text);
   if (str.startsWith(ENCRYPTION_PREFIX)) return str;
 
-  const key = getMentoringEncryptionKey(appConfig);
+  const key = getMentoringEncryptionKey();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([cipher.update(str, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
-  return `${ENCRYPTION_PREFIX}${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+  return `${ENCRYPTION_PREFIX}${iv.toString('base64url')}:${authTag.toString('base64url')}:${encrypted.toString('base64url')}`;
 }
 
-function decryptMentoringText(text, appConfig = null) {
+function decryptMentoringText(text) {
   if (text === undefined || text === null || text === '') return '';
   const str = String(text);
   if (!str.startsWith(ENCRYPTION_PREFIX)) return str;
@@ -1633,12 +1640,15 @@ function decryptMentoringText(text, appConfig = null) {
     const parts = payload.split(':');
     if (parts.length !== 3) return str;
 
-    const [ivHex, tagHex, ciphertextHex] = parts;
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(tagHex, 'hex');
-    const ciphertext = Buffer.from(ciphertextHex, 'hex');
+    const [ivStr, tagStr, ciphertextStr] = parts;
+    const isHexFormat = ivStr.length === 24 && tagStr.length === 32 && /^[0-9a-fA-F]+$/.test(ivStr);
+    const encoding = isHexFormat ? 'hex' : 'base64url';
 
-    const key = getMentoringEncryptionKey(appConfig);
+    const iv = Buffer.from(ivStr, encoding);
+    const authTag = Buffer.from(tagStr, encoding);
+    const ciphertext = Buffer.from(ciphertextStr, encoding);
+
+    const key = getMentoringEncryptionKey();
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAuthTag(authTag);
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
@@ -1829,5 +1839,6 @@ module.exports = {
   createMentoringMessage,
   markMentoringMessagesRead,
   encryptMentoringText,
-  decryptMentoringText
+  decryptMentoringText,
+  clearMentoringKeyCache
 };

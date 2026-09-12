@@ -419,10 +419,11 @@ test('encryptMentoringText and decryptMentoringText handle roundtrips, legacy pl
 });
 
 test('encryptMentoringText and decryptMentoringText respect MENTORING_ENCRYPTION_KEY env override', () => {
-  const { encryptMentoringText, decryptMentoringText } = require('./pocketbase');
+  const { encryptMentoringText, decryptMentoringText, clearMentoringKeyCache } = require('./pocketbase');
   const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
 
   try {
+    clearMentoringKeyCache();
     process.env.MENTORING_ENCRYPTION_KEY = 'custom-test-secret-key-12345';
     const message = 'Vertrauliche Testnachricht mit Env Key';
     const encrypted = encryptMentoringText(message);
@@ -435,6 +436,73 @@ test('encryptMentoringText and decryptMentoringText respect MENTORING_ENCRYPTION
     } else {
       delete process.env.MENTORING_ENCRYPTION_KEY;
     }
+    clearMentoringKeyCache();
+  }
+});
+
+test('decryptMentoringText handles legacy hex enc:v1: ciphertexts', () => {
+  const crypto = require('crypto');
+  const { decryptMentoringText, clearMentoringKeyCache } = require('./pocketbase');
+  const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
+
+  try {
+    clearMentoringKeyCache();
+    process.env.MENTORING_ENCRYPTION_KEY = 'legacy-test-secret-key';
+    const key = crypto.createHash('sha256').update('legacy-test-secret-key').digest();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const text = 'Legacy hex encrypted text payload';
+    const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+
+    const hexPayload = `enc:v1:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+    assert.equal(decryptMentoringText(hexPayload), text);
+  } finally {
+    if (originalEnvKey !== undefined) {
+      process.env.MENTORING_ENCRYPTION_KEY = originalEnvKey;
+    } else {
+      delete process.env.MENTORING_ENCRYPTION_KEY;
+    }
+    clearMentoringKeyCache();
+  }
+});
+
+test('encryptMentoringText throws fail-fast error when key cannot be initialized or saved', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { encryptMentoringText, clearMentoringKeyCache } = require('./pocketbase');
+  const originalDataDir = process.env.DATA_DIR;
+  const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
+
+  const fakeNonexistentPath = path.join(os.tmpdir(), 'nonexistent-dir-12345', 'subfolder');
+  delete process.env.MENTORING_ENCRYPTION_KEY;
+  process.env.DATA_DIR = fakeNonexistentPath;
+
+  // Mock fs.mkdirSync to fail
+  const originalMkdirSync = fs.mkdirSync;
+  fs.mkdirSync = () => {
+    throw new Error('Permission denied');
+  };
+
+  try {
+    clearMentoringKeyCache();
+    assert.throws(() => {
+      encryptMentoringText('Should fail');
+    }, /Failed to initialize mentoring encryption key/);
+  } finally {
+    fs.mkdirSync = originalMkdirSync;
+    if (originalDataDir !== undefined) {
+      process.env.DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.DATA_DIR;
+    }
+    if (originalEnvKey !== undefined) {
+      process.env.MENTORING_ENCRYPTION_KEY = originalEnvKey;
+    } else {
+      delete process.env.MENTORING_ENCRYPTION_KEY;
+    }
+    clearMentoringKeyCache();
   }
 });
 
