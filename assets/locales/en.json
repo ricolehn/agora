@@ -307,7 +307,7 @@
   "never_paid": "Never",
   "overdue_header": "Overdue",
   "current_members_header": "Current Members",
-  "status_all_ok": "Standing order is active",
+  "status_all_ok": "All good",
   "status_standing_order_active": "Standing order is active",
   "status_payment_overdue": "Payment overdue",
   "status_no_payments": "No payments",
