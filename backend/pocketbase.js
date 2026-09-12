@@ -1,8 +1,9 @@
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { resolvePocketBaseDirectory } = require('./pathConfig');
+const { resolvePocketBaseDirectory, resolveDataDirectory } = require('./pathConfig');
 
 const execFileAsync = promisify(execFile);
 
@@ -220,11 +221,11 @@ const DEFAULT_COLLECTION_SPECS = [
   {
     name: 'mentoring_messages',
     type: 'base',
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: '@request.auth.admin = true',
+    viewRule: '@request.auth.admin = true',
+    createRule: '@request.auth.admin = true',
+    updateRule: '@request.auth.admin = true',
+    deleteRule: '@request.auth.admin = true',
     indexes: [
       'CREATE INDEX idx_mentoring_messages_thread ON mentoring_messages (thread)'
     ],
@@ -1573,6 +1574,81 @@ async function deleteMentorRecord(appConfig, id) {
   return deleteRecord('mentors', id, appConfig);
 }
 
+const ENCRYPTION_PREFIX = 'enc:v1:';
+
+function getMentoringEncryptionKey(appConfig = null) {
+  if (process.env.MENTORING_ENCRYPTION_KEY) {
+    return crypto.createHash('sha256').update(process.env.MENTORING_ENCRYPTION_KEY).digest();
+  }
+
+  try {
+    const dataDir = resolveDataDirectory();
+    const keyPath = path.join(dataDir, 'mentoring.key');
+    if (fs.existsSync(keyPath)) {
+      const hex = fs.readFileSync(keyPath, 'utf8').trim();
+      if (hex.length === 64) {
+        return Buffer.from(hex, 'hex');
+      }
+    } else {
+      const newKeyHex = crypto.randomBytes(32).toString('hex');
+      try {
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        fs.writeFileSync(keyPath, newKeyHex, { encoding: 'utf8', mode: 0o600 });
+        return Buffer.from(newKeyHex, 'hex');
+      } catch (writeErr) {
+        console.warn('[PocketBase] Could not persist mentoring encryption key to file:', writeErr.message);
+      }
+    }
+  } catch (err) {
+    console.warn('[PocketBase] Failed to resolve key file:', err.message);
+  }
+
+  const fallbackSeed = appConfig?.pocketbase?.adminPassword || 'agora-default-mentoring-secret-seed';
+  return crypto.createHash('sha256').update(`agora-mentoring-fallback:${fallbackSeed}`).digest();
+}
+
+function encryptMentoringText(text, appConfig = null) {
+  if (text === undefined || text === null || text === '') return '';
+  const str = String(text);
+  if (str.startsWith(ENCRYPTION_PREFIX)) return str;
+
+  const key = getMentoringEncryptionKey(appConfig);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(str, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return `${ENCRYPTION_PREFIX}${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+function decryptMentoringText(text, appConfig = null) {
+  if (text === undefined || text === null || text === '') return '';
+  const str = String(text);
+  if (!str.startsWith(ENCRYPTION_PREFIX)) return str;
+
+  try {
+    const payload = str.slice(ENCRYPTION_PREFIX.length);
+    const parts = payload.split(':');
+    if (parts.length !== 3) return str;
+
+    const [ivHex, tagHex, ciphertextHex] = parts;
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(tagHex, 'hex');
+    const ciphertext = Buffer.from(ciphertextHex, 'hex');
+
+    const key = getMentoringEncryptionKey(appConfig);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch (err) {
+    console.warn('[PocketBase] Failed to decrypt mentoring text:', err.message);
+    return str;
+  }
+}
+
 // Mentoring Threads
 async function listMentoringThreadsForUser(appConfig, userIds) {
   const ids = Array.isArray(userIds) ? userIds : [userIds].filter(Boolean);
@@ -1584,12 +1660,23 @@ async function listMentoringThreadsForUser(appConfig, userIds) {
   });
   const filter = parts.join(' || ');
   const records = await listAllRecords('mentoring_threads', filter, appConfig, '');
-  return records.sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
+  return records
+    .map(t => {
+      if (t.last_message) {
+        return { ...t, last_message: decryptMentoringText(t.last_message, appConfig) };
+      }
+      return t;
+    })
+    .sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
 }
 
 async function getMentoringThread(appConfig, id) {
   const token = await authenticateSuperuser(appConfig);
-  return pocketBaseRequest(`/api/collections/mentoring_threads/records/${id}`, { token, allow404: true });
+  const record = await pocketBaseRequest(`/api/collections/mentoring_threads/records/${id}`, { token, allow404: true });
+  if (record && record.last_message) {
+    return { ...record, last_message: decryptMentoringText(record.last_message, appConfig) };
+  }
+  return record;
 }
 
 async function createMentoringThread(appConfig, data) {
@@ -1599,8 +1686,15 @@ async function createMentoringThread(appConfig, data) {
     updated: now,
     ...data
   };
+  if (payload.last_message) {
+    payload.last_message = encryptMentoringText(payload.last_message, appConfig);
+  }
   try {
-    return await createRecord('mentoring_threads', payload, appConfig);
+    const created = await createRecord('mentoring_threads', payload, appConfig);
+    if (created && created.last_message) {
+      return { ...created, last_message: decryptMentoringText(created.last_message, appConfig) };
+    }
+    return created;
   } catch (err) {
     if (payload.last_message !== undefined) {
       delete payload.last_message;
@@ -1615,8 +1709,15 @@ async function updateMentoringThread(appConfig, id, data) {
     updated: new Date().toISOString(),
     ...data
   };
+  if (payload.last_message) {
+    payload.last_message = encryptMentoringText(payload.last_message, appConfig);
+  }
   try {
-    return await updateRecord('mentoring_threads', id, payload, appConfig);
+    const updated = await updateRecord('mentoring_threads', id, payload, appConfig);
+    if (updated && updated.last_message) {
+      return { ...updated, last_message: decryptMentoringText(updated.last_message, appConfig) };
+    }
+    return updated;
   } catch (err) {
     if (payload.last_message !== undefined) {
       delete payload.last_message;
@@ -1630,7 +1731,12 @@ async function updateMentoringThread(appConfig, id, data) {
 async function listMentoringMessages(appConfig, threadId) {
   const filter = pbFilterEquals('thread', threadId);
   const records = await listAllRecords('mentoring_messages', filter, appConfig, '');
-  return records.sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
+  return records
+    .map(m => ({
+      ...m,
+      text: decryptMentoringText(m.text, appConfig)
+    }))
+    .sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
 }
 
 async function createMentoringMessage(appConfig, data) {
@@ -1638,7 +1744,14 @@ async function createMentoringMessage(appConfig, data) {
     created: new Date().toISOString(),
     ...data
   };
-  return createRecord('mentoring_messages', payload, appConfig);
+  if (payload.text) {
+    payload.text = encryptMentoringText(payload.text, appConfig);
+  }
+  const created = await createRecord('mentoring_messages', payload, appConfig);
+  return {
+    ...created,
+    text: decryptMentoringText(created.text, appConfig)
+  };
 }
 
 async function markMentoringMessagesRead(appConfig, threadId, currentRole) {
@@ -1714,5 +1827,7 @@ module.exports = {
   updateMentoringThread,
   listMentoringMessages,
   createMentoringMessage,
-  markMentoringMessagesRead
+  markMentoringMessagesRead,
+  encryptMentoringText,
+  decryptMentoringText
 };

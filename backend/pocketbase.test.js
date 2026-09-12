@@ -374,4 +374,67 @@ test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
   assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'manage_mentoring']);
 });
 
+test('encryptMentoringText and decryptMentoringText handle roundtrips, legacy plaintext, and empty inputs', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agora-test-'));
+  const originalDataDir = process.env.DATA_DIR;
+  process.env.DATA_DIR = tmpDir;
+
+  try {
+    const { encryptMentoringText, decryptMentoringText } = require('./pocketbase');
+
+    assert.equal(encryptMentoringText(''), '');
+    assert.equal(encryptMentoringText(null), '');
+    assert.equal(encryptMentoringText(undefined), '');
+    assert.equal(decryptMentoringText(''), '');
+    assert.equal(decryptMentoringText(null), '');
+
+    const secretMessage = 'Hallo, ich benötige vertrauliche Seelsorge-Unterstützung.';
+    const encrypted = encryptMentoringText(secretMessage);
+
+    assert.ok(encrypted.startsWith('enc:v1:'));
+    assert.notEqual(encrypted, secretMessage);
+    assert.ok(!encrypted.includes(secretMessage));
+
+    const decrypted = decryptMentoringText(encrypted);
+    assert.equal(decrypted, secretMessage);
+
+    // Re-encrypting an already encrypted string should return the encrypted string as-is
+    const doubleEncrypted = encryptMentoringText(encrypted);
+    assert.equal(doubleEncrypted, encrypted);
+
+    // Legacy plain text (not starting with enc:v1:) is returned untouched
+    const legacyText = 'This is an unencrypted legacy message text';
+    assert.equal(decryptMentoringText(legacyText), legacyText);
+  } finally {
+    if (originalDataDir !== undefined) {
+      process.env.DATA_DIR = originalDataDir;
+    } else {
+      delete process.env.DATA_DIR;
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('encryptMentoringText and decryptMentoringText respect MENTORING_ENCRYPTION_KEY env override', () => {
+  const { encryptMentoringText, decryptMentoringText } = require('./pocketbase');
+  const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
+
+  try {
+    process.env.MENTORING_ENCRYPTION_KEY = 'custom-test-secret-key-12345';
+    const message = 'Vertrauliche Testnachricht mit Env Key';
+    const encrypted = encryptMentoringText(message);
+
+    assert.ok(encrypted.startsWith('enc:v1:'));
+    assert.equal(decryptMentoringText(encrypted), message);
+  } finally {
+    if (originalEnvKey !== undefined) {
+      process.env.MENTORING_ENCRYPTION_KEY = originalEnvKey;
+    } else {
+      delete process.env.MENTORING_ENCRYPTION_KEY;
+    }
+  }
+});
 
