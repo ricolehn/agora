@@ -178,10 +178,10 @@ function t(key, fallback = '', params = null) {
 function translateStatusText(text) {
     if (!text) return '';
     const cleanText = text.trim();
-    if (cleanText === 'Dauerauftrag läuft für den Beitrag' || cleanText === 'Dauerauftrag aktiv') {
-        return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft für den Beitrag'));
+    if (cleanText === 'Dauerauftrag läuft' || cleanText === 'Dauerauftrag läuft für den Beitrag' || cleanText === 'Dauerauftrag aktiv') {
+        return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft'));
     }
-    if (cleanText === 'Alles in Ordnung') return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft für den Beitrag'));
+    if (cleanText === 'Alles in Ordnung') return t('status_standing_order_active', t('status_all_ok', 'Dauerauftrag läuft'));
     if (cleanText === 'Zahlung überfällig') return t('status_payment_overdue', 'Zahlung überfällig');
     if (cleanText === 'Keine Zahlungen') return t('status_no_payments', 'Keine Zahlungen');
     if (cleanText === 'läuft diesen Monat ab') return t('status_expires_this_month', 'läuft diesen Monat ab');
@@ -1763,7 +1763,7 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
             // If trueMissingAmount <= totalSOAmount, then after SO executes, they will owe 0.
             if (trueMissingAmount <= totalSOAmount) {
                 return {
-                    text: 'Dauerauftrag läuft für den Beitrag',
+                    text: 'Dauerauftrag läuft',
                     isOverdue: false,
                     isSoonDue: true, // Mark them as soon due since the standing order is expected this month
                     isActiveStandingOrder: true
@@ -1787,7 +1787,7 @@ function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = nu
 
     if (hasActiveSO) {
         return {
-            text: 'Dauerauftrag läuft für den Beitrag',
+            text: 'Dauerauftrag läuft',
             isOverdue: false,
             isSoonDue: false,
             isActiveStandingOrder: true
