@@ -1587,7 +1587,10 @@ function getMentoringEncryptionKey() {
   }
 
   if (process.env.MENTORING_ENCRYPTION_KEY) {
-    cachedMentoringKey = crypto.createHash('sha256').update(process.env.MENTORING_ENCRYPTION_KEY).digest();
+    const envVal = process.env.MENTORING_ENCRYPTION_KEY.trim();
+    cachedMentoringKey = (/^[0-9a-fA-F]{64}$/.test(envVal))
+      ? Buffer.from(envVal, 'hex')
+      : crypto.createHash('sha256').update(envVal).digest();
     return cachedMentoringKey;
   }
 
@@ -1662,7 +1665,7 @@ function decryptMentoringText(text) {
     return decrypted.toString('utf8');
   } catch (err) {
     console.warn('[PocketBase] Failed to decrypt mentoring text:', err.message);
-    return str;
+    return '[Nachricht konnte nicht entschlüsselt werden]';
   }
 }
 

@@ -419,6 +419,7 @@ test('encryptMentoringText and decryptMentoringText handle roundtrips, legacy pl
 });
 
 test('encryptMentoringText and decryptMentoringText respect MENTORING_ENCRYPTION_KEY env override', () => {
+  const crypto = require('crypto');
   const { encryptMentoringText, decryptMentoringText, clearMentoringKeyCache } = require('./pocketbase');
   const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
 
@@ -430,6 +431,33 @@ test('encryptMentoringText and decryptMentoringText respect MENTORING_ENCRYPTION
 
     assert.ok(encrypted.startsWith('enc:v1:'));
     assert.equal(decryptMentoringText(encrypted), message);
+
+    // Test 64-char hex key env override
+    clearMentoringKeyCache();
+    const hexKey = crypto.randomBytes(32).toString('hex');
+    process.env.MENTORING_ENCRYPTION_KEY = hexKey;
+    const hexMessage = 'Test mit 64-char Hex Env Key';
+    const encryptedHex = encryptMentoringText(hexMessage);
+    assert.equal(decryptMentoringText(encryptedHex), hexMessage);
+  } finally {
+    if (originalEnvKey !== undefined) {
+      process.env.MENTORING_ENCRYPTION_KEY = originalEnvKey;
+    } else {
+      delete process.env.MENTORING_ENCRYPTION_KEY;
+    }
+    clearMentoringKeyCache();
+  }
+});
+
+test('decryptMentoringText returns user-friendly fallback placeholder string when key or payload is corrupted', () => {
+  const { decryptMentoringText, clearMentoringKeyCache } = require('./pocketbase');
+  const originalEnvKey = process.env.MENTORING_ENCRYPTION_KEY;
+
+  try {
+    clearMentoringKeyCache();
+    process.env.MENTORING_ENCRYPTION_KEY = 'wrong-key-123';
+    const corruptedPayload = 'enc:v1:AAAA-bad-iv:BBBB-bad-tag:CCCC-bad-ciphertext';
+    assert.equal(decryptMentoringText(corruptedPayload), '[Nachricht konnte nicht entschlüsselt werden]');
   } finally {
     if (originalEnvKey !== undefined) {
       process.env.MENTORING_ENCRYPTION_KEY = originalEnvKey;
