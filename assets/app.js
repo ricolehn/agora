@@ -3728,30 +3728,52 @@ function generatePersonHTML(p, preCalcData = null) {
     const standingOrders = safeList(p.standingOrders);
     const hasStandingOrder = standingOrders.length > 0;
     const soListHtml = hasStandingOrder ? `
-        <div class="card" style="margin-top:15px; margin-bottom:15px; background:var(--surface-alt);">
-            <div class="card-header" style="font-size:0.9rem; padding:10px 15px;">${t('active_standing_orders', '🔄 Aktive Daueraufträge')}</div>
-            <div class="card-body" style="padding:10px 15px;">
+        <div class="standing-order-section">
+            <div class="so-section-header">
+                <div class="so-header-title">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    <span>${t('modal_standing_order', 'Dauerauftrag')}</span>
+                </div>
+            </div>
+            <div class="so-items-list">
                 ${standingOrders.map(so => {
                     const isEnded = so.endDate && new Date(so.endDate) < new Date();
-                    const style = isEnded ? 'opacity:0.6;' : '';
                     return `
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5px; ${style}">
-                        <div>
-                            <div style="font-size:0.9rem; font-weight:600;">${formatCurrency(so.amount)} € / Monat</div>
-                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">${escapeHtml(so.note || t('no_note', 'Ohne Notiz'))}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
-                                Start: ${formatDateFast(so.startDate)}
-                                ${so.endDate ? `<br>Ende: ${formatDateFast(so.endDate)}` : ''}
+                    <div class="so-card-item ${isEnded ? 'is-ended' : ''}">
+                        <div class="so-card-top">
+                            <div class="so-card-amount-wrapper">
+                                <span class="so-amount-val">${formatCurrency(so.amount)} €</span>
+                                <span class="so-period-label">/ ${t('month', 'Monat')}</span>
+                                <span class="so-status-pill ${isEnded ? 'ended' : 'active'}">${isEnded ? t('status_ended', 'Beendet') : t('status_active', 'Aktiv')}</span>
                             </div>
+                            ${canManageFinances() ? `
+                            <button type="button" class="btn-so-action" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Bearbeiten/Beenden'))}">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                <span>${t('btn_manage', 'Verwalten')}</span>
+                            </button>
+                            ` : ''}
                         </div>
-                        ${canManageFinances() ? `
-                        <button class="btn-icon text-danger" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Bearbeiten/Beenden'))}" style="background:none; border:none; padding:4px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        </button>
-                        ` : ''}
+                        <div class="so-card-meta-chips">
+                            <div class="so-chip">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                <span>Start: ${formatDateFast(so.startDate)}</span>
+                            </div>
+                            ${so.endDate ? `
+                            <div class="so-chip ${isEnded ? 'ended' : ''}">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                                <span>Ende: ${formatDateFast(so.endDate)}</span>
+                            </div>
+                            ` : ''}
+                            ${so.note && so.note.trim() && so.note.trim() !== 'Ohne Notiz' && so.note.trim() !== 'No note' ? `
+                            <div class="so-chip so-note-chip">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                                <span>${escapeHtml(so.note)}</span>
+                            </div>
+                            ` : ''}
+                        </div>
                     </div>
                     `;
-                }).join('<hr style="margin:8px 0; border:0; border-top:1px solid var(--border);">')}
+                }).join('')}
             </div>
         </div>
     ` : '';
@@ -3780,20 +3802,37 @@ function generatePersonHTML(p, preCalcData = null) {
             <div id="drawer-${p.id}" class="person-details">
                 <div class="details-content">
 
-                    <div class="details-status-card ${cardClass}">
-                        ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `
-                        <div class="details-row">
-                            <span class="details-label">${t('paid_until', 'Bezahlt bis')}</span>
-                            <span class="details-value">${dateText}</span>
-                        </div>`}
-                        <div class="details-row">
-                            <span class="details-label">${t('status_label', 'Status')}</span>
-                            <span class="details-value" style="text-transform:capitalize">${escapeHtml(translatedPStatus)}</span>
+                    <div class="member-summary-card ${cardClass}">
+                        <div class="summary-grid">
+                            <div class="summary-tile">
+                                <span class="summary-tile-label">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                    ${t('status_label', 'Status')}
+                                </span>
+                                <span class="summary-status-badge">${escapeHtml(translatedPStatus)}</span>
+                            </div>
+                            <div class="summary-tile">
+                                <span class="summary-tile-label">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                    ${t('paid_until', 'Bezahlt bis')}
+                                </span>
+                                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `
+                                    <span class="summary-so-badge">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                                        ${t('status_standing_order_active', 'Dauerauftrag läuft')}
+                                    </span>
+                                ` : `
+                                    <span class="summary-paid-badge ${pillClass}">${dateText}</span>
+                                `}
+                            </div>
                         </div>
                         ${statusMeta.isOverdue ? `
-                        <div class="details-row" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(0,0,0,0.05)">
-                            <span class="details-label text-danger">${t('overdue_amount_label', 'Offener Betrag')}</span>
-                            <span class="details-value text-danger">${formatCurrency(overdueAmount)} €</span>
+                        <div class="summary-overdue-alert">
+                            <div class="overdue-alert-label">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                <span>${t('overdue_amount_label', 'Offener Betrag')}</span>
+                            </div>
+                            <span class="overdue-alert-val">${formatCurrency(overdueAmount)} €</span>
                         </div>
                         ` : ''}
                     </div>
@@ -3801,19 +3840,19 @@ function generatePersonHTML(p, preCalcData = null) {
                     ${soListHtml}
 
                     ${canManageFinances() ? `
-                    <div class="details-actions">
-                        <button class="btn btn-primary" data-id="${escapeHtml(p.id)}" onclick="openPaymentModal(this.dataset.id)">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12"></path><path d="M4 14h9"></path><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"></path></svg>
-                            ${t('record_payment_btn', 'Zahlung erfassen')}
+                    <div class="member-actions-group">
+                        <button type="button" class="btn-member-primary" data-id="${escapeHtml(p.id)}" onclick="openPaymentModal(this.dataset.id)">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><path d="M12 18V6"></path></svg>
+                            <span>${t('record_payment_btn', 'Zahlung erfassen')}</span>
                         </button>
-                        <div class="secondary-actions">
-                            <button class="btn btn-secondary" data-id="${escapeHtml(p.id)}" onclick="openChangeStatusModal(this.dataset.id)">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                                ${t('status_btn', 'Status')}
+                        <div class="member-secondary-actions">
+                            <button type="button" class="btn-member-secondary" data-id="${escapeHtml(p.id)}" onclick="openChangeStatusModal(this.dataset.id)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                                <span>${t('status_btn', 'Status')}</span>
                             </button>
-                            <button class="btn btn-secondary" data-id="${escapeHtml(p.id)}" onclick="sendStatusEmail(this.dataset.id)">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                                ${t('email_btn', 'E-Mail')}
+                            <button type="button" class="btn-member-secondary" data-id="${escapeHtml(p.id)}" onclick="sendStatusEmail(this.dataset.id)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                                <span>${t('email_btn', 'E-Mail')}</span>
                             </button>
                         </div>
                     </div>
@@ -6034,25 +6073,46 @@ window.uploadChurchLogo = async () => {
     }
 };
 
-window.saveSettings = async () => {
-    settings.vollverdiener = parseFloat(document.getElementById('rate-vollverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    settings.geringverdiener = parseFloat(document.getElementById('rate-geringverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    settings.keinverdiener = parseFloat(document.getElementById('rate-keinverdiener').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    settingsVersion++;
+// Keep saveSettings as a no-op fallback (called by nothing now)
+window.saveSettings = async () => {};
 
-    const emailNotifications = document.getElementById('admin-email-notifications').checked;
+// Auto-save a single rate field
+window.autoSaveRate = async function(fieldId) {
+    const el = document.getElementById(fieldId);
+    if (!el) return;
+    const val = parseFloat(el.value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    if (isNaN(val) || val < 0) return;
+
+    const key = fieldId === 'rate-vollverdiener' ? 'vollverdiener'
+              : fieldId === 'rate-geringverdiener' ? 'geringverdiener'
+              : 'keinverdiener';
+    settings[key] = val;
+    settingsVersion++;
 
     try {
         await set(ref(db, 'settings'), settings);
+        await renderAll();
+        showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern der Rate:', err);
+        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
+    }
+};
+
+// Auto-save email notifications toggle
+window.autoSaveEmailNotifications = async function() {
+    const el = document.getElementById('admin-email-notifications');
+    if (!el) return;
+    const emailNotifications = el.checked;
+    try {
         if (currentUser && currentUser.uid) {
             await update(ref(db, 'users/' + currentUser.uid), { emailNotifications });
             currentUser.emailNotifications = emailNotifications;
         }
-        await renderAll();
         showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
     } catch (err) {
-        console.error('Fehler beim Speichern der Einstellungen:', err);
-        alert(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'));
+        console.error('Fehler beim Speichern der Benachrichtigungseinstellung:', err);
+        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
     }
 };
 
@@ -6374,34 +6434,34 @@ window.openUserRequestModal = (type) => {
         if (subtitle) subtitle.innerText = t('user_req_select_subtitle', "Wähle die Art der Anfrage");
 
         container.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
-                <button type="button" onclick="openUserRequestModal('payment')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; cursor: pointer;">
-                    <div class="fab-menu-icon" style="background: rgba(6, 182, 212, 0.15); color: var(--primary); font-size: 1.25rem;">
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 2px;">
+                <button type="button" onclick="openUserRequestModal('payment')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
+                    <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(6, 182, 212, 0.12); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
                         💳
                     </div>
-                    <div class="fab-menu-text">
-                        <div style="color: var(--text); font-weight: 700;">${t('user_req_type_payment', 'Einzahlung / Zahlung')}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.85rem;">${t('user_req_type_payment_desc', 'Beitrag oder Einzahlung melden.')}</div>
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t('user_req_type_payment', 'Einzahlung / Zahlung')}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t('user_req_type_payment_desc', 'Beitrag oder Einzahlung melden.')}</div>
                     </div>
                 </button>
 
-                <button type="button" onclick="openUserRequestModal('status')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; cursor: pointer;">
-                    <div class="fab-menu-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; font-size: 1.25rem;">
+                <button type="button" onclick="openUserRequestModal('status')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
+                    <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(245, 158, 11, 0.12); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
                         ⚡
                     </div>
-                    <div class="fab-menu-text">
-                        <div style="color: var(--text); font-weight: 700;">${t('user_req_type_status', 'Statuswechsel')}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.85rem;">${t('user_req_type_status_desc', 'Änderung des Mitgliedsstatus beantragen.')}</div>
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t('user_req_type_status', 'Statuswechsel')}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t('user_req_type_status_desc', 'Änderung des Mitgliedsstatus beantragen.')}</div>
                     </div>
                 </button>
 
-                <button type="button" onclick="openUserRequestModal('expense')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; cursor: pointer;">
-                    <div class="fab-menu-icon" style="background: rgba(239, 68, 68, 0.15); color: var(--danger); font-size: 1.25rem;">
+                <button type="button" onclick="openUserRequestModal('expense')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
+                    <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(239, 68, 68, 0.12); color: var(--danger); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
                         🧾
                     </div>
-                    <div class="fab-menu-text">
-                        <div style="color: var(--text); font-weight: 700;">${t('user_req_type_expense', 'Ausgabe')}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.85rem;">${t('user_req_type_expense_desc', 'Ausgabe zur Erstattung einreichen (mit Beleg).')}</div>
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t('user_req_type_expense', 'Ausgabe')}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t('user_req_type_expense_desc', 'Ausgabe zur Erstattung einreichen (mit Beleg).')}</div>
                     </div>
                 </button>
             </div>
@@ -6423,8 +6483,7 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>💶</span> <span>${t('modal_section_amount', 'Zahlungsbetrag')}</span>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
+                    <div class="form-group">
                         <div class="hero-amount-wrapper">
                             <span class="hero-amount-prefix">€</span>
                             <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
@@ -6435,15 +6494,15 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>⚙️</span> <span>${t('modal_section_payment_type', 'Zahlungsart & Datum')}</span>
                     </div>
-                    <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                    <div class="modal-switch-row">
                         <label class="switch">
                             <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
                             <span class="slider"></span>
                         </label>
-                        <label for="req-is-standing-order" style="margin:0; font-weight:600; cursor:pointer; font-size:0.9rem;">${t('modal_standing_order', 'Dauerauftrag')}</label>
+                        <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Dauerauftrag')}</label>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                    <div class="form-group">
+                        <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Datum')}</label>
                         <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
                     </div>
                 </div>
@@ -6451,8 +6510,7 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>📝</span> <span>${t('modal_note', 'Notiz / Verwendungszweck')}</span>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" for="req-note">${t('req_note_label', 'Notiz (Optional)')}</label>
+                    <div class="form-group">
                         <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
                     </div>
                 </div>
@@ -6470,8 +6528,7 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>💼</span> <span>${t('modal_new_status', 'Neuer Status')}</span>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" for="req-status">${t('modal_new_status', 'Neuer Status')}</label>
+                    <div class="form-group">
                         <select id="req-status" class="form-select">
                             <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
                             <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
@@ -6484,10 +6541,9 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>📅</span> <span>${t('modal_valid_from', 'Gültigkeitsdatum')}</span>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" for="req-date">${t('req_valid_from', 'Gültig ab')}</label>
+                    <div class="form-group">
                         <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px; line-height:1.35;">
                             ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
                         </div>
                     </div>
@@ -6506,8 +6562,7 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>💶</span> <span>${t('modal_section_amount', 'Ausgabenbetrag')}</span>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" for="req-amount">${t('req_amount_label', 'Betrag (€)')}</label>
+                    <div class="form-group">
                         <div class="hero-amount-wrapper">
                             <span class="hero-amount-prefix">€</span>
                             <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
@@ -6518,11 +6573,11 @@ window.openUserRequestModal = (type) => {
                     <div class="modal-section-header">
                         <span>ℹ️</span> <span>${t('modal_section_info', 'Angaben zur Ausgabe')}</span>
                     </div>
-                    <div class="form-group" style="margin:0 0 10px 0;">
+                    <div class="form-group">
                         <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
                         <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
                     </div>
-                    <div class="form-group" style="margin:0;">
+                    <div class="form-group">
                         <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
                         <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
                     </div>
@@ -7293,45 +7348,45 @@ window.showTransactionDetails = async function(id, type) {
     }
 
     let html = `
-        <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:18px 16px; text-align:center; margin-bottom:14px; display:flex; flex-direction:column; align-items:center; gap:6px;">
-            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:0.8rem; font-weight:700; ${typeBadgeStyle}" class="${typeBadgeClass}">
+        <div style="background:var(--surface-alt); border:1px solid var(--border-light); border-radius:14px; padding:12px 14px; text-align:center; margin-bottom:10px; display:flex; flex-direction:column; align-items:center; gap:5px;">
+            <div style="display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:18px; font-size:0.75rem; font-weight:700; ${typeBadgeStyle}" class="${typeBadgeClass}">
                 <span>${typeIcon}</span> ${escapeHtml(item.typeName || '')}
             </div>
-            <div style="font-size:2rem; font-weight:800; color:var(--text); letter-spacing:-0.03em;">${formatCurrency(item.amount)} €</div>
+            <div style="font-size:1.55rem; font-weight:800; color:var(--text); letter-spacing:-0.02em;">${formatCurrency(item.amount)} €</div>
         </div>
 
-        <div class="modal-section-card" style="gap:10px;">
+        <div class="modal-section-card" style="gap:8px;">
             <div class="modal-section-header">
                 <span>ℹ️</span> <span>${escapeHtml(t('modal_section_info', 'Transaktionsdetails'))}</span>
             </div>
             
-            <div style="display:flex; flex-direction:column; gap:10px; font-size:0.9rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">📅 ${escapeHtml(t('modal_date', 'Datum'))}</span>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.86rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
+                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📅 ${escapeHtml(t('modal_date', 'Datum'))}</span>
                     <span style="font-weight:600; color:var(--text);">${item.date ? formatDateFast(item.date) : '-'}</span>
                 </div>
 
                 ${item.who ? `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">👤 ${escapeHtml(t('modal_person_name', 'Person'))}</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
+                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">👤 ${escapeHtml(t('modal_person_name', 'Person'))}</span>
                     <span style="font-weight:600; color:var(--text);">${escapeHtml(item.who)}</span>
                 </div>` : ''}
 
                 ${item.issuer ? `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
+                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}</span>
                     <span style="font-weight:600; color:var(--text);">${escapeHtml(item.issuer)}</span>
                 </div>` : ''}
 
                 ${(item.description || item.note) ? `
                 <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
-                    <span style="color:var(--text-secondary); font-size:0.82rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
-                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:8px 12px; border-radius:10px; border:1px solid var(--border); word-break:break-word; white-space:pre-wrap;">${escapeHtml(item.description || item.note)}</span>
+                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
+                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); word-break:break-word; white-space:pre-wrap; font-size:0.84rem;">${escapeHtml(item.description || item.note)}</span>
                 </div>` : ''}
             </div>
         </div>
 
-        <div id="receipt-container" style="margin-top:12px;"></div>
+        <div id="receipt-container" style="margin-top:10px;"></div>
     `;
 
     content.innerHTML = html;
@@ -7868,12 +7923,19 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
             renderHomeMentoringCard();
         }
 
+        // Update sidebar count badge
+        const sidebarCountBadge = document.getElementById('mentoring-threads-count-badge');
+        if (sidebarCountBadge) {
+            sidebarCountBadge.innerText = String(mentoringThreads.length);
+            sidebarCountBadge.style.display = mentoringThreads.length > 0 ? 'inline-flex' : 'none';
+        }
+
         if (mentoringThreads.length === 0) {
             listEl.innerHTML = `
-                <div style="text-align:center; padding: 40px 16px; color: var(--text-secondary); font-size: 0.9rem;">
-                    <div style="font-size: 2rem; margin-bottom: 8px;">💬</div>
-                    <div style="font-weight: 600; margin-bottom: 4px;">${t('mentoring_no_threads_title', 'Keine aktiven Begleitungen')}</div>
-                    <div style="font-size: 0.8rem; margin-bottom: 12px;">${t('mentoring_no_threads_desc', 'Kontaktiere einen Mentor, um ein vertrauliches Gespräch zu beginnen.')}</div>
+                <div class="mentoring-threads-empty">
+                    <div class="mentoring-empty-icon">💬</div>
+                    <div class="mentoring-empty-title">${t('mentoring_no_threads_title', 'Keine aktiven Begleitungen')}</div>
+                    <div class="mentoring-empty-desc">${t('mentoring_no_threads_desc', 'Kontaktiere einen Mentor, um ein vertrauliches Gespräch zu beginnen.')}</div>
                     <button class="btn btn-secondary btn-small" onclick="window.switchMentoringSubTab('find')">${t('mentoring_tab_find', 'Mentoren finden')}</button>
                 </div>
             `;
@@ -7883,6 +7945,7 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
         listEl.innerHTML = mentoringThreads.map(thread => {
             const isActive = activeMentoringThreadId === thread.id;
             const isMentor = currentUser && (thread.mentor === currentUser.uid || thread.mentor === currentUser.id);
+            const isClosed = thread.status === 'closed';
 
             // Anonymity / Pseudonym display
             const partnerName = isMentor
@@ -7892,23 +7955,60 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
             const partnerRole = isMentor ? t('mentoring_role_seeker', 'Suchender (anonym)') : t('mentoring_role_mentor', 'Dein Mentor');
             const unreadCount = thread.unread_count || 0;
             const isUnread = unreadCount > 0;
-            const lastMsg = thread.last_message || (thread.status === 'closed' ? t('mentoring_sub_closed', 'Gespräch beendet') : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
+            const lastMsg = thread.last_message || (isClosed ? t('mentoring_sub_closed', 'Gespräch beendet') : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
             const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+
+            // Modern avatar
+            let avatarHtml = '';
+            if (isMentor) {
+                avatarHtml = `
+                    <div class="mentoring-thread-avatar mentee-avatar" title="${escapeHtml(partnerName)}">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
+                    </div>
+                `;
+            } else {
+                const initials = partnerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'M';
+                const avatarUrl = thread.mentor ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(thread.mentor)}` : '';
+                avatarHtml = `
+                    <div class="mentoring-thread-avatar mentor-avatar" title="${escapeHtml(partnerName)}">
+                        <span class="mentoring-avatar-initials">${escapeHtml(initials)}</span>
+                        ${avatarUrl ? `<img src="${avatarUrl}" alt="${escapeHtml(partnerName)}" class="mentoring-avatar-img" onerror="this.style.display='none'">` : ''}
+                    </div>
+                `;
+            }
 
             return `
                 <div class="mentoring-thread-item ${isActive ? 'active' : ''} ${isUnread ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread('${escapeHtml(thread.id)}')">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:3px;">
-                        <div class="mentoring-thread-name">${escapeHtml(partnerName)}</div>
-                        <div style="font-size:0.72rem; color:var(--text-secondary);">${escapeHtml(dateStr)}</div>
+                    <div class="mentoring-thread-avatar-wrap">
+                        ${avatarHtml}
+                        <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? t('mentoring_sub_closed', 'Gespräch beendet') : 'Aktiv'}"></span>
                     </div>
-                    <div style="font-size:0.75rem; color:#a855f7; margin-bottom:4px; font-weight:700;">${escapeHtml(partnerRole)}</div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div class="mentoring-thread-snippet">${escapeHtml(lastMsg)}</div>
-                        ${unreadCount > 0 ? `<span class="mentoring-badge-count" style="margin-left:6px;">${unreadCount}</span>` : ''}
+                    <div class="mentoring-thread-info">
+                        <div class="mentoring-thread-top">
+                            <div class="mentoring-thread-name" title="${escapeHtml(partnerName)}">${escapeHtml(partnerName)}</div>
+                            <div class="mentoring-thread-time">${escapeHtml(dateStr)}</div>
+                        </div>
+                        <div class="mentoring-thread-meta">
+                            <span class="mentoring-role-pill ${isMentor ? 'seeker' : 'mentor'} ${isClosed ? 'closed' : ''}">
+                                ${isClosed ? escapeHtml(t('mentoring_sub_closed', 'Gespräch beendet')) : escapeHtml(partnerRole)}
+                            </span>
+                        </div>
+                        <div class="mentoring-thread-bottom">
+                            <div class="mentoring-thread-snippet" title="${escapeHtml(lastMsg)}">${escapeHtml(lastMsg)}</div>
+                            ${unreadCount > 0 ? `<span class="mentoring-badge-count">${unreadCount}</span>` : ''}
+                        </div>
                     </div>
                 </div>
             `;
         }).join('');
+
+        // Apply active search filter if any
+        const searchInput = document.getElementById('mentoring-threads-search-input');
+        if (searchInput && searchInput.value) {
+            window.filterMentoringThreads(searchInput.value);
+        }
 
         const isDesktop = !window.matchMedia('(max-width: 768px)').matches;
         if (selectThreadId) {
@@ -7920,6 +8020,18 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
     } catch (err) {
         console.warn('Failed to load mentoring threads:', err);
     }
+};
+
+window.filterMentoringThreads = function(query) {
+    const q = (query || '').toLowerCase().trim();
+    const items = document.querySelectorAll('.mentoring-thread-item');
+    items.forEach(el => {
+        const name = (el.querySelector('.mentoring-thread-name')?.innerText || '').toLowerCase();
+        const snippet = (el.querySelector('.mentoring-thread-snippet')?.innerText || '').toLowerCase();
+        const role = (el.querySelector('.mentoring-role-pill')?.innerText || '').toLowerCase();
+        const match = !q || name.includes(q) || snippet.includes(q) || role.includes(q);
+        el.style.display = match ? 'flex' : 'none';
+    });
 };
 
 window.autoResizeMentoringInput = function(el) {
@@ -8016,9 +8128,6 @@ window.openMentoringThread = async function(threadId) {
     const input = document.getElementById('mentoring-chat-input');
     if (input) {
         window.autoResizeMentoringInput(input);
-        if (!window.matchMedia('(max-width: 768px)').matches) {
-            input.focus();
-        }
     }
 
     if (mentoringChatPollTimer) clearInterval(mentoringChatPollTimer);
