@@ -374,4 +374,27 @@ test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
   assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'manage_mentoring']);
 });
 
+test('pocketbase exports encryptMentoringText and decryptMentoringText with proper round-trip', () => {
+  const { encryptMentoringText, decryptMentoringText } = require('./pocketbase');
+  assert.equal(typeof encryptMentoringText, 'function');
+  assert.equal(typeof decryptMentoringText, 'function');
+
+  const threadId = 'pb-test-thread-42';
+  const original = 'Vertrauliche Seelsorge-Nachricht fuer PocketBase';
+  const encrypted = encryptMentoringText(original, threadId);
+
+  assert.ok(encrypted.startsWith('enc:v1:'));
+  assert.notEqual(encrypted, original);
+
+  const decrypted = decryptMentoringText(encrypted, threadId);
+  assert.equal(decrypted, original);
+
+  // Different thread cannot decrypt (returns safe placeholder)
+  const crossDecrypted = decryptMentoringText(encrypted, 'other-thread');
+  assert.equal(crossDecrypted, '[Verschlüsselte Nachricht - Entschlüsselung fehlgeschlagen]');
+
+  // Legacy plaintext passes through
+  assert.equal(decryptMentoringText('Hallo Welt', threadId), 'Hallo Welt');
+});
+
 
