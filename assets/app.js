@@ -263,6 +263,13 @@ function applyTranslations() {
     if (langSelect) langSelect.value = currentLang;
     const userLangSelect = document.getElementById('user-settings-language');
     if (userLangSelect) userLangSelect.value = currentLang;
+
+    // Sync theme selection dropdowns
+    const currentTheme = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
+    const themeSelect = document.getElementById('settings-theme');
+    if (themeSelect) themeSelect.value = currentTheme;
+    const userThemeSelect = document.getElementById('user-settings-theme');
+    if (userThemeSelect) userThemeSelect.value = currentTheme;
 }
 
 window.changeAppLanguage = async function(lang) {
@@ -5269,7 +5276,7 @@ window.clearAiChat = () => {
 function adjustAiInputHeight(inputEl) {
     if (!inputEl) return;
     inputEl.style.height = 'auto';
-    inputEl.style.height = `${Math.min(inputEl.scrollHeight, MAX_AI_CHAT_INPUT_HEIGHT)}px`;
+    inputEl.style.height = `${Math.max(24, Math.min(inputEl.scrollHeight, MAX_AI_CHAT_INPUT_HEIGHT))}px`;
 }
 
 window.handleAiChatInput = (event) => {
@@ -6137,14 +6144,23 @@ function applyActualTheme(t) {
         actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
     document.documentElement.setAttribute('data-theme', actualTheme);
-    document.querySelector('meta[name="theme-color"]').content = actualTheme === 'dark' ? '#0f172a' : '#06b6d4';
+    const themeColor = actualTheme === 'dark' ? '#0f172a' : '#e6f2fa';
+    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
+        meta.content = themeColor;
+    });
 }
 
 window.setTheme = (t) => {
     localStorage.setItem('agora-theme', t);
     applyActualTheme(t);
 
-    // Update active button state
+    // Sync theme selection dropdowns
+    const themeSelect = document.getElementById('settings-theme');
+    if (themeSelect) themeSelect.value = t;
+    const userThemeSelect = document.getElementById('user-settings-theme');
+    if (userThemeSelect) userThemeSelect.value = t;
+
+    // Update active button state (fallback if buttons exist)
     document.querySelectorAll("button[onclick^='setTheme']").forEach(btn => {
         if (btn.getAttribute('onclick') === `setTheme('${t}')`) {
             btn.classList.add('active');
@@ -7909,7 +7925,7 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
 window.autoResizeMentoringInput = function(el) {
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+    el.style.height = Math.max(24, Math.min(el.scrollHeight, 110)) + 'px';
 };
 
 window.openMentoringThread = async function(threadId) {

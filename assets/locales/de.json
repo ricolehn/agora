@@ -264,6 +264,7 @@
   "setup_err_svg_only": "Bitte nur SVG-Dateien hochladen.",
   "setup_err_network": "Netzwerkfehler beim Speichern.",
   "setup_err_unknown": "Ein unbekannter Fehler ist aufgetreten.",
+  "nav_start": "Start",
   "nav_home": "Startseite",
   "nav_requests": "Anfragen",
   "nav_superadmin_settings": "Systemeinstellungen",

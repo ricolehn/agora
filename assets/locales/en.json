@@ -263,6 +263,7 @@
   "setup_err_svg_only": "Please only upload SVG files.",
   "setup_err_network": "Network error while saving.",
   "setup_err_unknown": "An unknown error has occurred.",
+  "nav_start": "Home",
   "nav_home": "Home",
   "nav_requests": "Requests",
   "nav_superadmin_settings": "System Settings",
