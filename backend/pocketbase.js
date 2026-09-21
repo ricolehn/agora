@@ -2,7 +2,11 @@ const crypto = require('crypto');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { resolvePocketBaseDirectory } = require('./pathConfig');
+const { resolveDataDirectory, resolvePocketBaseDirectory } = require('./pathConfig');
+const {
+  encryptMentoringText,
+  decryptMentoringText
+} = require('./mentoringCrypto');
 
 const execFileAsync = promisify(execFile);
 
@@ -1574,7 +1578,20 @@ async function deleteMentorRecord(appConfig, id) {
 }
 
 // Mentoring Threads
+async function listAllMentoringThreads(appConfig, filter = '') {
+  const records = await listAllRecords('mentoring_threads', filter, appConfig, '');
+  return records
+    .map(r => ({
+      ...r,
+      last_message: r.last_message ? decryptMentoringText(r.last_message, r.id) : ''
+    }))
+    .sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
+}
+
 async function listMentoringThreadsForUser(appConfig, userIds) {
+  if (!userIds || userIds === '') {
+    return listAllMentoringThreads(appConfig);
+  }
   const ids = Array.isArray(userIds) ? userIds : [userIds].filter(Boolean);
   if (ids.length === 0) return [];
   const parts = [];
@@ -1583,40 +1600,64 @@ async function listMentoringThreadsForUser(appConfig, userIds) {
     parts.push(pbFilterEquals('mentee', id));
   });
   const filter = parts.join(' || ');
-  const records = await listAllRecords('mentoring_threads', filter, appConfig, '');
-  return records.sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
+  return listAllMentoringThreads(appConfig, filter);
 }
 
 async function getMentoringThread(appConfig, id) {
   const token = await authenticateSuperuser(appConfig);
-  return pocketBaseRequest(`/api/collections/mentoring_threads/records/${id}`, { token, allow404: true });
+  const record = await pocketBaseRequest(`/api/collections/mentoring_threads/records/${id}`, { token, allow404: true });
+  if (record && record.last_message) {
+    record.last_message = decryptMentoringText(record.last_message, record.id);
+  }
+  return record;
 }
 
 async function createMentoringThread(appConfig, data) {
   const now = new Date().toISOString();
+  const rawLastMessage = data.last_message ? String(data.last_message).trim() : '';
   const payload = {
     created: now,
     updated: now,
-    ...data
+    ...data,
+    last_message: ''
   };
+  let record;
   try {
-    return await createRecord('mentoring_threads', payload, appConfig);
+    record = await createRecord('mentoring_threads', payload, appConfig);
   } catch (err) {
     if (payload.last_message !== undefined) {
       delete payload.last_message;
-      return await createRecord('mentoring_threads', payload, appConfig);
+      record = await createRecord('mentoring_threads', payload, appConfig);
+    } else {
+      throw err;
     }
-    throw err;
   }
+
+  if (rawLastMessage && record && record.id) {
+    const encryptedLastMessage = encryptMentoringText(rawLastMessage, record.id);
+    await updateRecord('mentoring_threads', record.id, { last_message: encryptedLastMessage }, appConfig).catch(() => {});
+    record.last_message = rawLastMessage;
+  } else if (record) {
+    record.last_message = rawLastMessage;
+  }
+  return record;
 }
 
 async function updateMentoringThread(appConfig, id, data) {
+  const rawLastMessage = data.last_message;
   const payload = {
     updated: new Date().toISOString(),
     ...data
   };
+  if (rawLastMessage !== undefined) {
+    payload.last_message = rawLastMessage ? encryptMentoringText(rawLastMessage, id) : '';
+  }
   try {
-    return await updateRecord('mentoring_threads', id, payload, appConfig);
+    const updated = await updateRecord('mentoring_threads', id, payload, appConfig);
+    if (updated && rawLastMessage !== undefined) {
+      updated.last_message = rawLastMessage;
+    }
+    return updated;
   } catch (err) {
     if (payload.last_message !== undefined) {
       delete payload.last_message;
@@ -1630,15 +1671,28 @@ async function updateMentoringThread(appConfig, id, data) {
 async function listMentoringMessages(appConfig, threadId) {
   const filter = pbFilterEquals('thread', threadId);
   const records = await listAllRecords('mentoring_messages', filter, appConfig, '');
-  return records.sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
+  return records
+    .map(r => ({
+      ...r,
+      text: decryptMentoringText(r.text, threadId)
+    }))
+    .sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
 }
 
 async function createMentoringMessage(appConfig, data) {
+  const rawText = data.text ? String(data.text) : '';
+  const threadId = data.thread || '';
+  const encryptedText = encryptMentoringText(rawText, threadId);
   const payload = {
     created: new Date().toISOString(),
-    ...data
+    ...data,
+    text: encryptedText
   };
-  return createRecord('mentoring_messages', payload, appConfig);
+  const record = await createRecord('mentoring_messages', payload, appConfig);
+  return {
+    ...record,
+    text: rawText
+  };
 }
 
 async function markMentoringMessagesRead(appConfig, threadId, currentRole) {
@@ -1708,11 +1762,14 @@ module.exports = {
   createMentorRecord,
   updateMentorRecord,
   deleteMentorRecord,
+  listAllMentoringThreads,
   listMentoringThreadsForUser,
   getMentoringThread,
   createMentoringThread,
   updateMentoringThread,
   listMentoringMessages,
   createMentoringMessage,
-  markMentoringMessagesRead
+  markMentoringMessagesRead,
+  encryptMentoringText,
+  decryptMentoringText
 };

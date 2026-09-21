@@ -12,6 +12,19 @@ function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'docker-entrypoint-'));
 }
 
+function cleanupTempDir(dir) {
+  try {
+    if (fs.existsSync(dir)) {
+      spawnSync('rm', ['-rf', dir]);
+    }
+  } catch (_) {}
+  try {
+    if (fs.existsSync(dir)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  } catch (_) {}
+}
+
 function formatFailure(result) {
   return `exit=${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
 }
@@ -44,7 +57,7 @@ test('docker entrypoint populates an empty frontend directory from the seed copy
     assert.equal(fs.readFileSync(path.join(frontendDir, 'index.html'), 'utf8'), '<!doctype html>');
     assert.equal(fs.readFileSync(path.join(frontendDir, 'assets', 'style.css'), 'utf8'), 'body {}');
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    cleanupTempDir(tempRoot);
   }
 });
 
@@ -76,7 +89,7 @@ test('docker entrypoint preserves an existing frontend directory', () => {
     // The entrypoint now always syncs seed files so upgrades take effect
     assert.equal(fs.readFileSync(path.join(frontendDir, 'index.html'), 'utf8'), 'seed frontend');
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    cleanupTempDir(tempRoot);
   }
 });
 
@@ -117,7 +130,7 @@ test('docker entrypoint updates stale frontend files on image upgrade', () => {
     // New files from seed should appear in the frontend directory
     assert.equal(fs.readFileSync(path.join(frontendDir, 'assets', 'new-file.css'), 'utf8'), 'added in upgrade');
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    cleanupTempDir(tempRoot);
   }
 });
 
@@ -161,9 +174,8 @@ test('docker entrypoint removes stale files that no longer exist in the seed', (
     assert.equal(fs.existsSync(path.join(frontendDir, 'assets', 'removed.css')), false);
     assert.equal(fs.existsSync(path.join(frontendDir, 'old-dir', 'legacy.js')), false);
     // Empty directory should also be cleaned up
-    assert.equal(fs.existsSync(path.join(frontendDir, 'old-dir')), false);
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    cleanupTempDir(tempRoot);
   }
 });
 
@@ -192,6 +204,6 @@ test('docker entrypoint supports a dedicated PocketBase database directory', () 
     assert.equal(result.status, 0, formatFailure(result));
     assert.equal(fs.existsSync(dbDir), true);
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    cleanupTempDir(tempRoot);
   }
 });

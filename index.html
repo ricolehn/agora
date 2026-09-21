@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#06b6d4">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e6f2fa">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
+    <meta name="theme-color" content="#e6f2fa">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="assets/church-logo.svg">
     <title>Agora</title>
@@ -314,21 +317,12 @@
                 <div class="card-header" data-i18n="settings_design">Design</div>
                 <div class="card-body">
                     <div class="form-group">
-                        <span class="form-label" data-i18n="theme_title">Farbschema</span>
-                        <div class="settings-flex-row">
-                            <button class="btn btn-secondary" onclick="setTheme('light')" data-i18n="theme_light">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                                Hell
-                            </button>
-                            <button class="btn btn-secondary" onclick="setTheme('dark')" data-i18n="theme_dark">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-                                Dunkel
-                            </button>
-                            <button class="btn btn-secondary" onclick="setTheme('system')" data-i18n="theme_system">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-                                System
-                            </button>
-                        </div>
+                        <label class="form-label" for="settings-theme" data-i18n="theme_title">Farbschema</label>
+                        <select id="settings-theme" class="form-select" onchange="setTheme(this.value)">
+                            <option value="system" data-i18n="theme_system">System</option>
+                            <option value="light" data-i18n="theme_light">Hell</option>
+                            <option value="dark" data-i18n="theme_dark">Dunkel</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -338,15 +332,15 @@
                 <div class="card-body">
                     <div class="form-group">
                         <label class="form-label" for="rate-vollverdiener" data-i18n="rate_full">Vollverdiener (€)</label>
-                <input type="text" inputmode="decimal" id="rate-vollverdiener" class="form-input" value="50">
+                <input type="text" inputmode="decimal" id="rate-vollverdiener" class="form-input" value="50" onblur="autoSaveRate('rate-vollverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="rate-geringverdiener" data-i18n="rate_low">Geringverdiener (€)</label>
-                <input type="text" inputmode="decimal" id="rate-geringverdiener" class="form-input" value="25">
+                <input type="text" inputmode="decimal" id="rate-geringverdiener" class="form-input" value="25" onblur="autoSaveRate('rate-geringverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="rate-keinverdiener" data-i18n="rate_none">Keinverdiener (€)</label>
-                <input type="text" inputmode="decimal" id="rate-keinverdiener" class="form-input" value="10">
+                <input type="text" inputmode="decimal" id="rate-keinverdiener" class="form-input" value="10" onblur="autoSaveRate('rate-keinverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
                     </div>
                 </div>
             </div>
@@ -367,11 +361,11 @@
             </div>
 
             <div class="card card-settings" id="card-security">
-                <div class="card-header" data-i18n="security_title">Sicherheit & Benachrichtigungen</div>
+                <div class="card-header" data-i18n="security_title">Sicherheit &amp; Benachrichtigungen</div>
                 <div class="card-body">
                     <div class="form-group" style="display:flex; align-items:center; gap:10px;">
                         <label class="switch">
-                            <input type="checkbox" id="admin-email-notifications">
+                            <input type="checkbox" id="admin-email-notifications" onchange="autoSaveEmailNotifications()">
                             <span class="slider"></span>
                         </label>
                         <label for="admin-email-notifications" style="margin:0; font-weight:600; cursor:pointer" data-i18n="email_notifications">E-Mail Benachrichtigungen bei Anfragen</label>
@@ -395,9 +389,6 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-bottom: 30px; align-items: center; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="saveSettings()" data-i18n="btn_save_settings">Alle Einstellungen Speichern</button>
-            </div>
         </div>
 
         <div id="super-admin-settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-super-admin-settings">
@@ -604,11 +595,13 @@
                     </div>
                 </div>
 
-                <div class="ai-chat-input-row ai-chat-input-styled">
-                    <textarea id="ai-chat-input" class="ai-chat-input form-input ai-chat-textarea-styled" rows="1" data-i18n-placeholder="ai_chat_input_placeholder" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
-                    <button id="ai-chat-send-btn" class="btn btn-primary ai-chat-send-btn ai-chat-send-btn-styled" onclick="sendAiMessage()" aria-label="Nachricht senden">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                    </button>
+                <div class="ai-chat-input-bar ai-chat-input-styled">
+                    <div class="ai-chat-input-inner">
+                        <textarea id="ai-chat-input" rows="1" data-i18n-placeholder="ai_chat_input_placeholder" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
+                        <button id="ai-chat-send-btn" type="button" class="ai-chat-send-btn" onclick="sendAiMessage()" aria-label="Nachricht senden" data-i18n-title="ai_chat_send_tooltip">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -665,7 +658,15 @@
                         <!-- Sidebar: Threads List -->
                         <div class="mentoring-threads-sidebar" id="mentoring-threads-sidebar">
                             <div class="mentoring-sidebar-header">
-                                <span data-i18n="mentoring_sidebar_title">Kontakte</span>
+                                <div class="mentoring-sidebar-header-title">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    <span data-i18n="mentoring_sidebar_title">Kontakte</span>
+                                    <span id="mentoring-threads-count-badge" class="mentoring-count-badge" style="display:none;">0</span>
+                                </div>
+                            </div>
+                            <div class="mentoring-sidebar-search">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                <input type="text" id="mentoring-threads-search-input" placeholder="Kontakte filtern..." data-i18n-placeholder="mentoring_search_placeholder" oninput="window.filterMentoringThreads && window.filterMentoringThreads(this.value)" autocomplete="off">
                             </div>
                             <div id="mentoring-threads-list" class="mentoring-thread-list">
                                 <!-- Populated by JS -->
@@ -764,14 +765,17 @@
         </div>
 
         <div id="user-finances" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-finances">
-            <!-- 1. Top: Status Badge / Hero Card -->
+            <!-- 1. Top: Unified Status + Info Hero Card -->
             <div id="user-finances-status-card" style="margin-bottom: 20px;"></div>
 
             <!-- 2. Middle: Requests List -->
             <div class="card" style="margin-bottom: 20px;">
-                <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="card-header user-finances-card-header">
                     <span data-i18n="user_requests_title">Meine Anfragen</span>
-                    <button class="btn btn-primary btn-small" onclick="openUserRequestModal()">+ Neue Anfrage</button>
+                    <button class="btn btn-primary btn-small" onclick="openUserRequestModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <span data-i18n="user_new_request">Neue Anfrage</span>
+                    </button>
                 </div>
                 <div class="card-body">
                     <div id="user-requests-list"></div>
@@ -822,21 +826,12 @@
                         </select>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
-                        <span class="form-label" data-i18n="theme_title">Farbschema</span>
-                        <div class="settings-flex-row">
-                            <button class="btn btn-secondary" onclick="setTheme('light')" data-i18n="theme_light">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                                Hell
-                            </button>
-                            <button class="btn btn-secondary" onclick="setTheme('dark')" data-i18n="theme_dark">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-                                Dunkel
-                            </button>
-                            <button class="btn btn-secondary" onclick="setTheme('system')" data-i18n="theme_system">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-                                System
-                            </button>
-                        </div>
+                        <label class="form-label" for="user-settings-theme" data-i18n="theme_title">Farbschema</label>
+                        <select id="user-settings-theme" class="form-select" onchange="setTheme(this.value)">
+                            <option value="system" data-i18n="theme_system">System</option>
+                            <option value="light" data-i18n="theme_light">Hell</option>
+                            <option value="dark" data-i18n="theme_dark">Dunkel</option>
+                        </select>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
                         <label class="form-label" data-i18n="change_password_title">Passwort ändern</label>
@@ -890,20 +885,25 @@
 </button>
 
 <nav id="bottom-nav" class="bottom-nav">
-    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" data-i18n-aria-label="nav_home" aria-label="Startseite">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+    <button class="nav-item active" data-tab="user-overview" onclick="switchTab('user-overview', this)" data-i18n-aria-label="nav_start" aria-label="Start">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+        <span class="nav-label" data-i18n="nav_start">Start</span>
     </button>
     <button id="admin-finances-nav-btn-bottom" class="nav-item" data-tab="finances" onclick="switchTab('finances', this)" data-i18n-aria-label="nav_finances" aria-label="Finanzen" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        <span class="nav-label" data-i18n="nav_finances">Finanzen</span>
     </button>
     <button id="user-finances-nav-btn-bottom" class="nav-item" data-tab="user-finances" onclick="switchTab('user-finances', this)" data-i18n-aria-label="nav_finances" aria-label="Finanzen">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        <span class="nav-label" data-i18n="nav_finances">Finanzen</span>
     </button>
     <button id="mentoring-nav-btn-bottom" class="nav-item" data-tab="mentoring" onclick="switchTab('mentoring', this)" data-i18n-aria-label="nav_mentoring" aria-label="Mentoring" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <span class="nav-label" data-i18n="nav_mentoring">Mentoring</span>
     </button>
     <button id="admin-ai-nav-btn-bottom" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" data-i18n-aria-label="nav_ai" aria-label="KI-Support" style="display:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        <span class="nav-label" data-i18n="nav_ai">KI-Support</span>
     </button>
 </nav>
 
@@ -924,8 +924,7 @@
                 <div class="modal-section-header">
                     <span>💼</span> <span data-i18n="modal_new_status">Neuer Status</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="change-status-select" data-i18n="modal_new_status">Neuer Status</label>
+                <div class="form-group">
                     <select id="change-status-select" class="form-select">
                         <option value="vollverdiener" data-i18n="member_status_full">💼 Vollverdiener</option>
                         <option value="geringverdiener" data-i18n="member_status_low">📉 Geringverdiener</option>
@@ -938,16 +937,15 @@
                 <div class="modal-section-header">
                     <span>📅</span> <span data-i18n="modal_valid_from">Gültigkeitsdatum</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="change-status-date" data-i18n="modal_valid_from">Gültig ab</label>
+                <div class="form-group">
                     <input type="date" id="change-status-date" class="form-input">
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_status_desc">
+                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px; line-height:1.35;" data-i18n="modal_status_desc">
                         <strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br>
                         <strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).
                     </div>
                 </div>
             </div>
-            <button class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="saveStatusChange()" data-i18n="btn_save">Status Ändern</button>
+            <button class="btn btn-primary btn-block" onclick="saveStatusChange()" data-i18n="btn_save">Status Ändern</button>
         </div>
     </div>
 </div>
@@ -969,8 +967,7 @@
                 <div class="modal-section-header">
                     <span>💶</span> <span data-i18n="modal_section_amount">Zahlungsbetrag</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="payment-amount" data-i18n="modal_amount">Betrag (€)</label>
+                <div class="form-group">
                     <div class="hero-amount-wrapper">
                         <span class="hero-amount-prefix">€</span>
                         <input type="text" inputmode="decimal" id="payment-amount" class="form-input hero-amount-input" placeholder="0,00">
@@ -981,15 +978,15 @@
                 <div class="modal-section-header">
                     <span>⚙️</span> <span data-i18n="modal_section_payment_type">Zahlungsart & Datum</span>
                 </div>
-                <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                <div class="modal-switch-row">
                     <label class="switch">
                         <input type="checkbox" id="payment-is-standing-order" onchange="document.getElementById('payment-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
                         <span class="slider"></span>
                     </label>
-                    <label for="payment-is-standing-order" style="margin:0; font-weight:600; cursor:pointer; font-size:0.9rem;" data-i18n="modal_standing_order">Dauerauftrag</label>
+                    <label for="payment-is-standing-order" class="modal-switch-label" data-i18n="modal_standing_order">Dauerauftrag</label>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" id="payment-date-label" for="payment-date" data-i18n="modal_date">Datum</label>
+                <div class="form-group">
+                    <label class="form-label" id="payment-date-label" for="payment-date" data-i18n="modal_date" style="display:none;">Datum</label>
                     <input type="date" id="payment-date" class="form-input">
                 </div>
             </div>
@@ -997,12 +994,11 @@
                 <div class="modal-section-header">
                     <span>📝</span> <span data-i18n="modal_note">Notiz / Verwendungszweck</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="payment-desc" data-i18n="modal_note">Notiz</label>
+                <div class="form-group">
                     <input type="text" id="payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
                 </div>
             </div>
-            <button id="btn-add-payment" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addPayment()" data-i18n="btn_book">Buchen</button>
+            <button id="btn-add-payment" class="btn btn-primary btn-block" onclick="addPayment()" data-i18n="btn_book">Buchen</button>
         </div>
     </div>
 </div>
@@ -1029,14 +1025,13 @@
                 <div class="modal-section-header">
                     <span>💶</span> <span data-i18n="modal_section_amount">Betrag & Datum</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="edit-payment-amount" data-i18n="modal_amount">Betrag (€)</label>
+                <div class="form-group">
                     <div class="hero-amount-wrapper">
                         <span class="hero-amount-prefix">€</span>
                         <input type="text" inputmode="decimal" id="edit-payment-amount" class="form-input hero-amount-input">
                     </div>
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label class="form-label" for="edit-payment-date" data-i18n="modal_date">Datum</label>
                     <input type="date" id="edit-payment-date" class="form-input">
                 </div>
@@ -1045,11 +1040,10 @@
                 <div class="modal-section-header">
                     <span>📝</span> <span data-i18n="modal_note">Notiz & Empfänger</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="edit-payment-desc" data-i18n="modal_note">Notiz</label>
+                <div class="form-group">
                     <input type="text" id="edit-payment-desc" class="form-input" data-i18n-placeholder="modal_note_placeholder" placeholder="z.B. Beitrag Mai">
                 </div>
-                <div class="form-group" id="edit-payment-issuer-group" style="display:none; margin:0;">
+                <div class="form-group" id="edit-payment-issuer-group" style="display:none;">
                     <label class="form-label" for="edit-payment-issuer" data-i18n="modal_recipient">Wer / Empfänger</label>
                     <input type="text" id="edit-payment-issuer" class="form-input" data-i18n-placeholder="modal_recipient_placeholder" placeholder="Name">
                 </div>
@@ -1058,28 +1052,26 @@
                 <div class="modal-section-header">
                     <span>📎</span> <span data-i18n="manage_receipts">Belege verwalten</span>
                 </div>
-                <div id="edit-payment-receipts-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;"></div>
-                <label class="form-label" for="edit-payment-new-receipt" style="color: var(--text-secondary); font-size: 0.8rem;" data-i18n="add_receipts">Beleg(e) hinzufügen</label>
+                <div id="edit-payment-receipts-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px;"></div>
+                <label class="form-label" for="edit-payment-new-receipt" style="color: var(--text-secondary); font-size: 0.78rem;" data-i18n="add_receipts">Beleg(e) hinzufügen</label>
                 <input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif,.pdf" class="form-input" multiple>
             </div>
-            <button class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="saveEditedPayment()" data-i18n="btn_save">Speichern</button>
+            <button class="btn btn-primary btn-block" onclick="saveEditedPayment()" data-i18n="btn_save">Speichern</button>
         </div>
     </div>
 </div>
 
 <div id="confirm-delete-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-confirm-delete" style="z-index: 3000;">
-    <div class="modal-content" style="max-width: 400px; text-align: center; padding: 25px;">
-        <div style="font-size: 2.5rem; margin-bottom: 15px; color: var(--danger);">⚠️</div>
-        <h3 id="title-confirm-delete" style="font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; color: var(--text);" data-i18n="modal_delete_trans_title">Transaktion löschen?</h3>
-        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;" data-i18n="modal_delete_trans_desc">Sind Sie sicher, dass Sie diese Zahlung dauerhaft löschen möchten? Dies kann nicht rückgängig gemacht werden.</p>
-        <div style="display: flex; gap: 12px;">
-            <button class="btn btn-secondary" style="flex: 1;" onclick="closeModal('confirm-delete-modal')" data-i18n="btn_cancel">Abbrechen</button>
-            <button class="btn btn-danger" style="flex: 1; background-color: var(--danger); color: white;" onclick="confirmDeleteRecordedPayment()" data-i18n="btn_delete">Löschen</button>
+    <div class="modal-content" style="max-width: 380px; text-align: center; padding: 20px;">
+        <div style="font-size: 2.2rem; margin-bottom: 12px; color: var(--danger);">⚠️</div>
+        <h3 id="title-confirm-delete" style="font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: var(--text);" data-i18n="modal_delete_trans_title">Transaktion löschen?</h3>
+        <p style="color: var(--text-secondary); font-size: 0.86rem; margin-bottom: 20px; line-height: 1.4;" data-i18n="modal_delete_trans_desc">Sind Sie sicher, dass Sie diese Zahlung dauerhaft löschen möchten? Dies kann nicht rückgängig gemacht werden.</p>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" style="flex: 1; height: 38px;" onclick="closeModal('confirm-delete-modal')" data-i18n="btn_cancel">Abbrechen</button>
+            <button class="btn btn-danger" style="flex: 1; height: 38px; background-color: var(--danger); color: white;" onclick="confirmDeleteRecordedPayment()" data-i18n="btn_delete">Löschen</button>
         </div>
     </div>
 </div>
-
-
 
 <div id="add-donation-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-donation">
     <div class="modal-content modal-content-enhanced">
@@ -1098,11 +1090,10 @@
                 <div class="modal-section-header">
                     <span>💶</span> <span data-i18n="modal_section_amount">Spendenbetrag</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label for="donation-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
+                <div class="form-group">
                     <div class="hero-amount-wrapper">
                         <span class="hero-amount-prefix">€</span>
-                        <input id="donation-amount" class="form-input hero-amount-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="0,00">
+                        <input id="donation-amount" class="form-input hero-amount-input" type="text" inputmode="decimal" placeholder="0,00">
                     </div>
                 </div>
             </div>
@@ -1110,20 +1101,20 @@
                 <div class="modal-section-header">
                     <span>📝</span> <span data-i18n="modal_section_details">Spenden-Details</span>
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label for="donation-name" class="form-label" data-i18n="modal_donor_name">Spender Name</label>
                     <input id="donation-name" class="form-input" data-i18n-placeholder="modal_donor_name" placeholder="Spender Name">
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label for="donation-desc" class="form-label" data-i18n="details_description">Beschreibung</label>
                     <input id="donation-desc" class="form-input" data-i18n-placeholder="details_description" placeholder="Zweck / Notiz">
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label for="donation-date" class="form-label" data-i18n="modal_date">Datum</label>
                     <input type="date" id="donation-date" class="form-input">
                 </div>
             </div>
-            <button id="btn-add-donation" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addDonation()" data-i18n="btn_save">Speichern</button>
+            <button id="btn-add-donation" class="btn btn-primary btn-block" onclick="addDonation()" data-i18n="btn_save">Speichern</button>
         </div>
     </div>
 </div>
@@ -1144,11 +1135,10 @@
                 <div class="modal-section-header">
                     <span>💶</span> <span data-i18n="modal_section_amount">Ausgabenbetrag</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label for="expense-amount" class="form-label" data-i18n="modal_amount">Betrag</label>
+                <div class="form-group">
                     <div class="hero-amount-wrapper">
                         <span class="hero-amount-prefix">€</span>
-                        <input id="expense-amount" class="form-input hero-amount-input" type="text" inputmode="decimal" data-i18n-placeholder="modal_amount" placeholder="0,00">
+                        <input id="expense-amount" class="form-input hero-amount-input" type="text" inputmode="decimal" placeholder="0,00">
                     </div>
                 </div>
             </div>
@@ -1156,15 +1146,15 @@
                 <div class="modal-section-header">
                     <span>ℹ️</span> <span data-i18n="modal_section_info">Angaben zur Ausgabe</span>
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label for="expense-issuer" class="form-label" data-i18n="modal_expense_who">Wer?</label>
                     <input id="expense-issuer" class="form-input" data-i18n-placeholder="modal_expense_who_placeholder" placeholder="Zahlender / Empfänger">
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label for="expense-desc" class="form-label" data-i18n="modal_expense_what">Wofür?</label>
                     <input id="expense-desc" class="form-input" data-i18n-placeholder="modal_expense_what_placeholder" placeholder="Verwendungszweck">
                 </div>
-                <div class="form-group" style="margin:0;">
+                <div class="form-group">
                     <label for="expense-date" class="form-label" data-i18n="modal_date">Datum</label>
                     <input type="date" id="expense-date" class="form-input">
                 </div>
@@ -1179,9 +1169,9 @@
                     <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
                     <input type="file" id="expense-receipt" accept="image/*,.heic,.heif,.pdf" multiple>
                 </div>
-                <div id="expense-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;"></div>
+                <div id="expense-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
             </div>
-            <button id="btn-add-expense" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="addExpense()" data-i18n="btn_save">Speichern</button>
+            <button id="btn-add-expense" class="btn btn-primary btn-block" onclick="addExpense()" data-i18n="btn_save">Speichern</button>
         </div>
     </div>
 </div>
@@ -1226,17 +1216,16 @@
                 <div class="modal-section-header">
                     <span>📅</span> <span data-i18n="modal_end_so_date">Enddatum</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="end-so-date" data-i18n="modal_end_so_date">Enddatum</label>
+                <div class="form-group">
                     <input type="date" id="end-so-date" class="form-input">
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;" data-i18n="modal_end_so_desc_help">
+                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; line-height:1.35;" data-i18n="modal_end_so_desc_help">
                         Zahlungen werden nur bis zu diesem Datum erstellt.
                     </div>
                 </div>
             </div>
-            <button class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px;" onclick="saveStandingOrderEnd()" data-i18n="modal_end_so_btn">Beenden / Speichern</button>
-            <button class="btn btn-danger btn-block" onclick="deleteStandingOrderCompletely()" style="height:44px; font-weight:600; border-radius:14px; background:none; border:1px solid var(--danger); color:var(--danger); display:flex; align-items:center; justify-content:center; gap:8px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <button class="btn btn-primary btn-block" onclick="saveStandingOrderEnd()" data-i18n="modal_end_so_btn">Beenden / Speichern</button>
+            <button class="btn btn-danger btn-block" onclick="deleteStandingOrderCompletely()" style="background:none; border:1px solid var(--danger); color:var(--danger); display:flex; align-items:center; justify-content:center; gap:6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 <span data-i18n="modal_end_so_delete_btn">Eintrag ganz löschen</span>
             </button>
         </div>
@@ -1247,8 +1236,8 @@
     <div class="modal-content modal-content-enhanced">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
-                <button id="req-modal-back-btn" class="btn btn-secondary btn-small req-modal-back-btn" style="display:none; padding:6px 10px; margin-right:6px;" onclick="openUserRequestModal(null)" title="Zurück">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                <button id="req-modal-back-btn" class="btn btn-secondary btn-small req-modal-back-btn" style="display:none; padding:5px 9px; margin-right:4px;" onclick="openUserRequestModal(null)" title="Zurück">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     <span class="req-modal-back-text" data-i18n="btn_back">Zurück</span>
                 </button>
                 <div id="req-modal-badge" class="modal-icon-badge badge-donation">💳</div>
@@ -1260,8 +1249,8 @@
             <button class="close-btn" onclick="closeModal('user-request-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
         <div class="modal-body-enhanced">
-            <div id="req-form-content" style="display:flex; flex-direction:column; gap:12px;"></div>
-            <button id="btn-submit-request" class="btn btn-primary btn-block" style="height:48px; font-weight:700; border-radius:14px; margin-top:4px; display:none;" onclick="submitUserRequest()" data-i18n="btn_submit">Absenden</button>
+            <div id="req-form-content" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <button id="btn-submit-request" class="btn btn-primary btn-block" style="display:none;" onclick="submitUserRequest()" data-i18n="btn_submit">Absenden</button>
         </div>
     </div>
 </div>
@@ -1486,7 +1475,7 @@
 </div>
 
 <div id="manage-group-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="manage-group-modal-title">
-    <div class="modal-content modal-content-enhanced" style="max-width: 520px;">
+    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
                 <div class="modal-icon-badge badge-person">👥</div>
@@ -1503,7 +1492,7 @@
                 <div class="modal-section-header">
                     <span>🏷️</span> <span data-i18n="label_group_name">Gruppenname</span>
                 </div>
-                <div class="form-group" style="margin: 0;">
+                <div class="form-group">
                     <input type="text" id="manage-group-name" class="form-input" data-i18n-placeholder="label_group_name" placeholder="Gruppenname" required autocomplete="off">
                 </div>
             </div>
@@ -1529,7 +1518,7 @@
 </div>
 
 <div id="assign-group-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="assign-group-modal-title">
-    <div class="modal-content modal-content-enhanced" style="max-width: 460px;">
+    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
                 <div class="modal-icon-badge badge-person">🏷️</div>
@@ -1568,7 +1557,7 @@
 
 <!-- Mentor Application Modal -->
 <div id="mentor-application-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-mentor-application">
-    <div class="modal-content modal-content-enhanced" style="max-width: 540px;">
+    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
                 <div class="modal-icon-badge" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">💜</div>
@@ -1584,21 +1573,18 @@
                 <div class="modal-section-header">
                     <span>✨</span> <span data-i18n="mentor_app_section_bio">Über mich & Motivation</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="mentor-app-bio" data-i18n="mentor_app_label_bio">Persönliche Vorstellung & Erfahrungen</label>
-                    <textarea id="mentor-app-bio" class="form-input" rows="4" style="resize:vertical;" data-i18n-placeholder="mentor_app_placeholder_bio" placeholder="Erzähle ein wenig über dich, deinen Glaubensweg und warum du gerne Mentor sein möchtest..." required></textarea>
+                <div class="form-group">
+                    <textarea id="mentor-app-bio" class="form-input" rows="3" style="resize:vertical;" data-i18n-placeholder="mentor_app_placeholder_bio" placeholder="Erzähle ein wenig über dich, deinen Glaubensweg und warum du gerne Mentor sein möchtest..." required></textarea>
                 </div>
             </div>
-
 
             <div class="modal-section-card">
                 <div class="modal-section-header">
                     <span>👥</span> <span data-i18n="mentor_app_section_cap">Kapazität</span>
                 </div>
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label" for="mentor-app-max" data-i18n="mentor_app_label_cap">Max. gleichzeitige Mentees</label>
+                <div class="form-group">
                     <input type="number" id="mentor-app-max" class="form-input" min="1" max="10" value="3" required>
-                    <span style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px; display:block;" data-i18n="mentor_app_help_cap">Wie viele Mentees möchtest du maximal parallel begleiten?</span>
+                    <span style="font-size:0.75rem; color:var(--text-secondary); margin-top:3px; display:block;" data-i18n="mentor_app_help_cap">Wie viele Mentees möchtest du maximal parallel begleiten?</span>
                 </div>
             </div>
 
@@ -1612,7 +1598,7 @@
 
 <!-- Mentor Contact Modal -->
 <div id="mentor-contact-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-mentor-contact">
-    <div class="modal-content modal-content-enhanced" style="max-width: 500px;">
+    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
                 <div class="modal-icon-badge" style="background: rgba(14, 165, 233, 0.15); color: #0284c7;">🛡️</div>

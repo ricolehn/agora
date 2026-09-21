@@ -2132,7 +2132,7 @@ app.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, async
     // Fetch active thread counts per mentor to show availability
     let activeThreadCounts = new Map();
     try {
-      const allThreads = await listMentoringThreadsForUser(appConfig, '');
+      const allThreads = await listMentoringThreadsForUser(appConfig, mentors.map(m => m.user));
       for (const t of allThreads) {
         if (t.mentor && t.status !== 'closed') {
           activeThreadCounts.set(t.mentor, (activeThreadCounts.get(t.mentor) || 0) + 1);
@@ -2156,6 +2156,12 @@ app.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, async
         mentorFirstName: u?.firstName || '',
         status: m.status,
         bio: m.bio || '',
+        maxMentees,
+        max_mentees: maxMentees,
+        activeMentees: activeMenteesCount,
+        active_mentees: activeMenteesCount,
+        activeMenteesCount,
+        isFull: isFull || m.is_accepting === false,
         isAccepting: m.is_accepting !== false,
         created: m.created
       };
@@ -2164,11 +2170,6 @@ app.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, async
         item.email = u?.email || '';
         item.userEmail = u?.email || '';
         item.userName = mentorName;
-        item.maxMentees = maxMentees;
-        item.max_mentees = maxMentees;
-        item.activeMentees = activeMenteesCount;
-        item.activeMenteesCount = activeMenteesCount;
-        item.isFull = isFull || m.is_accepting === false;
       }
 
       return item;
@@ -2373,6 +2374,17 @@ app.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, asyn
     }
     if (mentorRec.user === currentUid) {
       return res.status(400).json({ error: 'Du kannst dich nicht selbst begleiten' });
+    }
+    if (mentorRec.is_accepting === false) {
+      return res.status(400).json({ error: 'Dieser Mentor nimmt derzeit keine neuen Begleitungen an' });
+    }
+
+    // Check mentor capacity (active threads limit)
+    const allMentorThreads = await listMentoringThreadsForUser(appConfig, mentorRec.user);
+    const activeMenteesCount = allMentorThreads.filter(t => t.mentor === mentorRec.user && t.status !== 'closed').length;
+    const maxMentees = typeof mentorRec.max_mentees === 'number' ? mentorRec.max_mentees : 3;
+    if (activeMenteesCount >= maxMentees) {
+      return res.status(400).json({ error: 'Dieser Mentor hat die maximale Anzahl an Begleitungen erreicht' });
     }
 
     // Check if user already has an existing thread with this mentor
