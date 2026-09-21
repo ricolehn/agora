@@ -4307,8 +4307,8 @@ details[open] .ai-thinking-summary::before {
 .mentoring-threads-layout {
     display: grid;
     grid-template-columns: 320px 1fr;
-    height: min(700px, calc(100vh - 230px));
-    min-height: 520px;
+    height: min(650px, calc(100dvh - 310px));
+    min-height: 320px;
     background: var(--surface);
     border: 1px solid var(--border-light);
     border-radius: var(--radius);
@@ -5162,8 +5162,8 @@ details[open] .ai-thinking-summary::before {
         display: flex;
         flex-direction: column;
         border-radius: 16px;
-        height: calc(100dvh - 240px);
-        min-height: 440px;
+        height: calc(100dvh - 285px);
+        min-height: 280px;
     }
 
     .mentoring-threads-layout:not(.in-chat) .mentoring-threads-sidebar {
