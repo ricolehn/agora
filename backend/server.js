@@ -2374,6 +2374,17 @@ app.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, asyn
     if (mentorRec.user === currentUid) {
       return res.status(400).json({ error: 'Du kannst dich nicht selbst begleiten' });
     }
+    if (mentorRec.is_accepting === false) {
+      return res.status(400).json({ error: 'Dieser Mentor nimmt derzeit keine neuen Begleitungen an' });
+    }
+
+    // Check mentor capacity (active threads limit)
+    const allMentorThreads = await listMentoringThreadsForUser(appConfig, mentorRec.user);
+    const activeMenteesCount = allMentorThreads.filter(t => t.mentor === mentorRec.user && t.status !== 'closed').length;
+    const maxMentees = typeof mentorRec.max_mentees === 'number' ? mentorRec.max_mentees : 3;
+    if (activeMenteesCount >= maxMentees) {
+      return res.status(400).json({ error: 'Dieser Mentor hat die maximale Anzahl an Begleitungen erreicht' });
+    }
 
     // Check if user already has an existing thread with this mentor
     const userThreads = await listMentoringThreadsForUser(appConfig, currentUid);
