@@ -364,14 +364,15 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
   assert.equal(resCombined.canAccessAi, true);
   assert.equal(resCombined.canParticipateMentoring, true);
   assert.equal(resCombined.canManageMentoring, false);
+  assert.equal(resCombined.canManageEvents, false);
 });
 
 test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
   const { SYSTEM_PERMISSIONS } = require('./pocketbase');
   assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
-  assert.equal(SYSTEM_PERMISSIONS.length, 4);
+  assert.equal(SYSTEM_PERMISSIONS.length, 5);
   const ids = SYSTEM_PERMISSIONS.map(p => p.id);
-  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'manage_mentoring']);
+  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'manage_mentoring', 'manage_events']);
 });
 
 test('pocketbase exports encryptMentoringText and decryptMentoringText with proper round-trip', () => {

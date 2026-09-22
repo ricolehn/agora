@@ -74,7 +74,21 @@ const {
   updateMentoringThread,
   listMentoringMessages,
   createMentoringMessage,
-  markMentoringMessagesRead
+  markMentoringMessagesRead,
+  listEvents,
+  getEventRecord,
+  createEventRecord,
+  updateEventRecord,
+  deleteEventRecord,
+  listEventRegistrations,
+  getEventRegistration,
+  upsertEventRegistration,
+  listEventDuties,
+  getEventDuty,
+  createEventDuty,
+  updateEventDuty,
+  deleteEventDuty,
+  pbFilterEquals
 } = require('./pocketbase');
 
 const app = express();
@@ -361,6 +375,10 @@ const adminRateLimit = rateLimit({
 app.use('/api/admin', adminRateLimit);
 
 function extractBearerToken(req) {
+  if (req.query && req.query.token && typeof req.query.token === 'string') {
+    return req.query.token.trim();
+  }
+
   const header = req.headers.authorization || '';
   if (header.startsWith('Bearer ')) {
     return header.slice('Bearer '.length).trim();
@@ -433,6 +451,7 @@ async function verifyToken(req, res, next) {
     user.canAccessAi = groupPerms.canAccessAi;
     user.canParticipateMentoring = groupPerms.canParticipateMentoring;
     user.canManageMentoring = groupPerms.canManageMentoring;
+    user.canManageEvents = groupPerms.canManageEvents || user.admin === true || user.owner === true || user.superAdmin === true;
     try {
       const mentorRec = await getMentorByUserId(appConfig, user.id);
       user.mentorStatus = mentorRec?.status || null;
@@ -954,6 +973,7 @@ function toUserValue(record, allGroups = null) {
   let canAccessAi = false;
   let canParticipateMentoring = false;
   let canManageMentoring = false;
+  let canManageEvents = isOwner || record.admin === true;
   if (Array.isArray(allGroups)) {
     const res = resolveUserPermissions(rawGroups, allGroups);
     permissions = res.permissions;
@@ -962,6 +982,7 @@ function toUserValue(record, allGroups = null) {
     canAccessAi = res.canAccessAi;
     canParticipateMentoring = res.canParticipateMentoring;
     canManageMentoring = res.canManageMentoring;
+    canManageEvents = res.canManageEvents || isOwner || record.admin === true;
   }
 
   return {
@@ -981,6 +1002,7 @@ function toUserValue(record, allGroups = null) {
     canAccessAi,
     canParticipateMentoring,
     canManageMentoring,
+    canManageEvents,
     emailNotifications: record.emailNotifications !== false,
     isClaimed,
     uid: record.id
@@ -1151,6 +1173,7 @@ async function verifyOptionalUser(req) {
     user.canAccessAi = groupPerms.canAccessAi;
     user.canParticipateMentoring = groupPerms.canParticipateMentoring;
     user.canManageMentoring = groupPerms.canManageMentoring;
+    user.canManageEvents = groupPerms.canManageEvents || user.admin === true || user.owner === true || user.superAdmin === true;
     return { user, token };
   } catch {
     return null;
@@ -1419,6 +1442,7 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
         canAccessAi: resolved.canAccessAi,
         canParticipateMentoring: resolved.canParticipateMentoring,
         canManageMentoring: resolved.canManageMentoring,
+        canManageEvents: resolved.canManageEvents || u.admin === true || isOwner,
         isApprovedMentor: approvedMentorUserIds.has(u.id),
         emailNotifications: u.emailNotifications !== false,
         isClaimed,
@@ -1957,6 +1981,109 @@ app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req
     res.status(500).json({ error: 'Failed to notify admins' });
   }
 });
+
+async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUserId, event, duty, appConfig, sendEmailRequested = true }) {
+  if (sendEmailRequested === false) {
+    return { skipped: true, reason: 'user_disabled' };
+  }
+  if (!transporter || !appConfig?.smtp?.user || !appConfig?.smtp?.host) {
+    return { skipped: true, reason: 'smtp_not_configured' };
+  }
+  try {
+    const allUsers = await listUserRecords(appConfig);
+    const recipient = allUsers.find(u => u.id === recipientUserId);
+    if (!recipient || !recipient.email || recipient.emailNotifications === false) {
+      return { skipped: true, reason: 'recipient_no_email_or_disabled' };
+    }
+
+    const requester = allUsers.find(u => u.id === requestedByUserId);
+    const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : 'Ein Event-Organisator';
+
+    let formattedDate = event.date || 'Ohne Datum';
+    try {
+      if (event.date) {
+        const parts = String(event.date).split('-');
+        if (parts.length === 3) {
+          formattedDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
+        }
+      }
+    } catch {}
+
+    let timeStr = '';
+    if (event.startTime || event.time) {
+      const sTime = event.startTime || event.time;
+      timeStr = ` um ${sTime} Uhr`;
+      if (event.endTime) timeStr += ` bis ${event.endTime} Uhr`;
+    }
+
+    const locationStr = event.location ? `Ort: ${event.location}` : '';
+    const dutyName = duty.roleName || duty.section || 'Dienst';
+
+    const subject = `Dienstanfrage: ${dutyName} bei "${event.title || 'Event'}"`;
+    const text = `Hallo ${recipient.name || recipient.firstName || 'zusammen'},\n\n` +
+      `du wurdest von ${requesterName} für folgenden Dienst angefragt:\n\n` +
+      `Event: ${event.title || 'Unbenanntes Event'}\n` +
+      `Datum: ${formattedDate}${timeStr}\n` +
+      (locationStr ? `${locationStr}\n` : '') +
+      `Dienst: ${dutyName}\n` +
+      (duty.notes ? `Hinweise: ${duty.notes}\n` : '') +
+      (event.description ? `Beschreibung des Events: ${event.description}\n` : '') +
+      `\nBitte öffne die App, um die Dienstanfrage anzunehmen oder abzulehnen.`;
+
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; background-color: #f8fafc; padding: 32px 16px;">
+        <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <div style="background: linear-gradient(135deg, #4f46e5, #06b6d4); padding: 24px; text-align: center; color: #ffffff;">
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700;">${escapeHtml(appConfig.appName || 'Agora')}</h1>
+            <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.9;">Neue Dienstanfrage für ein Event</p>
+          </div>
+          <div style="padding: 28px 24px;">
+            <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.5;">
+              Hallo <strong>${escapeHtml(recipient.name || recipient.firstName || 'du')}</strong>,
+            </p>
+            <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.5; color: #475569;">
+              <strong>${escapeHtml(requesterName)}</strong> hat dich für folgenden Dienst angefragt:
+            </p>
+
+            <div style="background: #f1f5f9; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
+              <div style="font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
+                📋 ${escapeHtml(dutyName)}
+              </div>
+              ${duty.notes ? `<p style="margin: 0 0 10px 0; font-size: 14px; color: #475569;"><strong>Hinweise:</strong> ${escapeHtml(duty.notes)}</p>` : ''}
+              <div style="border-top: 1px solid #e2e8f0; margin-top: 12px; padding-top: 12px; font-size: 14px; color: #334155;">
+                <p style="margin: 0 0 4px 0;"><strong>📅 Event:</strong> ${escapeHtml(event.title || 'Event')}</p>
+                <p style="margin: 0 0 4px 0;"><strong>⏰ Datum & Uhrzeit:</strong> ${escapeHtml(formattedDate)}${escapeHtml(timeStr)}</p>
+                ${event.location ? `<p style="margin: 0 0 4px 0;"><strong>📍 Ort:</strong> ${escapeHtml(event.location)}</p>` : ''}
+                ${event.description ? `<p style="margin: 6px 0 0 0; color: #64748b;"><em>${escapeHtml(event.description)}</em></p>` : ''}
+              </div>
+            </div>
+
+            <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.5; color: #64748b;">
+              Bitte logge dich in der App ein, um diese Anfrage anzunehmen oder abzulehnen.
+            </p>
+          </div>
+          <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; text-align: center; font-size: 12px; color: #94a3b8;">
+            Diese Benachrichtigung wurde automatisch von ${escapeHtml(appConfig.appName || 'Agora')} gesendet.
+          </div>
+        </div>
+      </div>
+    `;
+
+    const info = await transporter.sendMail({
+      from: `"${appConfig.appName || 'Agora'}" <${appConfig.smtp.user}>`,
+      to: recipient.email,
+      subject,
+      text,
+      html
+    });
+
+    console.log(`Duty request email sent to ${recipient.email} (messageId: ${info.messageId})`);
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.warn('Could not send duty request email (non-fatal):', err.message);
+    return { error: err.message };
+  }
+}
 
 const aiChatRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -2571,6 +2698,1180 @@ app.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringParti
   } catch (err) {
     console.error('Failed to update thread status:', err);
     res.status(500).json({ error: 'Status konnte nicht geändert werden' });
+  }
+});
+
+// ============================================================================
+// Events & Dienstplan Module (CITADEL)
+// ============================================================================
+
+// Helper to check if a user is in any of the specified target groups
+function userMatchesTargetGroups(user, targetGroups = []) {
+  if (!Array.isArray(targetGroups) || targetGroups.length === 0) return true;
+  if (!user) return false;
+  if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) return true;
+  const userGroups = Array.isArray(user.groups) ? user.groups : [];
+  return userGroups.some(g => {
+    const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+    const gname = typeof g === 'object' && g ? g.name : String(g);
+    return targetGroups.includes(gid) || targetGroups.includes(gname);
+  });
+}
+
+const DEFAULT_EVENT_SETTINGS = {
+  allowMemberCreation: true,
+  defaultDuties: ['Bistro-Team', 'Technik', 'Begrüßung', 'Moderation', 'Musik/Lobpreis']
+};
+
+function formatIcsDateTime(dateStr, timeStr) {
+  if (!dateStr) return '';
+  const cleanDate = dateStr.replace(/-/g, '');
+  if (!timeStr) {
+    return `VALUE=DATE:${cleanDate}`;
+  }
+  const cleanTime = timeStr.replace(/:/g, '').padEnd(6, '0').slice(0, 6);
+  return `${cleanDate}T${cleanTime}`;
+}
+
+function escapeIcsText(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function generateIcsCalendar(events, calendarName = 'Agora Events') {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Agora//Event Calendar//DE',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${escapeIcsText(calendarName)}`,
+    'X-WR-TIMEZONE:Europe/Berlin'
+  ];
+
+  for (const ev of events) {
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:event-${ev.id}@agora`);
+    lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
+
+    if (ev.startTime) {
+      lines.push(`DTSTART;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, ev.startTime)}`);
+      if (ev.endTime) {
+        lines.push(`DTEND;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, ev.endTime)}`);
+      } else {
+        const [h, m] = (ev.startTime || '10:00').split(':').map(Number);
+        const endHour = String(((h || 10) + 1) % 24).padStart(2, '0');
+        lines.push(`DTEND;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, `${endHour}:${String(m || 0).padStart(2, '0')}`)}`);
+      }
+    } else {
+      lines.push(`DTSTART;${formatIcsDateTime(ev.date, '')}`);
+    }
+
+    lines.push(`SUMMARY:${escapeIcsText(ev.title || 'Event')}`);
+    if (ev.description) lines.push(`DESCRIPTION:${escapeIcsText(ev.description)}`);
+    if (ev.location) lines.push(`LOCATION:${escapeIcsText(ev.location)}`);
+    lines.push('STATUS:CONFIRMED');
+    lines.push('END:VEVENT');
+  }
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n') + '\r\n';
+}
+
+function canUserAccessEventDutyPlan(user, event, allEventDuties, groupMap) {
+  if (!user || !event) return false;
+  const currentUid = user.uid || user.id;
+
+  // 1. Creator of event
+  if (event.createdBy === currentUid) return true;
+
+  // 2. Event planners / admins
+  if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) {
+    return true;
+  }
+
+  // 3. User is entered or requested in duty plan for this event, or member of assigned group in duties
+  const isEntered = Array.isArray(allEventDuties) && allEventDuties.some(d => {
+    if (d.event !== event.id) return false;
+    if (d.assignedUser === currentUid) return true;
+    if (d.requestedUser === currentUid) return true;
+    if (d.assignedGroup && Array.isArray(user.groups)) {
+      return user.groups.some(g => {
+        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+        const gname = typeof g === 'object' && g ? g.name : String(g);
+        return gid === d.assignedGroup || gname === d.assignedGroup || (groupMap && groupMap.get(d.assignedGroup) === gname);
+      });
+    }
+    return false;
+  });
+  if (isEntered) return true;
+
+  // 4. User is member of any target group assigned to the event
+  if (Array.isArray(event.targetGroups) && event.targetGroups.length > 0 && Array.isArray(user.groups)) {
+    const isTargetGroupMember = event.targetGroups.some(tg =>
+      user.groups.some(g => {
+        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+        const gname = typeof g === 'object' && g ? g.name : String(g);
+        return gid === tg || gname === tg;
+      })
+    );
+    if (isTargetGroupMember) return true;
+  }
+
+  return false;
+}
+
+// 1. List all visible events
+app.get('/api/events', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const allEvents = await listEvents(appConfig, '', '+date,+startTime');
+    const allRegs = await listEventRegistrations(appConfig);
+    const allDuties = await listEventDuties(appConfig);
+    const users = await listUserRecords(appConfig);
+    const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+    const managerUserIds = new Set(users.filter(u => u.admin === true || u.owner === true || u.superAdmin === true || u.canManageEvents === true || (Array.isArray(u.permissions) && u.permissions.includes('manage_events'))).map(u => u.id));
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+
+    // Filter events by target group visibility
+    const visibleEvents = allEvents.filter(ev => {
+      const isCreator = ev.createdBy === currentUid;
+      if (isCreator) return true;
+      return userMatchesTargetGroups(req.user, ev.targetGroups);
+    });
+
+    const formatted = visibleEvents.map(ev => {
+      const isCreator = ev.createdBy === currentUid;
+      const canEdit = isCreator || req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+      const isCreatorManager = managerUserIds.has(ev.createdBy);
+      const isOfficial = Boolean(ev.eventType === 'termin' || ev.isRecurring);
+
+      const evRegs = allRegs.filter(r => r.event === ev.id);
+      const registeredCount = evRegs.filter(r => r.status === 'registered').length;
+      const waitlistCount = evRegs.filter(r => r.status === 'waitlist').length;
+      const myReg = evRegs.find(r => r.user === currentUid && r.status !== 'cancelled') || null;
+
+      const isFull = typeof ev.maxParticipants === 'number' && ev.maxParticipants > 0 && registeredCount >= ev.maxParticipants;
+
+      const allEvDuties = allDuties.filter(d => d.event === ev.id);
+      const canAccessDutyPlan = canUserAccessEventDutyPlan(req.user, ev, allEvDuties, groupMap);
+
+      let evDuties = [];
+      if (canAccessDutyPlan) {
+        evDuties = allEvDuties.map(d => {
+          return {
+            id: d.id,
+            event: d.event,
+            section: d.section || 'Allgemein',
+            roleName: d.roleName,
+            assignedGroup: d.assignedGroup || '',
+            assignedGroupName: groupMap.get(d.assignedGroup) || d.assignedGroup || '',
+            assignedUser: d.assignedUser || '',
+            assignedUserName: userMap.get(d.assignedUser) || '',
+            requestedUser: d.requestedUser || '',
+            requestedUserName: userMap.get(d.requestedUser) || '',
+            requestedBy: d.requestedBy || '',
+            requestedByName: userMap.get(d.requestedBy) || '',
+            notes: d.notes || '',
+            status: d.status || 'open',
+            canEditNotes: true,
+            canManageDuty: true
+          };
+        });
+      }
+
+      return {
+        id: ev.id,
+        title: ev.title,
+        date: ev.date,
+        endDate: ev.endDate || '',
+        startTime: ev.startTime || '',
+        endTime: ev.endTime || '',
+        location: ev.location || '',
+        description: ev.description || '',
+        eventType: ev.eventType || (ev.isRecurring ? 'termin' : 'event'),
+        isPinned: ev.isPinned === true,
+        isOfficialTermin: isOfficial,
+        createdByManager: isCreatorManager,
+        isRecurring: ev.isRecurring === true,
+        recurringRule: ev.recurringRule || '',
+        seriesId: ev.seriesId || '',
+        status: ev.status || 'scheduled',
+        requiresRegistration: ev.requiresRegistration === true,
+        minParticipants: typeof ev.minParticipants === 'number' ? ev.minParticipants : 0,
+        maxParticipants: typeof ev.maxParticipants === 'number' ? ev.maxParticipants : 0,
+        targetGroups: Array.isArray(ev.targetGroups) ? ev.targetGroups : [],
+        createdBy: ev.createdBy,
+        createdByName: userMap.get(ev.createdBy) || 'Mitglied',
+        created: ev.created,
+        imageUrl: ev.imageUrl || '',
+        duties: evDuties,
+        registeredCount,
+        waitlistCount,
+        myRegistration: myReg ? { id: myReg.id, status: myReg.status } : null,
+        isFull,
+        canEdit,
+        canAccessDutyPlan
+      };
+    });
+
+    res.json(formatted);
+  } catch (err) {
+    console.error('Failed to list events:', err);
+    res.status(500).json({ error: 'Events konnten nicht geladen werden' });
+  }
+});
+
+// 2. Create event
+app.post('/api/events', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const {
+      title,
+      date,
+      endDate,
+      startTime,
+      endTime,
+      location,
+      description,
+      eventType,
+      isPinned,
+      isRecurring,
+      recurringRule,
+      requiresRegistration,
+      minParticipants,
+      maxParticipants,
+      targetGroups,
+      imageUrl,
+      duties
+    } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: 'Titel ist erforderlich' });
+    }
+    if (!date || !String(date).trim()) {
+      return res.status(400).json({ error: 'Datum ist erforderlich' });
+    }
+
+    // Check event creation permissions
+    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const eventSettings = await getStateValue(appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
+    if (!eventSettings.allowMemberCreation && !canManageEvents) {
+      return res.status(403).json({ error: 'Die Erstellung von Events ist derzeit nur für die Leitung freigeschaltet' });
+    }
+
+    // Protection for recurring events, pinning, and official 'termin': Only users with canManageEvents or Admin
+    let finalEventType = 'event';
+    let finalIsPinned = false;
+    let finalIsRecurring = false;
+    if (canManageEvents) {
+      finalEventType = (eventType === 'termin' || isRecurring) ? 'termin' : 'event';
+      finalIsPinned = isPinned === true;
+      finalIsRecurring = isRecurring === true;
+    }
+
+    const event = await createEventRecord(appConfig, {
+      title: String(title).trim(),
+      date: String(date).trim(),
+      endDate: endDate ? String(endDate).trim() : '',
+      startTime: startTime ? String(startTime).trim() : '',
+      endTime: endTime ? String(endTime).trim() : '',
+      location: location ? String(location).trim() : '',
+      description: description ? String(description).trim() : '',
+      eventType: finalEventType,
+      isPinned: finalIsPinned,
+      isRecurring: finalIsRecurring,
+      recurringRule: finalIsRecurring ? (String(recurringRule || 'weekly').trim()) : '',
+      imageUrl: imageUrl ? String(imageUrl).trim() : '',
+      status: 'scheduled',
+      requiresRegistration: requiresRegistration === true,
+      minParticipants: Number(minParticipants) > 0 ? Number(minParticipants) : 0,
+      maxParticipants: Number(maxParticipants) > 0 ? Number(maxParticipants) : 0,
+      targetGroups: Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [],
+      createdBy: currentUid
+    });
+
+    // Create duty slots if specified
+    if (Array.isArray(duties)) {
+      for (const d of duties) {
+        if (d && d.roleName && String(d.roleName).trim()) {
+          await createEventDuty(appConfig, {
+            event: event.id,
+            section: d.section ? String(d.section).trim() : 'Allgemein',
+            roleName: String(d.roleName).trim(),
+            assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
+            assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
+            requestedUser: d.requestedUser ? String(d.requestedUser).trim() : '',
+            notes: d.notes ? String(d.notes).trim() : '',
+            status: d.status || (d.assignedGroup || d.assignedUser ? 'confirmed' : (d.requestedUser ? 'requested' : 'open'))
+          });
+        }
+      }
+    }
+
+    broadcastDataUpdate();
+    res.status(201).json({ success: true, event });
+  } catch (err) {
+    console.error('Failed to create event:', err);
+    res.status(500).json({ error: 'Event konnte nicht erstellt werden' });
+  }
+});
+
+// 3. Update event
+app.patch('/api/events/:id', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) {
+      return res.status(404).json({ error: 'Event nicht gefunden' });
+    }
+
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    if (!isCreator && !canManageEvents) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Bearbeiten dieses Events' });
+    }
+
+    const {
+      title,
+      date,
+      endDate,
+      startTime,
+      endTime,
+      location,
+      description,
+      eventType,
+      isPinned,
+      isRecurring,
+      recurringRule,
+      requiresRegistration,
+      minParticipants,
+      maxParticipants,
+      targetGroups,
+      imageUrl,
+      status
+    } = req.body || {};
+
+    const updates = {};
+    if (title !== undefined) updates.title = String(title).trim();
+    if (date !== undefined) updates.date = String(date).trim();
+    if (endDate !== undefined) updates.endDate = String(endDate).trim();
+    if (startTime !== undefined) updates.startTime = String(startTime).trim();
+    if (endTime !== undefined) updates.endTime = String(endTime).trim();
+    if (location !== undefined) updates.location = String(location).trim();
+    if (description !== undefined) updates.description = String(description).trim();
+    if (imageUrl !== undefined) updates.imageUrl = String(imageUrl).trim();
+    if (requiresRegistration !== undefined) updates.requiresRegistration = requiresRegistration === true;
+    if (minParticipants !== undefined) updates.minParticipants = Number(minParticipants) > 0 ? Number(minParticipants) : 0;
+    if (maxParticipants !== undefined) updates.maxParticipants = Number(maxParticipants) > 0 ? Number(maxParticipants) : 0;
+    if (targetGroups !== undefined) updates.targetGroups = Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [];
+    if (status !== undefined) updates.status = String(status).trim();
+
+    if (canManageEvents) {
+      if (eventType !== undefined) updates.eventType = eventType === 'termin' ? 'termin' : 'event';
+      if (isPinned !== undefined) updates.isPinned = isPinned === true;
+      if (isRecurring !== undefined) updates.isRecurring = isRecurring === true;
+      if (recurringRule !== undefined) updates.recurringRule = String(recurringRule).trim();
+    }
+
+    const updated = await updateEventRecord(appConfig, event.id, updates);
+
+    // Sync duties if provided
+    if (Array.isArray(req.body.duties)) {
+      try {
+        const existingDuties = await listEventDuties(appConfig, pbFilterEquals('event', event.id));
+        const existingIds = new Set(existingDuties.map(d => d.id));
+        const newDutyIds = new Set();
+
+        for (const d of req.body.duties) {
+          if (d.id && existingIds.has(d.id)) {
+            newDutyIds.add(d.id);
+            await updateEventDuty(appConfig, d.id, {
+              section: d.section ? String(d.section).trim() : 'Allgemein',
+              roleName: d.roleName ? String(d.roleName).trim() : 'Dienst',
+              assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
+              assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
+              notes: d.notes ? String(d.notes).trim() : ''
+            });
+          } else if (d.roleName && String(d.roleName).trim()) {
+            const createdDuty = await createEventDuty(appConfig, {
+              event: event.id,
+              section: d.section ? String(d.section).trim() : 'Allgemein',
+              roleName: String(d.roleName).trim(),
+              assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
+              assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
+              notes: d.notes ? String(d.notes).trim() : '',
+              status: d.assignedGroup || d.assignedUser ? 'confirmed' : 'open'
+            });
+            newDutyIds.add(createdDuty.id);
+          }
+        }
+
+        // Delete removed duties
+        for (const existing of existingDuties) {
+          if (!newDutyIds.has(existing.id)) {
+            await deleteEventDuty(appConfig, existing.id).catch(() => {});
+          }
+        }
+      } catch (dutyErr) {
+        console.warn('Failed to sync duties on event update:', dutyErr.message);
+      }
+    }
+
+    broadcastDataUpdate();
+    res.json({ success: true, event: updated });
+  } catch (err) {
+    console.error('Failed to update event:', err);
+    res.status(500).json({ error: 'Event konnte nicht aktualisiert werden' });
+  }
+});
+
+// 4. Delete event
+app.delete('/api/events/:id', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) {
+      return res.status(404).json({ error: 'Event nicht gefunden' });
+    }
+
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    if (!isCreator && !canManageEvents) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Löschen dieses Events' });
+    }
+
+    await deleteEventRecord(appConfig, event.id);
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete event:', err);
+    res.status(500).json({ error: 'Event konnte nicht gelöscht werden' });
+  }
+});
+
+// 5. Register or cancel registration for an event
+app.post('/api/events/:id/register', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) {
+      return res.status(404).json({ error: 'Event nicht gefunden' });
+    }
+    if (!event.requiresRegistration) {
+      return res.status(400).json({ error: 'Dieses Event erfordert keine Anmeldung' });
+    }
+
+    // Check visibility
+    const isCreator = event.createdBy === currentUid;
+    if (!isCreator && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+      return res.status(403).json({ error: 'Du hast keinen Zugriff auf dieses Event' });
+    }
+
+    const { action } = req.body || {};
+    const todayStr = new Date().toISOString().split('T')[0];
+    const eventEndDate = (event.endDate && event.endDate.trim()) ? event.endDate.trim() : (event.date ? event.date.trim() : '');
+    if (action !== 'cancel' && eventEndDate && eventEndDate < todayStr) {
+      return res.status(400).json({ error: 'Dieses Event ist bereits vorüber. Eine Anmeldung ist nicht mehr möglich.' });
+    }
+
+    const evRegs = await listEventRegistrations(appConfig, pbFilterEquals('event', event.id));
+
+    if (action === 'cancel') {
+      const myReg = evRegs.find(r => r.user === currentUid && r.status !== 'cancelled');
+      if (myReg) {
+        await upsertEventRegistration(appConfig, event.id, currentUid, 'cancelled');
+
+        // Check if a spot opened up for the waitlist
+        const remainingActive = evRegs.filter(r => r.id !== myReg.id && r.status === 'registered').length;
+        if (typeof event.maxParticipants === 'number' && event.maxParticipants > 0 && remainingActive < event.maxParticipants) {
+          const firstWaitlist = evRegs.find(r => r.id !== myReg.id && r.status === 'waitlist');
+          if (firstWaitlist) {
+            await upsertEventRegistration(appConfig, event.id, firstWaitlist.user, 'registered');
+          }
+        }
+      }
+      broadcastDataUpdate();
+      return res.json({ success: true, status: 'cancelled' });
+    }
+
+    // Default action: 'register'
+    const registeredCount = evRegs.filter(r => r.status === 'registered' && r.user !== currentUid).length;
+    let nextStatus = 'registered';
+    if (typeof event.maxParticipants === 'number' && event.maxParticipants > 0 && registeredCount >= event.maxParticipants) {
+      nextStatus = 'waitlist';
+    }
+
+    const reg = await upsertEventRegistration(appConfig, event.id, currentUid, nextStatus);
+    broadcastDataUpdate();
+    res.json({ success: true, registration: reg, status: nextStatus, isWaitlist: nextStatus === 'waitlist' });
+  } catch (err) {
+    console.error('Failed to register for event:', err);
+    res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+  }
+});
+
+// Candidates list for duty assignments and invitations (includes system groups)
+app.get('/api/events/candidates', verifyToken, async (req, res) => {
+  try {
+    const users = await listUserRecords(appConfig);
+    let groups = [];
+    try { groups = await listGroupRecords(appConfig); } catch {}
+    const candidates = users.map(u => ({
+      id: u.id,
+      name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+      email: u.email || '',
+      groups: Array.isArray(u.groups) ? u.groups : []
+    }));
+    res.json({
+      candidates,
+      groups: groups.map(g => ({ id: g.id, name: g.name }))
+    });
+  } catch (err) {
+    console.error('Failed to list candidates:', err);
+    res.status(500).json({ error: 'Kandidaten konnten nicht geladen werden' });
+  }
+});
+
+// Incoming duty requests for the authenticated user
+app.get('/api/events/my-requests', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const allDuties = await listEventDuties(appConfig);
+    const myRequestedDuties = allDuties.filter(d => d.requestedUser === currentUid && d.status === 'requested');
+
+    if (myRequestedDuties.length === 0) {
+      return res.json([]);
+    }
+
+    const allEvents = await listEvents(appConfig);
+    const eventMap = new Map(allEvents.map(e => [e.id, e]));
+    const users = await listUserRecords(appConfig);
+    const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+
+    const result = myRequestedDuties.map(d => {
+      const ev = eventMap.get(d.event) || {};
+      return {
+        id: d.id,
+        eventId: d.event,
+        eventTitle: ev.title || 'Termin',
+        eventDate: ev.date || '',
+        eventStartTime: ev.startTime || '',
+        eventEndTime: ev.endTime || '',
+        eventLocation: ev.location || '',
+        section: d.section || '',
+        roleName: d.roleName,
+        requestedBy: d.requestedBy,
+        requestedByName: userMap.get(d.requestedBy) || 'Leitung',
+        notes: d.notes || ''
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Failed to get my requests:', err);
+    res.status(500).json({ error: 'Dienstanfragen konnten nicht geladen werden' });
+  }
+});
+
+// 6. Update duty slot (notes, roleName, status)
+app.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) {
+      return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    }
+
+    const event = await getEventRecord(appConfig, duty.event);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const allDuties = await listEventDuties(appConfig);
+    const eventDuties = allDuties.filter(d => d.event === event.id);
+
+    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Keine Berechtigung zur Bearbeitung dieses Dienstes' });
+    }
+
+    const { notes, status, roleName, section, assignedGroup, assignedUser } = req.body || {};
+    const updates = {};
+
+    if (notes !== undefined) updates.notes = String(notes).trim();
+    if (status !== undefined) updates.status = String(status).trim();
+    if (section !== undefined) updates.section = String(section).trim();
+    if (roleName !== undefined) updates.roleName = String(roleName).trim();
+    if (assignedGroup !== undefined) updates.assignedGroup = String(assignedGroup).trim();
+    if (assignedUser !== undefined) updates.assignedUser = String(assignedUser).trim();
+
+    const updated = await updateEventDuty(appConfig, duty.id, updates);
+    broadcastDataUpdate();
+    res.json({ success: true, duty: updated });
+  } catch (err) {
+    console.error('Failed to update duty:', err);
+    res.status(500).json({ error: 'Dienst konnte nicht aktualisiert werden' });
+  }
+});
+
+// 7. Add duty to event (Group = direct assignment, Single person = always requested)
+app.post('/api/events/:id/duties', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const allDuties = await listEventDuties(appConfig);
+    const eventDuties = allDuties.filter(d => d.event === event.id);
+
+    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Erstellen von Diensten' });
+    }
+
+    const { roleName, section, assignedGroup, targetGroupId, assignedUser, requestedUser, targetUserId, notes, sendEmail } = req.body || {};
+    if (!roleName || !String(roleName).trim()) {
+      return res.status(400).json({ error: 'Dienstbezeichnung ist erforderlich' });
+    }
+
+    let status = 'open';
+    let finalAssignedGroup = '';
+    let finalAssignedUser = '';
+    let finalRequestedUser = '';
+    let finalRequestedBy = '';
+
+    const selGroup = (assignedGroup || targetGroupId || '').toString().trim();
+    const selUser = (requestedUser || assignedUser || targetUserId || '').toString().trim();
+
+    if (selGroup) {
+      // Group: assigned directly WITHOUT permission/request required
+      finalAssignedGroup = selGroup;
+      status = 'assigned';
+    } else if (selUser) {
+      // Single person: ALWAYS requested
+      finalRequestedUser = selUser;
+      finalRequestedBy = currentUid;
+      status = 'requested';
+    }
+
+    const duty = await createEventDuty(appConfig, {
+      event: event.id,
+      section: section ? String(section).trim() : '',
+      roleName: String(roleName).trim(),
+      assignedGroup: finalAssignedGroup,
+      assignedUser: finalAssignedUser,
+      requestedUser: finalRequestedUser,
+      requestedBy: finalRequestedBy,
+      notes: notes ? String(notes).trim() : '',
+      status
+    });
+
+    if (finalRequestedUser && sendEmail !== false) {
+      sendDutyRequestNotificationEmail({
+        recipientUserId: finalRequestedUser,
+        requestedByUserId: currentUid,
+        event,
+        duty,
+        appConfig,
+        sendEmailRequested: sendEmail !== false
+      }).catch(e => console.warn('Duty email error:', e));
+    }
+
+    broadcastDataUpdate();
+    res.status(201).json({ success: true, duty });
+  } catch (err) {
+    console.error('Failed to add duty:', err);
+    res.status(500).json({ error: 'Dienst konnte nicht hinzugefügt werden' });
+  }
+});
+
+// 8. Delete duty
+app.delete('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+
+    const event = await getEventRecord(appConfig, duty.event);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const allDuties = await listEventDuties(appConfig);
+    const eventDuties = allDuties.filter(d => d.event === event.id);
+
+    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Löschen dieses Dienstes' });
+    }
+
+    await deleteEventDuty(appConfig, duty.id);
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete duty:', err);
+    res.status(500).json({ error: 'Dienst konnte nicht gelöscht werden' });
+  }
+});
+
+// 9. Send duty invitation / request to single person
+app.post('/api/events/duties/:dutyId/request', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+
+    const event = await getEventRecord(appConfig, duty.event);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const allDuties = await listEventDuties(appConfig);
+    const eventDuties = allDuties.filter(d => d.event === event.id);
+
+    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Versenden von Dienstanfragen' });
+    }
+
+    const { targetUserId, sendEmail } = req.body || {};
+    if (!targetUserId || !String(targetUserId).trim()) {
+      return res.status(400).json({ error: 'Bitte wähle eine Person für die Anfrage aus' });
+    }
+
+    const updated = await updateEventDuty(appConfig, duty.id, {
+      requestedUser: String(targetUserId).trim(),
+      requestedBy: currentUid,
+      assignedUser: '',
+      assignedGroup: '',
+      status: 'requested'
+    });
+
+    if (sendEmail !== false) {
+      sendDutyRequestNotificationEmail({
+        recipientUserId: String(targetUserId).trim(),
+        requestedByUserId: currentUid,
+        event,
+        duty: updated,
+        appConfig,
+        sendEmailRequested: sendEmail !== false
+      }).catch(e => console.warn('Duty email error:', e));
+    }
+
+    broadcastDataUpdate();
+    res.json({ success: true, duty: updated });
+  } catch (err) {
+    console.error('Failed to request duty:', err);
+    res.status(500).json({ error: 'Anfrage konnte nicht gesendet werden' });
+  }
+});
+
+// 10. Assign group (direct) or single person (always requested) to duty slot
+app.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+
+    const event = await getEventRecord(appConfig, duty.event);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const allDuties = await listEventDuties(appConfig);
+    const eventDuties = allDuties.filter(d => d.event === event.id);
+
+    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Zuweisen dieses Dienstes' });
+    }
+
+    const { targetGroupId, targetUserId, sendEmail } = req.body || {};
+
+    let updates = {};
+    if (targetGroupId && String(targetGroupId).trim()) {
+      // Group: assigned directly, NO confirmation/permission required
+      updates = {
+        assignedGroup: String(targetGroupId).trim(),
+        assignedUser: '',
+        requestedUser: '',
+        requestedBy: '',
+        status: 'assigned'
+      };
+    } else if (targetUserId && String(targetUserId).trim()) {
+      // Single person: ALWAYS requested
+      updates = {
+        assignedGroup: '',
+        assignedUser: '',
+        requestedUser: String(targetUserId).trim(),
+        requestedBy: currentUid,
+        status: 'requested'
+      };
+    } else {
+      return res.status(400).json({ error: 'Bitte wähle eine Gruppe oder Person aus' });
+    }
+
+    const updated = await updateEventDuty(appConfig, duty.id, updates);
+
+    if (updates.requestedUser && sendEmail !== false) {
+      sendDutyRequestNotificationEmail({
+        recipientUserId: updates.requestedUser,
+        requestedByUserId: currentUid,
+        event,
+        duty: updated,
+        appConfig,
+        sendEmailRequested: sendEmail !== false
+      }).catch(e => console.warn('Duty email error:', e));
+    }
+
+    broadcastDataUpdate();
+    res.json({ success: true, duty: updated });
+  } catch (err) {
+    console.error('Failed to assign duty:', err);
+    res.status(500).json({ error: 'Dienst konnte nicht zugewiesen werden' });
+  }
+});
+
+// 11. Respond to duty request (Accept / Decline)
+app.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+
+    const isTarget = duty.requestedUser === currentUid;
+    const isPlanner = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    if (!isTarget && !isPlanner) {
+      return res.status(403).json({ error: 'Nur der angefragte Benutzer kann auf diese Anfrage antworten' });
+    }
+
+    const { action } = req.body || {}; // 'accept' or 'decline'
+    if (action === 'accept') {
+      const updated = await updateEventDuty(appConfig, duty.id, {
+        assignedUser: duty.requestedUser || currentUid,
+        requestedUser: '',
+        requestedBy: '',
+        status: 'confirmed'
+      });
+      broadcastDataUpdate();
+      return res.json({ success: true, duty: updated, message: 'Dienstanfrage angenommen' });
+    } else if (action === 'decline') {
+      const updated = await updateEventDuty(appConfig, duty.id, {
+        requestedUser: '',
+        requestedBy: '',
+        status: 'open'
+      });
+      broadcastDataUpdate();
+      return res.json({ success: true, duty: updated, message: 'Dienstanfrage abgelehnt' });
+    } else {
+      return res.status(400).json({ error: 'Ungültige Aktion' });
+    }
+  } catch (err) {
+    console.error('Failed to respond to duty request:', err);
+    res.status(500).json({ error: 'Antwort konnte nicht übermittelt werden' });
+  }
+});
+
+// 12. Cancel pending duty request
+app.post('/api/events/duties/:dutyId/cancel-request', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+
+    const event = await getEventRecord(appConfig, duty.event);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    let allGroups = [];
+    try { allGroups = await listGroupRecords(appConfig); } catch {}
+    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const allDuties = await listEventDuties(appConfig);
+    const eventDuties = allDuties.filter(d => d.event === event.id);
+
+    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+    if (!canAccess) {
+      return res.status(403).json({ error: 'Keine Berechtigung zum Zurückziehen der Anfrage' });
+    }
+
+    const updated = await updateEventDuty(appConfig, duty.id, {
+      requestedUser: '',
+      requestedBy: '',
+      status: 'open'
+    });
+
+    broadcastDataUpdate();
+    res.json({ success: true, duty: updated });
+  } catch (err) {
+    console.error('Failed to cancel request:', err);
+    res.status(500).json({ error: 'Anfrage konnte nicht zurückgezogen werden' });
+  }
+});
+
+// 13. Claim / Unclaim duty slot (Voluntary sign-up for open slots)
+app.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const duty = await getEventDuty(appConfig, req.params.dutyId);
+    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+
+    const { action } = req.body || {}; // 'claim' or 'unclaim'
+
+    if (action === 'unclaim') {
+      const isAssigned = duty.assignedUser === currentUid;
+      let canManage = false;
+      const event = await getEventRecord(appConfig, duty.event);
+      if (event) {
+        let allGroups = [];
+        try { allGroups = await listGroupRecords(appConfig); } catch {}
+        const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+        const allDuties = await listEventDuties(appConfig);
+        const eventDuties = allDuties.filter(d => d.event === event.id);
+        canManage = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+      }
+      if (!isAssigned && !canManage) {
+        return res.status(403).json({ error: 'Du kannst diese Zuweisung nicht aufheben' });
+      }
+      const updated = await updateEventDuty(appConfig, duty.id, {
+        assignedUser: '',
+        requestedUser: '',
+        requestedBy: '',
+        status: duty.assignedGroup ? 'assigned' : 'open'
+      });
+      broadcastDataUpdate();
+      return res.json({ success: true, duty: updated });
+    }
+
+    // Default action: 'claim'
+    if (duty.assignedUser && duty.assignedUser !== currentUid) {
+      return res.status(409).json({ error: 'Dieser Dienst ist bereits vergeben' });
+    }
+
+    const updated = await updateEventDuty(appConfig, duty.id, {
+      assignedUser: currentUid,
+      requestedUser: '',
+      requestedBy: '',
+      status: 'confirmed'
+    });
+    broadcastDataUpdate();
+    res.json({ success: true, duty: updated });
+  } catch (err) {
+    console.error('Failed to claim duty:', err);
+    res.status(500).json({ error: 'Dienst konnte nicht übernommen werden' });
+  }
+});
+
+// 10. Get attendees list for an event
+app.get('/api/events/:id/attendees', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    const isCreator = event.createdBy === currentUid;
+    if (!isCreator && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+      return res.status(403).json({ error: 'Kein Zugriff auf dieses Event' });
+    }
+
+    const evRegs = await listEventRegistrations(appConfig, pbFilterEquals('event', event.id));
+    const users = await listUserRecords(appConfig);
+    const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+
+    const registered = [];
+    const waitlist = [];
+
+    for (const r of evRegs) {
+      const item = {
+        id: r.id,
+        userId: r.user,
+        name: userMap.get(r.user) || 'Mitglied',
+        status: r.status,
+        created: r.created
+      };
+      if (r.status === 'registered') {
+        registered.push(item);
+      } else if (r.status === 'waitlist') {
+        waitlist.push(item);
+      }
+    }
+
+    res.json({
+      eventId: event.id,
+      registered,
+      waitlist,
+      registeredCount: registered.length,
+      waitlistCount: waitlist.length,
+      maxParticipants: typeof event.maxParticipants === 'number' ? event.maxParticipants : 0
+    });
+  } catch (err) {
+    console.error('Failed to load attendees:', err);
+    res.status(500).json({ error: 'Teilnehmer konnten nicht geladen werden' });
+  }
+});
+
+// 11. Remove attendee (Admin or creator)
+app.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    if (!isCreator && !canManageEvents) {
+      return res.status(403).json({ error: 'Keine Berechtigung' });
+    }
+
+    const targetUid = req.params.userId;
+    await upsertEventRegistration(appConfig, event.id, targetUid, 'cancelled');
+
+    // Check waitlist auto-promotion
+    const evRegs = await listEventRegistrations(appConfig, pbFilterEquals('event', event.id));
+    const remainingActive = evRegs.filter(r => r.user !== targetUid && r.status === 'registered').length;
+    if (typeof event.maxParticipants === 'number' && event.maxParticipants > 0 && remainingActive < event.maxParticipants) {
+      const firstWaitlist = evRegs.find(r => r.user !== targetUid && r.status === 'waitlist');
+      if (firstWaitlist) {
+        await upsertEventRegistration(appConfig, event.id, firstWaitlist.user, 'registered');
+      }
+    }
+
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to remove attendee:', err);
+    res.status(500).json({ error: 'Teilnehmer konnte nicht entfernt werden' });
+  }
+});
+
+// 12. Single event iCal export (.ics)
+app.get('/api/events/:id/export.ics', verifyToken, async (req, res) => {
+  try {
+    const event = await getEventRecord(appConfig, req.params.id);
+    if (!event) return res.status(404).send('Event nicht gefunden');
+
+    const appName = appConfig?.appName || 'Agora';
+    const icsContent = generateIcsCalendar([event], `${appName} - ${event.title || 'Event'}`);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="event-${event.id}.ics"`);
+    res.send(icsContent);
+  } catch (err) {
+    console.error('Failed to export single event ics:', err);
+    res.status(500).send('Fehler beim Exportieren des Termins');
+  }
+});
+
+// 13. Full calendar feed (supports WebCal subscriptions via ?token=...)
+app.get('/api/events/calendar.ics', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const allEvents = await listEvents(appConfig, '', '+date,+startTime');
+
+    const visibleEvents = allEvents.filter(ev => {
+      const isCreator = ev.createdBy === currentUid;
+      if (isCreator) return true;
+      return userMatchesTargetGroups(req.user, ev.targetGroups);
+    });
+
+    const appName = appConfig?.appName || 'Agora';
+    const icsContent = generateIcsCalendar(visibleEvents, `${appName} Terminkalender`);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="agora-kalender.ics"');
+    res.send(icsContent);
+  } catch (err) {
+    console.error('Failed to export calendar feed:', err);
+    res.status(500).send('Kalender-Feed konnte nicht erstellt werden');
+  }
+});
+
+// 14. Event settings: get
+app.get('/api/events/settings', verifyToken, async (req, res) => {
+  try {
+    const settings = await getStateValue(appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
+    res.json(settings || DEFAULT_EVENT_SETTINGS);
+  } catch (err) {
+    console.error('Failed to get event settings:', err);
+    res.json(DEFAULT_EVENT_SETTINGS);
+  }
+});
+
+// 15. Event settings: update (Admin or manageEvents)
+app.patch('/api/events/settings', verifyToken, async (req, res) => {
+  try {
+    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    if (!canManageEvents) {
+      return res.status(403).json({ error: 'Nur für Administratoren / Leitung' });
+    }
+
+    const current = await getStateValue(appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
+    const { allowMemberCreation, defaultDuties } = req.body || {};
+    const updated = {
+      ...current,
+      allowMemberCreation: allowMemberCreation !== undefined ? allowMemberCreation === true : current.allowMemberCreation,
+      defaultDuties: Array.isArray(defaultDuties) ? defaultDuties.map(d => String(d).trim()).filter(Boolean) : current.defaultDuties
+    };
+
+    await upsertStateValue(appConfig, 'event_settings', updated);
+    broadcastDataUpdate();
+    res.json({ success: true, settings: updated });
+  } catch (err) {
+    console.error('Failed to update event settings:', err);
+    res.status(500).json({ error: 'Einstellungen konnten nicht gespeichert werden' });
+  }
+});
+
+// 16. Event image upload & serving
+const eventImageUpload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Nur Bilddateien (JPG, PNG, WebP, HEIC) sind erlaubt.'));
+    }
+  }
+});
+
+app.post('/api/events/upload-image', protectedActionRateLimit, verifyToken, (req, res) => {
+  eventImageUpload.single('image')(req, res, (error) => {
+    if (error) {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Bilddatei zu groß (max. 25MB)' });
+      }
+      return res.status(400).json({ error: error.message || 'Upload fehlgeschlagen' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Keine Datei übermittelt.' });
+    res.json({ filename: req.file.filename, url: `/api/events/images/${req.file.filename}` });
+  });
+});
+
+app.get('/api/events/images/:filename', (req, res) => {
+  const filePath = path.resolve(path.join(uploadDir, req.params.filename));
+  const normalizedUploadDir = path.resolve(uploadDir);
+  if (!filePath.startsWith(normalizedUploadDir + path.sep)) {
+    return res.status(403).send('Forbidden: Path traversal detected');
+  }
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Bild nicht gefunden');
   }
 });
 

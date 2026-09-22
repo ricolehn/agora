@@ -428,6 +428,11 @@ function canManageMentoring() {
     return !!(currentUser && (currentUser.canManageMentoring || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_mentoring'))));
 }
 
+function canManageEvents() {
+    return !!(currentUser && (currentUser.canManageEvents || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_events')) || currentUser.admin || currentUser.owner || currentUser.superAdmin));
+}
+window.canManageEvents = canManageEvents;
+
 function isApprovedMentor() {
     return !!(currentUser && (currentUser.isApprovedMentor || currentUser.mentorStatus === 'approved'));
 }
@@ -820,6 +825,12 @@ function updateNavVisibility() {
     if (userFinancesDesktop) userFinancesDesktop.style.display = hasFinances ? 'none' : '';
     if (userFinancesBottom) userFinancesBottom.style.display = hasFinances ? 'none' : '';
 
+    // Events tab (All authenticated users)
+    const eventsDesktop = document.getElementById('events-nav-btn-desktop');
+    const eventsBottom = document.getElementById('events-nav-btn-bottom');
+    if (eventsDesktop) eventsDesktop.style.display = currentUser ? '' : 'none';
+    if (eventsBottom) eventsBottom.style.display = currentUser ? '' : 'none';
+
     // Mentoring tab (Users with mentoring_participate or manage_mentoring)
     const hasMentoring = canParticipateMentoring() || canManageMentoring();
     const mentoringDesktop = document.getElementById('mentoring-nav-btn-desktop');
@@ -844,11 +855,20 @@ function updateNavVisibility() {
 function updateFabVisibility() {
     const isFinances = currentActiveTab === 'finances';
     const canManage = canManageFinances();
-    const showFab = isFinances && canManage;
+    const isEvents = currentActiveTab === 'events';
+    const showFinancesFab = isFinances && canManage;
+    const showEventsFab = isEvents && !!currentUser;
+    const showFab = showFinancesFab || showEventsFab;
+
     const desktopFab = document.getElementById('desktop-fab');
     const mobileFabItem = document.getElementById('mobile-fab-nav-item');
     if (mobileFabItem) mobileFabItem.style.display = 'none';
     const fabMenu = document.getElementById('fabMenu');
+    const financesItems = document.getElementById('fab-finances-items');
+    const eventsItems = document.getElementById('fab-events-items');
+
+    if (financesItems) financesItems.style.display = showFinancesFab ? 'block' : 'none';
+    if (eventsItems) eventsItems.style.display = showEventsFab ? 'block' : 'none';
 
     if (desktopFab) {
         desktopFab.style.display = showFab ? 'flex' : 'none';
@@ -878,6 +898,9 @@ async function fetchWithAuth(url, options = {}) {
         ...(options.headers || {}),
         'Authorization': `Bearer ${token}`
     };
+    if (options.body && typeof options.body === 'string' && !headers['Content-Type'] && !headers['content-type']) {
+        headers['Content-Type'] = 'application/json';
+    }
     return fetch(url, { ...options, headers });
 }
 
@@ -1149,6 +1172,10 @@ window.switchTab = function(tabName, btn) {
         if (typeof window.loadMentoringData === 'function') {
             window.loadMentoringData();
         }
+    } else if (tabName === 'events') {
+        if (typeof window.loadEventsData === 'function') {
+            window.loadEventsData();
+        }
     }
 };
 
@@ -1286,7 +1313,11 @@ window.pendingExpenseFiles = [];
     // Web History API integration
     if (!window._modalStack.includes(id)) {
         window._modalStack.push(id);
-        history.pushState({ isModal: true, modalId: id }, "");
+        if (history.state && history.state.isModal) {
+            history.replaceState({ isModal: true, modalId: id }, "");
+        } else {
+            history.pushState({ isModal: true, modalId: id }, "");
+        }
     }
 
     // Store current focus on the modal instance itself to handle nesting
@@ -1320,8 +1351,10 @@ window.closeModal = (id, fromPopstate = false) => {
     if (stackIndex > -1) {
         window._modalStack.splice(stackIndex, 1);
         if (!fromPopstate) {
-            window._programmaticBacks = (window._programmaticBacks || 0) + 1;
-            history.back();
+            if (history.state && history.state.isModal) {
+                window._programmaticBacks = (window._programmaticBacks || 0) + 1;
+                history.back();
+            }
         }
     }
 
@@ -2304,6 +2337,10 @@ async function loadData(silent = false) {
             window.loadMentoringThreads(false).catch(() => {});
         }
 
+        if (isAuthenticated && typeof window.loadEventsData === 'function') {
+            window.loadEventsData().catch(() => {});
+        }
+
         // Default to Home page (user-overview) only if no tab is currently active
         const hasActiveTab = document.querySelector('.tab-content.active');
         if (!hasActiveTab) {
@@ -2591,12 +2628,14 @@ window.switchSysSettingsTab = function(tabName) {
     const tabBtns = {
         accounts: document.getElementById('sys-subtab-btn-accounts'),
         config: document.getElementById('sys-subtab-btn-config'),
-        ai: document.getElementById('sys-subtab-btn-ai')
+        ai: document.getElementById('sys-subtab-btn-ai'),
+        events: document.getElementById('sys-subtab-btn-events')
     };
     const panels = {
         accounts: document.getElementById('sys-panel-accounts'),
         config: document.getElementById('sys-panel-config'),
-        ai: document.getElementById('sys-panel-ai')
+        ai: document.getElementById('sys-panel-ai'),
+        events: document.getElementById('sys-panel-events')
     };
 
     Object.keys(tabBtns).forEach(k => {
@@ -2611,6 +2650,8 @@ window.switchSysSettingsTab = function(tabName) {
         if (!advancedConfigLoaded) loadAdvancedSystemConfig();
     } else if (tabName === 'ai') {
         loadAiConfig();
+    } else if (tabName === 'events') {
+        window.loadEventSystemSettings();
     }
 };
 
@@ -3448,24 +3489,24 @@ function renderUserView() {
 
         const translatedStatusMetaText = translateStatusText(statusMeta.text);
 
+        const accentColor = statusMeta.isOverdue ? 'var(--danger)' : statusMeta.isSoonDue ? 'var(--warning)' : 'var(--success)';
+        const accentBg   = statusMeta.isOverdue ? 'rgba(239,68,68,0.08)' : statusMeta.isSoonDue ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)';
+        const accentBorder = statusMeta.isOverdue ? 'rgba(239,68,68,0.25)' : statusMeta.isSoonDue ? 'rgba(245,158,11,0.25)' : 'rgba(16,185,129,0.25)';
+
         const statusHtml = `
-            <div class="user-hero-status ${statusClass}">
-                <h2 style="color: ${statusColor}; font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
+            <div class="user-hero-status ${statusClass}" style="background:${accentBg}; border-color:${accentBorder};">
+                <div class="user-finance-hero-title" style="color: ${accentColor}; font-size: 1.35rem; font-weight: 800; margin-bottom: 5px;">
                     ${escapeHtml(translatedStatusMetaText)}
-                </h2>
-                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<div style="font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 5px;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
+                </div>
+                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_standing_order_active', '🔁 Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
                 ${statusMeta.isOverdue ? `
-                    <div style="margin-top: 15px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);">
-                        <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 5px; color: var(--danger);">${t('user_open_amount', 'Offener Betrag')}</div>
-                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger);">${formatCurrency(overdueAmount)} €</div>
+                    <div class="user-finance-overdue-box" style="margin-top: 14px; margin-bottom: 0;">
+                        <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
+                        <div class="user-finance-overdue-amount">${formatCurrency(overdueAmount)} €</div>
                     </div>
                 ` : ''}
             </div>
         `;
-
-        const isManager = (typeof canViewFinances === 'function' && canViewFinances()) ||
-                          (typeof canManageFinances === 'function' && canManageFinances()) ||
-                          (typeof isSystemAdmin === 'function' && isSystemAdmin());
 
         // On Homepage (statusCard): Only show the main hero status banner for all users (including admins).
         // Current Status and Monthly Rate info boxes are NEVER shown on the Homepage!
@@ -3475,45 +3516,35 @@ function renderUserView() {
         }
 
         // On Finance page (financeStatusCard):
-        // For non-managers, show a unified hero card with status + info pills integrated.
-        // For managers/admins, they can look it up in the member list, so info boxes are omitted.
+        // Display the unified hero card with status + info pills integrated for everyone viewing their personal finance tab.
         if (financeStatusCard) {
-            if (isManager) {
-                financeStatusCard.innerHTML = statusHtml;
-            } else {
-                // Unified card: hero status + info pills in one cohesive block
-                const accentColor = statusMeta.isOverdue ? 'var(--danger)' : statusMeta.isSoonDue ? 'var(--warning)' : 'var(--success)';
-                const accentBg   = statusMeta.isOverdue ? 'rgba(239,68,68,0.08)' : statusMeta.isSoonDue ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)';
-                const accentBorder = statusMeta.isOverdue ? 'rgba(239,68,68,0.25)' : statusMeta.isSoonDue ? 'rgba(245,158,11,0.25)' : 'rgba(16,185,129,0.25)';
-
-                financeStatusCard.innerHTML = `
-                    <div class="user-finance-hero-card" style="background:${accentBg}; border-color:${accentBorder};">
-                        <div class="user-finance-hero-top">
-                            <div class="user-finance-hero-info">
-                                <div class="user-finance-hero-title" style="color:${accentColor};">${escapeHtml(translatedStatusMetaText)}</div>
-                                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub">${t('user_standing_order_active', '🔁 Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
-                            </div>
-                        </div>
-                        ${statusMeta.isOverdue ? `
-                            <div class="user-finance-overdue-box">
-                                <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
-                                <div class="user-finance-overdue-amount">${formatCurrency(overdueAmount)} €</div>
-                            </div>
-                        ` : ''}
-                        <div class="user-finance-stat-row">
-                            <div class="user-finance-stat">
-                                <div class="user-finance-stat-label">${t('user_monthly_rate', 'Monatlicher Beitrag')}</div>
-                                <div class="user-finance-stat-value">${formatCurrency(monthlyRate)} €</div>
-                            </div>
-                            <div class="user-finance-stat-divider"></div>
-                            <div class="user-finance-stat">
-                                <div class="user-finance-stat-label">${t('user_current_status', 'Aktueller Status')}</div>
-                                <div class="user-finance-stat-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
-                            </div>
+            financeStatusCard.innerHTML = `
+                <div class="user-finance-hero-card" style="background:${accentBg}; border-color:${accentBorder};">
+                    <div class="user-finance-hero-top">
+                        <div class="user-finance-hero-info">
+                            <div class="user-finance-hero-title" style="color:${accentColor};">${escapeHtml(translatedStatusMetaText)}</div>
+                            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub">${t('user_standing_order_active', '🔁 Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
                         </div>
                     </div>
-                `;
-            }
+                    ${statusMeta.isOverdue ? `
+                        <div class="user-finance-overdue-box">
+                            <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
+                            <div class="user-finance-overdue-amount">${formatCurrency(overdueAmount)} €</div>
+                        </div>
+                    ` : ''}
+                    <div class="user-finance-stat-row">
+                        <div class="user-finance-stat">
+                            <div class="user-finance-stat-label">${t('user_monthly_rate', 'Monatsbeitrag')}</div>
+                            <div class="user-finance-stat-value">${formatCurrency(monthlyRate)} €</div>
+                        </div>
+                        <div class="user-finance-stat-divider"></div>
+                        <div class="user-finance-stat">
+                            <div class="user-finance-stat-label">${t('user_current_status', 'Status')}</div>
+                            <div class="user-finance-stat-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
         if (paymentHistory) {
@@ -8634,4 +8665,2089 @@ window.openMentoringChatDirect = async function(threadId, origin = 'home') {
         window._openingDirectChat = false;
     }, 400);
 };
+
+// ============================================================================
+// Events & Dienstplan Module (CITADEL) - Frontend Logic
+// ============================================================================
+let appEvents = [];
+let currentEventsSubTab = 'termine'; // 'termine' | 'events'
+let eventsActiveFilter = 'all'; // 'all' | 'mine' | 'registration' | 'open_duties'
+let eventsSearchQuery = '';
+let currentDetailEvent = null;
+let currentDetailAttendees = null;
+let myDutyRequests = [];
+let eventCandidatesCache = null;
+let eventGroupsCache = null;
+let eventSettings = {
+    allowMemberCreation: true,
+    defaultDuties: ['Bistro-Team', 'Technik', 'Begrüßung', 'Moderation', 'Musik/Lobpreis']
+};
+
+window.switchEventsSubTab = function(tabName) {
+    currentEventsSubTab = (tabName === 'events') ? 'events' : 'termine';
+    const btnTermine = document.getElementById('events-tab-btn-termine');
+    const btnEvents = document.getElementById('events-tab-btn-events');
+    if (btnTermine) {
+        btnTermine.classList.toggle('is-active', currentEventsSubTab === 'termine');
+        btnTermine.classList.toggle('active', currentEventsSubTab === 'termine');
+    }
+    if (btnEvents) {
+        btnEvents.classList.toggle('is-active', currentEventsSubTab === 'events');
+        btnEvents.classList.toggle('active', currentEventsSubTab === 'events');
+    }
+    window.renderEvents();
+};
+
+window.loadEventsData = async function() {
+    if (!currentUser) return;
+    try {
+        const [eventsRes, settingsRes, requestsRes] = await Promise.all([
+            fetchWithAuth(`${config.apiBaseUrl}/events`),
+            fetchWithAuth(`${config.apiBaseUrl}/events/settings`).catch(() => null),
+            fetchWithAuth(`${config.apiBaseUrl}/events/my-requests`).catch(() => null)
+        ]);
+
+        if (eventsRes && eventsRes.ok) {
+            appEvents = await eventsRes.json();
+        }
+        if (settingsRes && settingsRes.ok) {
+            eventSettings = await settingsRes.json();
+        }
+        if (requestsRes && requestsRes.ok) {
+            myDutyRequests = await requestsRes.json();
+        } else {
+            myDutyRequests = [];
+        }
+
+        window.renderMyDutyRequests();
+        window.renderEvents();
+    } catch (err) {
+        console.warn('Failed to load events:', err);
+    }
+};
+
+window.renderMyDutyRequests = function() {
+    const banner = document.getElementById('events-my-requests-banner');
+    if (!banner) return;
+
+    if (!Array.isArray(myDutyRequests) || myDutyRequests.length === 0) {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+        return;
+    }
+
+    banner.style.display = 'block';
+    banner.innerHTML = `
+        <div class="events-requests-banner-content">
+            <div class="events-requests-banner-header">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="events-requests-bell">📬</span>
+                    <strong style="font-size:0.95rem; color:var(--text);">Offene Dienstanfragen an dich (${myDutyRequests.length})</strong>
+                </div>
+                <span class="events-requests-badge">Rückmeldung erbeten</span>
+            </div>
+            <div class="events-requests-list">
+                ${myDutyRequests.map(req => {
+                    const timeStr = req.eventStartTime ? ` um ${escapeHtml(req.eventStartTime)} Uhr` : '';
+                    const sectionStr = req.section ? `Bereich: ${escapeHtml(req.section)} • ` : '';
+                    return `
+                        <div class="events-request-card" id="duty-request-${req.id}">
+                            <div class="events-request-info">
+                                <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || 'Event')}</div>
+                                <div class="events-request-event-sub">
+                                    <span>${escapeHtml(formatEventDate(req.eventDate))}${timeStr}</span>
+                                </div>
+                                <div class="events-request-role">
+                                    🛠️ <strong>${escapeHtml(req.roleName)}</strong>
+                                    <span style="color:var(--text-secondary); font-size:0.8rem;">(${sectionStr}Angefragt von ${escapeHtml(req.requestedByName || 'Team')})</span>
+                                </div>
+                            </div>
+                            <div class="events-request-actions">
+                                <button type="button" class="btn btn-success btn-small" onclick="window.respondToDutyRequest('${req.id}', 'accept')">
+                                    ✅ Zusagen
+                                </button>
+                                <button type="button" class="btn btn-ghost btn-small text-danger" onclick="window.respondToDutyRequest('${req.id}', 'decline')">
+                                    ❌ Ablehnen
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+};
+
+window.respondToDutyRequest = async function(dutyId, action) {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+        });
+        if (res.ok) {
+            if (action === 'accept') {
+                showToast('Dienst zugesagt! Du bist jetzt für dieses Event eingeteilt.', 'success');
+            } else {
+                showToast('Dienstanfrage abgelehnt.', 'info');
+            }
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Antworten auf die Dienstanfrage', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.loadEventCandidates = async function(force = false) {
+    if (eventCandidatesCache && !force) return eventCandidatesCache;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/candidates`);
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                eventCandidatesCache = data;
+                eventGroupsCache = [];
+            } else {
+                eventCandidatesCache = data.candidates || [];
+                eventGroupsCache = data.groups || [];
+            }
+            return eventCandidatesCache;
+        }
+    } catch (err) {
+        console.warn('Failed to fetch event candidates:', err);
+    }
+    return [];
+};
+
+window.setEventsFilter = function(filter, btnEl) {
+    eventsActiveFilter = filter;
+    document.querySelectorAll('.events-filter-pill').forEach(el => el.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    window.renderEvents();
+};
+
+window.handleEventsSearchInput = function(val) {
+    eventsSearchQuery = (val || '').toLowerCase().trim();
+    const clearBtn = document.getElementById('events-search-clear');
+    if (clearBtn) clearBtn.style.display = eventsSearchQuery ? 'block' : 'none';
+    window.renderEvents();
+};
+
+window.clearEventsSearch = function() {
+    eventsSearchQuery = '';
+    const input = document.getElementById('events-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('events-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    window.renderEvents();
+};
+
+function isEventPast(ev, todayStr) {
+    if (!todayStr) {
+        const today = new Date();
+        todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    }
+    const cmpDate = (ev.endDate && ev.endDate.trim()) ? ev.endDate.trim() : (ev.date ? ev.date.trim() : '');
+    if (!cmpDate) return false;
+    return cmpDate < todayStr;
+}
+
+let showPastEventsInEventsTab = false;
+window.toggleShowPastEvents = function() {
+    showPastEventsInEventsTab = !showPastEventsInEventsTab;
+    window.renderEvents();
+};
+
+function getFilteredEvents() {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    return appEvents.filter(ev => {
+        // Sub-Tab Filter: Termine vs Events
+        if (currentEventsSubTab === 'termine') {
+            // Expired events are completely removed from Termine
+            if (isEventPast(ev, todayStr)) {
+                return false;
+            }
+
+            const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+            const hasDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.assignedUser === currentUser?.id || d.requestedUser === currentUser?.id);
+
+            // Events requiring registration MUST only appear under Termine if the user is registered or assigned a duty
+            if (ev.requiresRegistration) {
+                if (!isRegistered && !hasDuty) {
+                    return false;
+                }
+            } else {
+                // If no registration is required: routine appointments and open community events are shown.
+                // Pinned Großevents belong on the Events tab unless the user has an assigned duty
+                if (ev.isPinned && ev.eventType !== 'termin' && !hasDuty) {
+                    return false;
+                }
+            }
+        } else if (currentEventsSubTab === 'events') {
+            // Pure official routine appointments stay in Termine
+            if (ev.eventType === 'termin' && !ev.isPinned) {
+                return false;
+            }
+        }
+
+        // Search filter
+        if (eventsSearchQuery) {
+            const matchTitle = (ev.title || '').toLowerCase().includes(eventsSearchQuery);
+            const matchLoc = (ev.location || '').toLowerCase().includes(eventsSearchQuery);
+            const matchDesc = (ev.description || '').toLowerCase().includes(eventsSearchQuery);
+            const matchDuties = Array.isArray(ev.duties) && ev.duties.some(d =>
+                (d.roleName || '').toLowerCase().includes(eventsSearchQuery) ||
+                (d.assignedGroupName || '').toLowerCase().includes(eventsSearchQuery) ||
+                (d.assignedUserName || '').toLowerCase().includes(eventsSearchQuery)
+            );
+            if (!matchTitle && !matchLoc && !matchDesc && !matchDuties) return false;
+        }
+
+        // Active pill filter
+        if (eventsActiveFilter === 'mine') {
+            const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+            const hasDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.assignedUser === currentUser?.id || d.canEditNotes);
+            const isCreator = ev.createdBy === currentUser?.id;
+            if (!isRegistered && !hasDuty && !isCreator) return false;
+        } else if (eventsActiveFilter === 'registration') {
+            if (!ev.requiresRegistration) return false;
+        } else if (eventsActiveFilter === 'open_duties') {
+            const hasOpenDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup));
+            if (!hasOpenDuty) return false;
+        }
+
+        return true;
+    });
+}
+
+window.renderEvents = function() {
+    const allBadge = document.getElementById('events-all-badge');
+    if (allBadge) {
+        allBadge.textContent = appEvents.length;
+        allBadge.style.display = appEvents.length > 0 ? 'inline-block' : 'none';
+    }
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // Pinned Highlights Section (Only visible under "Events" tab when pinned upcoming events exist)
+    const pinnedSection = document.getElementById('events-pinned-section');
+    const pinnedContainer = document.getElementById('events-pinned-container');
+    if (pinnedSection && pinnedContainer) {
+        if (currentEventsSubTab === 'events') {
+            const pinnedList = appEvents.filter(ev => ev.isPinned && !isEventPast(ev, todayStr));
+            if (pinnedList.length > 0) {
+                pinnedSection.style.display = 'flex';
+                pinnedContainer.innerHTML = pinnedList.map(ev => renderPinnedEventCard(ev)).join('');
+            } else {
+                pinnedSection.style.display = 'none';
+            }
+        } else {
+            pinnedSection.style.display = 'none';
+        }
+    }
+
+    const container = document.getElementById('events-list-container');
+    if (!container) return;
+
+    const filtered = getFilteredEvents();
+    const isEventsTab = (currentEventsSubTab === 'events');
+
+    let upcomingList = filtered;
+    let pastList = [];
+
+    if (isEventsTab) {
+        upcomingList = filtered.filter(ev => !isEventPast(ev, todayStr));
+        pastList = filtered.filter(ev => isEventPast(ev, todayStr));
+    }
+
+    let pastSectionHtml = '';
+    if (isEventsTab && pastList.length > 0) {
+        // Sort past events: most recently expired first
+        pastList.sort((a, b) => {
+            const dComp = (b.endDate || b.date || '').localeCompare(a.endDate || a.date || '');
+            if (dComp !== 0) return dComp;
+            return (b.startTime || '').localeCompare(a.startTime || '');
+        });
+
+        pastSectionHtml = `
+            <div class="events-past-toggle-wrap">
+                <button type="button" class="events-past-toggle-btn" onclick="window.toggleShowPastEvents()">
+                    <span style="font-size: 0.72rem;">${showPastEventsInEventsTab ? '▲' : '▼'}</span>
+                    <span>Abgelaufene Events ${showPastEventsInEventsTab ? 'verbergen' : 'anzeigen'} (${pastList.length})</span>
+                </button>
+                ${showPastEventsInEventsTab ? `
+                    <div style="width: 100%; margin-top: 22px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
+                            <span style="font-size: 0.84rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+                                Abgelaufene Events (${pastList.length})
+                            </span>
+                            <span style="font-size: 0.76rem; color: var(--text-secondary);">Versteckt bis zur manuellen Löschung</span>
+                        </div>
+                        <div class="events-cards-grid">
+                            ${pastList.map(ev => renderChurchtoolsEventCard(ev, true)).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    if (upcomingList.length === 0) {
+        const emptyTitle = isEventsTab ? 'Keine anstehenden Events gefunden' : 'Keine passenden Termine gefunden';
+        const createBtnText = isEventsTab ? '+ Neues Event' : '+ Neuer Termin';
+
+        container.innerHTML = `
+            <div class="card" style="padding: 48px 20px; text-align: center; color: var(--text-secondary); border-radius: 16px;">
+                <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
+                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${emptyTitle}</div>
+                <div style="font-size: 0.88rem; margin-bottom: 14px;">Versuche die Filter zurückzusetzen oder erstelle einen neuen Eintrag.</div>
+                <div>
+                    <button type="button" class="btn btn-primary btn-small" onclick="openCreateEventModal(false)">${createBtnText}</button>
+                </div>
+            </div>
+            ${pastSectionHtml}
+        `;
+        return;
+    }
+
+    // Sort chronologically (date ascending, startTime ascending)
+    upcomingList.sort((a, b) => {
+        const dComp = (a.date || '').localeCompare(b.date || '');
+        if (dComp !== 0) return dComp;
+        return (a.startTime || '').localeCompare(b.startTime || '');
+    });
+
+    // Group events by Month and Year
+    const groups = new Map();
+    upcomingList.forEach(ev => {
+        const monthKey = ev.date ? ev.date.substring(0, 7) : 'Ohne Datum';
+        if (!groups.has(monthKey)) groups.set(monthKey, []);
+        groups.get(monthKey).push(ev);
+    });
+
+    const monthNames = [
+        'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+    ];
+
+    const listClass = isEventsTab ? 'events-cards-grid' : 'events-feed-list';
+
+    let html = '';
+    groups.forEach((eventsInMonth, key) => {
+        let groupTitle = key;
+        if (key.includes('-')) {
+            const [y, m] = key.split('-').map(Number);
+            groupTitle = `${monthNames[m - 1]} ${y}`;
+        }
+
+        html += `
+            <div class="events-month-group">
+                <div class="events-month-header">
+                    <span>${escapeHtml(groupTitle)}</span>
+                    <span class="events-month-count">(${eventsInMonth.length})</span>
+                </div>
+                <div class="${listClass}">
+                    ${eventsInMonth.map(ev => isEventsTab ? renderChurchtoolsEventCard(ev, false) : renderEventCard(ev)).join('')}
+                </div>
+            </div>
+        `;
+    });
+
+    html += pastSectionHtml;
+
+    container.innerHTML = html;
+};
+
+function parseEventDateComponents(dateStr) {
+    if (!dateStr) return { monthStr: '---', dayNum: '--', weekdayStr: '' };
+    try {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        const shortMonths = ['JAN', 'FEB', 'MÄR', 'APR', 'MAI', 'JUN', 'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DEZ'];
+        const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+        return {
+            monthStr: shortMonths[m - 1] || '',
+            dayNum: String(d),
+            weekdayStr: dayNames[dt.getDay()] || ''
+        };
+    } catch {
+        return { monthStr: '---', dayNum: '--', weekdayStr: '' };
+    }
+}
+
+function formatEventDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+        return `${dayNames[dt.getDay()]}, ${d}. ${monthNames[m - 1]} ${y}`;
+    } catch {}
+    return dateStr;
+}
+
+function formatEventDateSpan(startDateStr, endDateStr) {
+    if (!startDateStr) return '';
+    if (!endDateStr || endDateStr === startDateStr) {
+        return formatEventDate(startDateStr);
+    }
+    try {
+        const [y1, m1, d1] = startDateStr.split('-').map(Number);
+        const [y2, m2, d2] = endDateStr.split('-').map(Number);
+        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+        if (y1 === y2 && m1 === m2) {
+            return `${d1}. – ${d2}. ${monthNames[m1 - 1]} ${y1}`;
+        } else if (y1 === y2) {
+            return `${d1}. ${monthNames[m1 - 1]} – ${d2}. ${monthNames[m2 - 1]} ${y1}`;
+        } else {
+            return `${d1}. ${monthNames[m1 - 1]} ${y1} – ${d2}. ${monthNames[m2 - 1]} ${y2}`;
+        }
+    } catch {
+        return `${startDateStr} – ${endDateStr}`;
+    }
+}
+
+function getEventCountdownString(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const target = new Date(y, m - 1, d);
+        const diffMs = target - today;
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return 'Vorbei';
+        if (diffDays === 0) return 'Heute';
+        if (diffDays === 1) return 'Morgen';
+        if (diffDays < 30) return `In ${diffDays} Tagen`;
+        const months = Math.floor(diffDays / 30.5);
+        if (months === 1) return 'In ca. 1 Monat';
+        if (months < 12) return `In ca. ${months} Monaten`;
+        const years = Math.round((months / 12) * 10) / 10;
+        return `In ca. ${years} Jahren`;
+    } catch {
+        return '';
+    }
+}
+
+function renderPinnedEventCard(ev) {
+    const countdown = getEventCountdownString(ev.date);
+    const dateSpan = formatEventDateSpan(ev.date, ev.endDate);
+    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+
+    let regBadge = '';
+    if (isRegistered) {
+        regBadge = `<span class="event-mini-pill pill-success"><span class="duty-status-dot"></span>Angemeldet</span>`;
+    } else if (ev.requiresRegistration) {
+        if (ev.isFull) {
+            regBadge = `<span class="event-mini-pill pill-danger">Ausgebucht</span>`;
+        } else {
+            regBadge = `<span class="event-mini-pill pill-brand">Anmeldung möglich</span>`;
+        }
+    } else {
+        regBadge = `<span class="event-mini-pill pill-muted">Offen</span>`;
+    }
+
+    return `
+        <div class="pinned-event-card" id="pinned-event-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
+            ${ev.imageUrl ? `
+                <div style="width:100%; height:110px; border-radius:8px; overflow:hidden; margin-bottom:6px;">
+                    <img src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                </div>
+            ` : ''}
+            <div class="pinned-card-top">
+                <div class="pinned-card-title">${escapeHtml(ev.title)}</div>
+                ${countdown ? `<span class="pinned-card-countdown">${escapeHtml(countdown)}</span>` : ''}
+            </div>
+            <div class="pinned-card-meta">
+                <span style="display:inline-flex; align-items:center; gap:4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    <span>${escapeHtml(dateSpan)}</span>
+                </span>
+                ${ev.location ? `
+                    <span style="display:inline-flex; align-items:center; gap:4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <span>${escapeHtml(ev.location)}</span>
+                    </span>
+                ` : ''}
+            </div>
+            <div class="pinned-card-footer">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    ${regBadge}
+                    ${Array.isArray(ev.targetGroups) && ev.targetGroups.length > 0 ? `<span class="event-mini-pill pill-muted">${escapeHtml(ev.targetGroups.join(', '))}</span>` : ''}
+                </div>
+                <span style="color:var(--primary); font-weight:600; font-size:0.75rem;">Details →</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderChurchtoolsEventCard(ev, forcePast = false) {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const isPast = forcePast || isEventPast(ev, todayStr);
+
+    const { monthStr, dayNum } = parseEventDateComponents(ev.date);
+    const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
+    const isMultiDay = ev.endDate && ev.endDate !== ev.date;
+    const dateSpan = formatEventDateSpan(ev.date, ev.endDate);
+
+    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
+
+    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.assignedUser === currentUser?.id) : null;
+    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.requestedUser === currentUser?.id && d.status === 'requested') : null;
+
+    let floatingBadges = '';
+    if (isPast) {
+        floatingBadges += `<span class="event-mini-pill pill-muted" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">⌛ Vorbei</span>`;
+    }
+    if (ev.isPinned) {
+        floatingBadges += `<span class="event-mini-pill pill-brand" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">📌 Großevent</span>`;
+    }
+    if (myRequestedDuty) {
+        floatingBadges += `<span class="event-mini-pill pill-warning" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);"><span class="duty-status-dot"></span>Dienst angefragt</span>`;
+    } else if (myDuty) {
+        floatingBadges += `<span class="event-mini-pill pill-brand" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);"><span class="duty-status-dot"></span>${escapeHtml(myDuty.roleName)}</span>`;
+    }
+    if (isRegistered) {
+        floatingBadges += `<span class="event-mini-pill pill-success" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);"><span class="duty-status-dot"></span>Angemeldet</span>`;
+    } else if (isWaitlist) {
+        floatingBadges += `<span class="event-mini-pill pill-warning" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">Warteliste</span>`;
+    } else if (ev.requiresRegistration && ev.isFull) {
+        floatingBadges += `<span class="event-mini-pill pill-danger" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">Voll</span>`;
+    }
+
+    let coverHtml = '';
+    if (ev.imageUrl) {
+        coverHtml = `
+            <div class="ct-event-card-cover-wrap">
+                <img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">
+                <div class="ct-event-card-date-badge">
+                    <span class="ct-event-card-date-day">${dayNum}</span>
+                    <span class="ct-event-card-date-month">${monthStr}</span>
+                </div>
+                ${floatingBadges ? `<div class="ct-event-card-badges-floating">${floatingBadges}</div>` : ''}
+            </div>
+        `;
+    } else {
+        coverHtml = `
+            <div class="ct-event-card-cover-wrap">
+                <div class="ct-event-card-fallback-cover">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                </div>
+                <div class="ct-event-card-date-badge">
+                    <span class="ct-event-card-date-day">${dayNum}</span>
+                    <span class="ct-event-card-date-month">${monthStr}</span>
+                </div>
+                ${floatingBadges ? `<div class="ct-event-card-badges-floating">${floatingBadges}</div>` : ''}
+            </div>
+        `;
+    }
+
+    let footerBadges = '';
+    if (ev.requiresRegistration) {
+        const regCount = ev.registeredCount || 0;
+        const max = ev.maxParticipants || 0;
+        if (max > 0) {
+            footerBadges += `<span style="font-size:0.75rem; color:var(--text-secondary);">${regCount}/${max} Plätze</span>`;
+        } else {
+            footerBadges += `<span style="font-size:0.75rem; color:var(--text-secondary);">${regCount} angemeldet</span>`;
+        }
+    } else {
+        footerBadges += `<span style="font-size:0.75rem; color:var(--text-secondary);">Ohne Anmeldung</span>`;
+    }
+
+    return `
+        <div class="churchtools-event-card ${isPast ? 'is-past' : ''}" id="event-card-${ev.id}" onclick="window.openEventDetailModal('${ev.id}')">
+            ${coverHtml}
+            <div class="ct-event-card-body">
+                <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
+                <div class="ct-event-card-meta">
+                    ${isMultiDay ? `
+                        <div class="ct-event-card-meta-row" style="color:var(--primary); font-weight:600;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            <span>${escapeHtml(dateSpan)}</span>
+                        </div>
+                    ` : ''}
+                    ${timeDisplay ? `
+                        <div class="ct-event-card-meta-row">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <span>${timeDisplay}</span>
+                        </div>
+                    ` : ''}
+                    ${ev.location ? `
+                        <div class="ct-event-card-meta-row">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                            <span>${escapeHtml(ev.location)}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="ct-event-card-footer">
+                    <div>${footerBadges}</div>
+                    <span style="color:var(--primary); font-weight:600;">Details →</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderEventCard(ev) {
+    const { monthStr, dayNum } = parseEventDateComponents(ev.date);
+    const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}` : ev.startTime) : '';
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const isToday = ev.date === todayStr;
+    const isPast = ev.date && ev.date < todayStr;
+    const isMultiDay = ev.endDate && ev.endDate !== ev.date;
+
+    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
+
+    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.assignedUser === currentUser?.id) : null;
+    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.requestedUser === currentUser?.id && d.status === 'requested') : null;
+    const openDutiesCount = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.filter(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup && !d.requestedUser)).length : 0;
+
+    let cardClass = 'event-card';
+    if (isPast) cardClass += ' is-past';
+    if (isToday) cardClass += ' is-today';
+    if (isRegistered) cardClass += ' card-highlight-mine';
+    else if (myDuty || myRequestedDuty) cardClass += ' card-highlight-duty';
+
+    let badgesHtml = '';
+    if (ev.isPinned) {
+        badgesHtml += `<span class="event-mini-pill pill-brand">📌 Großevent</span>`;
+    }
+    if (myRequestedDuty) {
+        badgesHtml += `<span class="event-mini-pill pill-warning"><span class="duty-status-dot"></span>Dienst angefragt</span>`;
+    } else if (myDuty) {
+        badgesHtml += `<span class="event-mini-pill pill-brand"><span class="duty-status-dot"></span>${escapeHtml(myDuty.roleName)}</span>`;
+    }
+    if (isRegistered) {
+        badgesHtml += `<span class="event-mini-pill pill-success"><span class="duty-status-dot"></span>Angemeldet</span>`;
+    } else if (isWaitlist) {
+        badgesHtml += `<span class="event-mini-pill pill-warning">Warteliste</span>`;
+    } else if (ev.requiresRegistration && ev.isFull) {
+        badgesHtml += `<span class="event-mini-pill pill-danger">Voll</span>`;
+    }
+    if (openDutiesCount > 0 && ev.canAccessDutyPlan && !myDuty && !myRequestedDuty) {
+        badgesHtml += `<span class="event-mini-pill pill-muted">${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst offen' : 'Dienste offen'}</span>`;
+    }
+    if (ev.isRecurring) {
+        badgesHtml += `<span class="event-mini-pill pill-muted">Serie</span>`;
+    }
+
+    return `
+        <div class="${cardClass}" id="event-card-${ev.id}" onclick="window.openEventDetailModal('${ev.id}')">
+            <div class="event-card-left">
+                <div class="event-compact-date ${isToday ? 'is-today' : ''}">
+                    <span class="event-compact-day">${dayNum}</span>
+                    <span class="event-compact-month">${monthStr}</span>
+                </div>
+                <div class="event-card-body">
+                    <div class="event-card-title">${escapeHtml(ev.title)}</div>
+                    <div class="event-card-subline">
+                        ${isMultiDay ? `
+                            <span class="event-card-subline-item" style="font-weight:600; color:var(--primary);">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                <span>Bis ${escapeHtml(formatEventDate(ev.endDate))}</span>
+                            </span>
+                        ` : ''}
+                        ${timeDisplay ? `
+                            <span class="event-card-subline-item">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                <span>${timeDisplay} Uhr</span>
+                            </span>
+                        ` : ''}
+                        ${ev.location ? `
+                            <span class="event-card-subline-item">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                <span>${escapeHtml(ev.location)}</span>
+                            </span>
+                        ` : ''}
+                        ${badgesHtml ? `<div class="event-card-badges">${badgesHtml}</div>` : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="event-card-arrow">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </div>
+        </div>
+    `;
+}
+
+// ==========================================================
+// Event Detail Modal & Actions
+// ==========================================================
+window.openEventDetailModal = async function(eventId) {
+    const ev = appEvents.find(e => e.id === eventId);
+    if (!ev) return;
+    currentDetailEvent = ev;
+
+    // Cover Image Banner
+    const coverWrap = document.getElementById('detail-modal-cover-wrap');
+    const coverImg = document.getElementById('detail-modal-cover-img');
+    if (coverWrap && coverImg) {
+        if (ev.imageUrl) {
+            coverImg.src = ev.imageUrl;
+            coverWrap.style.display = 'block';
+        } else {
+            coverImg.src = '';
+            coverWrap.style.display = 'none';
+        }
+    }
+
+    document.getElementById('detail-modal-title').textContent = ev.title;
+    const formattedDate = formatEventDateSpan(ev.date, ev.endDate);
+    const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
+    const metaParts = [formattedDate, timeDisplay, ev.location].filter(Boolean);
+    const metaEl = document.getElementById('detail-modal-meta');
+    if (metaEl) metaEl.textContent = metaParts.join(' • ') || 'Termin';
+
+    // Tags
+    const tagsContainer = document.getElementById('detail-modal-tags');
+    let tagsHtml = '';
+    if (ev.isPinned) tagsHtml += `<span class="event-tag event-tag-pinned" style="background:rgba(34,211,238,0.15); color:var(--primary); font-weight:700;">📌 Großevent / Highlight</span>`;
+    if (ev.isRecurring) tagsHtml += `<span class="event-tag event-tag-recurring">Serientermin (${escapeHtml(ev.recurringRule || 'wöchentlich')})</span>`;
+    if (Array.isArray(ev.targetGroups) && ev.targetGroups.length > 0) {
+        tagsHtml += ev.targetGroups.map(g => `<span class="event-tag event-tag-group">${escapeHtml(g)}</span>`).join(' ');
+    }
+    if (tagsContainer) {
+        tagsContainer.innerHTML = tagsHtml;
+        tagsContainer.style.display = tagsHtml ? 'flex' : 'none';
+    }
+
+    // Description
+    const descCard = document.getElementById('detail-modal-desc-card');
+    const descText = document.getElementById('detail-modal-description');
+    if (ev.description && ev.description.trim()) {
+        descText.textContent = ev.description;
+        descCard.style.display = 'block';
+    } else {
+        descCard.style.display = 'none';
+    }
+
+    // Registration Box
+    const regBox = document.getElementById('detail-modal-reg-box');
+    if (ev.requiresRegistration) {
+        regBox.style.display = 'block';
+        const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+        const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
+
+        const statusBadge = document.getElementById('detail-modal-reg-status-badge');
+        if (isRegistered) {
+            statusBadge.className = 'event-tag event-tag-registered';
+            statusBadge.textContent = 'Angemeldet';
+        } else if (isWaitlist) {
+            statusBadge.className = 'event-tag event-tag-waitlist';
+            statusBadge.textContent = 'Warteliste';
+        } else if (ev.isFull) {
+            statusBadge.className = 'event-tag event-tag-full';
+            statusBadge.textContent = 'Ausgebucht';
+        } else {
+            statusBadge.className = 'event-tag';
+            statusBadge.textContent = 'Anmeldung möglich';
+        }
+
+        const max = ev.maxParticipants || 0;
+        const regCount = ev.registeredCount || 0;
+        const fillEl = document.getElementById('detail-modal-capacity-fill');
+        const capText = document.getElementById('detail-modal-capacity-text');
+
+        if (max > 0) {
+            const pct = Math.min(100, Math.round((regCount / max) * 100));
+            fillEl.style.width = `${pct}%`;
+            fillEl.className = 'event-capacity-bar-fill' + (pct >= 100 ? ' fill-full' : (pct >= 80 ? ' fill-warning' : ''));
+            capText.innerHTML = `<span><strong>${regCount}</strong> von <strong>${max}</strong> Plätzen belegt</span><span>${pct}%</span>`;
+        } else {
+            fillEl.style.width = '100%';
+            fillEl.className = 'event-capacity-bar-fill';
+            capText.innerHTML = `<span><strong>${regCount}</strong> Teilnehmer angemeldet (unbegrenzt)</span>`;
+        }
+
+        // Action Button
+        const actionWrap = document.getElementById('detail-modal-reg-action-wrap');
+        const isPast = isEventPast(ev);
+        if (isPast) {
+            if (isRegistered) {
+                actionWrap.innerHTML = `
+                    <div style="text-align:center; padding:10px 14px; background:var(--surface-alt); border:1px solid var(--border-light); border-radius:10px; color:var(--text-secondary); font-size:0.86rem; font-weight:600;">
+                        ✓ Du warst für dieses Event angemeldet (Event ist vorüber)
+                    </div>
+                `;
+            } else {
+                actionWrap.innerHTML = `
+                    <div style="text-align:center; padding:10px 14px; background:var(--surface-alt); border:1px solid var(--border-light); border-radius:10px; color:var(--text-secondary); font-size:0.86rem; font-weight:600;">
+                        ⌛ Dieses Event ist bereits vorüber (Anmeldung beendet)
+                    </div>
+                `;
+            }
+        } else if (isRegistered) {
+            actionWrap.innerHTML = `
+                <button type="button" class="btn btn-secondary btn-block text-danger" onclick="window.toggleEventRegistration('${ev.id}', 'registered')">
+                    Von diesem Event abmelden
+                </button>
+            `;
+        } else if (isWaitlist) {
+            actionWrap.innerHTML = `
+                <button type="button" class="btn btn-secondary btn-block" onclick="window.toggleEventRegistration('${ev.id}', 'waitlist')">
+                    Warteliste verlassen
+                </button>
+            `;
+        } else if (ev.isFull) {
+            actionWrap.innerHTML = `
+                <button type="button" class="btn btn-secondary btn-block" onclick="window.toggleEventRegistration('${ev.id}', 'none')">
+                    Auf Warteliste setzen
+                </button>
+            `;
+        } else {
+            actionWrap.innerHTML = `
+                <button type="button" class="btn btn-primary btn-block" onclick="window.toggleEventRegistration('${ev.id}', 'none')">
+                    Verbindlich anmelden
+                </button>
+            `;
+        }
+
+        // Reset attendees list body
+        const attListBody = document.getElementById('detail-attendees-list-body');
+        if (attListBody) attListBody.style.display = 'none';
+        const chevron = document.getElementById('detail-attendees-chevron');
+        if (chevron) chevron.textContent = '▼';
+
+        // Load attendees count
+        loadEventAttendees(ev.id);
+    } else {
+        regBox.style.display = 'none';
+    }
+
+    // Duties / Sub-Management Box (Only visible if user has access to duty plan)
+    const dutiesBox = document.getElementById('detail-modal-duties-box');
+    const dutiesSections = document.getElementById('detail-modal-duties-sections');
+    const dutiesCount = document.getElementById('detail-modal-duties-count');
+
+    if (!ev.canAccessDutyPlan) {
+        if (dutiesBox) dutiesBox.style.display = 'none';
+    } else {
+        if (dutiesBox) {
+            dutiesBox.style.display = 'block';
+            const duties = Array.isArray(ev.duties) ? ev.duties : [];
+            if (dutiesCount) {
+                dutiesCount.textContent = `${duties.length} ${duties.length === 1 ? 'Dienst' : 'Dienste'}`;
+            }
+
+            if (duties.length === 0) {
+                dutiesSections.innerHTML = `
+                    <div class="event-duties-empty-state">
+                        <div style="font-size:0.86rem; font-weight:600; color:var(--text); margin-bottom:4px;">Noch keine Dienste angelegt</div>
+                        <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:12px;">
+                            Erstelle Aufgaben für dieses Event und weise Gruppen oder Personen zu.
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="window.openAddDutySlotModal()">
+                            + Dienst anlegen
+                        </button>
+                    </div>
+                `;
+            } else {
+                dutiesSections.innerHTML = `
+                    <div class="church-duties-container">
+                        ${duties.map((d, index) => window.renderChurchDutyCard(d, ev, index + 1)).join('')}
+                    </div>
+                `;
+            }
+        }
+    }
+
+    // Creator & Admin Buttons
+    document.getElementById('detail-creator-name').textContent = ev.createdByName || 'Mitglied';
+    const editBtn = document.getElementById('detail-btn-edit');
+    const deleteBtn = document.getElementById('detail-btn-delete');
+    if (editBtn) editBtn.style.display = ev.canEdit ? 'inline-flex' : 'none';
+    if (deleteBtn) deleteBtn.style.display = ev.canEdit ? 'inline-flex' : 'none';
+
+    openModal('event-detail-modal');
+};
+
+async function loadEventAttendees(eventId) {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/attendees`);
+        if (res.ok) {
+            currentDetailAttendees = await res.json();
+            const countEl = document.getElementById('detail-attendees-count');
+            if (countEl) countEl.textContent = currentDetailAttendees.registeredCount || 0;
+
+            const itemsEl = document.getElementById('detail-attendees-items');
+            if (itemsEl) {
+                const canManage = currentDetailEvent && currentDetailEvent.canEdit;
+                const regChips = (currentDetailAttendees.registered || []).map(att => {
+                    const removeBtn = canManage ? `
+                        <button type="button" class="attendee-chip-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Teilnehmer entfernen">✕</button>
+                    ` : '';
+                    return `
+                        <div class="attendee-chip">
+                            <span>${escapeHtml(att.name)}</span>
+                            ${removeBtn}
+                        </div>
+                    `;
+                }).join('');
+
+                const waitChips = (currentDetailAttendees.waitlist || []).map(att => {
+                    const removeBtn = canManage ? `
+                        <button type="button" class="attendee-chip-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Von Warteliste entfernen">✕</button>
+                    ` : '';
+                    return `
+                        <div class="attendee-chip" style="opacity:0.75; border-style:dashed;">
+                            <span>${escapeHtml(att.name)} (Warteliste)</span>
+                            ${removeBtn}
+                        </div>
+                    `;
+                }).join('');
+
+                itemsEl.innerHTML = (regChips + waitChips) || '<span style="font-size:0.8rem; color:var(--text-secondary);">Noch keine Teilnehmer angemeldet.</span>';
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load event attendees:', err);
+    }
+}
+
+window.toggleDetailAttendeesList = function() {
+    const listBody = document.getElementById('detail-attendees-list-body');
+    const chevron = document.getElementById('detail-attendees-chevron');
+    if (listBody) {
+        const isHidden = listBody.style.display === 'none';
+        listBody.style.display = isHidden ? 'block' : 'none';
+        if (chevron) chevron.textContent = isHidden ? '▲' : '▼';
+    }
+};
+
+window.removeEventAttendee = async function(eventId, userId) {
+    if (!confirm('Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?')) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/attendees/${userId}`, {
+            method: 'DELETE'
+        });
+        if (res.ok) {
+            showToast('Teilnehmer entfernt', 'info');
+            await window.loadEventsData();
+            await loadEventAttendees(eventId);
+        } else {
+            showToast('Fehler beim Entfernen des Teilnehmers', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.renderChurchDutyCard = function(d, ev, orderNum) {
+    const isMe = d.assignedUser === currentUser?.id;
+    const isMeRequested = d.requestedUser === currentUser?.id;
+    const canManage = ev.canEdit || d.canManageDuty;
+
+    let statusPill = '';
+    let assignInfo = '';
+    let actionButtons = '';
+
+    if (d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup)) {
+        statusPill = `
+            <span class="duty-badge duty-badge-group">
+                <span class="duty-status-dot"></span>
+                <span>Gruppe: <strong>${escapeHtml(d.assignedGroupName || d.assignedGroup)}</strong></span>
+            </span>
+        `;
+        assignInfo = `<span style="font-size:0.75rem; color:var(--text-secondary);">Team eingeteilt</span>`;
+        if (canManage) {
+            actionButtons += `<button type="button" class="btn btn-secondary btn-tiny" onclick="window.openAssignDutyModal('${escapeHtml(d.id)}', '${escapeHtml(d.roleName)}')" title="Gruppe oder Person ändern">Ändern</button>`;
+            actionButtons += `<button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.unclaimEventDuty('${escapeHtml(d.id)}')" title="Gruppe austragen / Dienst freigeben">Freigeben</button>`;
+        }
+    } else if (d.status === 'requested') {
+        const reqName = isMeRequested ? 'Du' : (d.requestedUserName || 'Person');
+        statusPill = `
+            <span class="duty-badge duty-badge-requested">
+                <span class="duty-status-dot"></span>
+                <span>Angefragt: <strong>${escapeHtml(reqName)}</strong></span>
+            </span>
+        `;
+        assignInfo = `<span style="font-size:0.75rem; color:var(--text-secondary);">${d.requestedByName ? `von ${escapeHtml(d.requestedByName)}` : 'Wartet auf Bestätigung'}</span>`;
+        if (isMeRequested) {
+            actionButtons += `
+                <button type="button" class="btn btn-success btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'accept')" title="Dienst zusagen" style="gap:4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span>Zusagen</span>
+                </button>
+                <button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'decline')" title="Dienst ablehnen" style="gap:4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <span>Ablehnen</span>
+                </button>
+            `;
+        } else if (canManage) {
+            actionButtons += `<button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.cancelDutyRequest('${escapeHtml(d.id)}')" title="Anfrage zurückziehen">Zurückziehen</button>`;
+        }
+    } else if (d.status === 'confirmed' && (d.assignedUserName || d.assignedUser)) {
+        const assName = isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt');
+        statusPill = `
+            <span class="duty-badge duty-badge-confirmed">
+                <span class="duty-status-dot"></span>
+                <span><strong>${escapeHtml(assName)}</strong></span>
+            </span>
+        `;
+        assignInfo = `<span style="font-size:0.75rem; color:var(--text-secondary);">Bestätigt</span>`;
+        if (isMe || canManage) {
+            actionButtons += `<button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.unclaimEventDuty('${escapeHtml(d.id)}')" title="Zuweisung aufheben">Austragen</button>`;
+        }
+    } else {
+        // Open
+        statusPill = `
+            <span class="duty-badge duty-badge-open">
+                <span class="duty-status-dot"></span>
+                <span>Offen</span>
+            </span>
+        `;
+        if (canManage) {
+            actionButtons += `
+                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.openAssignDutyModal('${escapeHtml(d.id)}', '${escapeHtml(d.roleName)}')" title="Gruppe oder Person einteilen" style="gap:4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                    <span>Einteilen</span>
+                </button>
+            `;
+        }
+        actionButtons += `<button type="button" class="btn btn-ghost btn-tiny" onclick="window.claimEventDuty('${escapeHtml(d.id)}')" title="Dienst freiwillig übernehmen">Übernehmen</button>`;
+    }
+
+    if (canManage) {
+        actionButtons += `
+            <button type="button" class="duty-icon-btn" onclick="window.openEditDutyNotesModal('${escapeHtml(d.id)}', '${escapeHtml(d.notes || '')}')" title="Notiz bearbeiten">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button type="button" class="duty-icon-btn btn-danger-hover" onclick="window.deleteDutySlot('${escapeHtml(d.id)}')" title="Dienst löschen">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></line></svg>
+            </button>
+        `;
+    }
+
+    const numStr = String(orderNum).padStart(2, '0');
+
+    return `
+        <div class="church-duty-card" id="duty-slot-${escapeHtml(d.id)}">
+            <div class="church-duty-main">
+                <div class="church-duty-left">
+                    <div class="church-duty-title-row">
+                        <span class="church-duty-num">${numStr}</span>
+                        <strong class="church-duty-title">${escapeHtml(d.roleName)}</strong>
+                    </div>
+                    ${d.notes ? `
+                        <div class="church-duty-notes-row" title="${escapeHtml(d.notes)}">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                            <span>${escapeHtml(d.notes)}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="church-duty-center">
+                    ${statusPill}
+                    ${assignInfo ? `<div>${assignInfo}</div>` : ''}
+                </div>
+            </div>
+            <div class="church-duty-actions">
+                ${actionButtons}
+            </div>
+        </div>
+    `;
+};
+
+window.setAddDutyType = function(type) {
+    const hidden = document.getElementById('add-duty-assign-type-input');
+    if (hidden) hidden.value = type;
+
+    ['none', 'group', 'user'].forEach(t => {
+        const tab = document.getElementById(`add-tab-${t}`);
+        if (tab) tab.classList.toggle('is-active', t === type);
+    });
+
+    const groupBox = document.getElementById('add-duty-group-box');
+    const userBox = document.getElementById('add-duty-user-box');
+    if (groupBox) groupBox.style.display = (type === 'group') ? 'block' : 'none';
+    if (userBox) userBox.style.display = (type === 'user') ? 'block' : 'none';
+};
+
+window.openAddDutySlotModal = async function() {
+    const roleInput = document.getElementById('add-duty-role-name');
+    const notesInput = document.getElementById('add-duty-notes');
+    const subtitle = document.getElementById('subtitle-add-duty-slot');
+    if (roleInput) roleInput.value = '';
+    if (notesInput) notesInput.value = '';
+    if (subtitle && currentDetailEvent) subtitle.textContent = `Event: ${currentDetailEvent.title || 'Termin'}`;
+
+    window.setAddDutyType('none');
+
+    await window.loadEventCandidates();
+
+    const groupSelect = document.getElementById('add-duty-group-select');
+    if (groupSelect && Array.isArray(eventGroupsCache)) {
+        groupSelect.innerHTML = '<option value="">-- Gruppe auswählen --</option>' +
+            eventGroupsCache.map(g => `<option value="${escapeHtml(g.id || g.name)}">👥 ${escapeHtml(g.name)}</option>`).join('');
+    }
+
+    const userSelect = document.getElementById('add-duty-user-select');
+    if (userSelect && Array.isArray(eventCandidatesCache)) {
+        userSelect.innerHTML = '<option value="">-- Person auswählen --</option>' +
+            eventCandidatesCache.map(u => `<option value="${escapeHtml(u.id)}">👤 ${escapeHtml(u.name)}</option>`).join('');
+    }
+
+    openModal('add-duty-slot-modal');
+};
+
+window.submitAddDutySlot = async function(e) {
+    e.preventDefault();
+    if (!currentDetailEvent) return;
+
+    const roleName = document.getElementById('add-duty-role-name')?.value?.trim();
+    const notes = document.getElementById('add-duty-notes')?.value?.trim() || '';
+    const assignType = document.getElementById('add-duty-assign-type-input')?.value || 'none';
+    const assignedGroup = (assignType === 'group') ? (document.getElementById('add-duty-group-select')?.value || '') : '';
+    const targetUserId = (assignType === 'user') ? (document.getElementById('add-duty-user-select')?.value || '') : '';
+    const sendEmail = (assignType === 'user') ? (document.getElementById('add-duty-send-email')?.checked === true) : false;
+
+    if (!roleName) {
+        showToast('Bitte eine Dienstbezeichnung angeben', 'warning');
+        return;
+    }
+
+    if (assignType === 'group' && !assignedGroup) {
+        showToast('Bitte wähle eine Gruppe aus', 'warning');
+        return;
+    }
+    if (assignType === 'user' && !targetUserId) {
+        showToast('Bitte wähle eine Person aus', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${currentDetailEvent.id}/duties`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roleName, notes, assignedGroup, targetUserId, sendEmail })
+        });
+        if (res.ok) {
+            closeModal('add-duty-slot-modal');
+            showToast('Dienst erfolgreich angelegt!', 'success');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Anlegen des Dienstes', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.openEditDutyNotesModal = function(dutyId, currentNotes = '') {
+    const idInput = document.getElementById('edit-duty-notes-id');
+    const textarea = document.getElementById('edit-duty-notes-textarea');
+    if (idInput) idInput.value = dutyId;
+    if (textarea) textarea.value = currentNotes || '';
+    openModal('edit-duty-notes-modal');
+};
+
+window.submitEditDutyNotes = async function(e) {
+    e.preventDefault();
+    const dutyId = document.getElementById('edit-duty-notes-id')?.value;
+    const notes = document.getElementById('edit-duty-notes-textarea')?.value?.trim() || '';
+    if (!dutyId) return;
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes })
+        });
+        if (res.ok) {
+            closeModal('edit-duty-notes-modal');
+            showToast('Notiz erfolgreich gespeichert!', 'success');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Speichern der Notiz', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.setAssignDutyType = function(type) {
+    const hidden = document.getElementById('assign-duty-target-type-input');
+    if (hidden) hidden.value = type;
+
+    ['group', 'user'].forEach(t => {
+        const tab = document.getElementById(`assign-tab-${t}`);
+        if (tab) tab.classList.toggle('is-active', t === type);
+    });
+
+    const groupBox = document.getElementById('assign-duty-group-box');
+    const userBox = document.getElementById('assign-duty-user-box');
+    if (groupBox) groupBox.style.display = (type === 'group') ? 'block' : 'none';
+    if (userBox) userBox.style.display = (type === 'user') ? 'block' : 'none';
+};
+
+window.openAssignDutyModal = async function(dutyId, roleName) {
+    const idInput = document.getElementById('assign-duty-id');
+    const subtitle = document.getElementById('subtitle-assign-duty');
+    if (idInput) idInput.value = dutyId;
+    if (subtitle) subtitle.textContent = `Dienst: ${roleName || ''}`;
+
+    window.setAssignDutyType('group');
+
+    await window.loadEventCandidates();
+
+    const groupSelect = document.getElementById('assign-duty-group-select');
+    if (groupSelect && Array.isArray(eventGroupsCache)) {
+        groupSelect.innerHTML = '<option value="">-- Gruppe auswählen --</option>' +
+            eventGroupsCache.map(g => `<option value="${escapeHtml(g.id || g.name)}">👥 ${escapeHtml(g.name)}</option>`).join('');
+    }
+
+    const userSelect = document.getElementById('assign-duty-user-select');
+    if (userSelect && Array.isArray(eventCandidatesCache)) {
+        userSelect.innerHTML = '<option value="">-- Person auswählen --</option>' +
+            eventCandidatesCache.map(u => `<option value="${escapeHtml(u.id)}">👤 ${escapeHtml(u.name)}</option>`).join('');
+    }
+
+    openModal('assign-duty-modal');
+};
+
+window.submitAssignDuty = async function(e) {
+    e.preventDefault();
+    const dutyId = document.getElementById('assign-duty-id')?.value;
+    const targetType = document.getElementById('assign-duty-target-type-input')?.value || 'group';
+    const targetGroupId = (targetType === 'group') ? (document.getElementById('assign-duty-group-select')?.value || '') : '';
+    const targetUserId = (targetType === 'user') ? (document.getElementById('assign-duty-user-select')?.value || '') : '';
+    const sendEmail = (targetType === 'user') ? (document.getElementById('assign-duty-send-email')?.checked === true) : false;
+
+    if (!dutyId) return;
+
+    if (targetType === 'group' && !targetGroupId) {
+        showToast('Bitte eine Gruppe auswählen', 'warning');
+        return;
+    }
+    if (targetType === 'user' && !targetUserId) {
+        showToast('Bitte eine Person auswählen', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('assign-duty-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetGroupId, targetUserId, sendEmail })
+        });
+
+        if (res.ok) {
+            closeModal('assign-duty-modal');
+            showToast(targetType === 'group' ? 'Gruppe sofort fest eingeteilt!' : 'Dienstanfrage erfolgreich versendet!', 'success');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Einteilen', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+};
+
+window.cancelDutyRequest = async function(dutyId) {
+    if (!confirm('Möchtest du diese Dienstanfrage wirklich zurückziehen?')) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/cancel-request`, {
+            method: 'POST'
+        });
+        if (res.ok) {
+            showToast('Dienstanfrage zurückgezogen', 'info');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Zurückziehen der Anfrage', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.deleteDutySlot = async function(dutyId) {
+    if (!confirm('Diesen Dienst wirklich löschen?')) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
+            method: 'DELETE'
+        });
+        if (res.ok) {
+            showToast('Dienst gelöscht', 'info');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Löschen des Dienstes', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.claimEventDuty = async function(dutyId) {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/claim`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'claim' })
+        });
+        if (res.ok) {
+            showToast('Dienst erfolgreich übernommen! Vielen Dank für deinen Einsatz.', 'success');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Dienstübernahme fehlgeschlagen', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.unclaimEventDuty = async function(dutyId) {
+    if (!confirm('Möchtest du diese Zuweisung wirklich aufheben / austragen?')) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/claim`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'unclaim' })
+        });
+        if (res.ok) {
+            showToast('Zuweisung aufgehoben', 'info');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            showToast('Fehler beim Freigeben des Dienstes', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+window.downloadCurrentEventIcs = function() {
+    if (!currentDetailEvent) return;
+    window.location.href = `${config.apiBaseUrl}/events/${currentDetailEvent.id}/export.ics`;
+};
+
+window.openEditEventFromDetail = function() {
+    if (!currentDetailEvent) return;
+    const eventId = currentDetailEvent.id;
+    closeModal('event-detail-modal', true);
+    window.openEditEventModal(eventId);
+};
+
+window.deleteCurrentEventFromDetail = async function() {
+    if (!currentDetailEvent) return;
+    const eventId = currentDetailEvent.id;
+    closeModal('event-detail-modal');
+    window.deleteEvent(eventId);
+};
+
+// ==========================================================
+// Event Registration Toggle
+// ==========================================================
+window.toggleEventRegistration = async function(eventId, currentStatus) {
+    if (!currentUser) return;
+    const action = (currentStatus === 'registered' || currentStatus === 'waitlist') ? 'cancel' : 'register';
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (action === 'cancel') {
+                showToast(t('events_unregistered_success', 'Erfolgreich abgemeldet'), 'info');
+            } else if (data.isWaitlist) {
+                showToast(t('events_waitlist_success', 'Auf die Warteliste gesetzt'), 'warning');
+            } else {
+                showToast(t('events_registered_success', 'Erfolgreich verbindlich angemeldet!'), 'success');
+            }
+            await window.loadEventsData();
+            if (currentDetailEvent && currentDetailEvent.id === eventId) {
+                window.openEventDetailModal(eventId);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Aktion fehlgeschlagen', 'error');
+        }
+    } catch (e) {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+// ==========================================================
+// Delete Event
+// ==========================================================
+window.deleteEvent = async function(eventId) {
+    if (!confirm(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}`, {
+            method: 'DELETE'
+        });
+        if (res.ok) {
+            showToast(t('events_deleted_success', 'Event gelöscht'), 'success');
+            await window.loadEventsData();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Löschen fehlgeschlagen', 'error');
+        }
+    } catch (e) {
+        showToast('Fehler beim Löschen des Events', 'error');
+    }
+};
+
+// ==========================================================
+// Create & Edit Event Modal
+// ==========================================================
+window.setCreateEventType = function(type) {
+    const isTermin = (type === 'termin');
+    const hidden = document.getElementById('event-input-type');
+    if (hidden) hidden.value = isTermin ? 'termin' : 'event';
+
+    const tabEvent = document.getElementById('type-tab-event');
+    const tabTermin = document.getElementById('type-tab-termin');
+    if (tabEvent) tabEvent.classList.toggle('is-active', !isTermin);
+    if (tabTermin) tabTermin.classList.toggle('is-active', isTermin);
+
+    const canManage = canManageEvents();
+    const recWrap = document.getElementById('event-recurring-wrap');
+    const pinnedWrap = document.getElementById('event-pinned-wrap');
+
+    if (recWrap) recWrap.style.display = (canManage && isTermin) ? 'block' : 'none';
+    if (pinnedWrap) pinnedWrap.style.display = (canManage && !isTermin) ? 'block' : 'none';
+};
+
+window.compressEventImage = async function(file, quality = 0.60) {
+    let uploadFile = file;
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+    if (isHeic && typeof heic2any === 'function') {
+        try {
+            const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
+            const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
+            const newName = file.name.replace(/\.hei[cf]$/i, '.jpg');
+            uploadFile = new File([convertedBlob], newName, { type: 'image/jpeg' });
+        } catch (e) {
+            console.error('HEIC conversion failed, using original:', e);
+        }
+    }
+
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(uploadFile);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const maxDim = 1920;
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let newName = uploadFile.name;
+                if (!newName.toLowerCase().endsWith('.jpg') && !newName.toLowerCase().endsWith('.jpeg')) {
+                    newName = newName.replace(/\.[^/.]+$/, '') + '.jpg';
+                }
+
+                canvas.toBlob(blob => {
+                    if (blob) {
+                        resolve(new File([blob], newName, { type: 'image/jpeg' }));
+                    } else {
+                        resolve(uploadFile);
+                    }
+                }, 'image/jpeg', quality);
+            };
+            img.onerror = () => resolve(uploadFile);
+        };
+        reader.onerror = () => resolve(uploadFile);
+    });
+};
+
+window.removeEventImage = function() {
+    const previewWrap = document.getElementById('event-image-preview-wrap');
+    const placeholder = document.getElementById('event-image-placeholder');
+    const previewImg = document.getElementById('event-image-preview');
+    const urlInput = document.getElementById('event-input-image-url');
+    const fileInput = document.getElementById('event-input-file');
+
+    if (previewImg) previewImg.src = '';
+    if (previewWrap) previewWrap.style.display = 'none';
+    if (placeholder) placeholder.style.display = 'block';
+    if (urlInput) urlInput.value = '';
+    if (fileInput) fileInput.value = '';
+};
+
+window.handleEventImageSelect = async function(files) {
+    if (!files || !files[0]) return;
+    const file = files[0];
+
+    const placeholder = document.getElementById('event-image-placeholder');
+    const previewWrap = document.getElementById('event-image-preview-wrap');
+    const previewImg = document.getElementById('event-image-preview');
+    const urlInput = document.getElementById('event-input-image-url');
+
+    let originalPlaceholderHtml = '';
+    if (placeholder) {
+        originalPlaceholderHtml = placeholder.innerHTML;
+        placeholder.innerHTML = '<div style="font-size:1.6rem; margin-bottom:4px;">⏳</div><div style="font-weight:600; font-size:0.88rem; color:var(--text);">Bild wird komprimiert & hochgeladen...</div>';
+    }
+
+    try {
+        const processedFile = await window.compressEventImage(file, 0.60);
+        const formData = new FormData();
+        formData.append('image', processedFile);
+
+        const token = (typeof auth !== 'undefined' && auth.currentUser) 
+            ? (await auth.currentUser.getIdToken()) 
+            : (localStorage.getItem('token') || '');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${config.apiBaseUrl}/events/upload-image`, {
+            method: 'POST',
+            headers,
+            body: formData
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            if (urlInput) urlInput.value = data.url;
+            if (previewImg) previewImg.src = data.url;
+            if (previewWrap) previewWrap.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+            showToast('Eventbild erfolgreich hochgeladen', 'success');
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Upload fehlgeschlagen', 'error');
+            if (placeholder) {
+                placeholder.innerHTML = originalPlaceholderHtml;
+                placeholder.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        console.error('Event image upload error:', e);
+        showToast('Fehler beim Verarbeiten des Eventbildes', 'error');
+        if (placeholder) {
+            placeholder.innerHTML = originalPlaceholderHtml;
+            placeholder.style.display = 'block';
+        }
+    } finally {
+        const fileInput = document.getElementById('event-input-file');
+        if (fileInput) fileInput.value = '';
+    }
+};
+
+window.openCreateEventModal = function(requiresRegistration = false) {
+    const form = document.getElementById('create-event-form');
+    if (form) form.reset();
+    window.removeEventImage();
+
+    const idInput = document.getElementById('event-input-id');
+    if (idInput) idInput.value = '';
+
+    const modalTitle = document.getElementById('title-create-event');
+    if (modalTitle) modalTitle.textContent = 'Neuen Eintrag erstellen';
+    const submitBtn = document.getElementById('event-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Veröffentlichen';
+
+    // Set default date to tomorrow
+    const dateInput = document.getElementById('event-input-date');
+    if (dateInput) {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        dateInput.value = d.toISOString().split('T')[0];
+    }
+    const endDateInput = document.getElementById('event-input-end-date');
+    if (endDateInput) endDateInput.value = '';
+
+    const pinnedCheck = document.getElementById('event-check-pinned');
+    if (pinnedCheck) pinnedCheck.checked = false;
+
+    // Type selector visibility (only for managers)
+    const canManage = canManageEvents();
+    const typeWrap = document.getElementById('event-type-selection-wrap');
+    if (typeWrap) typeWrap.style.display = canManage ? 'block' : 'none';
+
+    const defaultType = (canManage && currentEventsSubTab === 'termine') ? 'termin' : 'event';
+    window.setCreateEventType(defaultType);
+
+    const recurringOpts = document.getElementById('event-recurring-options');
+    if (recurringOpts) recurringOpts.style.display = 'none';
+
+    // Set requiresRegistration based on selection
+    const regCheckbox = document.getElementById('event-check-requires-reg');
+    if (regCheckbox) regCheckbox.checked = requiresRegistration === true;
+    const regOpts = document.getElementById('event-reg-options');
+    if (regOpts) regOpts.style.display = requiresRegistration === true ? 'grid' : 'none';
+
+    const modalSubtitle = document.querySelector('#create-event-modal .modal-subtitle');
+    if (modalSubtitle) {
+        modalSubtitle.textContent = requiresRegistration ? 'Mit verbindlicher Anmeldung & Teilnehmerbegrenzung' : 'Offener Eintrag für alle Teilnehmer';
+    }
+
+    // Populate Target Groups Checkboxes
+    populateTargetGroupsCheckboxes([]);
+
+    // Populate default duties from settings
+    const dutiesList = document.getElementById('event-duties-input-list');
+    if (dutiesList) {
+        dutiesList.innerHTML = '';
+        const defaultRole = (Array.isArray(eventSettings.defaultDuties) && eventSettings.defaultDuties.length > 0)
+            ? eventSettings.defaultDuties[0]
+            : 'Bistro-Team';
+        window.addEventDutySlot(defaultRole);
+    }
+
+    openModal('create-event-modal');
+};
+
+window.openCreateEventModalForDate = function(dateStr) {
+    window.openCreateEventModal(false);
+    const dateInput = document.getElementById('event-input-date');
+    if (dateInput && dateStr) dateInput.value = dateStr;
+};
+
+window.openEditEventModal = function(eventId) {
+    const ev = appEvents.find(e => e.id === eventId);
+    if (!ev) return;
+
+    const form = document.getElementById('create-event-form');
+    if (form) form.reset();
+
+    const idInput = document.getElementById('event-input-id');
+    if (idInput) idInput.value = ev.id;
+
+    const modalTitle = document.getElementById('title-create-event');
+    if (modalTitle) modalTitle.textContent = 'Eintrag bearbeiten';
+    const submitBtn = document.getElementById('event-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Änderungen speichern';
+
+    document.getElementById('event-input-title').value = ev.title || '';
+    document.getElementById('event-input-date').value = ev.date || '';
+    const endDateInput = document.getElementById('event-input-end-date');
+    if (endDateInput) endDateInput.value = ev.endDate || '';
+    document.getElementById('event-input-location').value = ev.location || '';
+    document.getElementById('event-input-start-time').value = ev.startTime || '';
+    document.getElementById('event-input-end-time').value = ev.endTime || '';
+    document.getElementById('event-input-description').value = ev.description || '';
+
+    // Pinned
+    const pinnedCheck = document.getElementById('event-check-pinned');
+    if (pinnedCheck) pinnedCheck.checked = ev.isPinned === true;
+
+    // Type Selector
+    const canManage = canManageEvents();
+    const typeWrap = document.getElementById('event-type-selection-wrap');
+    if (typeWrap) typeWrap.style.display = canManage ? 'block' : 'none';
+    const evType = ev.eventType || (ev.isOfficialTermin ? 'termin' : 'event');
+    window.setCreateEventType(evType);
+
+    // Target Groups
+    populateTargetGroupsCheckboxes(ev.targetGroups || []);
+
+    // Registration
+    const regCheck = document.getElementById('event-check-requires-reg');
+    if (regCheck) regCheck.checked = ev.requiresRegistration === true;
+    const regOpts = document.getElementById('event-reg-options');
+    if (regOpts) regOpts.style.display = ev.requiresRegistration ? 'grid' : 'none';
+    document.getElementById('event-input-min-participants').value = ev.minParticipants || 0;
+    document.getElementById('event-input-max-participants').value = ev.maxParticipants || 0;
+
+    // Recurring
+    const recCheck = document.getElementById('event-check-recurring');
+    if (recCheck) recCheck.checked = ev.isRecurring === true;
+    const recOpts = document.getElementById('event-recurring-options');
+    if (recOpts) recOpts.style.display = ev.isRecurring ? 'block' : 'none';
+    if (ev.recurringRule) {
+        document.getElementById('event-select-recurring-rule').value = ev.recurringRule;
+    }
+
+    // Image
+    if (ev.imageUrl) {
+        const previewWrap = document.getElementById('event-image-preview-wrap');
+        const placeholder = document.getElementById('event-image-placeholder');
+        const previewImg = document.getElementById('event-image-preview');
+        const urlInput = document.getElementById('event-input-image-url');
+        if (urlInput) urlInput.value = ev.imageUrl;
+        if (previewImg) previewImg.src = ev.imageUrl;
+        if (previewWrap) previewWrap.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+    } else {
+        window.removeEventImage();
+    }
+
+    // Duties
+    const dutiesList = document.getElementById('event-duties-input-list');
+    if (dutiesList) {
+        dutiesList.innerHTML = '';
+        if (Array.isArray(ev.duties) && ev.duties.length > 0) {
+            ev.duties.forEach(d => {
+                window.addEventDutySlot(d.roleName, d.assignedGroup || d.assignedGroupName || '', d.id);
+            });
+        }
+    }
+
+    openModal('create-event-modal');
+};
+
+function populateTargetGroupsCheckboxes(selectedGroups = []) {
+    const targetGroupsContainer = document.getElementById('event-target-groups-container');
+    if (!targetGroupsContainer) return;
+    const groups = Array.isArray(systemGroups) ? systemGroups : [];
+    if (groups.length > 0) {
+        targetGroupsContainer.innerHTML = groups.map(g => {
+            const gName = g.name || g.id;
+            const isChecked = selectedGroups.includes(gName) || selectedGroups.includes(g.id);
+            return `
+                <label style="display:inline-flex; align-items:center; gap:6px; background:var(--surface-alt); padding:5px 10px; border-radius:8px; border:1px solid var(--border-light); cursor:pointer; font-size:0.82rem;">
+                    <input type="checkbox" name="event-target-group" value="${escapeHtml(gName)}" ${isChecked ? 'checked' : ''} style="accent-color:var(--primary);">
+                    <span>${escapeHtml(gName)}</span>
+                </label>
+            `;
+        }).join('');
+    } else {
+        targetGroupsContainer.innerHTML = '<span style="font-size:0.8rem; color:var(--text-secondary);">Keine Gruppen vorhanden (Event ist öffentlich).</span>';
+    }
+}
+
+window.toggleEventRegistrationFields = function(isChecked) {
+    const regOpts = document.getElementById('event-reg-options');
+    if (regOpts) regOpts.style.display = isChecked ? 'grid' : 'none';
+};
+
+window.toggleEventRecurringFields = function(isChecked) {
+    const recurringOpts = document.getElementById('event-recurring-options');
+    if (recurringOpts) recurringOpts.style.display = isChecked ? 'block' : 'none';
+};
+
+window.addEventDutySlot = function(defaultRole = '', defaultGroup = '', dutyId = '') {
+    const container = document.getElementById('event-duties-input-list');
+    if (!container) return;
+
+    const groups = Array.isArray(systemGroups) ? systemGroups : [];
+    const groupOptions = groups.map(g => {
+        const gName = g.name || g.id;
+        const isSel = gName === defaultGroup || g.id === defaultGroup;
+        return `<option value="${escapeHtml(gName)}" ${isSel ? 'selected' : ''}>👥 ${escapeHtml(gName)}</option>`;
+    }).join('');
+
+    const row = document.createElement('div');
+    row.className = 'duty-slot-row';
+    if (dutyId) row.dataset.dutyId = dutyId;
+
+    row.innerHTML = `
+        <div>
+            <input type="text" class="form-input duty-input-role" placeholder="Rolle (z. B. Bistro-Team)" value="${escapeHtml(defaultRole)}" required>
+        </div>
+        <div>
+            <select class="form-select duty-select-group">
+                <option value="">-- Gruppe zuweisen (optional) --</option>
+                ${groupOptions}
+            </select>
+        </div>
+        <div>
+            <button type="button" class="btn btn-ghost btn-small text-danger" onclick="this.closest('.duty-slot-row').remove()" title="Entfernen">✕</button>
+        </div>
+    `;
+    container.appendChild(row);
+};
+
+window.handleCreateEventSubmit = async function(e) {
+    e.preventDefault();
+
+    const eventId = document.getElementById('event-input-id')?.value;
+    const titleInput = document.getElementById('event-input-title');
+    const dateInput = document.getElementById('event-input-date');
+
+    const title = titleInput ? titleInput.value.trim() : '';
+    const date = dateInput ? dateInput.value.trim() : '';
+    const endDate = document.getElementById('event-input-end-date')?.value || '';
+    const startTime = document.getElementById('event-input-start-time')?.value || '';
+    const endTime = document.getElementById('event-input-end-time')?.value || '';
+    const location = document.getElementById('event-input-location')?.value || '';
+    const description = document.getElementById('event-input-description')?.value || '';
+    const imageUrl = document.getElementById('event-input-image-url')?.value || '';
+
+    if (!title) {
+        showToast('Bitte gib einen Titel ein', 'warning');
+        if (titleInput) titleInput.focus();
+        return;
+    }
+    if (!date) {
+        showToast('Bitte gib ein Datum ein', 'warning');
+        if (dateInput) dateInput.focus();
+        return;
+    }
+    if (endDate && date && endDate < date) {
+        showToast('Das Enddatum darf nicht vor dem Startdatum liegen', 'warning');
+        return;
+    }
+
+    const eventType = document.getElementById('event-input-type')?.value || 'event';
+    const isPinned = document.getElementById('event-check-pinned')?.checked === true;
+
+    const requiresRegistration = document.getElementById('event-check-requires-reg')?.checked === true;
+    const minParticipants = parseInt(document.getElementById('event-input-min-participants')?.value, 10) || 0;
+    const maxParticipants = parseInt(document.getElementById('event-input-max-participants')?.value, 10) || 0;
+
+    const isRecurring = document.getElementById('event-check-recurring')?.checked === true;
+    const recurringRule = document.getElementById('event-select-recurring-rule')?.value || 'weekly';
+
+    // Target Groups
+    const targetGroupCheckboxes = document.querySelectorAll('input[name="event-target-group"]:checked');
+    const targetGroups = Array.from(targetGroupCheckboxes).map(cb => cb.value);
+
+    // Duty Slots
+    const dutyRows = document.querySelectorAll('#event-duties-input-list .duty-slot-row');
+    const duties = [];
+    dutyRows.forEach(row => {
+        const roleName = row.querySelector('.duty-input-role')?.value;
+        const assignedGroup = row.querySelector('.duty-select-group')?.value;
+        const dutyId = row.dataset.dutyId || undefined;
+        if (roleName && roleName.trim()) {
+            duties.push({
+                id: dutyId,
+                roleName: roleName.trim(),
+                assignedGroup: assignedGroup || ''
+            });
+        }
+    });
+
+    const submitBtn = document.getElementById('event-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    const payload = {
+        title,
+        date,
+        endDate,
+        startTime,
+        endTime,
+        location,
+        description,
+        imageUrl,
+        eventType,
+        isPinned: (eventType === 'event') ? isPinned : false,
+        requiresRegistration,
+        minParticipants,
+        maxParticipants,
+        isRecurring: (eventType === 'termin') ? isRecurring : false,
+        recurringRule,
+        targetGroups,
+        duties
+    };
+
+    try {
+        const url = eventId ? `${config.apiBaseUrl}/events/${eventId}` : `${config.apiBaseUrl}/events`;
+        const method = eventId ? 'PATCH' : 'POST';
+
+        const res = await fetchWithAuth(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            const shouldReopenDetail = Boolean(eventId && currentDetailEvent && currentDetailEvent.id === eventId);
+            closeModal('create-event-modal', shouldReopenDetail);
+            showToast(eventId ? 'Event erfolgreich aktualisiert!' : t('events_created_success', 'Event erfolgreich erstellt!'), 'success');
+            await window.loadEventsData();
+            if (shouldReopenDetail) {
+                window.openEventDetailModal(eventId);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Speichern des Events', 'error');
+        }
+    } catch (err) {
+        showToast('Verbindungsfehler beim Speichern', 'error');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+};
+
+// ==========================================================
+// Edit Duty Modal (Group self-organization)
+// ==========================================================
+window.openEditDutyModal = function(dutyId, roleName, groupName, status, notes) {
+    const idInput = document.getElementById('edit-duty-id');
+    const subtitle = document.getElementById('edit-duty-subtitle');
+    const statusSelect = document.getElementById('edit-duty-status');
+    const notesInput = document.getElementById('edit-duty-notes');
+
+    if (idInput) idInput.value = dutyId;
+    if (subtitle) subtitle.textContent = `${roleName} • ${groupName}`;
+    if (statusSelect) statusSelect.value = status || 'open';
+    if (notesInput) notesInput.value = notes || '';
+
+    openModal('edit-duty-modal');
+};
+
+window.handleEditDutySubmit = async function(e) {
+    e.preventDefault();
+    const dutyId = document.getElementById('edit-duty-id')?.value;
+    const status = document.getElementById('edit-duty-status')?.value;
+    const notes = document.getElementById('edit-duty-notes')?.value;
+
+    if (!dutyId) return;
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, notes })
+        });
+        if (res.ok) {
+            closeModal('edit-duty-modal');
+            showToast(t('events_duty_updated_success', 'Dienst-Details aktualisiert!'), 'success');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Speichern', 'error');
+        }
+    } catch (e) {
+        showToast('Verbindungsfehler beim Speichern', 'error');
+    }
+};
+
+// ==========================================================
+// Calendar Subscription & WebCal Feed
+// ==========================================================
+function getWebCalFeedUrl() {
+    const token = typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('token') || '');
+    const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
+    return `${protocol}//${location.host}/api/events/calendar.ics?token=${encodeURIComponent(token)}`;
+}
+
+window.openSubscribeCalendarModal = function() {
+    const urlInput = document.getElementById('sub-cal-feed-url');
+    if (urlInput) {
+        urlInput.value = getWebCalFeedUrl();
+    }
+    openModal('subscribe-calendar-modal');
+};
+
+window.copyCalendarFeedUrl = function(type) {
+    const url = getWebCalFeedUrl();
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('Kalender-URL in die Zwischenablage kopiert!', 'success');
+    }).catch(() => {
+        showToast('Fehler beim Kopieren in die Zwischenablage', 'error');
+    });
+};
+
+window.openWebCalDirectly = function() {
+    const feedUrl = getWebCalFeedUrl();
+    const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
+    window.location.href = webcalUrl;
+};
+
+window.openGoogleCalendarSubscription = function() {
+    const feedUrl = getWebCalFeedUrl();
+    const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(feedUrl)}`;
+    window.open(googleUrl, '_blank', 'noopener,noreferrer');
+};
+
+// ==========================================================
+// System Settings for Events
+// ==========================================================
+window.loadEventSystemSettings = async function() {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/settings`);
+        if (res.ok) {
+            const settings = await res.json();
+            eventSettings = settings;
+            const allowMemberCb = document.getElementById('super-admin-events-allow-member-creation');
+            if (allowMemberCb) allowMemberCb.checked = settings.allowMemberCreation !== false;
+
+            const dutiesInput = document.getElementById('super-admin-events-default-duties');
+            if (dutiesInput) {
+                dutiesInput.value = Array.isArray(settings.defaultDuties) ? settings.defaultDuties.join(', ') : '';
+            }
+
+            const feedUrlInput = document.getElementById('super-admin-events-feed-url');
+            if (feedUrlInput) feedUrlInput.value = getWebCalFeedUrl();
+        }
+    } catch (err) {
+        console.warn('Failed to load event system settings:', err);
+    }
+};
+
+window.saveEventSystemSettings = async function() {
+    const allowMemberCreation = document.getElementById('super-admin-events-allow-member-creation')?.checked === true;
+    const defaultDutiesStr = document.getElementById('super-admin-events-default-duties')?.value || '';
+    const defaultDuties = defaultDutiesStr.split(',').map(s => s.trim()).filter(Boolean);
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ allowMemberCreation, defaultDuties })
+        });
+        if (res.ok) {
+            showToast('Event-Einstellungen erfolgreich gespeichert!', 'success');
+            eventSettings = { allowMemberCreation, defaultDuties };
+        } else {
+            showToast('Fehler beim Speichern der Event-Einstellungen', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
+    }
+};
+
+
 

@@ -239,6 +239,88 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'read', type: 'bool' },
       { name: 'created', type: 'text' }
     ]
+  },
+  {
+    name: 'events',
+    type: 'base',
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    indexes: [
+      'CREATE INDEX idx_events_date ON events (date)',
+      'CREATE INDEX idx_events_status ON events (status)',
+      'CREATE INDEX idx_events_series ON events (seriesId)'
+    ],
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'date', type: 'text', required: true },
+      { name: 'startTime', type: 'text' },
+      { name: 'endTime', type: 'text' },
+      { name: 'location', type: 'text' },
+      { name: 'description', type: 'text' },
+      { name: 'isRecurring', type: 'bool' },
+      { name: 'recurringRule', type: 'text' },
+      { name: 'seriesId', type: 'text' },
+      { name: 'status', type: 'text', required: true },
+      { name: 'requiresRegistration', type: 'bool' },
+      { name: 'minParticipants', type: 'number' },
+      { name: 'maxParticipants', type: 'number' },
+      { name: 'targetGroups', type: 'json' },
+      { name: 'isPinned', type: 'bool' },
+      { name: 'endDate', type: 'text' },
+      { name: 'eventType', type: 'text' },
+      { name: 'imageUrl', type: 'text' },
+      { name: 'createdBy', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  {
+    name: 'event_registrations',
+    type: 'base',
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_event_user_reg ON event_registrations (event, user)',
+      'CREATE INDEX idx_event_reg_event ON event_registrations (event)'
+    ],
+    fields: [
+      { name: 'event', type: 'text', required: true },
+      { name: 'user', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  {
+    name: 'event_duties',
+    type: 'base',
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    indexes: [
+      'CREATE INDEX idx_event_duties_event ON event_duties (event)'
+    ],
+    fields: [
+      { name: 'event', type: 'text', required: true },
+      { name: 'section', type: 'text' },
+      { name: 'roleName', type: 'text', required: true },
+      { name: 'assignedGroup', type: 'text' },
+      { name: 'assignedUser', type: 'text' },
+      { name: 'requestedUser', type: 'text' },
+      { name: 'requestedBy', type: 'text' },
+      { name: 'notes', type: 'text' },
+      { name: 'status', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
   }
 ];
 
@@ -1443,13 +1525,15 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
   const canAccessAi = permissions.includes('access_ai');
   const canParticipateMentoring = true;
   const canManageMentoring = permissions.includes('manage_mentoring');
+  const canManageEvents = permissions.includes('manage_events');
   return {
     permissions,
     canManageFinances,
     canViewFinances,
     canAccessAi,
     canParticipateMentoring,
-    canManageMentoring
+    canManageMentoring,
+    canManageEvents
   };
 }
 
@@ -1515,7 +1599,8 @@ const SYSTEM_PERMISSIONS = [
   { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
   { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
   { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-  { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' }
+  { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
+  { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {
@@ -1704,6 +1789,122 @@ async function markMentoringMessagesRead(appConfig, threadId, currentRole) {
   }
 }
 
+// Events
+async function listEvents(appConfig, filter = '', sort = '+date,+startTime') {
+  return await listAllRecords('events', filter, appConfig, sort);
+}
+
+async function getEventRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/events/records/${id}`, { token, allow404: true });
+}
+
+async function createEventRecord(appConfig, data) {
+  const now = new Date().toISOString();
+  const payload = {
+    created: now,
+    updated: now,
+    status: 'scheduled',
+    eventType: 'event',
+    isPinned: false,
+    endDate: '',
+    imageUrl: '',
+    isRecurring: false,
+    requiresRegistration: false,
+    minParticipants: 0,
+    maxParticipants: 0,
+    targetGroups: [],
+    ...data
+  };
+  return await createRecord('events', payload, appConfig);
+}
+
+async function updateEventRecord(appConfig, id, data) {
+  const payload = {
+    updated: new Date().toISOString(),
+    ...data
+  };
+  return await updateRecord('events', id, payload, appConfig);
+}
+
+async function deleteEventRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  try {
+    const regs = await listAllRecords('event_registrations', pbFilterEquals('event', id), appConfig);
+    for (const r of regs) {
+      await pocketBaseRequest(`/api/collections/event_registrations/records/${r.id}`, { method: 'DELETE', token }).catch(() => {});
+    }
+    const duties = await listAllRecords('event_duties', pbFilterEquals('event', id), appConfig);
+    for (const d of duties) {
+      await pocketBaseRequest(`/api/collections/event_duties/records/${d.id}`, { method: 'DELETE', token }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[PocketBase] Failed to clean up event children:', err.message);
+  }
+  return await pocketBaseRequest(`/api/collections/events/records/${id}`, { method: 'DELETE', token });
+}
+
+// Event Registrations
+async function listEventRegistrations(appConfig, filter = '') {
+  return await listAllRecords('event_registrations', filter, appConfig, '+created');
+}
+
+async function getEventRegistration(appConfig, eventId, userId) {
+  const filter = `${pbFilterEquals('event', eventId)} && ${pbFilterEquals('user', userId)}`;
+  const records = await listAllRecords('event_registrations', filter, appConfig);
+  return records[0] || null;
+}
+
+async function upsertEventRegistration(appConfig, eventId, userId, status) {
+  const existing = await getEventRegistration(appConfig, eventId, userId);
+  const now = new Date().toISOString();
+  if (existing) {
+    return await updateRecord('event_registrations', existing.id, { status, updated: now }, appConfig);
+  }
+  return await createRecord('event_registrations', {
+    event: eventId,
+    user: userId,
+    status,
+    created: now,
+    updated: now
+  }, appConfig);
+}
+
+// Event Duties
+async function listEventDuties(appConfig, filter = '') {
+  return await listAllRecords('event_duties', filter, appConfig, '+created');
+}
+
+async function getEventDuty(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/event_duties/records/${id}`, { token, allow404: true });
+}
+
+async function createEventDuty(appConfig, data) {
+  const now = new Date().toISOString();
+  const payload = {
+    created: now,
+    updated: now,
+    status: 'open',
+    notes: '',
+    ...data
+  };
+  return await createRecord('event_duties', payload, appConfig);
+}
+
+async function updateEventDuty(appConfig, id, data) {
+  const payload = {
+    updated: new Date().toISOString(),
+    ...data
+  };
+  return await updateRecord('event_duties', id, payload, appConfig);
+}
+
+async function deleteEventDuty(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/event_duties/records/${id}`, { method: 'DELETE', token });
+}
+
 module.exports = {
   DEFAULT_SETTINGS,
   DEFAULT_SYSTEM_STATE,
@@ -1771,5 +1972,19 @@ module.exports = {
   createMentoringMessage,
   markMentoringMessagesRead,
   encryptMentoringText,
-  decryptMentoringText
+  decryptMentoringText,
+  listEvents,
+  getEventRecord,
+  createEventRecord,
+  updateEventRecord,
+  deleteEventRecord,
+  listEventRegistrations,
+  getEventRegistration,
+  upsertEventRegistration,
+  listEventDuties,
+  getEventDuty,
+  createEventDuty,
+  updateEventDuty,
+  deleteEventDuty,
+  pbFilterEquals
 };
