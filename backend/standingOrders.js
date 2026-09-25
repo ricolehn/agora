@@ -124,7 +124,7 @@ async function runAutomatedStandingOrders(appConfig) {
 
     for (const record of people) {
       const personData = record.data;
-      if (!personData) continue;
+      if (!personData || personData.isDeleted || record.isDeleted) continue;
 
       const result = checkAndExecuteStandingOrders(personData);
       if (result) {

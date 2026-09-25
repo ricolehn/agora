@@ -60,8 +60,10 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
     const membersByStatus = {};
     let totalPaidAcrossMembers = 0;
     for (const p of people) {
-      const status = p.status || 'unknown';
-      membersByStatus[status] = (membersByStatus[status] || 0) + 1;
+      if (!p.isDeleted && !p.data?.isDeleted) {
+        const status = p.status || 'unknown';
+        membersByStatus[status] = (membersByStatus[status] || 0) + 1;
+      }
 
       if (canViewFinances) {
         const payments = Array.isArray(p.data?.payments) ? p.data.payments : [];

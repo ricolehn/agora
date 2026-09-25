@@ -316,13 +316,15 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
     { id: 'g3', name: 'Regular', permissions: [] },
     { id: 'g4', name: 'AI Users', permissions: ['access_ai'] },
     { id: 'g5', name: 'Mentoring Participants', permissions: ['mentoring_participate'] },
-    { id: 'g6', name: 'Mentoring Leaders', permissions: ['manage_mentoring'] }
+    { id: 'g6', name: 'Mentoring Leaders', permissions: ['manage_mentoring'] },
+    { id: 'g7', name: 'Invite Code Managers', permissions: ['manage_registration_code'] }
   ];
 
   const resEmpty = resolveUserPermissions([], allGroups);
   assert.deepEqual(resEmpty.permissions, []);
   assert.equal(resEmpty.canManageFinances, false);
   assert.equal(resEmpty.canViewFinances, false);
+  assert.equal(resEmpty.canManageRegistrationCode, false);
   assert.equal(resEmpty.canAccessAi, false);
   assert.equal(resEmpty.canParticipateMentoring, true);
   assert.equal(resEmpty.canManageMentoring, false);
@@ -331,19 +333,27 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
   assert.deepEqual(resView.permissions, ['view_finances']);
   assert.equal(resView.canManageFinances, false);
   assert.equal(resView.canViewFinances, true);
+  assert.equal(resView.canManageRegistrationCode, false);
   assert.equal(resView.canAccessAi, false);
 
   const resManage = resolveUserPermissions(['g2'], allGroups);
   assert.deepEqual(resManage.permissions, ['manage_finances']);
   assert.equal(resManage.canManageFinances, true);
   assert.equal(resManage.canViewFinances, true);
+  assert.equal(resManage.canManageRegistrationCode, false, 'manage_finances does not grant manage_registration_code');
   assert.equal(resManage.canAccessAi, false);
 
   const resAi = resolveUserPermissions(['g4'], allGroups);
   assert.deepEqual(resAi.permissions, ['access_ai']);
   assert.equal(resAi.canManageFinances, false);
   assert.equal(resAi.canViewFinances, false);
+  assert.equal(resAi.canManageRegistrationCode, false);
   assert.equal(resAi.canAccessAi, true);
+
+  const resInvite = resolveUserPermissions(['g7'], allGroups);
+  assert.deepEqual(resInvite.permissions, ['manage_registration_code']);
+  assert.equal(resInvite.canManageRegistrationCode, true);
+  assert.equal(resInvite.canManageFinances, false);
 
   const resMentee = resolveUserPermissions(['g5'], allGroups);
   assert.deepEqual(resMentee.permissions, ['mentoring_participate']);
@@ -355,12 +365,14 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
   assert.equal(resLeader.canParticipateMentoring, true);
   assert.equal(resLeader.canManageMentoring, true);
 
-  const resCombined = resolveUserPermissions(['g1', 'g4', 'g5'], allGroups);
+  const resCombined = resolveUserPermissions(['g1', 'g4', 'g5', 'g7'], allGroups);
   assert.ok(resCombined.permissions.includes('view_finances'));
   assert.ok(resCombined.permissions.includes('access_ai'));
   assert.ok(resCombined.permissions.includes('mentoring_participate'));
+  assert.ok(resCombined.permissions.includes('manage_registration_code'));
   assert.equal(resCombined.canViewFinances, true);
   assert.equal(resCombined.canManageFinances, false);
+  assert.equal(resCombined.canManageRegistrationCode, true);
   assert.equal(resCombined.canAccessAi, true);
   assert.equal(resCombined.canParticipateMentoring, true);
   assert.equal(resCombined.canManageMentoring, false);
@@ -370,9 +382,9 @@ test('resolveUserPermissions merges permissions and determines finance, AI, and 
 test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
   const { SYSTEM_PERMISSIONS } = require('./pocketbase');
   assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
-  assert.equal(SYSTEM_PERMISSIONS.length, 5);
+  assert.equal(SYSTEM_PERMISSIONS.length, 6);
   const ids = SYSTEM_PERMISSIONS.map(p => p.id);
-  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'access_ai', 'manage_mentoring', 'manage_events']);
+  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'manage_registration_code', 'access_ai', 'manage_mentoring', 'manage_events']);
 });
 
 test('pocketbase exports encryptMentoringText and decryptMentoringText with proper round-trip', () => {

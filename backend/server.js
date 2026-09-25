@@ -88,8 +88,16 @@ const {
   createEventDuty,
   updateEventDuty,
   deleteEventDuty,
-  pbFilterEquals
+  pbFilterEquals,
+  upsertPushSubscription,
+  deletePushSubscription
 } = require('./pocketbase');
+const {
+  getVapidPublicKey,
+  sendPushToUser,
+  sendPushToUsers,
+  sendPushToAdmins
+} = require('./pushNotifications');
 
 const app = express();
 app.set('trust proxy', resolveTrustProxySetting());
@@ -448,10 +456,11 @@ async function verifyToken(req, res, next) {
     user.permissions = groupPerms.permissions;
     user.canManageFinances = groupPerms.canManageFinances;
     user.canViewFinances = groupPerms.canViewFinances;
+    user.canManageRegistrationCode = groupPerms.canManageRegistrationCode === true;
     user.canAccessAi = groupPerms.canAccessAi;
     user.canParticipateMentoring = groupPerms.canParticipateMentoring;
     user.canManageMentoring = groupPerms.canManageMentoring;
-    user.canManageEvents = groupPerms.canManageEvents || user.admin === true || user.owner === true || user.superAdmin === true;
+    user.canManageEvents = groupPerms.canManageEvents === true;
     try {
       const mentorRec = await getMentorByUserId(appConfig, user.id);
       user.mentorStatus = mentorRec?.status || null;
@@ -599,25 +608,32 @@ app.post('/api/setup', setupRateLimit, async (req, res) => {
       pays: true
     }, newConfig);
 
-    // Create default finance group and assign owner
-    let financeGroup = null;
+    // Create default Admin group with all management permissions and assign owner
+    let adminGroup = null;
+    const allManagementPermissions = [
+      'manage_finances',
+      'manage_registration_code',
+      'access_ai',
+      'manage_mentoring',
+      'manage_events'
+    ];
     try {
       const existingGroups = await listGroupRecords(newConfig);
-      financeGroup = existingGroups.find(g => Array.isArray(g.permissions) && g.permissions.includes('manage_finances'));
-      if (!financeGroup) {
-        financeGroup = await createGroupRecord(newConfig, {
-          name: 'Finanzverwaltung',
-          permissions: ['manage_finances']
+      adminGroup = existingGroups.find(g => g.name === 'Admin');
+      if (!adminGroup) {
+        adminGroup = await createGroupRecord(newConfig, {
+          name: 'Admin',
+          permissions: allManagementPermissions
         });
       }
     } catch (gErr) {
-      console.warn('Could not create default finance group in setup:', gErr.message);
+      console.warn('Could not create default Admin group in setup:', gErr.message);
     }
 
     // Instantly promote user to owner and save their UID
     const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
     await upsertStateValue(newConfig, 'system', { ...system, ownerUid: auth.user.id, superAdminUid: auth.user.id });
-    const ownerGroups = financeGroup ? [financeGroup.id] : [];
+    const ownerGroups = adminGroup ? [adminGroup.id] : [];
     await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: true, groups: ownerGroups });
 
     // Create linked person record in people collection for owner profile
@@ -671,6 +687,21 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
 
   try {
     const auth = await loginUser(email, password);
+    let allGroups = [];
+    try {
+      allGroups = await listGroupRecords(appConfig);
+    } catch { /* ignore */ }
+    const groupPerms = resolveUserPermissions(auth.user?.groups, allGroups);
+    if (auth.user) {
+      auth.user.permissions = groupPerms.permissions;
+      auth.user.canManageFinances = groupPerms.canManageFinances;
+      auth.user.canViewFinances = groupPerms.canViewFinances;
+      auth.user.canManageRegistrationCode = groupPerms.canManageRegistrationCode === true;
+      auth.user.canAccessAi = groupPerms.canAccessAi;
+      auth.user.canParticipateMentoring = groupPerms.canParticipateMentoring;
+      auth.user.canManageMentoring = groupPerms.canManageMentoring;
+      auth.user.canManageEvents = groupPerms.canManageEvents === true;
+    }
     setAuthCookie(req, res, auth.token);
     res.json(auth);
   } catch (error) {
@@ -850,12 +881,16 @@ async function readLogicalPath(targetPath, query, user) {
       throw error;
     }
     const record = await getStateRecord(appConfig, 'system');
-    return { value: record?.value || DEFAULT_SYSTEM_STATE, version: record?.updated || null };
+    const val = record?.value ? { ...record.value } : { ...DEFAULT_SYSTEM_STATE };
+    if (!user.canManageRegistrationCode) {
+      delete val.inviteCode;
+    }
+    return { value: val, version: record?.updated || null };
   }
 
   if (root === 'system' && id === 'inviteCode') {
-    if (!user.admin) {
-      const error = new Error('Admin access required');
+    if (!user.canManageRegistrationCode) {
+      const error = new Error('Registrierungscode-Verwaltungsrechte erforderlich');
       error.status = 403;
       throw error;
     }
@@ -970,19 +1005,21 @@ function toUserValue(record, allGroups = null) {
   let permissions = [];
   let canManageFinances = false;
   let canViewFinances = false;
+  let canManageRegistrationCode = false;
   let canAccessAi = false;
   let canParticipateMentoring = false;
   let canManageMentoring = false;
-  let canManageEvents = isOwner || record.admin === true;
+  let canManageEvents = false;
   if (Array.isArray(allGroups)) {
     const res = resolveUserPermissions(rawGroups, allGroups);
     permissions = res.permissions;
     canManageFinances = res.canManageFinances;
     canViewFinances = res.canViewFinances;
+    canManageRegistrationCode = res.canManageRegistrationCode === true;
     canAccessAi = res.canAccessAi;
     canParticipateMentoring = res.canParticipateMentoring;
     canManageMentoring = res.canManageMentoring;
-    canManageEvents = res.canManageEvents || isOwner || record.admin === true;
+    canManageEvents = res.canManageEvents === true;
   }
 
   return {
@@ -999,6 +1036,7 @@ function toUserValue(record, allGroups = null) {
     permissions,
     canManageFinances,
     canViewFinances,
+    canManageRegistrationCode,
     canAccessAi,
     canParticipateMentoring,
     canManageMentoring,
@@ -1026,7 +1064,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
   }
 
   if (root === 'system' && id === 'inviteCode' && !nested) {
-    if (!user.admin) throw Object.assign(new Error('Admin access required'), { status: 403 });
+    if (!user.canManageRegistrationCode) throw Object.assign(new Error('Registrierungscode-Verwaltungsrechte erforderlich'), { status: 403 });
     const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
     await upsertStateValue(appConfig, 'system', { ...system, inviteCode: value });
     return;
@@ -1170,10 +1208,11 @@ async function verifyOptionalUser(req) {
     user.permissions = groupPerms.permissions;
     user.canManageFinances = groupPerms.canManageFinances;
     user.canViewFinances = groupPerms.canViewFinances;
+    user.canManageRegistrationCode = groupPerms.canManageRegistrationCode === true;
     user.canAccessAi = groupPerms.canAccessAi;
     user.canParticipateMentoring = groupPerms.canParticipateMentoring;
     user.canManageMentoring = groupPerms.canManageMentoring;
-    user.canManageEvents = groupPerms.canManageEvents || user.admin === true || user.owner === true || user.superAdmin === true;
+    user.canManageEvents = groupPerms.canManageEvents === true;
     return { user, token };
   } catch {
     return null;
@@ -1439,10 +1478,11 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
         permissions: resolved.permissions,
         canManageFinances: resolved.canManageFinances,
         canViewFinances: resolved.canViewFinances,
+        canManageRegistrationCode: resolved.canManageRegistrationCode === true,
         canAccessAi: resolved.canAccessAi,
         canParticipateMentoring: resolved.canParticipateMentoring,
         canManageMentoring: resolved.canManageMentoring,
-        canManageEvents: resolved.canManageEvents || u.admin === true || isOwner,
+        canManageEvents: resolved.canManageEvents === true,
         isApprovedMentor: approvedMentorUserIds.has(u.id),
         emailNotifications: u.emailNotifications !== false,
         isClaimed,
@@ -1460,6 +1500,19 @@ app.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
 
 app.get('/api/admin/permissions', verifyToken, verifyAdmin, (req, res) => {
   res.json(SYSTEM_PERMISSIONS);
+});
+
+app.get('/api/groups', verifyToken, async (req, res) => {
+  try {
+    const groups = await listGroupRecords(appConfig);
+    res.json(groups.map(g => ({
+      id: g.id,
+      name: g.name
+    })));
+  } catch (error) {
+    console.error('Failed to list groups:', error);
+    res.status(500).json({ error: error.message || 'Failed to list groups' });
+  }
 });
 
 app.get('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
@@ -1749,12 +1802,20 @@ app.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, async (req, res) =
       return res.status(400).json({ error: 'Der Eigentümer-Account kann nicht gelöscht werden.' });
     }
 
+    const userRecord = await getUserRecord(appConfig, uid).catch(() => null);
+    const userFullName = userRecord ? `${userRecord.firstName || ''} ${userRecord.lastName || ''}`.trim() || userRecord.name || '' : '';
+    const normUserName = userFullName.toLowerCase();
+
     await deleteUserRecord(appConfig, uid);
 
     // Also remove from people/paylist
     try {
       const people = await listPeopleRecords(appConfig);
-      const matchingPeople = people.filter(p => p.uid === uid || (p.data && p.data.uid === uid) || p.personKey === uid);
+      const matchingPeople = people.filter(p => {
+        if (p.uid === uid || (p.data && p.data.uid === uid) || p.personKey === uid) return true;
+        if (normUserName && (p.name || p.data?.name || '').trim().toLowerCase() === normUserName) return true;
+        return false;
+      });
       for (const p of matchingPeople) {
         await removePeopleRecord(appConfig, p.personKey);
       }
@@ -1894,6 +1955,22 @@ app.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmin, 
     if (!to || !subject) {
       return res.status(400).json({ error: 'Missing required fields: to, subject' });
     }
+
+    // Also dispatch push notification if recipient user exists
+    try {
+      const allUsers = await listUserRecords(appConfig);
+      const recipientUser = allUsers.find(u => u.email && u.email.toLowerCase() === String(to).toLowerCase());
+      if (recipientUser) {
+        sendPushToUser(appConfig, recipientUser.id, {
+          title: subject || 'Neue Nachricht',
+          body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : 'Du hast eine neue Benachrichtigung erhalten.',
+          data: { url: '/' }
+        }).catch(e => console.warn('[WebPush] Send-email push error:', e.message));
+      }
+    } catch (e) {
+      console.warn('[WebPush] Error checking user for send-email push:', e.message);
+    }
+
     if (!transporter || !appConfig?.smtp?.user) {
       return res.status(500).json({ error: 'SMTP not configured' });
     }
@@ -1936,6 +2013,13 @@ app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req
 
     const typeLabels = { payment: 'Zahlung', status: 'Status', expense: 'Ausgabe', standing_order: 'Dauerauftrag' };
     const reqTypeLabel = typeLabels[reqType] || reqType;
+
+    // Send push notification to all admins with notifications enabled
+    sendPushToAdmins(appConfig, {
+      title: `Kasse: ${reqTypeLabel}`,
+      body: `${personName} hat einen Antrag eingereicht.`,
+      data: { url: '/#requests' }
+    }).catch(err => console.warn('[WebPush] Failed sending push to admins:', err.message));
 
     const allUsers = await listUserRecords(appConfig);
     const adminEmails = allUsers
@@ -1982,22 +2066,86 @@ app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req
   }
 });
 
+// Push notification management endpoints
+app.get('/api/push/vapid-public-key', verifyToken, async (req, res) => {
+  try {
+    const publicKey = await getVapidPublicKey(appConfig);
+    res.json({ publicKey });
+  } catch (error) {
+    console.error('Failed to get VAPID public key:', error);
+    res.status(500).json({ error: 'Failed to retrieve VAPID key' });
+  }
+});
+
+app.post('/api/push/subscribe', verifyToken, async (req, res) => {
+  try {
+    const { subscription, userAgent } = req.body || {};
+    if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+      return res.status(400).json({ error: 'Invalid push subscription payload' });
+    }
+    const currentUid = req.user.uid || req.user.id;
+    await upsertPushSubscription(appConfig, currentUid, subscription, userAgent || req.headers['user-agent'] || '');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to save push subscription:', error);
+    res.status(500).json({ error: 'Failed to save subscription' });
+  }
+});
+
+app.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Endpoint is required' });
+    }
+    await deletePushSubscription(appConfig, endpoint);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete push subscription:', error);
+    res.status(500).json({ error: 'Failed to unsubscribe' });
+  }
+});
+
+app.post('/api/push/test', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    await sendPushToUser(appConfig, currentUid, {
+      title: `${appConfig?.appName || 'Agora'} Test`,
+      body: 'Web-Push-Benachrichtigungen sind erfolgreich eingerichtet!',
+      data: { url: '/' }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to send test push notification:', error);
+    res.status(500).json({ error: 'Failed to send test notification' });
+  }
+});
+
 async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUserId, event, duty, appConfig, sendEmailRequested = true }) {
   if (sendEmailRequested === false) {
     return { skipped: true, reason: 'user_disabled' };
   }
-  if (!transporter || !appConfig?.smtp?.user || !appConfig?.smtp?.host) {
-    return { skipped: true, reason: 'smtp_not_configured' };
-  }
   try {
     const allUsers = await listUserRecords(appConfig);
+    const requester = allUsers.find(u => u.id === requestedByUserId);
+    const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : 'Ein Event-Organisator';
+    const dutyName = duty.roleName || duty.section || 'Dienst';
+
+    // Dispatch push notification to recipient user regardless of SMTP configuration
+    sendPushToUser(appConfig, recipientUserId, {
+      title: `Dienstanfrage: ${dutyName}`,
+      body: `${requesterName} hat dich für "${dutyName}" bei "${event.title || 'Event'}" angefragt.`,
+      data: { url: '/#calendar' }
+    }).catch(err => console.warn('[WebPush] Failed sending duty push:', err.message));
+
+    if (!transporter || !appConfig?.smtp?.user || !appConfig?.smtp?.host) {
+      return { skipped: true, reason: 'smtp_not_configured' };
+    }
+
     const recipient = allUsers.find(u => u.id === recipientUserId);
     if (!recipient || !recipient.email || recipient.emailNotifications === false) {
       return { skipped: true, reason: 'recipient_no_email_or_disabled' };
     }
-
-    const requester = allUsers.find(u => u.id === requestedByUserId);
-    const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : 'Ein Event-Organisator';
 
     let formattedDate = event.date || 'Ohne Datum';
     try {
@@ -2017,7 +2165,6 @@ async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUs
     }
 
     const locationStr = event.location ? `Ort: ${event.location}` : '';
-    const dutyName = duty.roleName || duty.section || 'Dienst';
 
     const subject = `Dienstanfrage: ${dutyName} bei "${event.title || 'Event'}"`;
     const text = `Hallo ${recipient.name || recipient.firstName || 'zusammen'},\n\n` +
@@ -2557,6 +2704,12 @@ app.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, asyn
       });
     }
 
+    sendPushToUser(appConfig, mentorRec.user, {
+      title: `Mentoring: ${menteeAlias || 'Suchender'}`,
+      body: initialMessage ? String(initialMessage).trim() : 'Neue Begleitungsanfrage erhalten.',
+      data: { url: '/#mentoring' }
+    }).catch(e => console.warn('[WebPush] Mentoring thread push error:', e.message));
+
     broadcastDataUpdate();
     res.json({ success: true, thread, threadId: thread.id, menteeAlias });
   } catch (err) {
@@ -2653,6 +2806,27 @@ app.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPart
     } catch (updateErr) {
       console.warn('Could not update thread last_message (non-fatal):', updateErr?.message);
     }
+
+    const recipientUid = isMentor ? thread.mentee : thread.mentor;
+    let senderTitle = 'Mentoring';
+    if (isMentor) {
+      try {
+        const allUsers = await listUserRecords(appConfig);
+        const mentorUser = allUsers.find(u => u.id === (req.user.uid || req.user.id || thread.mentor));
+        const mentorName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
+        senderTitle = `Mentoring: ${mentorName}`;
+      } catch (uErr) {
+        senderTitle = 'Mentoring: Mentor';
+      }
+    } else {
+      senderTitle = `Mentoring: ${thread.mentee_alias || 'Suchender'}`;
+    }
+
+    sendPushToUser(appConfig, recipientUid, {
+      title: senderTitle,
+      body: String(text).trim(),
+      data: { url: '/#mentoring' }
+    }).catch(e => console.warn('[WebPush] Mentoring message push error:', e.message));
 
     broadcastDataUpdate();
     res.json({
@@ -2789,13 +2963,14 @@ function canUserAccessEventDutyPlan(user, event, allEventDuties, groupMap) {
   // 1. Creator of event
   if (event.createdBy === currentUid) return true;
 
-  // 2. Event planners / admins
-  if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) {
+  // 2. Users with explicit 'manage_events' permission
+  const canManage = user.canManageEvents === true || (Array.isArray(user.permissions) && user.permissions.includes('manage_events'));
+  if (canManage) {
     return true;
   }
 
   // 3. User is entered or requested in duty plan for this event, or member of assigned group in duties
-  const isEntered = Array.isArray(allEventDuties) && allEventDuties.some(d => {
+  const isEnteredOrRequested = Array.isArray(allEventDuties) && allEventDuties.some(d => {
     if (d.event !== event.id) return false;
     if (d.assignedUser === currentUid) return true;
     if (d.requestedUser === currentUid) return true;
@@ -2808,19 +2983,7 @@ function canUserAccessEventDutyPlan(user, event, allEventDuties, groupMap) {
     }
     return false;
   });
-  if (isEntered) return true;
-
-  // 4. User is member of any target group assigned to the event
-  if (Array.isArray(event.targetGroups) && event.targetGroups.length > 0 && Array.isArray(user.groups)) {
-    const isTargetGroupMember = event.targetGroups.some(tg =>
-      user.groups.some(g => {
-        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-        const gname = typeof g === 'object' && g ? g.name : String(g);
-        return gid === tg || gname === tg;
-      })
-    );
-    if (isTargetGroupMember) return true;
-  }
+  if (isEnteredOrRequested) return true;
 
   return false;
 }
@@ -2834,7 +2997,7 @@ app.get('/api/events', verifyToken, async (req, res) => {
     const allDuties = await listEventDuties(appConfig);
     const users = await listUserRecords(appConfig);
     const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
-    const managerUserIds = new Set(users.filter(u => u.admin === true || u.owner === true || u.superAdmin === true || u.canManageEvents === true || (Array.isArray(u.permissions) && u.permissions.includes('manage_events'))).map(u => u.id));
+    const managerUserIds = new Set(users.filter(u => u.canManageEvents === true || (Array.isArray(u.permissions) && u.permissions.includes('manage_events'))).map(u => u.id));
     let allGroups = [];
     try { allGroups = await listGroupRecords(appConfig); } catch {}
     const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
@@ -2848,7 +3011,8 @@ app.get('/api/events', verifyToken, async (req, res) => {
 
     const formatted = visibleEvents.map(ev => {
       const isCreator = ev.createdBy === currentUid;
-      const canEdit = isCreator || req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+      const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+      const canEdit = isCreator || canManageEvents;
       const isCreatorManager = managerUserIds.has(ev.createdBy);
       const isOfficial = Boolean(ev.eventType === 'termin' || ev.isRecurring);
 
@@ -2880,8 +3044,8 @@ app.get('/api/events', verifyToken, async (req, res) => {
             requestedByName: userMap.get(d.requestedBy) || '',
             notes: d.notes || '',
             status: d.status || 'open',
-            canEditNotes: true,
-            canManageDuty: true
+            canEditNotes: canEdit,
+            canManageDuty: canEdit
           };
         });
       }
@@ -2928,6 +3092,46 @@ app.get('/api/events', verifyToken, async (req, res) => {
   }
 });
 
+// Helper functions for drift-free recurring calendar date math
+function addDaysDriftFree(dateStr, daysToAdd) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const utcDate = new Date(Date.UTC(y, m - 1, d + daysToAdd, 12, 0, 0));
+  const newY = utcDate.getUTCFullYear();
+  const newM = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+  const newD = String(utcDate.getUTCDate()).padStart(2, '0');
+  return `${newY}-${newM}-${newD}`;
+}
+
+function getNextRecurringDate(baseDateStr, rule, index) {
+  if (index === 0) return baseDateStr;
+  const [y, m, d] = baseDateStr.split('-').map(Number);
+
+  if (rule === 'weekly') {
+    return addDaysDriftFree(baseDateStr, index * 7);
+  } else if (rule === 'biweekly') {
+    return addDaysDriftFree(baseDateStr, index * 14);
+  } else if (rule === 'monthly') {
+    const baseUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    const targetWeekday = baseUtc.getUTCDay();
+    const weekIndex = Math.floor((d - 1) / 7);
+    const targetMonthDate = new Date(Date.UTC(y, (m - 1) + index, 1, 12, 0, 0));
+    const targetYear = targetMonthDate.getUTCFullYear();
+    const targetMonth = targetMonthDate.getUTCMonth();
+    const firstDayOfMonth = new Date(Date.UTC(targetYear, targetMonth, 1, 12, 0, 0)).getUTCDay();
+    const firstMatchingDate = 1 + ((targetWeekday - firstDayOfMonth + 7) % 7);
+    let targetDay = firstMatchingDate + (weekIndex * 7);
+    const testDate = new Date(Date.UTC(targetYear, targetMonth, targetDay, 12, 0, 0));
+    if (testDate.getUTCMonth() !== targetMonth) {
+      targetDay -= 7;
+    }
+    const resY = targetYear;
+    const resM = String(targetMonth + 1).padStart(2, '0');
+    const resD = String(targetDay).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  }
+  return addDaysDriftFree(baseDateStr, index * 7);
+}
+
 // 2. Create event
 app.post('/api/events', verifyToken, async (req, res) => {
   try {
@@ -2944,6 +3148,7 @@ app.post('/api/events', verifyToken, async (req, res) => {
       isPinned,
       isRecurring,
       recurringRule,
+      recurringCount,
       requiresRegistration,
       minParticipants,
       maxParticipants,
@@ -2960,13 +3165,13 @@ app.post('/api/events', verifyToken, async (req, res) => {
     }
 
     // Check event creation permissions
-    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events')) || req.user.admin === true || req.user.owner === true || req.user.superAdmin === true;
     const eventSettings = await getStateValue(appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
     if (!eventSettings.allowMemberCreation && !canManageEvents) {
       return res.status(403).json({ error: 'Die Erstellung von Events ist derzeit nur für die Leitung freigeschaltet' });
     }
 
-    // Protection for recurring events, pinning, and official 'termin': Only users with canManageEvents or Admin
+    // Protection: Users without canManageEvents always create 'event'. Only users with canManageEvents can choose 'termin' or recurring.
     let finalEventType = 'event';
     let finalIsPinned = false;
     let finalIsRecurring = false;
@@ -2976,47 +3181,66 @@ app.post('/api/events', verifyToken, async (req, res) => {
       finalIsRecurring = isRecurring === true;
     }
 
-    const event = await createEventRecord(appConfig, {
-      title: String(title).trim(),
-      date: String(date).trim(),
-      endDate: endDate ? String(endDate).trim() : '',
-      startTime: startTime ? String(startTime).trim() : '',
-      endTime: endTime ? String(endTime).trim() : '',
-      location: location ? String(location).trim() : '',
-      description: description ? String(description).trim() : '',
-      eventType: finalEventType,
-      isPinned: finalIsPinned,
-      isRecurring: finalIsRecurring,
-      recurringRule: finalIsRecurring ? (String(recurringRule || 'weekly').trim()) : '',
-      imageUrl: imageUrl ? String(imageUrl).trim() : '',
-      status: 'scheduled',
-      requiresRegistration: requiresRegistration === true,
-      minParticipants: Number(minParticipants) > 0 ? Number(minParticipants) : 0,
-      maxParticipants: Number(maxParticipants) > 0 ? Number(maxParticipants) : 0,
-      targetGroups: Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [],
-      createdBy: currentUid
-    });
+    const count = finalIsRecurring ? Math.min(52, Math.max(2, parseInt(recurringCount, 10) || 10)) : 1;
 
-    // Create duty slots if specified
-    if (Array.isArray(duties)) {
-      for (const d of duties) {
-        if (d && d.roleName && String(d.roleName).trim()) {
-          await createEventDuty(appConfig, {
-            event: event.id,
-            section: d.section ? String(d.section).trim() : 'Allgemein',
-            roleName: String(d.roleName).trim(),
-            assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
-            assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
-            requestedUser: d.requestedUser ? String(d.requestedUser).trim() : '',
-            notes: d.notes ? String(d.notes).trim() : '',
-            status: d.status || (d.assignedGroup || d.assignedUser ? 'confirmed' : (d.requestedUser ? 'requested' : 'open'))
-          });
+    let durationDays = 0;
+    if (endDate && endDate !== date) {
+      const [sy, sm, sd] = String(date).trim().split('-').map(Number);
+      const [ey, em, ed] = String(endDate).trim().split('-').map(Number);
+      const sUtc = Date.UTC(sy, sm - 1, sd);
+      const eUtc = Date.UTC(ey, em - 1, ed);
+      durationDays = Math.max(0, Math.round((eUtc - sUtc) / 86400000));
+    }
+
+    const createdEvents = [];
+    for (let i = 0; i < count; i++) {
+      const instanceDate = getNextRecurringDate(String(date).trim(), recurringRule || 'weekly', i);
+      const instanceEndDate = durationDays > 0 ? addDaysDriftFree(instanceDate, durationDays) : '';
+
+      const eventRecord = await createEventRecord(appConfig, {
+        title: String(title).trim(),
+        date: instanceDate,
+        endDate: instanceEndDate,
+        startTime: startTime ? String(startTime).trim() : '',
+        endTime: endTime ? String(endTime).trim() : '',
+        location: location ? String(location).trim() : '',
+        description: description ? String(description).trim() : '',
+        eventType: finalEventType,
+        isPinned: finalIsPinned,
+        isRecurring: false, // Independent event template instance so organizers can edit each individually
+        recurringRule: '',
+        imageUrl: imageUrl ? String(imageUrl).trim() : '',
+        status: 'scheduled',
+        requiresRegistration: requiresRegistration === true,
+        minParticipants: Number(minParticipants) > 0 ? Number(minParticipants) : 0,
+        maxParticipants: Number(maxParticipants) > 0 ? Number(maxParticipants) : 0,
+        targetGroups: Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [],
+        createdBy: currentUid
+      });
+
+      // Create duty slots if specified
+      if (Array.isArray(duties)) {
+        for (const d of duties) {
+          if (d && d.roleName && String(d.roleName).trim()) {
+            await createEventDuty(appConfig, {
+              event: eventRecord.id,
+              section: d.section ? String(d.section).trim() : 'Allgemein',
+              roleName: String(d.roleName).trim(),
+              assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
+              assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
+              requestedUser: d.requestedUser ? String(d.requestedUser).trim() : '',
+              notes: d.notes ? String(d.notes).trim() : '',
+              status: d.status || (d.assignedGroup || d.assignedUser ? 'confirmed' : (d.requestedUser ? 'requested' : 'open'))
+            });
+          }
         }
       }
+
+      createdEvents.push(eventRecord);
     }
 
     broadcastDataUpdate();
-    res.status(201).json({ success: true, event });
+    res.status(201).json({ success: true, event: createdEvents[0], count: createdEvents.length });
   } catch (err) {
     console.error('Failed to create event:', err);
     res.status(500).json({ error: 'Event konnte nicht erstellt werden' });
@@ -3033,7 +3257,7 @@ app.patch('/api/events/:id', verifyToken, async (req, res) => {
     }
 
     const isCreator = event.createdBy === currentUid;
-    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events')) || req.user.admin === true || req.user.owner === true || req.user.superAdmin === true;
     if (!isCreator && !canManageEvents) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Bearbeiten dieses Events' });
     }
@@ -3142,7 +3366,7 @@ app.delete('/api/events/:id', verifyToken, async (req, res) => {
     }
 
     const isCreator = event.createdBy === currentUid;
-    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
     if (!isCreator && !canManageEvents) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Löschen dieses Events' });
     }
@@ -3298,20 +3522,27 @@ app.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     const allDuties = await listEventDuties(appConfig);
     const eventDuties = allDuties.filter(d => d.event === event.id);
 
-    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
-    if (!canAccess) {
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const isAssigned = duty.assignedUser === currentUid;
+    const canManage = isCreator || canManageEvents;
+
+    if (!canManage && !isAssigned) {
       return res.status(403).json({ error: 'Keine Berechtigung zur Bearbeitung dieses Dienstes' });
+    }
+    if (!canManage && (status !== undefined || roleName !== undefined || section !== undefined || assignedGroup !== undefined || assignedUser !== undefined)) {
+      return res.status(403).json({ error: 'Nur Event-Manager oder der Event-Ersteller können diese Felder bearbeiten' });
     }
 
     const { notes, status, roleName, section, assignedGroup, assignedUser } = req.body || {};
     const updates = {};
 
     if (notes !== undefined) updates.notes = String(notes).trim();
-    if (status !== undefined) updates.status = String(status).trim();
-    if (section !== undefined) updates.section = String(section).trim();
-    if (roleName !== undefined) updates.roleName = String(roleName).trim();
-    if (assignedGroup !== undefined) updates.assignedGroup = String(assignedGroup).trim();
-    if (assignedUser !== undefined) updates.assignedUser = String(assignedUser).trim();
+    if (status !== undefined && canManage) updates.status = String(status).trim();
+    if (section !== undefined && canManage) updates.section = String(section).trim();
+    if (roleName !== undefined && canManage) updates.roleName = String(roleName).trim();
+    if (assignedGroup !== undefined && canManage) updates.assignedGroup = String(assignedGroup).trim();
+    if (assignedUser !== undefined && canManage) updates.assignedUser = String(assignedUser).trim();
 
     const updated = await updateEventDuty(appConfig, duty.id, updates);
     broadcastDataUpdate();
@@ -3329,14 +3560,10 @@ app.post('/api/events/:id/duties', verifyToken, async (req, res) => {
     const event = await getEventRecord(appConfig, req.params.id);
     if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
 
-    let allGroups = [];
-    try { allGroups = await listGroupRecords(appConfig); } catch {}
-    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
-    const allDuties = await listEventDuties(appConfig);
-    const eventDuties = allDuties.filter(d => d.event === event.id);
-
-    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
-    if (!canAccess) {
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const canManage = isCreator || canManageEvents;
+    if (!canManage) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Erstellen von Diensten' });
     }
 
@@ -3406,14 +3633,10 @@ app.delete('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     const event = await getEventRecord(appConfig, duty.event);
     if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
 
-    let allGroups = [];
-    try { allGroups = await listGroupRecords(appConfig); } catch {}
-    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
-    const allDuties = await listEventDuties(appConfig);
-    const eventDuties = allDuties.filter(d => d.event === event.id);
-
-    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
-    if (!canAccess) {
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const canManage = isCreator || canManageEvents;
+    if (!canManage) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Löschen dieses Dienstes' });
     }
 
@@ -3436,14 +3659,10 @@ app.post('/api/events/duties/:dutyId/request', verifyToken, async (req, res) => 
     const event = await getEventRecord(appConfig, duty.event);
     if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
 
-    let allGroups = [];
-    try { allGroups = await listGroupRecords(appConfig); } catch {}
-    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
-    const allDuties = await listEventDuties(appConfig);
-    const eventDuties = allDuties.filter(d => d.event === event.id);
-
-    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
-    if (!canAccess) {
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const canManage = isCreator || canManageEvents;
+    if (!canManage) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Versenden von Dienstanfragen' });
     }
 
@@ -3489,14 +3708,10 @@ app.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) => {
     const event = await getEventRecord(appConfig, duty.event);
     if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
 
-    let allGroups = [];
-    try { allGroups = await listGroupRecords(appConfig); } catch {}
-    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
-    const allDuties = await listEventDuties(appConfig);
-    const eventDuties = allDuties.filter(d => d.event === event.id);
-
-    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
-    if (!canAccess) {
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const canManage = isCreator || canManageEvents;
+    if (!canManage) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Zuweisen dieses Dienstes' });
     }
 
@@ -3554,7 +3769,8 @@ app.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) => 
     if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
 
     const isTarget = duty.requestedUser === currentUid;
-    const isPlanner = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const isPlanner = canManageEvents;
     if (!isTarget && !isPlanner) {
       return res.status(403).json({ error: 'Nur der angefragte Benutzer kann auf diese Anfrage antworten' });
     }
@@ -3567,14 +3783,46 @@ app.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) => 
         requestedBy: '',
         status: 'confirmed'
       });
+
+      if (duty.requestedBy && duty.requestedBy !== currentUid) {
+        try {
+          const allUsers = await listUserRecords(appConfig);
+          const responder = allUsers.find(u => u.id === currentUid);
+          const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
+          const dutyName = duty.roleName || duty.section || 'Dienst';
+          const event = await getEventRecord(appConfig, duty.event);
+          sendPushToUser(appConfig, duty.requestedBy, {
+            title: `Dienstanfrage angenommen: ${dutyName}`,
+            body: `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) angenommen.`,
+            data: { url: '/#calendar' }
+          }).catch(e => console.warn('[WebPush] Duty accept push error:', e.message));
+        } catch (e) {}
+      }
+
       broadcastDataUpdate();
       return res.json({ success: true, duty: updated, message: 'Dienstanfrage angenommen' });
     } else if (action === 'decline') {
       const updated = await updateEventDuty(appConfig, duty.id, {
-        requestedUser: '',
-        requestedBy: '',
-        status: 'open'
+        requestedUser: duty.requestedUser || currentUid,
+        requestedBy: duty.requestedBy || '',
+        status: 'declined'
       });
+
+      if (duty.requestedBy && duty.requestedBy !== currentUid) {
+        try {
+          const allUsers = await listUserRecords(appConfig);
+          const responder = allUsers.find(u => u.id === currentUid);
+          const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
+          const dutyName = duty.roleName || duty.section || 'Dienst';
+          const event = await getEventRecord(appConfig, duty.event);
+          sendPushToUser(appConfig, duty.requestedBy, {
+            title: `Dienstanfrage abgelehnt: ${dutyName}`,
+            body: `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) abgelehnt.`,
+            data: { url: '/#calendar' }
+          }).catch(e => console.warn('[WebPush] Duty decline push error:', e.message));
+        } catch (e) {}
+      }
+
       broadcastDataUpdate();
       return res.json({ success: true, duty: updated, message: 'Dienstanfrage abgelehnt' });
     } else {
@@ -3596,14 +3844,10 @@ app.post('/api/events/duties/:dutyId/cancel-request', verifyToken, async (req, r
     const event = await getEventRecord(appConfig, duty.event);
     if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
 
-    let allGroups = [];
-    try { allGroups = await listGroupRecords(appConfig); } catch {}
-    const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
-    const allDuties = await listEventDuties(appConfig);
-    const eventDuties = allDuties.filter(d => d.event === event.id);
-
-    const canAccess = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
-    if (!canAccess) {
+    const isCreator = event.createdBy === currentUid;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+    const canCancel = isCreator || duty.requestedBy === currentUid || canManageEvents;
+    if (!canCancel) {
       return res.status(403).json({ error: 'Keine Berechtigung zum Zurückziehen der Anfrage' });
     }
 
@@ -3635,12 +3879,9 @@ app.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) => {
       let canManage = false;
       const event = await getEventRecord(appConfig, duty.event);
       if (event) {
-        let allGroups = [];
-        try { allGroups = await listGroupRecords(appConfig); } catch {}
-        const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
-        const allDuties = await listEventDuties(appConfig);
-        const eventDuties = allDuties.filter(d => d.event === event.id);
-        canManage = canUserAccessEventDutyPlan(req.user, event, eventDuties, groupMap);
+        const isCreator = event.createdBy === currentUid;
+        const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+        canManage = isCreator || canManageEvents;
       }
       if (!isAssigned && !canManage) {
         return res.status(403).json({ error: 'Du kannst diese Zuweisung nicht aufheben' });
@@ -3730,7 +3971,7 @@ app.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res) =>
     if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
 
     const isCreator = event.createdBy === currentUid;
-    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
     if (!isCreator && !canManageEvents) {
       return res.status(403).json({ error: 'Keine Berechtigung' });
     }
@@ -3810,7 +4051,7 @@ app.get('/api/events/settings', verifyToken, async (req, res) => {
 // 15. Event settings: update (Admin or manageEvents)
 app.patch('/api/events/settings', verifyToken, async (req, res) => {
   try {
-    const canManageEvents = req.user.admin === true || req.user.owner === true || req.user.superAdmin === true || req.user.canManageEvents === true;
+    const canManageEvents = req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
     if (!canManageEvents) {
       return res.status(403).json({ error: 'Nur für Administratoren / Leitung' });
     }

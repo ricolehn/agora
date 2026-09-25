@@ -321,6 +321,27 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'created', type: 'text' },
       { name: 'updated', type: 'text' }
     ]
+  },
+  {
+    name: 'push_subscriptions',
+    type: 'base',
+    listRule: '@request.auth.id != ""',
+    viewRule: '@request.auth.id != ""',
+    createRule: '@request.auth.id != ""',
+    updateRule: '@request.auth.id != ""',
+    deleteRule: '@request.auth.id != ""',
+    indexes: [
+      'CREATE INDEX idx_push_sub_user ON push_subscriptions (user)',
+      'CREATE UNIQUE INDEX idx_push_sub_endpoint ON push_subscriptions (endpoint)'
+    ],
+    fields: [
+      { name: 'user', type: 'text', required: true },
+      { name: 'endpoint', type: 'text', required: true },
+      { name: 'p256dh', type: 'text', required: true },
+      { name: 'auth', type: 'text', required: true },
+      { name: 'userAgent', type: 'text' },
+      { name: 'created', type: 'text' }
+    ]
   }
 ];
 
@@ -887,6 +908,9 @@ function hydratePersonRecord(record, payments = [], statusHistory = [], appSetti
   data.statusHistory = normalizedStatusHistory;
   data.standingOrders = Array.isArray(data.standingOrders) ? data.standingOrders : [];
   data.totalPaid = calculateTotalPaid(normalizedPayments);
+  if (record.data?.isDeleted || record.isDeleted) {
+    data.isDeleted = true;
+  }
   return preprocessPersonServerSide(data, appSettings);
 }
 
@@ -1049,20 +1073,6 @@ async function migrateUserAndOwnerSchema(appConfig) {
     await upsertStateValue(appConfig, 'system', { ...DEFAULT_SYSTEM_STATE, ...system, ownerUid });
   }
 
-  let financeGroup = null;
-  try {
-    const allGroups = await listGroupRecords(appConfig);
-    financeGroup = allGroups.find(g => Array.isArray(g.permissions) && g.permissions.includes('manage_finances'));
-    if (!financeGroup && ownerUid) {
-      financeGroup = await createGroupRecord(appConfig, {
-        name: 'Finanzverwaltung',
-        permissions: ['manage_finances']
-      });
-    }
-  } catch (err) {
-    console.warn('[PocketBase Migration] Could not ensure default finance group for owner:', err.message);
-  }
-
   await runInBatches(users, MIGRATION_BATCH_SIZE, async (userRecord) => {
     const isOwner = userRecord.id === ownerUid || userRecord.owner === true || userRecord.superAdmin === true;
     const updates = {};
@@ -1083,11 +1093,7 @@ async function migrateUserAndOwnerSchema(appConfig) {
     }
 
     if (userRecord.groups === undefined || userRecord.groups === null) {
-      const defaultGroups = (isOwner && financeGroup) ? [financeGroup.id] : [];
-      updates.groups = defaultGroups;
-      needsPatch = true;
-    } else if (isOwner && financeGroup && Array.isArray(userRecord.groups) && userRecord.groups.length === 0) {
-      updates.groups = [financeGroup.id];
+      updates.groups = [];
       needsPatch = true;
     }
 
@@ -1119,6 +1125,7 @@ async function migrateUserAndOwnerSchema(appConfig) {
     const freshUsers = await listAllRecords('users', '', appConfig);
 
     for (const p of people) {
+      const isDeleted = Boolean(p.isDeleted || p.data?.isDeleted);
       const personName = (p.name || p.data?.name || '').trim();
       const existingUid = p.uid || p.data?.uid;
       let linkedUser = existingUid ? freshUsers.find(u => u.id === existingUid) : null;
@@ -1130,6 +1137,20 @@ async function migrateUserAndOwnerSchema(appConfig) {
           const uName = String(u.name || '').trim().toLowerCase();
           return uFull === normPersonName || uName === normPersonName;
         });
+      }
+
+      if (isDeleted) {
+        // If an unclaimed or placeholder user exists for this deleted person, remove it so it does not linger
+        if (linkedUser && (linkedUser.isClaimed === false || isPlaceholderEmail(linkedUser.email))) {
+          try {
+            await deleteRecord('users', linkedUser.id, appConfig);
+            const userIdx = freshUsers.findIndex(u => u.id === linkedUser.id);
+            if (userIdx >= 0) freshUsers.splice(userIdx, 1);
+          } catch (cleanErr) {
+            console.warn(`[PocketBase Migration] Could not remove phantom user ${linkedUser.id} for deleted person:`, cleanErr.message);
+          }
+        }
+        continue;
       }
 
       if (linkedUser) {
@@ -1398,6 +1419,7 @@ async function listPeopleRecords(appConfig, query = {}) {
 
   return people.map((record) => ({
     ...record,
+    isDeleted: Boolean(record.isDeleted || record.data?.isDeleted),
     data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], settings)
   }));
 }
@@ -1447,18 +1469,19 @@ async function removePeopleRecord(appConfig, personKey) {
       statusHistory.map((entry) => deleteRecord('status_history', entry.id, appConfig))
     );
 
-    // 3. Keep payments, name, totalPaid, uid, and profile picture, but absolutely delete/clear the rest
+    // 3. Keep payments, name, totalPaid, but absolutely delete/clear the rest
     // Set isDeleted = true, status = "", standingOrders = [] inside data JSON blob and people record
     const updatedData = {
       ...(existing.data || {}),
       status: '',
       standingOrders: [],
+      uid: '',
       isDeleted: true
     };
 
     const updatePayload = {
       personKey: String(personKey),
-      uid: toOptionalText(uid),
+      uid: '',
       name: toOptionalText(existing.name),
       status: '',
       memberSince: toOptionalText(existing.memberSince),
@@ -1522,6 +1545,7 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
   const permissions = Array.from(permSet);
   const canManageFinances = permissions.includes('manage_finances');
   const canViewFinances = canManageFinances || permissions.includes('view_finances');
+  const canManageRegistrationCode = permissions.includes('manage_registration_code');
   const canAccessAi = permissions.includes('access_ai');
   const canParticipateMentoring = true;
   const canManageMentoring = permissions.includes('manage_mentoring');
@@ -1530,6 +1554,7 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
     permissions,
     canManageFinances,
     canViewFinances,
+    canManageRegistrationCode,
     canAccessAi,
     canParticipateMentoring,
     canManageMentoring,
@@ -1598,6 +1623,7 @@ async function updateGroupRecord(appConfig, id, { name, permissions }) {
 const SYSTEM_PERMISSIONS = [
   { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
   { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
+  { id: 'manage_registration_code', name: 'Registrierungscode verwalten', description: 'Erlaubt das Einsehen, Kopieren und Neugenerieren des Registrierungscodes für neue Mitglieder' },
   { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
   { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
   { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
@@ -1905,7 +1931,47 @@ async function deleteEventDuty(appConfig, id) {
   return await pocketBaseRequest(`/api/collections/event_duties/records/${id}`, { method: 'DELETE', token });
 }
 
+async function listPushSubscriptions(appConfig, filter = '') {
+  return listAllRecords('push_subscriptions', filter, appConfig);
+}
+
+async function getPushSubscriptionByEndpoint(appConfig, endpoint) {
+  return getFirstRecord('push_subscriptions', pbFilterEquals('endpoint', endpoint), appConfig);
+}
+
+async function upsertPushSubscription(appConfig, userId, subscription, userAgent = '') {
+  const existing = await getPushSubscriptionByEndpoint(appConfig, subscription.endpoint);
+  const payload = {
+    user: String(userId),
+    endpoint: String(subscription.endpoint),
+    p256dh: String(subscription.keys?.p256dh || ''),
+    auth: String(subscription.keys?.auth || ''),
+    userAgent: String(userAgent || ''),
+    created: new Date().toISOString()
+  };
+  if (existing) {
+    return updateRecord('push_subscriptions', existing.id, payload, appConfig);
+  }
+  return createRecord('push_subscriptions', payload, appConfig);
+}
+
+async function deletePushSubscription(appConfig, endpoint) {
+  const existing = await getPushSubscriptionByEndpoint(appConfig, endpoint);
+  if (existing) {
+    return deleteRecord('push_subscriptions', existing.id, appConfig);
+  }
+  return null;
+}
+
 module.exports = {
+  listPushSubscriptions,
+  getPushSubscriptionByEndpoint,
+  upsertPushSubscription,
+  deletePushSubscription,
+  listAllRecords,
+  createRecord,
+  updateRecord,
+  deleteRecord,
   DEFAULT_SETTINGS,
   DEFAULT_SYSTEM_STATE,
   generatePocketBaseCredentials,

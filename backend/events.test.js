@@ -433,3 +433,160 @@ test('Past events handling: excluded from Termine, hidden in Events, and registr
   assert.equal(regUpcomingResult.ok, true);
 });
 
+test('Home page duties and requests aggregation & sorting logic', () => {
+  function isEventPast(ev, todayStr) {
+    const cmpDate = (ev.endDate && ev.endDate.trim()) ? ev.endDate.trim() : (ev.date ? ev.date.trim() : '');
+    if (!cmpDate) return false;
+    return cmpDate < todayStr;
+  }
+
+  const currentUser = {
+    id: 'user-42',
+    uid: 'user-42',
+    name: 'Johannes',
+    groups: ['technik-team', 'jugendleitung']
+  };
+
+  const todayStr = '2026-09-25';
+
+  const myDutyRequests = [
+    // Active future request
+    { id: 'req-1', eventId: 'ev-1', eventTitle: 'Sonntagsgottesdienst', eventDate: '2026-09-28', eventStartTime: '10:00', roleName: 'Technik', requestedUser: 'user-42', status: 'requested' },
+    // Past request (should be ignored)
+    { id: 'req-2', eventId: 'ev-old', eventTitle: 'Altes Event', eventDate: '2026-09-10', eventStartTime: '18:00', roleName: 'Moderation', requestedUser: 'user-42', status: 'requested' }
+  ];
+
+  const appEvents = [
+    // Event 1: user is confirmed directly for Bistro
+    {
+      id: 'ev-1',
+      title: 'Sonntagsgottesdienst',
+      date: '2026-09-28',
+      startTime: '10:00',
+      status: 'scheduled',
+      duties: [
+        { id: 'd-1', roleName: 'Bistro', assignedUser: 'user-42', status: 'confirmed' }
+      ]
+    },
+    // Event 2: user is assigned via group (technik-team)
+    {
+      id: 'ev-2',
+      title: 'Jugendabend',
+      date: '2026-09-26',
+      startTime: '19:00',
+      status: 'scheduled',
+      duties: [
+        { id: 'd-2', roleName: 'Sound', assignedGroup: 'technik-team', assignedGroupName: 'Technik-Team', status: 'assigned' }
+      ]
+    },
+    // Event 3: past event (should be ignored)
+    {
+      id: 'ev-3',
+      title: 'Vergangenes Meeting',
+      date: '2026-09-20',
+      status: 'scheduled',
+      duties: [
+        { id: 'd-3', roleName: 'Leitung', assignedUser: 'user-42', status: 'confirmed' }
+      ]
+    },
+    // Event 4: duty assigned to someone else
+    {
+      id: 'ev-4',
+      title: 'Konzert',
+      date: '2026-10-01',
+      status: 'scheduled',
+      duties: [
+        { id: 'd-4', roleName: 'Security', assignedUser: 'other-user', status: 'confirmed' }
+      ]
+    }
+  ];
+
+  // 1. Filter active requests
+  const activeRequests = myDutyRequests.filter(req => {
+    if (!req) return false;
+    if (req.eventDate && req.eventDate < todayStr) return false;
+    return true;
+  });
+  assert.equal(activeRequests.length, 1);
+  assert.equal(activeRequests[0].id, 'req-1');
+
+  // 2. Aggregate upcoming duties
+  const upcomingDuties = [];
+  const currentUid = currentUser.uid || currentUser.id;
+  const userGroups = currentUser.groups || [];
+
+  appEvents.forEach(ev => {
+    if (!ev || ev.status === 'cancelled') return;
+    if (isEventPast(ev, todayStr)) return;
+    if (!Array.isArray(ev.duties)) return;
+
+    ev.duties.forEach(d => {
+      const isUserAssigned = (d.assignedUser === currentUid || d.assignedUser === currentUser.id) &&
+        (d.status === 'confirmed' || d.status === 'assigned');
+
+      let isGroupAssigned = false;
+      let groupLabel = d.assignedGroupName || d.assignedGroup || '';
+      if (d.status === 'assigned' && d.assignedGroup && !isUserAssigned) {
+        isGroupAssigned = userGroups.includes(d.assignedGroup);
+      }
+
+      if (isUserAssigned || isGroupAssigned) {
+        upcomingDuties.push({
+          dutyId: d.id,
+          eventId: ev.id,
+          eventTitle: ev.title,
+          eventDate: ev.date,
+          eventStartTime: ev.startTime,
+          roleName: d.roleName,
+          isGroup: isGroupAssigned,
+          groupName: groupLabel
+        });
+      }
+    });
+  });
+
+  // Sort ascending
+  upcomingDuties.sort((a, b) => (a.eventDate || '').localeCompare(b.eventDate || '') || (a.eventStartTime || '').localeCompare(b.eventStartTime || ''));
+
+  assert.equal(upcomingDuties.length, 2);
+  // Chronological order: 2026-09-26 before 2026-09-28
+  assert.equal(upcomingDuties[0].eventId, 'ev-2');
+  assert.equal(upcomingDuties[0].isGroup, true);
+  assert.equal(upcomingDuties[0].groupName, 'Technik-Team');
+
+  assert.equal(upcomingDuties[1].eventId, 'ev-1');
+  assert.equal(upcomingDuties[1].isGroup, false);
+  assert.equal(upcomingDuties[1].roleName, 'Bistro');
+
+  // 3. Aggregate duty events for "Deine Dienste" list
+  const dutyEvents = [];
+  const seenEventIds = new Set();
+  appEvents.forEach(ev => {
+    if (!ev || ev.status === 'cancelled') return;
+    if (isEventPast(ev, todayStr)) return;
+    if (!Array.isArray(ev.duties)) return;
+
+    const hasDuty = ev.duties.some(d => {
+      const isUserAssigned = (d.assignedUser === currentUid || d.assignedUser === currentUser.id) &&
+        (d.status === 'confirmed' || d.status === 'assigned');
+      if (isUserAssigned) return true;
+      if (d.status === 'assigned' && d.assignedGroup) {
+        return userGroups.includes(d.assignedGroup);
+      }
+      return false;
+    });
+
+    if (hasDuty && !seenEventIds.has(ev.id)) {
+      seenEventIds.add(ev.id);
+      dutyEvents.push(ev);
+    }
+  });
+
+  dutyEvents.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
+
+  assert.equal(dutyEvents.length, 2);
+  assert.equal(dutyEvents[0].id, 'ev-2');
+  assert.equal(dutyEvents[1].id, 'ev-1');
+});
+
+

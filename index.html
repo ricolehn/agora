@@ -177,6 +177,9 @@
                 </div>
             </div>
 
+            <!-- Home Duties Card (Dienstanfragen & Eingeteilte Dienste) -->
+            <div id="user-duties-home-card" style="display:none; margin-top: 16px;"></div>
+
             <!-- Home Mentoring Card (Unread Messages & Direct Chat Access) -->
             <div id="user-mentoring-home-card" style="display:none;"></div>
         </div>
@@ -254,7 +257,7 @@
         <div id="settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-settings">
             
             <!-- PREMIUM ELEGANT REGISTRATION/INVITE CODE CARD -->
-            <div class="card card-settings premium-invite-card" id="card-invite">
+            <div class="card card-settings premium-invite-card" id="card-invite" style="display:none !important;">
                 <div class="card-header premium-invite-header">
                     <div class="premium-invite-header-title">
                         <svg class="premium-invite-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -373,6 +376,19 @@
                             <span class="slider"></span>
                         </label>
                         <label for="admin-email-notifications" style="margin:0; font-weight:600; cursor:pointer" data-i18n="email_notifications">E-Mail Benachrichtigungen bei Anfragen</label>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+                        <div>
+                            <div style="font-weight:600; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                <span>Push-Benachrichtigungen (VAPID / OS)</span>
+                            </div>
+                            <div id="push-status-hint" style="font-size:0.8rem; color:var(--text-muted, #64748b); margin-top:2px;">Immer aktiv (automatisch synchronisiert)</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendTestPushNotification()" style="font-size:0.8rem; padding: 5px 12px; display:inline-flex; align-items:center; gap:6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            <span data-i18n="test_push_btn">Test-Push senden</span>
+                        </button>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
                         <label class="form-label" data-i18n="change_password_title">Passwort ändern</label>
@@ -656,47 +672,37 @@
 
         <div id="mentoring" class="tab-content" role="tabpanel" aria-labelledby="mentoring-nav-btn-desktop">
             <div class="mentoring-container">
-                <!-- Mentoring Header -->
+                <!-- Mentoring Hero Card -->
                 <div class="mentoring-header-card">
-                    <div class="mentoring-header-main">
-                        <div class="mentoring-header-info">
-                            <div class="mentoring-title-row">
-                                <h2>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                                    <span data-i18n="mentoring_title">Mentoring</span>
-                                </h2>
-                                <span class="mentoring-privacy-pill" data-i18n-title="mentoring_privacy_pill_tooltip" title="End-to-End Vertraulichkeit & Pseudonymisierung">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                    <span data-i18n="mentoring_privacy_pill">100% Anonym & Geschützt</span>
-                                </span>
-                            </div>
-                            <p data-i18n="mentoring_subtitle">Persönliche Begleitung, offene Ohren & vertrauliche 1-on-1 Gespräche</p>
-                        </div>
-                        <div class="mentoring-header-action-wrap">
-                            <button id="mentor-apply-btn" class="btn btn-mentor-primary" onclick="openMentorApplicationModal()" data-i18n="mentoring_apply_btn">
-                                Als Mentor bewerben
-                            </button>
-                        </div>
+                    <span class="mentoring-privacy-pill" data-i18n-title="mentoring_privacy_pill_tooltip" title="End-to-End Vertraulichkeit & Pseudonymisierung">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        <span data-i18n="mentoring_privacy_pill">100% Anonym & Geschützt</span>
+                    </span>
+                    <h2 class="mentoring-hero-title">
+                        <span data-i18n="mentoring_title">Mentoring</span>
+                    </h2>
+                    <p class="mentoring-hero-desc" data-i18n="mentoring_subtitle">Persönliche Begleitung, offene Ohren & vertrauliche 1-on-1 Gespräche</p>
+                    <div class="mentoring-header-action-wrap">
+                        <button id="mentor-apply-btn" class="btn btn-mentor-primary" onclick="openMentorApplicationModal()" data-i18n="mentoring_apply_btn">
+                            Als Mentor bewerben
+                        </button>
                     </div>
+                </div>
 
-                    <!-- Modern Segmented Tabs Bar -->
-                    <div class="mentoring-nav-bar">
-                        <div class="mentoring-nav-segments" role="tablist">
-                            <button id="mentoring-tab-chats" class="mentoring-nav-segment active" onclick="switchMentoringSubTab('chats')" role="tab" aria-selected="true">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                                <span data-i18n="mentoring_tab_chats">Nachrichten</span>
-                                <span id="mentoring-unread-badge" class="mentoring-badge-count" style="display:none;">0</span>
-                            </button>
-                            <button id="mentoring-tab-find" class="mentoring-nav-segment" onclick="switchMentoringSubTab('find')" role="tab" aria-selected="false">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                <span data-i18n="mentoring_tab_find">Mentoren finden</span>
-                            </button>
-                            <button id="mentoring-tab-review" class="mentoring-nav-segment" onclick="switchMentoringSubTab('review')" role="tab" aria-selected="false" style="display:none;">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-                                <span data-i18n="mentoring_tab_review">Bewerbungen</span>
-                                <span id="mentoring-pending-badge" class="mentoring-badge-count badge-danger" style="display:none;">0</span>
-                            </button>
-                        </div>
+                <!-- Modern OS Segmented Tabs Bar -->
+                <div class="mentoring-nav-bar">
+                    <div class="mentoring-nav-segments" role="tablist">
+                        <button id="mentoring-tab-chats" class="mentoring-nav-segment active" onclick="switchMentoringSubTab('chats')" role="tab" aria-selected="true">
+                            <span data-i18n="mentoring_tab_chats">Nachrichten</span>
+                            <span id="mentoring-unread-badge" class="mentoring-badge-count" style="display:none;">0</span>
+                        </button>
+                        <button id="mentoring-tab-find" class="mentoring-nav-segment" onclick="switchMentoringSubTab('find')" role="tab" aria-selected="false">
+                            <span data-i18n="mentoring_tab_find">Mentoren finden</span>
+                        </button>
+                        <button id="mentoring-tab-review" class="mentoring-nav-segment" onclick="switchMentoringSubTab('review')" role="tab" aria-selected="false" style="display:none;">
+                            <span data-i18n="mentoring_tab_review">Bewerbungen</span>
+                            <span id="mentoring-pending-badge" class="mentoring-badge-count badge-danger" style="display:none;">0</span>
+                        </button>
                     </div>
                 </div>
 
@@ -705,7 +711,7 @@
                     <div id="mentoring-threads-layout" class="mentoring-threads-layout">
                         <!-- Sidebar: Threads List -->
                         <div class="mentoring-threads-sidebar" id="mentoring-threads-sidebar">
-                            <div class="mentoring-sidebar-header">
+                            <div class="mentoring-sidebar-header" style="display:none;">
                                 <div class="mentoring-sidebar-header-title">
                                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                                     <span data-i18n="mentoring_sidebar_title">Kontakte</span>
@@ -713,8 +719,8 @@
                                 </div>
                             </div>
                             <div class="mentoring-sidebar-search">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                 <input type="text" id="mentoring-threads-search-input" placeholder="Kontakte filtern..." data-i18n-placeholder="mentoring_search_placeholder" oninput="window.filterMentoringThreads && window.filterMentoringThreads(this.value)" autocomplete="off">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                             </div>
                             <div id="mentoring-threads-list" class="mentoring-thread-list">
                                 <!-- Populated by JS -->
@@ -815,42 +821,35 @@
         <!-- EVENTS & KALENDER MODULE -->
         <div id="events" class="tab-content" role="tabpanel" aria-labelledby="events-nav-btn-desktop">
             <div class="events-container">
-                <!-- Top Navigation & Action Bar -->
+                <!-- Top Navigation Bar -->
                 <div class="events-top-bar">
                     <div class="events-header-title-wrap">
                         <h2 class="events-page-title" data-i18n="events_title">Termine & Events</h2>
-                        <span id="events-all-badge" class="events-count-badge" style="display:none;">0</span>
                     </div>
                 </div>
 
-                <!-- Sub-Navigation: Termine vs Events (Identisch zu Finanzen & Mentoring) -->
+                <!-- Sub-Navigation: Termine vs Events -->
                 <div class="events-subnav-bar">
                     <div class="events-subnav-segments" role="tablist" aria-label="Ansicht wählen">
                         <button type="button" class="events-subnav-segment is-active" id="events-tab-btn-termine" onclick="window.switchEventsSubTab('termine')">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            <span>Termine</span>
+                            <span data-i18n="events_tab_termine">Termine</span>
                         </button>
                         <button type="button" class="events-subnav-segment" id="events-tab-btn-events" onclick="window.switchEventsSubTab('events')">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-                            <span>Events</span>
+                            <span data-i18n="events_tab_events">Events</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- Pinned / Major Events Section (Only shown on "Events" tab when pinned events exist) -->
-                <div id="events-pinned-section" class="events-pinned-section" style="display:none;">
-                    <div class="events-pinned-header">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>
-                        <span>Großevents & Highlights</span>
-                    </div>
-                    <div id="events-pinned-container" class="events-pinned-list"></div>
-                </div>
 
                 <!-- Search Toolbar -->
                 <div class="events-filter-bar">
-                    <div class="events-search-wrapper">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input type="text" id="events-search-input" class="events-search-input" placeholder="Termine & Events durchsuchen..." oninput="handleEventsSearchInput(this.value)">
+                    <div class="input-with-icon search-bar-wrapper events-search-wrapper">
+                        <div class="input-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </div>
+                        <input type="text" id="events-search-input" class="form-input search-input events-search-input" placeholder="Termine & Events durchsuchen..." oninput="handleEventsSearchInput(this.value)">
                         <button type="button" id="events-search-clear" class="events-search-clear" onclick="clearEventsSearch()" style="display:none;" title="Suche löschen">✕</button>
                     </div>
                 </div>
@@ -893,6 +892,47 @@
         </div>
 
         <div id="user-settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-user-settings">
+            <!-- Registration / Invite Code Card for authorized users in user-settings -->
+            <div class="card card-settings premium-invite-card" id="card-invite-user" style="display:none !important;">
+                <div class="card-header premium-invite-header">
+                    <div class="premium-invite-header-title">
+                        <svg class="premium-invite-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span data-i18n="invite_title">Registrierungscode</span>
+                    </div>
+                </div>
+                <div class="card-body premium-invite-body">
+                    <p class="premium-invite-desc" data-i18n="invite_desc">Dieser Code wird für neue Registrierungen benötigt.</p>
+                    
+                    <div class="premium-invite-display-container">
+                        <input type="text" id="user-invite-code" style="position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0;" readonly>
+                        
+                        <div class="premium-invite-code-wrapper">
+                            <div class="premium-invite-code-label" data-i18n="invite_current">Aktueller Code</div>
+                            <div class="premium-invite-code-value" id="user-invite-code-display">------</div>
+                        </div>
+                        
+                        <div class="premium-invite-actions">
+                            <button class="btn btn-premium-action btn-copy-invite" onclick="copyInviteCode()" aria-label="Code kopieren" title="Code kopieren">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span data-i18n="copy_btn">Kopieren</span>
+                            </button>
+                            <button class="btn btn-premium-action btn-generate-invite" onclick="generateNewCode()" aria-label="Neuen Code generieren">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                                </svg>
+                                <span data-i18n="btn_generate_new">Neu</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-header" data-i18n="profile_pic_title">Profilbild</div>
                 <div class="card-body">
@@ -911,6 +951,25 @@
                             <input type="file" id="user-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'user')">
                             <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;" data-i18n="profile_pic_desc">JPG, PNG, HEIC – wird als 256×256 JPEG gespeichert.</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-settings" id="card-security-user">
+                <div class="card-header" data-i18n="security_title">Sicherheit &amp; Benachrichtigungen</div>
+                <div class="card-body">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div style="font-weight:600; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                <span>Push-Benachrichtigungen (VAPID / OS)</span>
+                            </div>
+                            <div id="user-push-status-hint" style="font-size:0.8rem; color:var(--text-muted, #64748b); margin-top:2px;">Immer aktiv (automatisch synchronisiert)</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendTestPushNotification()" style="font-size:0.8rem; padding: 5px 12px; display:inline-flex; align-items:center; gap:6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            <span data-i18n="test_push_btn">Test-Push senden</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -982,22 +1041,22 @@
         </button>
     </div>
     <div id="fab-events-items" style="display:none;">
-        <button type="button" class="fab-menu-item" onclick="openCreateEventModal(false); toggleFab()">
+        <button type="button" class="fab-menu-item" onclick="window.openNewEventDetailModal('termin'); toggleFab()">
             <div class="fab-menu-icon" style="background: rgba(34, 211, 238, 0.15); color: var(--primary);">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
             </div>
             <div class="fab-menu-text">
-                <div class="fab-menu-title">Event ohne Anmeldung</div>
-                <div class="fab-menu-subtitle">Offenes Treffen / Event für alle</div>
+                <div class="fab-menu-title">Neuer Termin</div>
+                <div class="fab-menu-subtitle">Gemeindetermin / Kalendereintrag</div>
             </div>
         </button>
-        <button type="button" class="fab-menu-item" onclick="openCreateEventModal(true); toggleFab()">
+        <button type="button" class="fab-menu-item" onclick="window.openNewEventDetailModal('event'); toggleFab()">
             <div class="fab-menu-icon" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>
             </div>
             <div class="fab-menu-text">
-                <div class="fab-menu-title">Event mit Anmeldung</div>
-                <div class="fab-menu-subtitle">Verbindlich mit Teilnehmerliste</div>
+                <div class="fab-menu-title">Neues Event</div>
+                <div class="fab-menu-subtitle">Veranstaltung mit Flyer & Anmeldung</div>
             </div>
         </button>
     </div>
@@ -1404,6 +1463,51 @@
     </div>
 </div>
 
+<!-- Event Cover Image Crop Modal (16:9 Standard Banner) -->
+<div id="event-crop-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="event-crop-title">
+    <div class="modal-content modal-content-enhanced" style="max-width: 560px;">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-event">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                </div>
+                <div>
+                    <div id="event-crop-title" class="modal-title-main">Eventbild zuschneiden</div>
+                    <div class="modal-subtitle">16:9 Bannerformat für eine einheitliche Ansicht</div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="window.cancelEventCrop()" aria-label="Schließen">&times;</button>
+        </div>
+        <div class="modal-body-enhanced">
+            <div class="event-crop-container">
+                <div class="event-crop-viewport" id="eventCropViewport">
+                    <img id="eventCropImage" alt="Event crop preview" draggable="false">
+                    <div id="eventCropOverlay" class="event-crop-overlay">
+                        <div class="event-crop-guide-grid"></div>
+                    </div>
+                </div>
+                <div class="event-crop-controls">
+                    <span style="font-size:0.85rem; color:var(--text-secondary); display:flex; align-items:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                    </span>
+                    <input type="range" id="eventCropZoom" min="1" max="3" step="0.01" value="1" class="event-crop-slider" aria-label="Zoom">
+                    <span style="font-size:0.85rem; color:var(--text-secondary); display:flex; align-items:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-tiny" onclick="window.resetEventCropZoom()" title="Zoom zurücksetzen">1:1</button>
+                </div>
+                <p class="event-crop-hint">
+                    Bildausschnitt mit der Maus oder dem Finger verschieben und zoomen.
+                </p>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+                <button type="button" class="btn btn-secondary" onclick="window.cancelEventCrop()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="btn-confirm-event-crop" onclick="window.confirmEventCrop()">Bildausschnitt übernehmen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- EXPORT REPORT MODAL -->
 <div id="export-report-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
     <div class="modal-content report-modal-content">
@@ -1687,7 +1791,7 @@
     <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
-                <div class="modal-icon-badge" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">💜</div>
+                <div class="modal-icon-badge" style="background: rgba(6, 182, 212, 0.15); color: var(--primary-dark);">🤝</div>
                 <div>
                     <div id="title-mentor-application" class="modal-title-main" data-i18n="mentor_app_modal_title">Als Mentor bewerben</div>
                     <div class="modal-subtitle" data-i18n="mentor_app_modal_subtitle">Begleite andere im Glauben und im Alltag</div>
@@ -1871,7 +1975,7 @@
                 </div>
                 <div>
                     <div id="title-create-event" class="modal-title-main" data-i18n="events_modal_create_title">Neues Event erstellen</div>
-                    <div class="modal-subtitle" data-i18n="events_modal_create_sub">Termin, Zielgruppe & Dienste planen</div>
+                    <div class="modal-subtitle" id="subtitle-create-event" data-i18n="events_modal_create_sub">Termin, Ort, Anmeldung & Dienste planen</div>
                 </div>
             </div>
             <button class="close-btn" onclick="closeModal('create-event-modal')" aria-label="Schließen">&times;</button>
@@ -1879,24 +1983,12 @@
         <div class="modal-body-enhanced">
             <form id="create-event-form" onsubmit="window.handleCreateEventSubmit(event)">
                 <input type="hidden" id="event-input-id">
+                <input type="hidden" id="event-input-type" value="event">
 
-                <!-- Event Type Selector (Nur für Leitung / Event-Manager) -->
-                <div id="event-type-selection-wrap" class="modal-section-card" style="display:none; padding:10px 14px; margin-bottom:12px;">
-                    <label class="form-label" style="margin-bottom:6px; font-weight:600;">Art des Eintrags</label>
-                    <div class="segmented-control" id="event-type-segmented" style="margin-bottom:0;">
-                        <button type="button" class="segmented-tab is-active" id="type-tab-event" onclick="window.setCreateEventType('event')">
-                            Event / Aktion
-                        </button>
-                        <button type="button" class="segmented-tab" id="type-tab-termin" onclick="window.setCreateEventType('termin')">
-                            Offizieller Termin
-                        </button>
-                    </div>
-                    <input type="hidden" id="event-input-type" value="event">
-                </div>
-
+                <!-- Basis-Informationen -->
                 <div class="form-group">
                     <label class="form-label" for="event-input-title" data-i18n="events_input_title">Titel des Events *</label>
-                    <input type="text" id="event-input-title" class="form-input" placeholder="z. B. Bistro-Abend, Jugendstunde, Sommerfest" required>
+                    <input type="text" id="event-input-title" class="form-input" placeholder="z. B. Bistro-Abend, Jugendtreff, Sommerfest" required>
                 </div>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -1922,8 +2014,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label" for="event-input-location" data-i18n="events_input_location">Ort / Raum</label>
-                    <input type="text" id="event-input-location" class="form-input" placeholder="z. B. Jugendraum, Bistro, Spanien">
+                    <label class="form-label" for="event-input-location" data-i18n="events_input_location">Ort / Treffpunkt</label>
+                    <input type="text" id="event-input-location" class="form-input" placeholder="z. B. Saal 1, Bistro, Jugendraum">
                 </div>
 
                 <div class="form-group">
@@ -1931,35 +2023,60 @@
                     <textarea id="event-input-description" class="form-input" rows="3" placeholder="Worum geht es? Was sollten Teilnehmer mitbringen?"></textarea>
                 </div>
 
-                <!-- Event Cover Image Upload -->
+                <!-- Event Cover Image Upload (16:9 Banner) -->
                 <div class="form-group" id="event-image-upload-wrap">
                     <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
                         <span>Eventbild / Flyer (optional)</span>
-                        <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">Obere Hälfte bei Events</span>
+                        <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">16:9 Bannerformat</span>
                     </label>
-                    <div class="file-upload-box" onclick="document.getElementById('event-input-file').click()" id="event-upload-dropzone" style="cursor:pointer; padding:14px; border:2px dashed var(--border); border-radius:12px; text-align:center; background:var(--surface-alt); transition:all 0.2s;">
+                    <div class="file-upload-box event-upload-box" onclick="document.getElementById('event-input-file').click()" id="event-upload-dropzone" style="cursor:pointer; padding:16px; border:2px dashed var(--border); border-radius:14px; text-align:center; background:var(--surface-alt); transition:all 0.2s;">
                         <input type="file" id="event-input-file" accept="image/*,.heic,.heif" style="display:none;" onchange="window.handleEventImageSelect(this.files)">
                         <div id="event-image-placeholder">
-                            <div style="font-size:1.6rem; margin-bottom:4px;">🖼️</div>
-                            <div style="font-weight:600; font-size:0.88rem; color:var(--text);">Bild auswählen oder hineinziehen</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">JPG, PNG, WebP, HEIC (automatische Komprimierung)</div>
+                            <div style="font-size:1.8rem; margin-bottom:4px;">🖼️</div>
+                            <div style="font-weight:600; font-size:0.9rem; color:var(--text);">Bild auswählen oder hineinziehen</div>
+                            <div style="font-size:0.76rem; color:var(--text-secondary); margin-top:2px;">Wird im 16:9-Format zugeschnitten • JPG, PNG, HEIC</div>
                         </div>
                         <div id="event-image-preview-wrap" style="display:none; position:relative;">
-                            <img id="event-image-preview" src="" alt="Vorschau" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; display:block;">
-                            <button type="button" class="btn btn-small btn-secondary" onclick="event.stopPropagation(); window.removeEventImage();" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.7); color:white; border:none; padding:4px 8px; border-radius:6px; font-size:0.75rem; cursor:pointer;">✕ Entfernen</button>
+                            <img id="event-image-preview" src="" alt="Vorschau" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; display:block;">
+                            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+                                <button type="button" class="btn btn-small btn-secondary" onclick="event.stopPropagation(); window.reopenEventCrop();" title="Bildausschnitt anpassen">
+                                    ✏️ Ausschnitt anpassen
+                                </button>
+                                <button type="button" class="btn btn-small btn-secondary text-danger" onclick="event.stopPropagation(); window.removeEventImage();" title="Bild entfernen">
+                                    ✕ Entfernen
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <input type="hidden" id="event-input-image-url" value="">
+                </div>
+
+                <!-- Anmeldepflicht Toggle -->
+                <div class="modal-section-card">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
+                        <input type="checkbox" id="event-check-requires-reg" onchange="window.toggleEventRegistrationFields(this.checked)" style="accent-color:var(--primary);">
+                        <span data-i18n="events_check_requires_reg">Verbindliche Anmeldung erforderlich</span>
+                    </label>
+                    <div id="event-reg-options" style="display:none; margin-top:12px; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" for="event-input-max-participants" data-i18n="events_max_participants">Max. Teilnehmer (0 = unbegrenzt)</label>
+                            <input type="number" id="event-input-max-participants" class="form-input" min="0" value="0">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" for="event-input-min-participants" data-i18n="events_min_participants">Min. Teilnehmer</label>
+                            <input type="number" id="event-input-min-participants" class="form-input" min="0" value="0">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Oben anpinnen (Großevent / Highlight) - nur für Leitung -->
                 <div id="event-pinned-wrap" class="modal-section-card" style="display:none;">
                     <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
                         <input type="checkbox" id="event-check-pinned" style="accent-color:var(--primary);">
-                        <span>📌 Als Großevent / Highlight oben anpinnen</span>
+                        <span>📌 Als Highlight oben anpinnen (Großevent)</span>
                     </label>
                     <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:4px;">
-                        Wird im Reiter „Events“ dauerhaft ganz oben hervorgehoben (ideal für Freizeiten & Reisen).
+                        Wird dauerhaft ganz oben hervorgehoben (ideal für Freizeiten, Konferenzen & Reisen).
                     </div>
                 </div>
 
@@ -1970,56 +2087,51 @@
                         <span data-i18n="events_section_target_groups">Sichtbarkeit / Zielgruppen</span>
                     </div>
                     <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px;" data-i18n="events_target_groups_help">
-                        Wähle Gruppen aus, für die das Event exklusiv ist. Keine Auswahl = Für alle sichtbar!
+                        Wähle Gruppen aus, für die das Event gedacht ist. Keine Auswahl = Für alle sichtbar!
                     </div>
                     <div id="event-target-groups-container" style="display:flex; flex-wrap:wrap; gap:8px;">
                         <!-- Populated with system groups -->
                     </div>
                 </div>
 
-                <!-- Anmeldepflicht Toggle -->
-                <div class="modal-section-card">
-                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
-                        <input type="checkbox" id="event-check-requires-reg" onchange="window.toggleEventRegistrationFields(this.checked)">
-                        <span data-i18n="events_check_requires_reg">Verbindliche Anmeldung erforderlich</span>
-                    </label>
-                    <div id="event-reg-options" style="display:none; margin-top:12px; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div class="form-group">
-                            <label class="form-label" for="event-input-min-participants" data-i18n="events_min_participants">Min. Teilnehmer</label>
-                            <input type="number" id="event-input-min-participants" class="form-input" min="0" value="0">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="event-input-max-participants" data-i18n="events_max_participants">Max. Teilnehmer (0 = unbegrenzt)</label>
-                            <input type="number" id="event-input-max-participants" class="form-input" min="0" value="0">
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Serientermin Toggle (nur Leitung / Admin) -->
                 <div id="event-recurring-wrap" class="modal-section-card" style="display:none;">
                     <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
-                        <input type="checkbox" id="event-check-recurring" onchange="window.toggleEventRecurringFields(this.checked)">
+                        <input type="checkbox" id="event-check-recurring" onchange="window.toggleEventRecurringFields(this.checked)" style="accent-color:var(--primary);">
                         <span data-i18n="events_check_recurring">Wiederkehrender Serientermin (Leitung)</span>
                     </label>
                     <div id="event-recurring-options" style="display:none; margin-top:10px;">
-                        <label class="form-label" for="event-select-recurring-rule" data-i18n="events_recurring_rule">Wiederholungsrhythmus</label>
-                        <select id="event-select-recurring-rule" class="form-select">
-                            <option value="weekly" data-i18n="events_rule_weekly">Wöchentlich</option>
-                            <option value="biweekly" data-i18n="events_rule_biweekly">Alle 2 Wochen</option>
-                            <option value="monthly" data-i18n="events_rule_monthly">Monatlich</option>
-                        </select>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div>
+                                <label class="form-label" for="event-select-recurring-rule" data-i18n="events_recurring_rule">Wiederholungsrhythmus</label>
+                                <select id="event-select-recurring-rule" class="form-select">
+                                    <option value="weekly" data-i18n="events_rule_weekly">Wöchentlich</option>
+                                    <option value="biweekly" data-i18n="events_rule_biweekly">Alle 2 Wochen</option>
+                                    <option value="monthly" data-i18n="events_rule_monthly">Monatlich</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="event-recurring-count">Anzahl Termine (Vorlage)</label>
+                                <input type="number" id="event-recurring-count" class="form-input" min="2" max="52" value="10">
+                            </div>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+                            Erstellt eigenständige Einzeltermine am gleichen Wochentag. Jeder Termin kann später separat bearbeitet oder mit Diensten besetzt werden.
+                        </div>
                     </div>
                 </div>
 
                 <!-- Dienstplan Slots -->
                 <div class="modal-section-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                         <div class="modal-section-header" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line></svg>
-                            <span data-i18n="events_section_duties">Dienste & Teams</span>
+                            <span data-i18n="events_section_duties">Dienste & Aufgaben</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-small" onclick="window.addEventDutySlot()">+ Dienst hinzufügen</button>
                     </div>
+                    <!-- Quick suggestions chips -->
+                    <div id="event-quick-duty-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"></div>
                     <div id="event-duties-input-list">
                         <!-- Dynamic duty slots -->
                     </div>
@@ -2072,94 +2184,376 @@
     </div>
 </div>
 
-<!-- Event Detail Modal (Vollständige Ansicht, Teilnehmer, Dienst-Claiming, Kalenderexport) -->
+<!-- Event Detail Modal (Vollständige Ansicht, Teilnehmer, Dienst-Claiming) -->
 <div id="event-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
-    <div class="modal-content modal-content-enhanced" style="max-width: 620px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                </div>
-                <div style="min-width:0;">
-                    <div id="detail-modal-title" class="modal-title-main" style="word-break:break-word; font-size:1.15rem;">Event</div>
-                    <div id="detail-modal-meta" class="modal-subtitle" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">Termin</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('event-detail-modal')" aria-label="Schließen">&times;</button>
-        </div>
-        <div class="modal-body-enhanced">
-            <!-- Event Cover Image Banner -->
-            <div id="detail-modal-cover-wrap" style="display:none; margin:-16px -20px 16px -20px; overflow:hidden; border-radius:12px 12px 0 0;">
-                <img id="detail-modal-cover-img" src="" alt="Eventbild" style="width:100%; max-height:220px; object-fit:cover; display:block;">
-            </div>
-
-            <!-- Badges / Tags -->
-            <div id="detail-modal-tags" class="event-tags" style="margin-bottom: 12px;"></div>
-
-            <!-- Description -->
-            <div id="detail-modal-desc-card" class="event-detail-section-box">
-                <div class="event-detail-section-title">Über diesen Termin</div>
-                <div id="detail-modal-description" class="event-detail-text"></div>
-            </div>
-
-            <!-- Registration & Capacity Box -->
-            <div id="detail-modal-reg-box" class="event-detail-section-box" style="display:none;">
-                <div class="event-detail-section-title" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>Verbindliche Anmeldung</span>
-                    <span id="detail-modal-reg-status-badge"></span>
-                </div>
-                <div id="detail-modal-capacity-progress-wrap" style="margin: 8px 0;">
-                    <div class="event-capacity-bar-track">
-                        <div id="detail-modal-capacity-fill" class="event-capacity-bar-fill" style="width: 0%;"></div>
-                    </div>
-                    <div id="detail-modal-capacity-text" class="event-capacity-subtext">0 / 0 Plätze belegt</div>
-                </div>
-                <div id="detail-modal-reg-action-wrap" style="margin-top: 10px;">
-                    <!-- Action Button inserted via JS -->
-                </div>
-
-                <!-- Expandable Attendees List -->
-                <div id="detail-modal-attendees-wrap" style="margin-top: 12px; border-top: 1px solid var(--border-light); padding-top: 8px;">
-                    <button type="button" class="btn btn-ghost btn-small" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 6px 4px;" onclick="window.toggleDetailAttendeesList()">
-                        <span style="font-weight: 600; font-size: 0.82rem;">Teilnehmerliste anzeigen (<span id="detail-attendees-count">0</span>)</span>
-                        <span id="detail-attendees-chevron">▼</span>
+    <div class="modal-content modal-content-enhanced event-detail-modal-card" style="max-width: 620px;">
+        <!-- Scrollable Modal Content Body -->
+        <div class="event-detail-body">
+            <!-- 16:9 Cover Hero Banner (Displayed ONLY when an image is uploaded) -->
+            <div id="detail-modal-cover-wrap" class="event-detail-hero-banner" style="display:none;">
+                <img id="detail-modal-cover-img" src="" alt="Eventbild" class="event-detail-hero-img">
+                <div class="event-detail-hero-scrim"></div>
+                <!-- Edit mode floating image actions (change/remove) -->
+                <div class="detail-cover-floating-actions detail-edit-only">
+                    <button type="button" class="detail-cover-glass-btn" onclick="window.detailEditSelectImage()" title="Bild ändern">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                        <span>Bild ändern</span>
                     </button>
-                    <div id="detail-attendees-list-body" style="display:none; margin-top:10px;">
-                        <div id="detail-attendees-items" class="attendees-chip-list">
-                            <!-- Populated with attendee chips -->
+                    <button type="button" class="detail-cover-glass-btn detail-cover-glass-btn-danger" onclick="window.detailEditRemoveImage()" title="Bild entfernen">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <span>Entfernen</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Top Navigation / Close Row (Always on top) -->
+            <div class="event-detail-top-bar">
+                <div class="event-detail-pre-title">
+                    <!-- Dynamic Type badge (hidden by default; Termin label removed; only shown if pinned highlight) -->
+                    <span class="event-detail-type-badge detail-view-only" id="detail-modal-type-indicator" style="display:none;"></span>
+                    <div id="detail-modal-tags" class="event-tags detail-view-only"></div>
+                </div>
+                <button type="button" class="close-btn event-detail-close-btn" onclick="closeModal('event-detail-modal')" aria-label="Schließen">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <!-- Edit mode: sleek image upload banner/strip when no image uploaded (BELOW the X close button) -->
+            <div id="detail-edit-cover-placeholder" class="detail-cover-edit-strip detail-edit-only" onclick="window.detailEditSelectImage()">
+                <div class="detail-cover-strip-content">
+                    <div class="detail-cover-strip-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    </div>
+                    <div class="detail-cover-strip-texts">
+                        <span class="detail-cover-strip-title">Titelbild hinzufügen</span>
+                        <span class="detail-cover-strip-sub">Optionales 16:9 Banner</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hidden inputs for detail edit image handling -->
+            <input type="hidden" id="detail-edit-image-url" value="">
+            <input type="file" id="detail-edit-file-input" accept="image/*" style="display:none;" onchange="window.detailEditImageFileSelected(this.files)">
+
+            <!-- Header Block: Type Selector, Title & Organizer -->
+            <div class="event-detail-title-block">
+                <!-- Edit mode: Prominent Type Selector with concise description (strictly only for managers) -->
+                <div id="detail-edit-type-container" class="detail-type-selector-card detail-edit-only is-hidden" style="display:none !important;">
+                    <div class="detail-type-cards-grid">
+                        <button type="button" id="detail-type-card-termin" class="detail-type-card is-active" onclick="window.setDetailEditType('termin')">
+                            <div class="detail-type-card-header">
+                                <div class="detail-type-card-icon icon-termin">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                </div>
+                                <span class="detail-type-card-title">Termin</span>
+                                <div class="detail-type-card-radio"></div>
+                            </div>
+                        </button>
+                        <button type="button" id="detail-type-card-event" class="detail-type-card" onclick="window.setDetailEditType('event')">
+                            <div class="detail-type-card-header">
+                                <div class="detail-type-card-icon icon-event">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>
+                                </div>
+                                <span class="detail-type-card-title">Event</span>
+                                <div class="detail-type-card-radio"></div>
+                            </div>
+                        </button>
+                    </div>
+
+                    <!-- Dynamic concise description of active selection -->
+                    <div id="detail-type-description" class="detail-type-desc-banner">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        <span id="detail-type-desc-text">Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.</span>
+                    </div>
+
+                    <!-- Highlight (Großevent) toggle when Event is chosen -->
+                    <label id="detail-edit-pinned-wrap" class="detail-highlight-card-toggle" style="display:none;" title="Als Großevent / Highlight hervorheben">
+                        <input type="checkbox" id="detail-edit-pinned" onchange="window.toggleDetailPinnedState(this.checked)">
+                        <div class="detail-highlight-icon">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                        </div>
+                        <div class="detail-highlight-info">
+                            <span class="detail-highlight-title">Als Highlight anpinnen (Großevent)</span>
+                            <span class="detail-highlight-sub">Wird prominent oben in der Highlight-Übersicht präsentiert</span>
+                        </div>
+                    </label>
+                    <input type="hidden" id="detail-edit-type" value="event">
+                </div>
+
+                <h2 id="detail-modal-title" class="event-detail-title-main detail-view-only">Event</h2>
+
+                <!-- Edit mode: clearly recognized title input field with unmistakable label -->
+                <div class="detail-edit-only detail-title-form-group">
+                    <label class="detail-form-label" for="detail-edit-title">
+                        Titel des Termins / Events <span class="detail-required-star">*</span>
+                    </label>
+                    <input type="text" id="detail-edit-title" class="detail-edit-input detail-title-input" placeholder="z. B. Bistro-Abend, Jugendtreff, Gebetstreff..." required>
+                </div>
+
+                <div class="event-detail-organizer-pill detail-view-only" id="detail-modal-organizer-pill">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    <span>Veranstalter: <strong id="detail-creator-name">Mitglied</strong></span>
+                </div>
+            </div>
+
+            <!-- Compact Info Cards: Exactly 2 Rows (Row 1: Termin, Row 2: Wo / Adresse) -->
+            <div class="event-detail-two-row-grid">
+                <!-- Row 1: Termin -->
+                <div class="event-detail-quad-cell cell-when">
+                    <div class="event-detail-quad-icon icon-date">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    </div>
+                    <div class="event-detail-quad-body">
+                        <div class="cell-when-header-row">
+                            <span class="event-detail-quad-label">Termin</span>
+                            <!-- Edit mode toggles: Mehrtägig & Serie -->
+                            <div class="detail-edit-only detail-when-mini-toggles">
+                                <label class="detail-mini-pill-toggle" title="Mehrtägiges Event (Uhrzeit entfällt)">
+                                    <input type="checkbox" id="detail-edit-is-multiday" onchange="window.toggleDetailMultiDay(this.checked)">
+                                    <span>Mehrtägig</span>
+                                </label>
+                                <label id="detail-edit-recurring-toggle-wrap" class="detail-mini-pill-toggle" style="display:none;" title="Regelmäßig am selben Wochentag wiederholen">
+                                    <input type="checkbox" id="detail-edit-is-recurring" onchange="window.toggleDetailRecurring(this.checked)">
+                                    <span>Serie</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- View mode value -->
+                        <div class="event-detail-quad-value cell-when-value detail-view-only">
+                            <span id="detail-modal-info-date">--</span>
+                            <span class="event-detail-when-sep" id="detail-modal-when-sep">•</span>
+                            <span id="detail-modal-info-time">--</span>
+                        </div>
+
+                        <!-- Edit mode: elegant structured Date & Time layout -->
+                        <div class="detail-edit-only detail-when-edit-container">
+                            <!-- Date Row: Datum & optionales Enddatum (bei mehrtägig) -->
+                            <div class="detail-when-row" id="detail-when-dates-row">
+                                <div class="detail-when-field">
+                                    <label class="detail-when-input-label" for="detail-edit-date">Datum</label>
+                                    <input type="date" id="detail-edit-date" class="detail-edit-input detail-date-input" title="Startdatum" required>
+                                </div>
+                                <div class="detail-when-field" id="detail-field-end-date" style="display:none;">
+                                    <label class="detail-when-input-label" for="detail-edit-end-date">Enddatum</label>
+                                    <input type="date" id="detail-edit-end-date" class="detail-edit-input detail-date-input" title="Enddatum">
+                                </div>
+                            </div>
+
+                            <!-- Time Row: Startzeit & Endzeit (hidden when multiday) -->
+                            <div class="detail-when-row detail-when-time-row" id="detail-when-time-row">
+                                <div class="detail-when-field" id="detail-field-start-time">
+                                    <label class="detail-when-input-label" for="detail-edit-start-time">Von (Uhrzeit)</label>
+                                    <input type="time" id="detail-edit-start-time" class="detail-edit-input detail-time-input" title="Startzeit">
+                                </div>
+                                <div class="detail-when-field" id="detail-field-end-time">
+                                    <label class="detail-when-input-label" for="detail-edit-end-time">Bis (optional)</label>
+                                    <input type="time" id="detail-edit-end-time" class="detail-edit-input detail-time-input" title="Endzeit">
+                                </div>
+                            </div>
+
+                            <!-- Multiday Hint Banner -->
+                            <div id="detail-multiday-hint" class="detail-when-hint" style="display:none;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                <span>Mehrtägiger Termin – Uhrzeit entfällt</span>
+                            </div>
+
+                            <!-- Recurring options panel (routine appointments) -->
+                            <div id="detail-recurring-options-panel" class="detail-recurring-panel" style="display:none;">
+                                <div class="detail-recurring-inner">
+                                    <div class="detail-recurring-rule-wrap">
+                                        <label class="detail-when-input-label" for="detail-edit-recurring-rule">Wiederholung</label>
+                                        <select id="detail-edit-recurring-rule" class="detail-edit-input detail-select-input">
+                                            <option value="weekly">Wöchentlich (am gleichen Wochentag)</option>
+                                            <option value="biweekly">Alle 2 Wochen</option>
+                                            <option value="monthly">Monatlich</option>
+                                        </select>
+                                    </div>
+                                    <div class="detail-recurring-count-wrap">
+                                        <label class="detail-when-input-label" for="detail-edit-recurring-count">Anzahl</label>
+                                        <div class="detail-recurring-count-input">
+                                            <input type="number" id="detail-edit-recurring-count" class="detail-edit-input" min="2" max="52" value="10">
+                                            <span class="detail-recurring-count-label">Termine</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Duties / Sub-Management Section (Flat ChurchTools-Style: Dienste für das Event) -->
-            <div id="detail-modal-duties-box" class="event-detail-section-box" style="display:none;">
-                <div class="event-detail-section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <span style="font-size:0.84rem; font-weight:700; color:var(--text); letter-spacing:0.3px;">Dienste & Aufgaben</span>
-                        <span id="detail-modal-duties-count" style="font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:999px; background:var(--surface); border:1px solid var(--border-light); color:var(--text-secondary);"></span>
+                <!-- Row 2: Wo / Adresse -->
+                <div class="event-detail-quad-cell cell-where" id="detail-modal-where-cell">
+                    <div class="event-detail-quad-icon icon-where">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                     </div>
-                    <button type="button" class="btn btn-secondary btn-small" onclick="window.openAddDutySlotModal()" style="display:inline-flex; align-items:center; gap:5px;" title="Neuen Dienst für dieses Event anlegen">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        <span>Dienst anlegen</span>
-                    </button>
-                </div>
-                <div id="detail-modal-duties-sections" class="event-detail-sections-container" style="margin-top: 10px;">
-                    <!-- Flat list of Dienste rendered dynamically -->
+                    <div class="event-detail-quad-body">
+                        <span class="event-detail-quad-label">Wo / Adresse</span>
+                        <span class="event-detail-quad-value cell-where-value detail-view-only" id="detail-modal-info-where">--</span>
+                        <!-- Edit mode location input -->
+                        <input type="text" id="detail-edit-location" class="detail-edit-input detail-where-input detail-edit-only" placeholder="Ort oder Adresse eingeben...">
+                    </div>
+                    <a id="detail-modal-map-link" class="event-detail-map-link detail-view-only" href="#" target="_blank" rel="noopener noreferrer" title="In Google Maps öffnen" style="display:none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                    </a>
                 </div>
             </div>
 
-            <!-- Detail Footer Bar -->
-            <div class="event-detail-footer-bar">
-                <div id="detail-modal-created-by" style="font-size:0.76rem; color:var(--text-secondary);">
-                    Erstellt von: <strong id="detail-creator-name">Mitglied</strong>
+            <!-- Description -->
+            <div id="detail-modal-desc-card" class="event-detail-section-card">
+                <div class="event-detail-card-header">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="7" y2="18"></line></svg>
+                    <span>Über diesen Termin</span>
                 </div>
-                <div class="event-detail-action-buttons">
-                    <button type="button" class="btn btn-secondary btn-small" id="detail-btn-edit" style="display:none;" onclick="window.openEditEventFromDetail()">
-                        Bearbeiten
+                <div id="detail-modal-desc-wrap" class="event-detail-desc-wrap detail-view-only">
+                    <div id="detail-modal-description" class="event-detail-body-text"></div>
+                </div>
+                <!-- Edit mode: auto-growing description textarea -->
+                <textarea id="detail-edit-description" class="detail-edit-input detail-edit-textarea detail-edit-only" rows="4" placeholder="Beschreibung verfassen (Markdown unterstützt: **fett**, *kursiv*, Aufzählungen...)..." oninput="window.autoResizeDetailTextarea(this)"></textarea>
+                <button type="button" id="detail-desc-toggle-btn" class="event-desc-toggle-btn detail-view-only" onclick="window.toggleDetailDescription()" style="display:none;">
+                    <span id="detail-desc-toggle-text">Mehr anzeigen</span>
+                    <svg id="detail-desc-toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+            </div>
+
+            <!-- Zielgruppen Configuration (Edit Mode, with explanation) -->
+            <div id="detail-edit-groups-bar" class="detail-edit-only detail-groups-card">
+                <div class="detail-groups-header">
+                    <div class="detail-groups-title-row">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        <span>Zielgruppen</span>
+                    </div>
+                    <span class="detail-groups-explanation">
+                        Wähle aus, für welche Gruppen dieser Termin sichtbar ist. Ohne Auswahl ist er für alle Mitglieder öffentlich sichtbar.
+                    </span>
+                </div>
+                <div id="detail-edit-target-groups-container" class="detail-edit-chips-wrap"></div>
+            </div>
+
+            <!-- Registration & Attendees: Uncontained & Ultra-Compact -->
+            <div id="detail-modal-reg-box" class="event-detail-reg-uncontained" style="display:none;">
+                <!-- View Mode Action Row -->
+                <div class="event-reg-action-row detail-view-only">
+                    <div id="detail-modal-reg-action-wrap" class="event-reg-action-wrap">
+                        <!-- Action Button / Confirmed status inserted via JS -->
+                    </div>
+                    <div id="detail-modal-capacity-info" class="event-reg-cap-wrap">
+                        <!-- Capacity pill inserted via JS (e.g. 5 / 20 Plätze) -->
+                    </div>
+                </div>
+
+                <!-- Edit Mode Registration Configuration (Prominent Toggle Card) -->
+                <div class="detail-edit-only detail-reg-card">
+                    <label class="detail-reg-card-header" for="detail-edit-requires-reg">
+                        <div class="detail-reg-card-left">
+                            <div class="detail-reg-card-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            </div>
+                            <div class="detail-reg-card-info">
+                                <span class="detail-reg-card-title">Anmeldung erforderlich</span>
+                                <span class="detail-reg-card-desc">Mitglieder müssen sich für diesen Termin vorher anmelden</span>
+                            </div>
+                        </div>
+                        <div class="detail-switch">
+                            <input type="checkbox" id="detail-edit-requires-reg" onchange="window.toggleDetailRegFields(this.checked)">
+                            <span class="detail-switch-slider"></span>
+                        </div>
+                    </label>
+
+                    <div id="detail-edit-reg-options" class="detail-reg-options-body" style="display:none;">
+                        <div class="detail-reg-inputs-grid">
+                            <div class="detail-reg-field-item">
+                                <label class="detail-field-sublabel" for="detail-edit-max-participants">Max. Teilnehmerplätze</label>
+                                <input type="number" id="detail-edit-max-participants" class="detail-edit-input" min="0" placeholder="0 = unbegrenzt">
+                                <span class="detail-field-hint">0 = keine Begrenzung</span>
+                            </div>
+                            <div class="detail-reg-field-item">
+                                <label class="detail-field-sublabel" for="detail-edit-min-participants">Min. Teilnehmer</label>
+                                <input type="number" id="detail-edit-min-participants" class="detail-edit-input" min="0" placeholder="0 = beliebig">
+                                <span class="detail-field-hint">0 = keine Mindestanzahl</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collapsible Attendees List (Vertical with Avatar) -->
+                <details id="detail-modal-attendees-details" class="event-attendees-details">
+                    <summary class="event-attendees-summary">
+                        <div class="event-attendees-summary-left">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            <span class="event-attendees-title">Teilnehmer</span>
+                            <span id="detail-attendees-count" class="event-attendees-count-pill">0</span>
+                        </div>
+                        <div class="event-attendees-summary-right">
+                            <span class="event-attendees-chevron">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </span>
+                        </div>
+                    </summary>
+                    <div id="detail-attendees-items" class="event-attendees-list-body">
+                        <!-- Populated with attendee rows -->
+                    </div>
+                </details>
+            </div>
+
+            <!-- Duties Section: Collapsible (Closed by Default) & Uncontained (View Only) -->
+            <div id="detail-modal-duties-box" class="event-detail-duties-uncontained detail-view-only" style="display:none;">
+                <!-- View Mode Duties -->
+                <details id="detail-modal-duties-details" class="event-duties-details">
+                    <summary class="event-duties-summary">
+                        <div class="event-duties-summary-left">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
+                            <span class="event-duties-title">Dienstplan</span>
+                            <span id="detail-modal-duties-count" class="event-duties-count-pill">0</span>
+                        </div>
+                        <div class="event-duties-summary-right">
+                            <span class="event-duties-chevron">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </span>
+                        </div>
+                    </summary>
+                    <div id="detail-modal-duties-sections" class="event-duties-list-body">
+                        <!-- Direct list of duty task cards rendered dynamically -->
+                    </div>
+                    <div id="detail-modal-add-duty-wrap" class="event-duties-add-wrap" style="display:none;">
+                        <button type="button" class="btn btn-secondary btn-small" id="detail-btn-add-duty" onclick="window.showAddNewTaskForm()">
+                            + Aufgabe hinzufügen
+                        </button>
+                        <div id="duty-new-task-form" class="duty-new-task-form" style="display:none;">
+                            <div class="duty-new-task-input-wrap">
+                                <input type="text" id="duty-new-task-name" class="duty-new-task-input" placeholder="Name der Aufgabe (z. B. Bistro, Technik)..." onkeydown="if(event.key==='Enter'){event.preventDefault();window.submitAddNewTask();}">
+                                <button type="button" class="btn btn-primary btn-small duty-new-task-submit" onclick="window.submitAddNewTask()">Hinzufügen</button>
+                                <button type="button" class="btn btn-ghost btn-small duty-new-task-cancel" onclick="window.hideAddNewTaskForm()">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Action Buttons Bar (Edit / Delete / Save / Cancel) at Bottom -->
+            <div class="event-detail-admin-bar" id="detail-modal-action-bar" style="display:none;">
+                <div class="event-detail-admin-header detail-view-only">
+                    <div class="event-detail-admin-hint">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span>Verwaltung</span>
+                    </div>
+                </div>
+                <div class="event-detail-admin-actions">
+                    <button type="button" class="event-admin-action-btn btn-edit detail-view-only" id="detail-btn-edit" style="display:none;" onclick="window.enterDetailEditMode()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        <span>Bearbeiten</span>
                     </button>
-                    <button type="button" class="btn btn-ghost btn-small text-danger" id="detail-btn-delete" style="display:none;" onclick="window.deleteCurrentEventFromDetail()">
-                        Löschen
+                    <button type="button" class="event-admin-action-btn btn-delete detail-view-only" id="detail-btn-delete" style="display:none;" onclick="window.deleteCurrentEventFromDetail()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span>Löschen</span>
+                    </button>
+                    <!-- Edit mode save/cancel buttons -->
+                    <button type="button" class="event-admin-action-btn btn-cancel-edit detail-edit-only" id="detail-btn-cancel-edit" onclick="window.cancelDetailEditMode()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <span>Abbrechen</span>
+                    </button>
+                    <button type="button" class="event-admin-action-btn btn-save-edit detail-edit-only" id="detail-btn-save" onclick="window.saveDetailEditMode()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span id="detail-btn-save-text">Speichern</span>
                     </button>
                 </div>
             </div>
@@ -2176,59 +2570,42 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 </div>
                 <div>
-                    <div id="title-assign-duty" class="modal-title-main">Dienst einteilen</div>
-                    <div id="subtitle-assign-duty" class="modal-subtitle">Dienst</div>
+                    <div id="title-assign-duty" class="modal-title-main">Person oder Gruppe zuweisen</div>
+                    <div id="subtitle-assign-duty" class="modal-subtitle">Aufgabe</div>
                 </div>
             </div>
             <button class="close-btn" onclick="closeModal('assign-duty-modal')" aria-label="Schließen">&times;</button>
         </div>
-        <form id="assign-duty-form" onsubmit="window.submitAssignDuty(event)">
-            <input type="hidden" id="assign-duty-id">
-            <div class="modal-body-enhanced">
-                <!-- Target Choice: Group vs Single Person with Segmented Control -->
-                <div style="margin-bottom: 14px;">
-                    <label class="form-label" style="margin-bottom: 6px;">Einteilung an</label>
-                    <div class="segmented-control" id="assign-duty-segmented">
-                        <button type="button" class="segmented-tab is-active" id="assign-tab-group" onclick="window.setAssignDutyType('group')">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            <span>Gruppe zuweisen</span>
-                        </button>
-                        <button type="button" class="segmented-tab" id="assign-tab-user" onclick="window.setAssignDutyType('user')">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                            <span>Person anfragen</span>
-                        </button>
-                    </div>
-                    <input type="hidden" id="assign-duty-target-type-input" value="group">
-                </div>
+        <div class="modal-body-enhanced" style="padding-top: 14px;">
+            <input type="hidden" id="assign-duty-role-encoded" value="">
+            <input type="hidden" id="assign-duty-replace-id" value="">
+            <input type="hidden" id="assign-duty-active-tab" value="user">
 
-                <!-- Group Selection Box -->
-                <div id="assign-duty-group-box" style="margin-bottom: 14px;">
-                    <label class="form-label" for="assign-duty-group-select">Gruppe auswählen</label>
-                    <select id="assign-duty-group-select" class="form-select">
-                        <option value="">-- Gruppe auswählen --</option>
-                    </select>
-                </div>
-
-                <!-- Person Selection Box -->
-                <div id="assign-duty-user-box" style="margin-bottom: 14px; display: none;">
-                    <label class="form-label" for="assign-duty-user-select">Person auswählen</label>
-                    <select id="assign-duty-user-select" class="form-select">
-                        <option value="">-- Person auswählen --</option>
-                    </select>
-
-                    <div style="margin-top: 8px;">
-                        <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; cursor: pointer; color: var(--text-secondary);">
-                            <input type="checkbox" id="assign-duty-send-email" checked style="accent-color: var(--primary);">
-                            <span>E-Mail-Benachrichtigung mit Details senden</span>
-                        </label>
-                    </div>
-                </div>
+            <!-- Tabs: Personen vs Gruppen -->
+            <div class="segmented-control" id="assign-duty-segmented" style="margin-bottom: 12px;">
+                <button type="button" class="segmented-tab is-active" id="assign-tab-user" onclick="window.switchAssignDutyTab('user')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    <span>Personen</span>
+                </button>
+                <button type="button" class="segmented-tab" id="assign-tab-group" onclick="window.switchAssignDutyTab('group')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    <span>Gruppen</span>
+                </button>
             </div>
-            <div class="modal-footer-enhanced">
-                <button type="button" class="btn btn-ghost" onclick="closeModal('assign-duty-modal')">Abbrechen</button>
-                <button type="submit" class="btn btn-primary" id="assign-duty-submit-btn">Bestätigen</button>
+
+            <!-- Search input -->
+            <div style="margin-bottom: 10px;">
+                <input type="text" id="assign-duty-search-input" class="form-input" placeholder="Person suchen..." oninput="window.filterAssignDutyModalList(this.value)" style="width: 100%; box-sizing: border-box; font-size: 0.85rem; padding: 8px 12px; border-radius: 8px;">
             </div>
-        </form>
+
+            <!-- Scrollable list of People or Groups -->
+            <div id="assign-duty-popup-list" class="duty-popup-picker-list" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+                <!-- Dynamically rendered -->
+            </div>
+        </div>
+        <div class="modal-footer-enhanced" style="padding-top: 10px;">
+            <button type="button" class="btn btn-ghost" onclick="closeModal('assign-duty-modal')">Abbrechen</button>
+        </div>
     </div>
 </div>
 

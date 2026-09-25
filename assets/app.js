@@ -429,9 +429,14 @@ function canManageMentoring() {
 }
 
 function canManageEvents() {
-    return !!(currentUser && (currentUser.canManageEvents || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_events')) || currentUser.admin || currentUser.owner || currentUser.superAdmin));
+    return isSuperAdminUser() || !!(currentUser && (currentUser.canManageEvents === true || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_events'))));
 }
 window.canManageEvents = canManageEvents;
+
+function canManageRegistrationCode() {
+    return !!(currentUser && (currentUser.canManageRegistrationCode || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_registration_code'))));
+}
+window.canManageRegistrationCode = canManageRegistrationCode;
 
 function isApprovedMentor() {
     return !!(currentUser && (currentUser.isApprovedMentor || currentUser.mentorStatus === 'approved'));
@@ -472,21 +477,31 @@ async function loadSystemPermissions() {
         systemPermissions = [
             { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
             { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
+            { id: 'manage_registration_code', name: 'Registrierungscode verwalten', description: 'Erlaubt das Einsehen, Kopieren und Neugenerieren des Registrierungscodes für neue Mitglieder' },
             { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-            { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' }
+            { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
+            { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
         ];
     }
 }
 
 async function loadSystemGroups() {
-    if (!isSuperAdminUser()) return;
+    if (!currentUser) return;
     try {
-        await loadSystemPermissions();
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`);
+        if (isSuperAdminUser()) {
+            await loadSystemPermissions();
+            const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`);
+            if (res.ok) {
+                systemGroups = await res.json();
+                renderSystemGroups();
+                renderAccountsTab();
+                return;
+            }
+        }
+        // Load groups for all authenticated members
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/groups`);
         if (res.ok) {
             systemGroups = await res.json();
-            renderSystemGroups();
-            renderAccountsTab();
         }
     } catch (err) {
         console.error('Failed to load groups:', err);
@@ -845,6 +860,27 @@ function updateNavVisibility() {
     const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
     if (sysSettingsBtn) sysSettingsBtn.style.display = isSysAdmin ? '' : 'none';
 
+    // Registration code card visibility
+    const canManageCode = canManageRegistrationCode();
+    const inviteCardAdmin = document.getElementById('card-invite');
+    if (inviteCardAdmin) {
+        if (canManageCode) {
+            inviteCardAdmin.style.removeProperty('display');
+            inviteCardAdmin.style.display = '';
+        } else {
+            inviteCardAdmin.style.setProperty('display', 'none', 'important');
+        }
+    }
+    const inviteCardUser = document.getElementById('card-invite-user');
+    if (inviteCardUser) {
+        if (canManageCode) {
+            inviteCardUser.style.removeProperty('display');
+            inviteCardUser.style.display = '';
+        } else {
+            inviteCardUser.style.setProperty('display', 'none', 'important');
+        }
+    }
+
     // Avatar ring
     updateHeaderAvatarRing();
 
@@ -1088,6 +1124,32 @@ window.switchTab = function(tabName, btn) {
 
     currentActiveTab = tabName;
     updateFabVisibility();
+    updateNavVisibility();
+
+    if (tabName === 'settings' || tabName === 'user-settings') {
+        const canManageCode = canManageRegistrationCode();
+        const inviteCardAdmin = document.getElementById('card-invite');
+        if (inviteCardAdmin) {
+            if (canManageCode) {
+                inviteCardAdmin.style.removeProperty('display');
+                inviteCardAdmin.style.display = '';
+            } else {
+                inviteCardAdmin.style.setProperty('display', 'none', 'important');
+            }
+        }
+        const inviteCardUser = document.getElementById('card-invite-user');
+        if (inviteCardUser) {
+            if (canManageCode) {
+                inviteCardUser.style.removeProperty('display');
+                inviteCardUser.style.display = '';
+            } else {
+                inviteCardUser.style.setProperty('display', 'none', 'important');
+            }
+        }
+        if (typeof updatePushNotificationUI === 'function') {
+            updatePushNotificationUI();
+        }
+    }
 
     const allTabs = Array.from(document.querySelectorAll('.tab-content'));
     const navButtonsDesktop = Array.from(document.querySelectorAll('#desktop-nav [data-tab], .desktop-nav [data-tab]'));
@@ -2119,6 +2181,40 @@ function checkAndExecuteStandingOrders(person) {
 
 let requests = [];
 
+function updateInviteCodeDisplay(code) {
+    const canManageCode = canManageRegistrationCode();
+    const safeCode = canManageCode ? (code || '------') : '';
+    const codeInput = document.getElementById('admin-invite-code');
+    if (codeInput) codeInput.value = safeCode;
+    const codeDisplay = document.getElementById('admin-invite-code-display');
+    if (codeDisplay) codeDisplay.textContent = safeCode || '------';
+
+    const userCodeInput = document.getElementById('user-invite-code');
+    if (userCodeInput) userCodeInput.value = safeCode;
+    const userCodeDisplay = document.getElementById('user-invite-code-display');
+    if (userCodeDisplay) userCodeDisplay.textContent = safeCode || '------';
+
+    const inviteCardAdmin = document.getElementById('card-invite');
+    if (inviteCardAdmin) {
+        if (canManageCode) {
+            inviteCardAdmin.style.removeProperty('display');
+            inviteCardAdmin.style.display = '';
+        } else {
+            inviteCardAdmin.style.setProperty('display', 'none', 'important');
+        }
+    }
+    const inviteCardUser = document.getElementById('card-invite-user');
+    if (inviteCardUser) {
+        if (canManageCode) {
+            inviteCardUser.style.removeProperty('display');
+            inviteCardUser.style.display = '';
+        } else {
+            inviteCardUser.style.setProperty('display', 'none', 'important');
+        }
+    }
+}
+window.updateInviteCodeDisplay = updateInviteCodeDisplay;
+
 async function loadData(silent = false) {
     // Ladebildschirm anzeigen
     const loader = document.getElementById('loading-overlay');
@@ -2241,10 +2337,9 @@ async function loadData(silent = false) {
             // Pure System Admin (no finance permissions assigned)
             advancedConfigLoaded = false;
             advancedConfigAppName = null;
-            const [pData, sData, cData, uData] = await Promise.all([
+            const [pData, sData, uData] = await Promise.all([
                 apiGet('people').catch(() => null),
                 apiGet('settings').catch(() => null),
-                apiGet('system/inviteCode').catch(() => null),
                 apiGet('users').catch(() => null)
             ]);
 
@@ -2260,20 +2355,13 @@ async function loadData(silent = false) {
             users = uData
                 ? Object.entries(uData).map(([uid, data]) => ({ ...data, uid }))
                 : [];
-
-            const code = cData ? cData : '123456';
-            const codeInput = document.getElementById('admin-invite-code');
-            if(codeInput) codeInput.value = code;
-            const codeDisplay = document.getElementById('admin-invite-code-display');
-            if(codeDisplay) codeDisplay.textContent = code;
         } else {
             advancedConfigLoaded = false;
             advancedConfigAppName = null;
             // Admin with finance view
-            const [pData, sData, cData, rData, uData] = await Promise.all([
+            const [pData, sData, rData, uData] = await Promise.all([
                 apiGet('people').catch(() => null),
                 apiGet('settings').catch(() => null),
-                apiGet('system/inviteCode').catch(() => null),
                 apiGet('requests').catch(() => null),
                 apiGet('users').catch(() => null)
             ]);
@@ -2298,14 +2386,24 @@ async function loadData(silent = false) {
                     };
                 })
                 : [];
+        }
 
-            // Show Invite Code
-            const code = cData ? cData : '123456';
-            const codeInput = document.getElementById('admin-invite-code');
-            if(codeInput) codeInput.value = code;
-            const codeDisplay = document.getElementById('admin-invite-code-display');
-            if(codeDisplay) codeDisplay.textContent = code;
-
+        // Conditionally fetch invite code only for users with manage_registration_code permission
+        if (canManageRegistrationCode()) {
+            try {
+                const cData = await apiGet('system/inviteCode').catch(() => null);
+                if (cData) {
+                    updateInviteCodeDisplay(cData);
+                }
+            } catch (cErr) {
+                console.warn("Could not fetch invite code:", cErr);
+            }
+        } else {
+            updateInviteCodeDisplay('');
+            const inviteCardAdmin = document.getElementById('card-invite');
+            if (inviteCardAdmin) inviteCardAdmin.style.setProperty('display', 'none', 'important');
+            const inviteCardUser = document.getElementById('card-invite-user');
+            if (inviteCardUser) inviteCardUser.style.setProperty('display', 'none', 'important');
         }
 
         // Populate User View basic info for all users
@@ -2418,6 +2516,9 @@ async function renderAll() {
 
     if (currentUser && document.getElementById('admin-email-notifications')) {
         document.getElementById('admin-email-notifications').checked = !!currentUser.emailNotifications;
+    }
+    if (typeof ensurePushNotificationSubscription === 'function') {
+        ensurePushNotificationSubscription();
     }
     if (isSysAdmin) {
         await loadSystemGroups();
@@ -3413,6 +3514,9 @@ function renderUserView() {
     if (typeof renderHomeMentoringCard === 'function') {
         renderHomeMentoringCard();
     }
+    if (typeof window.renderHomeDutiesCard === 'function') {
+        window.renderHomeDutiesCard();
+    }
     const statusCard = document.getElementById('user-status-card');
     const financeStatusCard = document.getElementById('user-finances-status-card');
     const paymentHistory = document.getElementById('user-payment-history');
@@ -3498,7 +3602,7 @@ function renderUserView() {
                 <div class="user-finance-hero-title" style="color: ${accentColor}; font-size: 1.35rem; font-weight: 800; margin-bottom: 5px;">
                     ${escapeHtml(translatedStatusMetaText)}
                 </div>
-                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_standing_order_active', '🔁 Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
+                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_standing_order_active', 'Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
                 ${statusMeta.isOverdue ? `
                     <div class="user-finance-overdue-box" style="margin-top: 14px; margin-bottom: 0;">
                         <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
@@ -3523,7 +3627,7 @@ function renderUserView() {
                     <div class="user-finance-hero-top">
                         <div class="user-finance-hero-info">
                             <div class="user-finance-hero-title" style="color:${accentColor};">${escapeHtml(translatedStatusMetaText)}</div>
-                            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub">${t('user_standing_order_active', '🔁 Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
+                            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub">${t('user_standing_order_active', 'Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
                         </div>
                     </div>
                     ${statusMeta.isOverdue ? `
@@ -6168,6 +6272,139 @@ window.autoSaveEmailNotifications = async function() {
     }
 };
 
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+window.updatePushNotificationUI = async function() {
+    const hints = [
+        document.getElementById('push-status-hint'),
+        document.getElementById('user-push-status-hint')
+    ].filter(Boolean);
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        hints.forEach(h => { h.textContent = 'Push wird von diesem Browser nicht unterstützt'; });
+        return;
+    }
+
+    try {
+        if (Notification.permission === 'denied') {
+            hints.forEach(h => { 
+                h.textContent = 'Im Browser blockiert (bitte in den Website-Berechtigungen erlauben)'; 
+                h.style.color = '#ef4444'; 
+            });
+        } else if (Notification.permission === 'granted') {
+            hints.forEach(h => { 
+                h.textContent = 'Immer aktiv (automatisch synchronisiert)'; 
+                h.style.color = '#10b981'; 
+            });
+        } else {
+            hints.forEach(h => { 
+                h.textContent = 'Wird beim Anmelden automatisch eingerichtet'; 
+                h.style.color = 'var(--text-muted, #64748b)'; 
+            });
+        }
+    } catch (err) {
+        console.warn('Push status check error:', err);
+    }
+};
+
+window.ensurePushNotificationSubscription = async function() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
+        return;
+    }
+
+    try {
+        const token = (typeof auth !== 'undefined' && auth.currentUser) 
+            ? (await auth.currentUser.getIdToken()) 
+            : (localStorage.getItem('token') || '');
+
+        if (!token) return;
+
+        let permission = Notification.permission;
+        if (permission === 'default') {
+            permission = await Notification.requestPermission();
+        }
+
+        if (permission !== 'granted') {
+            if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
+            return;
+        }
+
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+            const keyRes = await fetch(`${config.apiBaseUrl}/push/vapid-public-key`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (keyRes.ok) {
+                const keyData = await keyRes.json();
+                const convertedKey = urlBase64ToUint8Array(keyData.publicKey);
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: convertedKey
+                });
+            }
+        }
+
+        if (subscription) {
+            await fetch(`${config.apiBaseUrl}/push/subscribe`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    subscription: subscription.toJSON(),
+                    userAgent: navigator.userAgent
+                })
+            }).catch(e => console.warn('Push sync error:', e));
+        }
+
+        if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
+    } catch (err) {
+        console.warn('Auto-subscribe push notification error:', err);
+        if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
+    }
+};
+
+window.sendTestPushNotification = async function() {
+    try {
+        await ensurePushNotificationSubscription();
+        const token = (typeof auth !== 'undefined' && auth.currentUser) 
+            ? (await auth.currentUser.getIdToken()) 
+            : (localStorage.getItem('token') || '');
+
+        const res = await fetch(`${config.apiBaseUrl}/push/test`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (res.ok) {
+            showToast('Test-Benachrichtigung gesendet!');
+        } else {
+            showToast('Fehler beim Senden der Test-Benachrichtigung', 'error');
+        }
+    } catch (err) {
+        console.error('Test push error:', err);
+        showToast('Fehler beim Senden der Test-Benachrichtigung', 'error');
+    }
+};
+
 window.changePassword = async (isUser = false) => {
     const inputId = isUser ? 'user-new-password' : 'new-password';
     const oldInputId = isUser ? 'user-old-password' : 'old-password';
@@ -6343,6 +6580,9 @@ onAuthStateChanged(auth, async (user) => {
         connectSSE();
         loadData();
         loadCurrentProfilePicture();
+        if (typeof ensurePushNotificationSubscription === 'function') {
+            ensurePushNotificationSubscription();
+        }
     } else {
         localStorage.removeItem('agora-is-logged-in');
         localStorage.removeItem('nova-is-logged-in');
@@ -6789,15 +7029,16 @@ window.submitUserRequest = async () => {
 };
 
 window.generateNewCode = async () => {
+    if (!canManageRegistrationCode()) {
+        alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
+        return;
+    }
     const array = new Uint32Array(1);
     window.crypto.getRandomValues(array);
-    const newCode = 100000 + (array[0] % 900000);
+    const newCode = String(100000 + (array[0] % 900000));
     try {
         await set(ref(db, 'system/inviteCode'), newCode);
-        const codeInput = document.getElementById('admin-invite-code');
-        if (codeInput) codeInput.value = newCode;
-        const codeDisplay = document.getElementById('admin-invite-code-display');
-        if (codeDisplay) codeDisplay.textContent = newCode;
+        updateInviteCodeDisplay(newCode);
     } catch (err) {
         console.error('Fehler beim Generieren des Codes:', err);
         alert(t('alert_save_code_failed', 'Neuer Code konnte nicht gespeichert werden.'));
@@ -7550,11 +7791,17 @@ window.showToast = (msg, type='success') => {
 };
 
 window.copyInviteCode = async () => {
-    const codeInput = document.getElementById('admin-invite-code');
-    if (!codeInput) return;
+    if (!canManageRegistrationCode()) {
+        alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
+        return;
+    }
+    const adminInput = document.getElementById('admin-invite-code');
+    const userInput = document.getElementById('user-invite-code');
+    const val = (adminInput && adminInput.value) || (userInput && userInput.value) || '';
+    if (!val || val === '------') return;
 
     try {
-        await navigator.clipboard.writeText(codeInput.value);
+        await navigator.clipboard.writeText(val);
         if (typeof showToast === 'function') {
             showToast(t('toast_code_copied', 'Code kopiert!'));
         } else {
@@ -7709,7 +7956,7 @@ window.loadMentoringData = async function() {
             if (applyBtn) {
                 if (myMentorProfile) {
                     if (myMentorProfile.status === 'approved') {
-                        applyBtn.innerHTML = t('mentoring_my_profile_btn', '💜 Mein Mentoren-Profil');
+                        applyBtn.innerHTML = t('mentoring_my_profile_btn', 'Mein Mentoren-Profil');
                     } else if (myMentorProfile.status === 'pending') {
                         applyBtn.innerHTML = t('mentoring_pending_profile_btn', '⏳ Bewerbung in Prüfung');
                     } else {
@@ -7822,7 +8069,7 @@ window.renderMentorsGrid = function() {
                     </div>
                     <div class="mentor-card-title">
                         <h3>${name}</h3>
-                        <span class="mentor-role-badge">${t('mentoring_verified_badge', '💜 Geprüfter Mentor')}</span>
+                        <span class="mentor-role-badge">${t('mentoring_verified_badge', 'Geprüfter Mentor')}</span>
                     </div>
                 </div>
 
@@ -8685,8 +8932,10 @@ let eventSettings = {
 
 window.switchEventsSubTab = function(tabName) {
     currentEventsSubTab = (tabName === 'events') ? 'events' : 'termine';
+
     const btnTermine = document.getElementById('events-tab-btn-termine');
     const btnEvents = document.getElementById('events-tab-btn-events');
+
     if (btnTermine) {
         btnTermine.classList.toggle('is-active', currentEventsSubTab === 'termine');
         btnTermine.classList.toggle('active', currentEventsSubTab === 'termine');
@@ -8695,6 +8944,7 @@ window.switchEventsSubTab = function(tabName) {
         btnEvents.classList.toggle('is-active', currentEventsSubTab === 'events');
         btnEvents.classList.toggle('active', currentEventsSubTab === 'events');
     }
+
     window.renderEvents();
 };
 
@@ -8704,7 +8954,8 @@ window.loadEventsData = async function() {
         const [eventsRes, settingsRes, requestsRes] = await Promise.all([
             fetchWithAuth(`${config.apiBaseUrl}/events`),
             fetchWithAuth(`${config.apiBaseUrl}/events/settings`).catch(() => null),
-            fetchWithAuth(`${config.apiBaseUrl}/events/my-requests`).catch(() => null)
+            fetchWithAuth(`${config.apiBaseUrl}/events/my-requests`).catch(() => null),
+            loadSystemGroups().catch(() => null)
         ]);
 
         if (eventsRes && eventsRes.ok) {
@@ -8721,6 +8972,9 @@ window.loadEventsData = async function() {
 
         window.renderMyDutyRequests();
         window.renderEvents();
+        if (typeof window.renderHomeDutiesCard === 'function') {
+            window.renderHomeDutiesCard();
+        }
     } catch (err) {
         console.warn('Failed to load events:', err);
     }
@@ -8776,6 +9030,138 @@ window.renderMyDutyRequests = function() {
             </div>
         </div>
     `;
+};
+
+window.renderHomeDutiesCard = function() {
+    const container = document.getElementById('user-duties-home-card');
+    if (!container) return;
+
+    if (!currentUser) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const currentUid = currentUser.uid || currentUser.id;
+    const userGroups = Array.isArray(currentUser.groups) ? currentUser.groups : [];
+    const isUserInGroup = (groupId) => userGroups.some(g => {
+        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+        const gname = typeof g === 'object' && g ? g.name : String(g);
+        return gid === groupId || gname === groupId;
+    });
+
+    // 1. Filter open duty requests for current user (ignore past events)
+    const requests = Array.isArray(myDutyRequests) ? myDutyRequests.filter(req => {
+        if (!req) return false;
+        if (req.eventDate && req.eventDate < todayStr) return false;
+        return true;
+    }) : [];
+
+    // 2. Find upcoming events where user has an assigned duty
+    const dutyEvents = [];
+    const seenEventIds = new Set();
+
+    (appEvents || []).forEach(ev => {
+        if (!ev || ev.status === 'cancelled') return;
+        if (isEventPast(ev, todayStr)) return;
+        if (!Array.isArray(ev.duties) || ev.duties.length === 0) return;
+
+        const hasDuty = ev.duties.some(d => {
+            if (!d) return false;
+            const isUserAssigned = (d.assignedUser === currentUid || d.assignedUser === currentUser.id) &&
+                (d.status === 'confirmed' || d.status === 'assigned');
+            if (isUserAssigned) return true;
+
+            if (d.status === 'assigned' && d.assignedGroup) {
+                return isUserInGroup(d.assignedGroup);
+            }
+            return false;
+        });
+
+        if (hasDuty && !seenEventIds.has(ev.id)) {
+            seenEventIds.add(ev.id);
+            dutyEvents.push(ev);
+        }
+    });
+
+    // Sort chronologically (date ascending, startTime ascending)
+    dutyEvents.sort((a, b) => {
+        const dComp = (a.date || '').localeCompare(b.date || '');
+        if (dComp !== 0) return dComp;
+        return (a.startTime || '').localeCompare(b.startTime || '');
+    });
+
+    // If neither requests nor duty events exist, keep home area hidden
+    if (requests.length === 0 && dutyEvents.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+
+    let html = '';
+
+    // A) Open Duty Requests Banner (if any)
+    if (requests.length > 0) {
+        html += `
+            <div class="events-requests-banner" style="margin-bottom: 20px;">
+                <div class="events-requests-banner-content">
+                    <div class="events-requests-banner-header">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="events-requests-bell">📬</span>
+                            <strong style="font-size:0.95rem; color:var(--text);">Offene Dienstanfragen an dich (${requests.length})</strong>
+                        </div>
+                        <span class="events-requests-badge">Rückmeldung erbeten</span>
+                    </div>
+                    <div class="events-requests-list">
+                        ${requests.map(req => {
+                            const timeStr = req.eventStartTime ? ` um ${escapeHtml(req.eventStartTime)} Uhr` : '';
+                            const sectionStr = req.section ? `Bereich: ${escapeHtml(req.section)} • ` : '';
+                            return `
+                                <div class="events-request-card" id="home-duty-request-${escapeHtml(req.id)}">
+                                    <div class="events-request-info" onclick="window.openEventDetailModal('${escapeHtml(req.eventId)}')" role="button" tabindex="0" style="cursor:pointer;" title="Termin-Details anzeigen">
+                                        <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || 'Event')}</div>
+                                        <div class="events-request-event-sub">
+                                            <span>${escapeHtml(formatEventDate(req.eventDate))}${timeStr}</span>
+                                        </div>
+                                        <div class="events-request-role">
+                                            🛠️ <strong>${escapeHtml(req.roleName)}</strong>
+                                            <span style="color:var(--text-secondary); font-size:0.8rem;">(${sectionStr}Angefragt von ${escapeHtml(req.requestedByName || 'Team')})</span>
+                                        </div>
+                                    </div>
+                                    <div class="events-request-actions">
+                                        <button type="button" class="btn btn-success btn-small" onclick="event.stopPropagation(); window.respondToDutyRequest('${escapeHtml(req.id)}', 'accept')">
+                                            ✅ Zusagen
+                                        </button>
+                                        <button type="button" class="btn btn-ghost btn-small text-danger" onclick="event.stopPropagation(); window.respondToDutyRequest('${escapeHtml(req.id)}', 'decline')">
+                                            ❌ Ablehnen
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // B) Deine Dienste - Freistehender Titel & Eventkarten 1:1 wie unter der Terminliste
+    if (dutyEvents.length > 0) {
+        html += `
+            <div class="home-duties-freestanding-wrap" style="margin-top: 16px;">
+                <h2 class="home-duties-freestanding-title">Deine Dienste</h2>
+                <div class="events-feed-list">
+                    ${dutyEvents.map(ev => renderEventCard(ev, 'home-duty-card-')).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
 };
 
 window.respondToDutyRequest = async function(dutyId, action) {
@@ -8876,7 +9262,7 @@ function getFilteredEvents() {
                 return false;
             }
 
-            const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+            const isRegistered = ev.myRegistration && (ev.myRegistration.status === 'registered' || ev.myRegistration.status === 'waitlist');
             const hasDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.assignedUser === currentUser?.id || d.requestedUser === currentUser?.id);
 
             // Events requiring registration MUST only appear under Termine if the user is registered or assigned a duty
@@ -8913,10 +9299,7 @@ function getFilteredEvents() {
 
         // Active pill filter
         if (eventsActiveFilter === 'mine') {
-            const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-            const hasDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.assignedUser === currentUser?.id || d.canEditNotes);
-            const isCreator = ev.createdBy === currentUser?.id;
-            if (!isRegistered && !hasDuty && !isCreator) return false;
+            if (!isMine) return false;
         } else if (eventsActiveFilter === 'registration') {
             if (!ev.requiresRegistration) return false;
         } else if (eventsActiveFilter === 'open_duties') {
@@ -8929,31 +9312,8 @@ function getFilteredEvents() {
 }
 
 window.renderEvents = function() {
-    const allBadge = document.getElementById('events-all-badge');
-    if (allBadge) {
-        allBadge.textContent = appEvents.length;
-        allBadge.style.display = appEvents.length > 0 ? 'inline-block' : 'none';
-    }
-
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-    // Pinned Highlights Section (Only visible under "Events" tab when pinned upcoming events exist)
-    const pinnedSection = document.getElementById('events-pinned-section');
-    const pinnedContainer = document.getElementById('events-pinned-container');
-    if (pinnedSection && pinnedContainer) {
-        if (currentEventsSubTab === 'events') {
-            const pinnedList = appEvents.filter(ev => ev.isPinned && !isEventPast(ev, todayStr));
-            if (pinnedList.length > 0) {
-                pinnedSection.style.display = 'flex';
-                pinnedContainer.innerHTML = pinnedList.map(ev => renderPinnedEventCard(ev)).join('');
-            } else {
-                pinnedSection.style.display = 'none';
-            }
-        } else {
-            pinnedSection.style.display = 'none';
-        }
-    }
 
     const container = document.getElementById('events-list-container');
     if (!container) return;
@@ -8971,7 +9331,6 @@ window.renderEvents = function() {
 
     let pastSectionHtml = '';
     if (isEventsTab && pastList.length > 0) {
-        // Sort past events: most recently expired first
         pastList.sort((a, b) => {
             const dComp = (b.endDate || b.date || '').localeCompare(a.endDate || a.date || '');
             if (dComp !== 0) return dComp;
@@ -9011,7 +9370,7 @@ window.renderEvents = function() {
                 <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${emptyTitle}</div>
                 <div style="font-size: 0.88rem; margin-bottom: 14px;">Versuche die Filter zurückzusetzen oder erstelle einen neuen Eintrag.</div>
                 <div>
-                    <button type="button" class="btn btn-primary btn-small" onclick="openCreateEventModal(false)">${createBtnText}</button>
+                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">${createBtnText}</button>
                 </div>
             </div>
             ${pastSectionHtml}
@@ -9019,19 +9378,14 @@ window.renderEvents = function() {
         return;
     }
 
-    // Sort chronologically (date ascending, startTime ascending)
+    // Sort upcoming events: Highlights / Pinned events first, then chronologically (date ascending, startTime ascending)
     upcomingList.sort((a, b) => {
+        const aPinned = Boolean(a.isPinned);
+        const bPinned = Boolean(b.isPinned);
+        if (aPinned !== bPinned) return bPinned ? 1 : -1;
         const dComp = (a.date || '').localeCompare(b.date || '');
         if (dComp !== 0) return dComp;
         return (a.startTime || '').localeCompare(b.startTime || '');
-    });
-
-    // Group events by Month and Year
-    const groups = new Map();
-    upcomingList.forEach(ev => {
-        const monthKey = ev.date ? ev.date.substring(0, 7) : 'Ohne Datum';
-        if (!groups.has(monthKey)) groups.set(monthKey, []);
-        groups.get(monthKey).push(ev);
     });
 
     const monthNames = [
@@ -9042,28 +9396,83 @@ window.renderEvents = function() {
     const listClass = isEventsTab ? 'events-cards-grid' : 'events-feed-list';
 
     let html = '';
-    groups.forEach((eventsInMonth, key) => {
-        let groupTitle = key;
-        if (key.includes('-')) {
-            const [y, m] = key.split('-').map(Number);
-            groupTitle = `${monthNames[m - 1]} ${y}`;
+
+    if (isEventsTab) {
+        const pinnedList = upcomingList.filter(ev => ev.isPinned);
+        const nonPinnedList = upcomingList.filter(ev => !ev.isPinned);
+
+        if (pinnedList.length > 0) {
+            html += `
+                <div class="events-month-group events-highlights-group">
+                    <div class="events-month-header">
+                        <span>Highlights</span>
+                        <span class="events-month-count">(${pinnedList.length})</span>
+                    </div>
+                    <div class="${listClass}">
+                        ${pinnedList.map(ev => renderChurchtoolsEventCard(ev, false)).join('')}
+                    </div>
+                </div>
+            `;
         }
 
-        html += `
-            <div class="events-month-group">
-                <div class="events-month-header">
-                    <span>${escapeHtml(groupTitle)}</span>
-                    <span class="events-month-count">(${eventsInMonth.length})</span>
+        // Group remaining non-pinned events by Month and Year
+        const groups = new Map();
+        nonPinnedList.forEach(ev => {
+            const monthKey = ev.date ? ev.date.substring(0, 7) : 'Ohne Datum';
+            if (!groups.has(monthKey)) groups.set(monthKey, []);
+            groups.get(monthKey).push(ev);
+        });
+
+        groups.forEach((eventsInMonth, key) => {
+            let groupTitle = key;
+            if (key.includes('-')) {
+                const [y, m] = key.split('-').map(Number);
+                groupTitle = `${monthNames[m - 1]} ${y}`;
+            }
+
+            html += `
+                <div class="events-month-group">
+                    <div class="events-month-header">
+                        <span>${escapeHtml(groupTitle)}</span>
+                        <span class="events-month-count">(${eventsInMonth.length})</span>
+                    </div>
+                    <div class="${listClass}">
+                        ${eventsInMonth.map(ev => renderChurchtoolsEventCard(ev, false)).join('')}
+                    </div>
                 </div>
-                <div class="${listClass}">
-                    ${eventsInMonth.map(ev => isEventsTab ? renderChurchtoolsEventCard(ev, false) : renderEventCard(ev)).join('')}
+            `;
+        });
+    } else {
+        // Group all events chronologically by Month and Year for Termine
+        const groups = new Map();
+        upcomingList.forEach(ev => {
+            const monthKey = ev.date ? ev.date.substring(0, 7) : 'Ohne Datum';
+            if (!groups.has(monthKey)) groups.set(monthKey, []);
+            groups.get(monthKey).push(ev);
+        });
+
+        groups.forEach((eventsInMonth, key) => {
+            let groupTitle = key;
+            if (key.includes('-')) {
+                const [y, m] = key.split('-').map(Number);
+                groupTitle = `${monthNames[m - 1]} ${y}`;
+            }
+
+            html += `
+                <div class="events-month-group">
+                    <div class="events-month-header">
+                        <span>${escapeHtml(groupTitle)}</span>
+                        <span class="events-month-count">(${eventsInMonth.length})</span>
+                    </div>
+                    <div class="${listClass}">
+                        ${eventsInMonth.map(ev => renderEventCard(ev)).join('')}
+                    </div>
                 </div>
-            </div>
-        `;
-    });
+            `;
+        });
+    }
 
     html += pastSectionHtml;
-
     container.innerHTML = html;
 };
 
@@ -9117,90 +9526,46 @@ function formatEventDateSpan(startDateStr, endDateStr) {
     }
 }
 
-function getEventCountdownString(dateStr) {
-    if (!dateStr) return '';
-    try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const target = new Date(y, m - 1, d);
-        const diffMs = target - today;
-        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-        if (diffDays < 0) return 'Vorbei';
-        if (diffDays === 0) return 'Heute';
-        if (diffDays === 1) return 'Morgen';
-        if (diffDays < 30) return `In ${diffDays} Tagen`;
-        const months = Math.floor(diffDays / 30.5);
-        if (months === 1) return 'In ca. 1 Monat';
-        if (months < 12) return `In ca. ${months} Monaten`;
-        const years = Math.round((months / 12) * 10) / 10;
-        return `In ca. ${years} Jahren`;
-    } catch {
-        return '';
-    }
-}
-
-function renderPinnedEventCard(ev) {
-    const countdown = getEventCountdownString(ev.date);
-    const dateSpan = formatEventDateSpan(ev.date, ev.endDate);
-    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-
-    let regBadge = '';
-    if (isRegistered) {
-        regBadge = `<span class="event-mini-pill pill-success"><span class="duty-status-dot"></span>Angemeldet</span>`;
-    } else if (ev.requiresRegistration) {
-        if (ev.isFull) {
-            regBadge = `<span class="event-mini-pill pill-danger">Ausgebucht</span>`;
-        } else {
-            regBadge = `<span class="event-mini-pill pill-brand">Anmeldung möglich</span>`;
+function formatEventDateSpanCompact(startDateStr, endDateStr) {
+    if (!startDateStr) return '--';
+    const shortDays = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
+    const shortMonths = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sept.', 'Okt.', 'Nov.', 'Dez.'];
+    if (!endDateStr || endDateStr === startDateStr) {
+        try {
+            const [y, m, d] = startDateStr.split('-').map(Number);
+            const dt = new Date(y, m - 1, d);
+            return `${shortDays[dt.getDay()]}, ${d}. ${shortMonths[m - 1]} ${y}`;
+        } catch {
+            return startDateStr;
         }
-    } else {
-        regBadge = `<span class="event-mini-pill pill-muted">Offen</span>`;
     }
-
-    return `
-        <div class="pinned-event-card" id="pinned-event-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
-            ${ev.imageUrl ? `
-                <div style="width:100%; height:110px; border-radius:8px; overflow:hidden; margin-bottom:6px;">
-                    <img src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" style="width:100%; height:100%; object-fit:cover; display:block;">
-                </div>
-            ` : ''}
-            <div class="pinned-card-top">
-                <div class="pinned-card-title">${escapeHtml(ev.title)}</div>
-                ${countdown ? `<span class="pinned-card-countdown">${escapeHtml(countdown)}</span>` : ''}
-            </div>
-            <div class="pinned-card-meta">
-                <span style="display:inline-flex; align-items:center; gap:4px;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    <span>${escapeHtml(dateSpan)}</span>
-                </span>
-                ${ev.location ? `
-                    <span style="display:inline-flex; align-items:center; gap:4px;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        <span>${escapeHtml(ev.location)}</span>
-                    </span>
-                ` : ''}
-            </div>
-            <div class="pinned-card-footer">
-                <div style="display:flex; align-items:center; gap:6px;">
-                    ${regBadge}
-                    ${Array.isArray(ev.targetGroups) && ev.targetGroups.length > 0 ? `<span class="event-mini-pill pill-muted">${escapeHtml(ev.targetGroups.join(', '))}</span>` : ''}
-                </div>
-                <span style="color:var(--primary); font-weight:600; font-size:0.75rem;">Details →</span>
-            </div>
-        </div>
-    `;
+    try {
+        const [y1, m1, d1] = startDateStr.split('-').map(Number);
+        const [y2, m2, d2] = endDateStr.split('-').map(Number);
+        if (y1 === y2 && m1 === m2) {
+            return `${d1}. – ${d2}. ${shortMonths[m1 - 1]} ${y1}`;
+        } else if (y1 === y2) {
+            return `${d1}. ${shortMonths[m1 - 1]} – ${d2}. ${shortMonths[m2 - 1]} ${y1}`;
+        } else {
+            return `${d1}.${m1}.${y1} – ${d2}.${m2}.${y2}`;
+        }
+    } catch {
+        return `${startDateStr} – ${endDateStr}`;
+    }
 }
 
-function renderChurchtoolsEventCard(ev, forcePast = false) {
+
+
+function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-card-') {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const isPast = forcePast || isEventPast(ev, todayStr);
+    const isPinned = Boolean(ev.isPinned);
 
-    const { monthStr, dayNum } = parseEventDateComponents(ev.date);
-    const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
+    const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
-    const dateSpan = formatEventDateSpan(ev.date, ev.endDate);
+    const timeDisplay = (!isMultiDay && ev.startTime) ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
+    const dateSpan = isMultiDay ? `Bis ${formatEventDate(ev.endDate)}` : '';
 
     const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
     const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
@@ -9209,48 +9574,65 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
     const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.requestedUser === currentUser?.id && d.status === 'requested') : null;
 
     let floatingBadges = '';
+    floatingBadges += `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`;
+
     if (isPast) {
-        floatingBadges += `<span class="event-mini-pill pill-muted" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">⌛ Vorbei</span>`;
-    }
-    if (ev.isPinned) {
-        floatingBadges += `<span class="event-mini-pill pill-brand" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">📌 Großevent</span>`;
-    }
-    if (myRequestedDuty) {
-        floatingBadges += `<span class="event-mini-pill pill-warning" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);"><span class="duty-status-dot"></span>Dienst angefragt</span>`;
+        floatingBadges += `<span class="event-card-status status-past">⌛ Vorbei</span>`;
     } else if (myDuty) {
-        floatingBadges += `<span class="event-mini-pill pill-brand" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);"><span class="duty-status-dot"></span>${escapeHtml(myDuty.roleName)}</span>`;
-    }
-    if (isRegistered) {
-        floatingBadges += `<span class="event-mini-pill pill-success" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);"><span class="duty-status-dot"></span>Angemeldet</span>`;
+        floatingBadges += `
+            <span class="event-card-status status-duty">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                <span>${escapeHtml(myDuty.roleName || 'Dienst')}</span>
+            </span>
+        `;
+    } else if (myRequestedDuty) {
+        floatingBadges += `
+            <span class="event-card-status status-requested">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                <span>Anfrage offen</span>
+            </span>
+        `;
     } else if (isWaitlist) {
-        floatingBadges += `<span class="event-mini-pill pill-warning" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">Warteliste</span>`;
-    } else if (ev.requiresRegistration && ev.isFull) {
-        floatingBadges += `<span class="event-mini-pill pill-danger" style="box-shadow:0 2px 8px rgba(0,0,0,0.25);">Voll</span>`;
+        floatingBadges += `
+            <span class="event-card-status status-waitlist">
+                <span>Warteliste</span>
+            </span>
+        `;
+    } else if (ev.requiresRegistration && ev.isFull && !isRegistered) {
+        floatingBadges += `
+            <span class="event-card-status status-full">
+                <span>Ausgebucht</span>
+            </span>
+        `;
     }
+
+    const dateBadgeClass = isPinned ? 'is-pinned-date' : 'is-event-date';
+    const dateBadgeHtml = `
+        <div class="ct-event-card-date-badge ${dateBadgeClass}">
+            <span class="ct-event-card-date-weekday">${escapeHtml(weekdayStr || '')}</span>
+            <span class="ct-event-card-date-day">${escapeHtml(dayNum || '')}</span>
+        </div>
+    `;
 
     let coverHtml = '';
     if (ev.imageUrl) {
         coverHtml = `
             <div class="ct-event-card-cover-wrap">
                 <img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">
-                <div class="ct-event-card-date-badge">
-                    <span class="ct-event-card-date-day">${dayNum}</span>
-                    <span class="ct-event-card-date-month">${monthStr}</span>
-                </div>
-                ${floatingBadges ? `<div class="ct-event-card-badges-floating">${floatingBadges}</div>` : ''}
+                ${dateBadgeHtml}
+                <div class="ct-event-card-badges-floating">${floatingBadges}</div>
             </div>
         `;
     } else {
         coverHtml = `
             <div class="ct-event-card-cover-wrap">
                 <div class="ct-event-card-fallback-cover">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                    <div class="ct-fallback-icon-wrap">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    </div>
                 </div>
-                <div class="ct-event-card-date-badge">
-                    <span class="ct-event-card-date-day">${dayNum}</span>
-                    <span class="ct-event-card-date-month">${monthStr}</span>
-                </div>
-                ${floatingBadges ? `<div class="ct-event-card-badges-floating">${floatingBadges}</div>` : ''}
+                ${dateBadgeHtml}
+                <div class="ct-event-card-badges-floating">${floatingBadges}</div>
             </div>
         `;
     }
@@ -9260,22 +9642,30 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
         const regCount = ev.registeredCount || 0;
         const max = ev.maxParticipants || 0;
         if (max > 0) {
-            footerBadges += `<span style="font-size:0.75rem; color:var(--text-secondary);">${regCount}/${max} Plätze</span>`;
+            const pct = Math.min(100, Math.round((regCount / max) * 100));
+            footerBadges = `
+                <div class="ct-capacity-wrap" title="${regCount} von ${max} Plätzen belegt">
+                    <span class="ct-capacity-text">${regCount}/${max} Plätze</span>
+                    <div class="ct-capacity-track"><div class="ct-capacity-bar" style="width:${pct}%;"></div></div>
+                </div>
+            `;
         } else {
-            footerBadges += `<span style="font-size:0.75rem; color:var(--text-secondary);">${regCount} angemeldet</span>`;
+            footerBadges = `<span class="ct-footer-pill">${regCount} angemeldet</span>`;
         }
     } else {
-        footerBadges += `<span style="font-size:0.75rem; color:var(--text-secondary);">Ohne Anmeldung</span>`;
+        footerBadges = `<span class="ct-footer-pill-muted">Ohne Anmeldung</span>`;
     }
 
+    const cardClass = `churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}`;
+
     return `
-        <div class="churchtools-event-card ${isPast ? 'is-past' : ''}" id="event-card-${ev.id}" onclick="window.openEventDetailModal('${ev.id}')">
+        <div class="${cardClass}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
             ${coverHtml}
             <div class="ct-event-card-body">
                 <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="ct-event-card-meta">
                     ${isMultiDay ? `
-                        <div class="ct-event-card-meta-row" style="color:var(--primary); font-weight:600;">
+                        <div class="ct-event-card-meta-row multiday-row">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                             <span>${escapeHtml(dateSpan)}</span>
                         </div>
@@ -9283,7 +9673,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                     ${timeDisplay ? `
                         <div class="ct-event-card-meta-row">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                            <span>${timeDisplay}</span>
+                            <span>${escapeHtml(timeDisplay)}</span>
                         </div>
                     ` : ''}
                     ${ev.location ? `
@@ -9295,15 +9685,18 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                 </div>
                 <div class="ct-event-card-footer">
                     <div>${footerBadges}</div>
-                    <span style="color:var(--primary); font-weight:600;">Details →</span>
+                    <div class="ct-details-btn">
+                        <span>Details</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </div>
                 </div>
             </div>
         </div>
     `;
 }
 
-function renderEventCard(ev) {
-    const { monthStr, dayNum } = parseEventDateComponents(ev.date);
+function renderEventCard(ev, idPrefix = 'event-card-') {
+    const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
     const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}` : ev.startTime) : '';
 
     const today = new Date();
@@ -9312,76 +9705,124 @@ function renderEventCard(ev) {
     const isPast = ev.date && ev.date < todayStr;
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
 
+    const isEvent = ev.eventType ? (ev.eventType === 'event') : !ev.isOfficialTermin;
+    const isPinned = isEvent && Boolean(ev.isPinned);
+
     const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
     const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
 
-    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.assignedUser === currentUser?.id) : null;
-    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.requestedUser === currentUser?.id && d.status === 'requested') : null;
+    const currentUid = currentUser?.uid || currentUser?.id;
+    const userGroups = Array.isArray(currentUser?.groups) ? currentUser.groups : [];
+    const isUserInGroup = (groupId) => userGroups.some(g => {
+        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+        const gname = typeof g === 'object' && g ? g.name : String(g);
+        return gid === groupId || gname === groupId;
+    });
+
+    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
+        ((d.assignedUser === currentUid || d.assignedUser === currentUser?.id) && (d.status === 'confirmed' || d.status === 'assigned')) ||
+        (d.status === 'assigned' && d.assignedGroup && isUserInGroup(d.assignedGroup))
+    ) : null;
+    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
+        (d.requestedUser === currentUid || d.requestedUser === currentUser?.id) && d.status === 'requested'
+    ) : null;
     const openDutiesCount = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.filter(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup && !d.requestedUser)).length : 0;
 
     let cardClass = 'event-card';
+    if (isEvent) {
+        cardClass += isPinned ? ' is-event is-pinned' : ' is-event';
+    } else {
+        cardClass += ' is-termin';
+    }
     if (isPast) cardClass += ' is-past';
     if (isToday) cardClass += ' is-today';
-    if (isRegistered) cardClass += ' card-highlight-mine';
-    else if (myDuty || myRequestedDuty) cardClass += ' card-highlight-duty';
 
-    let badgesHtml = '';
-    if (ev.isPinned) {
-        badgesHtml += `<span class="event-mini-pill pill-brand">📌 Großevent</span>`;
-    }
-    if (myRequestedDuty) {
-        badgesHtml += `<span class="event-mini-pill pill-warning"><span class="duty-status-dot"></span>Dienst angefragt</span>`;
-    } else if (myDuty) {
-        badgesHtml += `<span class="event-mini-pill pill-brand"><span class="duty-status-dot"></span>${escapeHtml(myDuty.roleName)}</span>`;
-    }
-    if (isRegistered) {
-        badgesHtml += `<span class="event-mini-pill pill-success"><span class="duty-status-dot"></span>Angemeldet</span>`;
+    const dateBoxClass = isEvent ? 'is-event-date' : 'is-termin-date';
+
+    // Single prioritized status indicator on the right side
+    let statusHtml = '';
+    if (myDuty) {
+        const dutyLabel = myDuty.assignedGroup && isUserInGroup(myDuty.assignedGroup) && myDuty.assignedUser !== currentUid && myDuty.assignedUser !== currentUser?.id
+            ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || 'Dienst')
+            : (myDuty.roleName || 'Dienst');
+        statusHtml = `
+            <span class="event-card-status status-duty" title="Eingeteilter Dienst">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                <span>${escapeHtml(dutyLabel)}</span>
+            </span>
+        `;
+    } else if (myRequestedDuty) {
+        statusHtml = `
+            <span class="event-card-status status-requested" title="Dienstanfrage offen">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                <span>Anfrage offen</span>
+            </span>
+        `;
     } else if (isWaitlist) {
-        badgesHtml += `<span class="event-mini-pill pill-warning">Warteliste</span>`;
-    } else if (ev.requiresRegistration && ev.isFull) {
-        badgesHtml += `<span class="event-mini-pill pill-danger">Voll</span>`;
+        statusHtml = `
+            <span class="event-card-status status-waitlist" title="Auf der Warteliste">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span>Warteliste</span>
+            </span>
+        `;
+    } else if (!isRegistered && openDutiesCount > 0 && ev.canAccessDutyPlan) {
+        statusHtml = `
+            <span class="event-card-status status-open-duties" title="${openDutiesCount} offene Dienste">
+                <span>${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst frei' : 'Dienste frei'}</span>
+            </span>
+        `;
+    } else if (!isRegistered && ev.requiresRegistration && ev.isFull) {
+        statusHtml = `
+            <span class="event-card-status status-full">
+                <span>Ausgebucht</span>
+            </span>
+        `;
     }
-    if (openDutiesCount > 0 && ev.canAccessDutyPlan && !myDuty && !myRequestedDuty) {
-        badgesHtml += `<span class="event-mini-pill pill-muted">${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst offen' : 'Dienste offen'}</span>`;
-    }
-    if (ev.isRecurring) {
-        badgesHtml += `<span class="event-mini-pill pill-muted">Serie</span>`;
-    }
+
+    // Top-right rounded label for Events
+    const eventTopLabelHtml = isEvent
+        ? `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`
+        : '';
 
     return `
-        <div class="${cardClass}" id="event-card-${ev.id}" onclick="window.openEventDetailModal('${ev.id}')">
+        <div class="${cardClass}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
             <div class="event-card-left">
-                <div class="event-compact-date ${isToday ? 'is-today' : ''}">
-                    <span class="event-compact-day">${dayNum}</span>
-                    <span class="event-compact-month">${monthStr}</span>
+                <div class="event-date-box ${dateBoxClass} ${isToday ? 'is-today' : ''}">
+                    <span class="event-date-weekday">${escapeHtml(weekdayStr || '')}</span>
+                    <span class="event-date-day">${escapeHtml(dayNum || '')}</span>
                 </div>
                 <div class="event-card-body">
                     <div class="event-card-title">${escapeHtml(ev.title)}</div>
                     <div class="event-card-subline">
+                        ${isToday ? `<span class="event-type-pill pill-today">Heute</span>` : ''}
                         ${isMultiDay ? `
-                            <span class="event-card-subline-item" style="font-weight:600; color:var(--primary);">
+                            <span class="event-card-subline-item multiday-item">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                                 <span>Bis ${escapeHtml(formatEventDate(ev.endDate))}</span>
                             </span>
-                        ` : ''}
-                        ${timeDisplay ? `
+                        ` : (timeDisplay ? `
                             <span class="event-card-subline-item">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                                <span>${timeDisplay} Uhr</span>
+                                <span>${escapeHtml(timeDisplay)} Uhr</span>
                             </span>
-                        ` : ''}
+                        ` : '')}
                         ${ev.location ? `
                             <span class="event-card-subline-item">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                                 <span>${escapeHtml(ev.location)}</span>
                             </span>
                         ` : ''}
-                        ${badgesHtml ? `<div class="event-card-badges">${badgesHtml}</div>` : ''}
                     </div>
                 </div>
             </div>
-            <div class="event-card-arrow">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <div class="event-card-right">
+                ${eventTopLabelHtml}
+                <div class="event-card-right-actions">
+                    ${statusHtml}
+                    <div class="event-card-arrow">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -9391,35 +9832,142 @@ function renderEventCard(ev) {
 // Event Detail Modal & Actions
 // ==========================================================
 window.openEventDetailModal = async function(eventId) {
-    const ev = appEvents.find(e => e.id === eventId);
+    let ev = appEvents.find(e => e.id === eventId);
+    if (!ev && typeof window.loadEventsData === 'function') {
+        await window.loadEventsData();
+        ev = appEvents.find(e => e.id === eventId);
+    }
     if (!ev) return;
     currentDetailEvent = ev;
 
-    // Cover Image Banner
+    // Cover Image Banner (Displayed only when an image is uploaded)
     const coverWrap = document.getElementById('detail-modal-cover-wrap');
     const coverImg = document.getElementById('detail-modal-cover-img');
+    const modalCard = document.querySelector('.event-detail-modal-card');
+    const modalBody = document.querySelector('.event-detail-body');
+    if (modalBody) modalBody.scrollTop = 0;
+
+    // Reset edit mode state
+    if (modalCard) {
+        modalCard.classList.remove('detail-is-editing', 'detail-is-new');
+    }
+    const editPlaceholder = document.getElementById('detail-edit-cover-placeholder');
+    if (editPlaceholder) editPlaceholder.style.display = 'none';
+    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
+    if (typeWrap) {
+        typeWrap.style.removeProperty('display');
+        typeWrap.style.display = 'none';
+        typeWrap.classList.add('is-hidden');
+    }
+
+    const rawImg = (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '');
+    const imgSrc = typeof rawImg === 'string' ? rawImg.trim() : '';
     if (coverWrap && coverImg) {
-        if (ev.imageUrl) {
-            coverImg.src = ev.imageUrl;
+        if (imgSrc) {
+            coverImg.src = imgSrc;
             coverWrap.style.display = 'block';
+            if (modalCard) modalCard.classList.add('has-hero-image');
+            coverImg.onload = function() {
+                if (coverWrap) coverWrap.style.display = 'block';
+                if (modalCard) modalCard.classList.add('has-hero-image');
+            };
+            coverImg.onerror = function() {
+                if (coverWrap) coverWrap.style.display = 'none';
+                if (modalCard) modalCard.classList.remove('has-hero-image');
+            };
         } else {
             coverImg.src = '';
             coverWrap.style.display = 'none';
+            if (modalCard) modalCard.classList.remove('has-hero-image');
+        }
+    }
+
+    // Dynamic Type Indicator Badge (User requested: remove "Termin" label completely)
+    const typeInd = document.getElementById('detail-modal-type-indicator');
+    if (typeInd) {
+        if (ev.isPinned) {
+            typeInd.innerHTML = `
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                <span>Großevent & Highlight</span>
+            `;
+            typeInd.className = 'event-detail-type-badge type-pinned';
+            typeInd.style.display = 'inline-flex';
+        } else {
+            typeInd.innerHTML = '';
+            typeInd.className = 'event-detail-type-badge';
+            typeInd.style.display = 'none';
         }
     }
 
     document.getElementById('detail-modal-title').textContent = ev.title;
-    const formattedDate = formatEventDateSpan(ev.date, ev.endDate);
-    const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
-    const metaParts = [formattedDate, timeDisplay, ev.location].filter(Boolean);
-    const metaEl = document.getElementById('detail-modal-meta');
-    if (metaEl) metaEl.textContent = metaParts.join(' • ') || 'Termin';
+
+    // Compact Info Cards: Wann (Datum & ggf. Uhrzeit)
+    const isMultiDay = Boolean(ev.endDate && ev.endDate !== ev.date);
+    const dateDisplay = formatEventDateSpanCompact(ev.date, ev.endDate);
+    const infoDate = document.getElementById('detail-modal-info-date');
+    if (infoDate) {
+        infoDate.textContent = dateDisplay;
+        infoDate.title = dateDisplay;
+    }
+
+    const infoTime = document.getElementById('detail-modal-info-time');
+    const whenSep = document.getElementById('detail-modal-when-sep');
+
+    // Bei mehrtägigen Events soll die Uhrzeit wegfallen
+    if (isMultiDay) {
+        if (infoTime) {
+            infoTime.textContent = '';
+            infoTime.style.display = 'none';
+        }
+        if (whenSep) {
+            whenSep.style.display = 'none';
+        }
+    } else {
+        const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : 'Ganztägig';
+        if (infoTime) {
+            infoTime.textContent = timeDisplay;
+            infoTime.title = timeDisplay;
+            infoTime.style.display = 'inline';
+        }
+        if (whenSep) {
+            whenSep.style.display = 'inline';
+        }
+    }
+
+    const rawLoc = (ev.location && typeof ev.location === 'string') ? ev.location.trim() : '';
+    const locDisplay = rawLoc || 'Keine Angabe';
+    const infoWhere = document.getElementById('detail-modal-info-where');
+    if (infoWhere) {
+        infoWhere.textContent = locDisplay;
+        infoWhere.title = locDisplay;
+    }
+
+    const mapLink = document.getElementById('detail-modal-map-link');
+    if (mapLink) {
+        const isOnlineOrEmpty = !rawLoc || /^(online|zoom|teams|skype|meet|keine angabe)$/i.test(rawLoc);
+        if (!isOnlineOrEmpty) {
+            mapLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rawLoc)}`;
+            mapLink.style.display = 'inline-flex';
+        } else {
+            mapLink.href = '#';
+            mapLink.style.display = 'none';
+        }
+    }
+
+    const creatorDisplay = (ev.createdByName && ev.createdByName.trim()) ? ev.createdByName.trim() : '';
+    const creatorEl = document.getElementById('detail-creator-name');
+    const organizerPill = document.getElementById('detail-modal-organizer-pill');
+    if (creatorEl) {
+        creatorEl.textContent = creatorDisplay || 'Mitglied';
+        creatorEl.title = creatorDisplay || 'Mitglied';
+    }
+    if (organizerPill) {
+        organizerPill.style.display = creatorDisplay ? 'inline-flex' : 'none';
+    }
 
     // Tags
     const tagsContainer = document.getElementById('detail-modal-tags');
     let tagsHtml = '';
-    if (ev.isPinned) tagsHtml += `<span class="event-tag event-tag-pinned" style="background:rgba(34,211,238,0.15); color:var(--primary); font-weight:700;">📌 Großevent / Highlight</span>`;
-    if (ev.isRecurring) tagsHtml += `<span class="event-tag event-tag-recurring">Serientermin (${escapeHtml(ev.recurringRule || 'wöchentlich')})</span>`;
     if (Array.isArray(ev.targetGroups) && ev.targetGroups.length > 0) {
         tagsHtml += ev.targetGroups.map(g => `<span class="event-tag event-tag-group">${escapeHtml(g)}</span>`).join(' ');
     }
@@ -9428,81 +9976,76 @@ window.openEventDetailModal = async function(eventId) {
         tagsContainer.style.display = tagsHtml ? 'flex' : 'none';
     }
 
-    // Description
+    // Description (Markdown support)
     const descCard = document.getElementById('detail-modal-desc-card');
+    const descWrap = document.getElementById('detail-modal-desc-wrap');
     const descText = document.getElementById('detail-modal-description');
+    const descToggleBtn = document.getElementById('detail-desc-toggle-btn');
+    const descToggleText = document.getElementById('detail-desc-toggle-text');
+    const descToggleIcon = document.getElementById('detail-desc-toggle-icon');
+
     if (ev.description && ev.description.trim()) {
-        descText.textContent = ev.description;
+        if (descText) {
+            descText.innerHTML = '';
+            descText.appendChild(renderMarkdown(ev.description.trim()));
+        }
+        if (descWrap) {
+            descWrap.classList.remove('is-clamped', 'is-expanded');
+        }
+        if (descToggleBtn) {
+            descToggleBtn.style.display = 'none';
+        }
+        if (descToggleText) descToggleText.textContent = 'Mehr anzeigen';
+        if (descToggleIcon) descToggleIcon.style.transform = 'rotate(0deg)';
         descCard.style.display = 'block';
     } else {
         descCard.style.display = 'none';
     }
 
-    // Registration Box
+    // Registration Section (Uncontained & Compact)
     const regBox = document.getElementById('detail-modal-reg-box');
     if (ev.requiresRegistration) {
         regBox.style.display = 'block';
         const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
         const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
 
-        const statusBadge = document.getElementById('detail-modal-reg-status-badge');
-        if (isRegistered) {
-            statusBadge.className = 'event-tag event-tag-registered';
-            statusBadge.textContent = 'Angemeldet';
-        } else if (isWaitlist) {
-            statusBadge.className = 'event-tag event-tag-waitlist';
-            statusBadge.textContent = 'Warteliste';
-        } else if (ev.isFull) {
-            statusBadge.className = 'event-tag event-tag-full';
-            statusBadge.textContent = 'Ausgebucht';
-        } else {
-            statusBadge.className = 'event-tag';
-            statusBadge.textContent = 'Anmeldung möglich';
-        }
-
         const max = ev.maxParticipants || 0;
         const regCount = ev.registeredCount || 0;
-        const fillEl = document.getElementById('detail-modal-capacity-fill');
-        const capText = document.getElementById('detail-modal-capacity-text');
-
-        if (max > 0) {
-            const pct = Math.min(100, Math.round((regCount / max) * 100));
-            fillEl.style.width = `${pct}%`;
-            fillEl.className = 'event-capacity-bar-fill' + (pct >= 100 ? ' fill-full' : (pct >= 80 ? ' fill-warning' : ''));
-            capText.innerHTML = `<span><strong>${regCount}</strong> von <strong>${max}</strong> Plätzen belegt</span><span>${pct}%</span>`;
-        } else {
-            fillEl.style.width = '100%';
-            fillEl.className = 'event-capacity-bar-fill';
-            capText.innerHTML = `<span><strong>${regCount}</strong> Teilnehmer angemeldet (unbegrenzt)</span>`;
+        const capInfo = document.getElementById('detail-modal-capacity-info');
+        if (capInfo) {
+            if (max > 0) {
+                const isFull = regCount >= max;
+                capInfo.innerHTML = `<span class="event-reg-cap-pill ${isFull ? 'is-full' : ''}"><strong>${regCount}</strong> / ${max} Plätze</span>`;
+                capInfo.style.display = 'flex';
+            } else {
+                capInfo.innerHTML = '';
+                capInfo.style.display = 'none';
+            }
         }
 
         // Action Button
         const actionWrap = document.getElementById('detail-modal-reg-action-wrap');
         const isPast = isEventPast(ev);
         if (isPast) {
-            if (isRegistered) {
-                actionWrap.innerHTML = `
-                    <div style="text-align:center; padding:10px 14px; background:var(--surface-alt); border:1px solid var(--border-light); border-radius:10px; color:var(--text-secondary); font-size:0.86rem; font-weight:600;">
-                        ✓ Du warst für dieses Event angemeldet (Event ist vorüber)
-                    </div>
-                `;
-            } else {
-                actionWrap.innerHTML = `
-                    <div style="text-align:center; padding:10px 14px; background:var(--surface-alt); border:1px solid var(--border-light); border-radius:10px; color:var(--text-secondary); font-size:0.86rem; font-weight:600;">
-                        ⌛ Dieses Event ist bereits vorüber (Anmeldung beendet)
-                    </div>
-                `;
-            }
+            actionWrap.innerHTML = `
+                <div class="event-reg-past-notice">
+                    ${isRegistered ? '✓ Du warst angemeldet (Event ist vorüber)' : '⌛ Event ist bereits vorüber'}
+                </div>
+            `;
         } else if (isRegistered) {
             actionWrap.innerHTML = `
-                <button type="button" class="btn btn-secondary btn-block text-danger" onclick="window.toggleEventRegistration('${ev.id}', 'registered')">
-                    Von diesem Event abmelden
+                <button type="button" class="btn btn-secondary btn-block event-btn-registered" onclick="window.toggleEventRegistration('${ev.id}', 'registered')" title="Klicken zum Abmelden">
+                    <svg class="event-reg-check-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <svg class="event-reg-unreg-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px; display: none;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <span class="event-reg-btn-text-reg">Angemeldet</span>
+                    <span class="event-reg-btn-text-unreg">Abmelden</span>
                 </button>
             `;
         } else if (isWaitlist) {
             actionWrap.innerHTML = `
-                <button type="button" class="btn btn-secondary btn-block" onclick="window.toggleEventRegistration('${ev.id}', 'waitlist')">
-                    Warteliste verlassen
+                <button type="button" class="btn btn-secondary btn-block event-btn-waitlist" onclick="window.toggleEventRegistration('${ev.id}', 'waitlist')" title="Klicken zum Verlassen der Warteliste">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span>Auf der Warteliste (Verlassen)</span>
                 </button>
             `;
         } else if (ev.isFull) {
@@ -9519,13 +10062,11 @@ window.openEventDetailModal = async function(eventId) {
             `;
         }
 
-        // Reset attendees list body
-        const attListBody = document.getElementById('detail-attendees-list-body');
-        if (attListBody) attListBody.style.display = 'none';
-        const chevron = document.getElementById('detail-attendees-chevron');
-        if (chevron) chevron.textContent = '▼';
+        // Reset attendees details open state to closed
+        const attDetails = document.getElementById('detail-modal-attendees-details');
+        if (attDetails) attDetails.open = false;
 
-        // Load attendees count
+        // Load attendees
         loadEventAttendees(ev.id);
     } else {
         regBox.style.display = 'none';
@@ -9541,30 +10082,23 @@ window.openEventDetailModal = async function(eventId) {
     } else {
         if (dutiesBox) {
             dutiesBox.style.display = 'block';
+            const dutiesDetails = document.getElementById('detail-modal-duties-details');
+            if (dutiesDetails) {
+                dutiesDetails.open = false; // Standardmäßig eingeklappt!
+            }
+            const addDutyWrap = document.getElementById('detail-modal-add-duty-wrap');
+            if (addDutyWrap) {
+                addDutyWrap.style.display = ev.canEdit ? 'block' : 'none';
+            }
+            if (typeof window.hideAddNewTaskForm === 'function') {
+                window.hideAddNewTaskForm();
+            }
             const duties = Array.isArray(ev.duties) ? ev.duties : [];
+            const totalAssigned = duties.filter(d => Boolean(d.assignedUser || d.requestedUser || d.assignedGroup || d.assignedGroupName)).length;
             if (dutiesCount) {
-                dutiesCount.textContent = `${duties.length} ${duties.length === 1 ? 'Dienst' : 'Dienste'}`;
+                dutiesCount.textContent = totalAssigned;
             }
-
-            if (duties.length === 0) {
-                dutiesSections.innerHTML = `
-                    <div class="event-duties-empty-state">
-                        <div style="font-size:0.86rem; font-weight:600; color:var(--text); margin-bottom:4px;">Noch keine Dienste angelegt</div>
-                        <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:12px;">
-                            Erstelle Aufgaben für dieses Event und weise Gruppen oder Personen zu.
-                        </div>
-                        <button type="button" class="btn btn-secondary btn-small" onclick="window.openAddDutySlotModal()">
-                            + Dienst anlegen
-                        </button>
-                    </div>
-                `;
-            } else {
-                dutiesSections.innerHTML = `
-                    <div class="church-duties-container">
-                        ${duties.map((d, index) => window.renderChurchDutyCard(d, ev, index + 1)).join('')}
-                    </div>
-                `;
-            }
+            window.renderGroupedDuties(duties, ev);
         }
     }
 
@@ -9572,11 +10106,53 @@ window.openEventDetailModal = async function(eventId) {
     document.getElementById('detail-creator-name').textContent = ev.createdByName || 'Mitglied';
     const editBtn = document.getElementById('detail-btn-edit');
     const deleteBtn = document.getElementById('detail-btn-delete');
+    const actionBar = document.getElementById('detail-modal-action-bar');
     if (editBtn) editBtn.style.display = ev.canEdit ? 'inline-flex' : 'none';
     if (deleteBtn) deleteBtn.style.display = ev.canEdit ? 'inline-flex' : 'none';
+    if (actionBar) actionBar.style.display = ev.canEdit ? 'flex' : 'none';
 
     openModal('event-detail-modal');
+
+    // Dynamic clamp for long event descriptions (fades out with "Mehr anzeigen")
+    requestAnimationFrame(() => {
+        if (descWrap && descCard && descCard.style.display !== 'none') {
+            const clampThreshold = 105;
+            if (descWrap.scrollHeight > clampThreshold + 15) {
+                descWrap.classList.add('is-clamped');
+                if (descToggleBtn) descToggleBtn.style.display = 'inline-flex';
+            }
+        }
+    });
 };
+
+window.toggleDetailDescription = function() {
+    const descWrap = document.getElementById('detail-modal-desc-wrap');
+    const descToggleText = document.getElementById('detail-desc-toggle-text');
+    const descToggleIcon = document.getElementById('detail-desc-toggle-icon');
+    if (!descWrap) return;
+
+    const isClamped = descWrap.classList.contains('is-clamped');
+    if (isClamped) {
+        descWrap.classList.remove('is-clamped');
+        descWrap.classList.add('is-expanded');
+        if (descToggleText) descToggleText.textContent = 'Weniger anzeigen';
+        if (descToggleIcon) descToggleIcon.style.transform = 'rotate(180deg)';
+    } else {
+        descWrap.classList.add('is-clamped');
+        descWrap.classList.remove('is-expanded');
+        if (descToggleText) descToggleText.textContent = 'Mehr anzeigen';
+        if (descToggleIcon) descToggleIcon.style.transform = 'rotate(0deg)';
+    }
+};
+
+function getAttendeeInitials(name) {
+    if (!name || typeof name !== 'string') return '?';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+        return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || '?';
+    }
+    return (parts[0] || '?').slice(0, 2).toUpperCase();
+}
 
 async function loadEventAttendees(eventId) {
     try {
@@ -9589,31 +10165,59 @@ async function loadEventAttendees(eventId) {
             const itemsEl = document.getElementById('detail-attendees-items');
             if (itemsEl) {
                 const canManage = currentDetailEvent && currentDetailEvent.canEdit;
-                const regChips = (currentDetailAttendees.registered || []).map(att => {
+                const regList = currentDetailAttendees.registered || [];
+                const waitList = currentDetailAttendees.waitlist || [];
+
+                const regRows = regList.map(att => {
+                    const initials = getAttendeeInitials(att.name);
+                    const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(att.userId)}`;
                     const removeBtn = canManage ? `
-                        <button type="button" class="attendee-chip-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Teilnehmer entfernen">✕</button>
+                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Teilnehmer entfernen">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
                     ` : '';
                     return `
-                        <div class="attendee-chip">
-                            <span>${escapeHtml(att.name)}</span>
+                        <div class="event-attendee-row">
+                            <div class="event-attendee-left">
+                                <div class="event-attendee-avatar-wrap">
+                                    <span class="event-attendee-initials">${escapeHtml(initials)}</span>
+                                    <img src="${picUrl}" alt="${escapeHtml(att.name)}" class="event-attendee-avatar-img" onerror="this.style.display='none'">
+                                </div>
+                                <div class="event-attendee-name-wrap">
+                                    <span class="event-attendee-name">${escapeHtml(att.name)}</span>
+                                </div>
+                            </div>
                             ${removeBtn}
                         </div>
                     `;
                 }).join('');
 
-                const waitChips = (currentDetailAttendees.waitlist || []).map(att => {
+                const waitRows = waitList.map(att => {
+                    const initials = getAttendeeInitials(att.name);
+                    const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(att.userId)}`;
                     const removeBtn = canManage ? `
-                        <button type="button" class="attendee-chip-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Von Warteliste entfernen">✕</button>
+                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Von Warteliste entfernen">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
                     ` : '';
                     return `
-                        <div class="attendee-chip" style="opacity:0.75; border-style:dashed;">
-                            <span>${escapeHtml(att.name)} (Warteliste)</span>
+                        <div class="event-attendee-row is-waitlist">
+                            <div class="event-attendee-left">
+                                <div class="event-attendee-avatar-wrap">
+                                    <span class="event-attendee-initials">${escapeHtml(initials)}</span>
+                                    <img src="${picUrl}" alt="${escapeHtml(att.name)}" class="event-attendee-avatar-img" onerror="this.style.display='none'">
+                                </div>
+                                <div class="event-attendee-name-wrap">
+                                    <span class="event-attendee-name">${escapeHtml(att.name)}</span>
+                                    <span class="event-attendee-waitlist-badge">Warteliste</span>
+                                </div>
+                            </div>
                             ${removeBtn}
                         </div>
                     `;
                 }).join('');
 
-                itemsEl.innerHTML = (regChips + waitChips) || '<span style="font-size:0.8rem; color:var(--text-secondary);">Noch keine Teilnehmer angemeldet.</span>';
+                itemsEl.innerHTML = (regRows + waitRows) || '<div class="event-attendees-empty">Noch keine Teilnehmer angemeldet</div>';
             }
         }
     } catch (err) {
@@ -9622,12 +10226,9 @@ async function loadEventAttendees(eventId) {
 }
 
 window.toggleDetailAttendeesList = function() {
-    const listBody = document.getElementById('detail-attendees-list-body');
-    const chevron = document.getElementById('detail-attendees-chevron');
-    if (listBody) {
-        const isHidden = listBody.style.display === 'none';
-        listBody.style.display = isHidden ? 'block' : 'none';
-        if (chevron) chevron.textContent = isHidden ? '▲' : '▼';
+    const details = document.getElementById('detail-modal-attendees-details');
+    if (details) {
+        details.open = !details.open;
     }
 };
 
@@ -9649,185 +10250,212 @@ window.removeEventAttendee = async function(eventId, userId) {
     }
 };
 
-window.renderChurchDutyCard = function(d, ev, orderNum) {
-    const isMe = d.assignedUser === currentUser?.id;
-    const isMeRequested = d.requestedUser === currentUser?.id;
-    const canManage = ev.canEdit || d.canManageDuty;
+// ==========================================================
+// Modern Grouped Duty Planner Implementation
+// ==========================================================
 
-    let statusPill = '';
-    let assignInfo = '';
-    let actionButtons = '';
+window.renderGroupedDuties = function(duties, ev) {
+    const container = document.getElementById('detail-modal-duties-sections');
+    if (!container) return;
 
-    if (d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup)) {
-        statusPill = `
-            <span class="duty-badge duty-badge-group">
-                <span class="duty-status-dot"></span>
-                <span>Gruppe: <strong>${escapeHtml(d.assignedGroupName || d.assignedGroup)}</strong></span>
-            </span>
+    if (!duties || duties.length === 0) {
+        container.innerHTML = `
+            <div class="duty-empty-simple">
+                <span>${ev.canEdit ? 'Noch keine Aufgaben angelegt.' : 'Keine Dienste eingetragen.'}</span>
+            </div>
         `;
-        assignInfo = `<span style="font-size:0.75rem; color:var(--text-secondary);">Team eingeteilt</span>`;
-        if (canManage) {
-            actionButtons += `<button type="button" class="btn btn-secondary btn-tiny" onclick="window.openAssignDutyModal('${escapeHtml(d.id)}', '${escapeHtml(d.roleName)}')" title="Gruppe oder Person ändern">Ändern</button>`;
-            actionButtons += `<button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.unclaimEventDuty('${escapeHtml(d.id)}')" title="Gruppe austragen / Dienst freigeben">Freigeben</button>`;
-        }
-    } else if (d.status === 'requested') {
-        const reqName = isMeRequested ? 'Du' : (d.requestedUserName || 'Person');
-        statusPill = `
-            <span class="duty-badge duty-badge-requested">
-                <span class="duty-status-dot"></span>
-                <span>Angefragt: <strong>${escapeHtml(reqName)}</strong></span>
-            </span>
-        `;
-        assignInfo = `<span style="font-size:0.75rem; color:var(--text-secondary);">${d.requestedByName ? `von ${escapeHtml(d.requestedByName)}` : 'Wartet auf Bestätigung'}</span>`;
-        if (isMeRequested) {
-            actionButtons += `
-                <button type="button" class="btn btn-success btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'accept')" title="Dienst zusagen" style="gap:4px;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    <span>Zusagen</span>
-                </button>
-                <button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'decline')" title="Dienst ablehnen" style="gap:4px;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    <span>Ablehnen</span>
-                </button>
-            `;
-        } else if (canManage) {
-            actionButtons += `<button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.cancelDutyRequest('${escapeHtml(d.id)}')" title="Anfrage zurückziehen">Zurückziehen</button>`;
-        }
-    } else if (d.status === 'confirmed' && (d.assignedUserName || d.assignedUser)) {
-        const assName = isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt');
-        statusPill = `
-            <span class="duty-badge duty-badge-confirmed">
-                <span class="duty-status-dot"></span>
-                <span><strong>${escapeHtml(assName)}</strong></span>
-            </span>
-        `;
-        assignInfo = `<span style="font-size:0.75rem; color:var(--text-secondary);">Bestätigt</span>`;
-        if (isMe || canManage) {
-            actionButtons += `<button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.unclaimEventDuty('${escapeHtml(d.id)}')" title="Zuweisung aufheben">Austragen</button>`;
-        }
-    } else {
-        // Open
-        statusPill = `
-            <span class="duty-badge duty-badge-open">
-                <span class="duty-status-dot"></span>
-                <span>Offen</span>
-            </span>
-        `;
-        if (canManage) {
-            actionButtons += `
-                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.openAssignDutyModal('${escapeHtml(d.id)}', '${escapeHtml(d.roleName)}')" title="Gruppe oder Person einteilen" style="gap:4px;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
-                    <span>Einteilen</span>
-                </button>
-            `;
-        }
-        actionButtons += `<button type="button" class="btn btn-ghost btn-tiny" onclick="window.claimEventDuty('${escapeHtml(d.id)}')" title="Dienst freiwillig übernehmen">Übernehmen</button>`;
+        return;
     }
 
-    if (canManage) {
-        actionButtons += `
-            <button type="button" class="duty-icon-btn" onclick="window.openEditDutyNotesModal('${escapeHtml(d.id)}', '${escapeHtml(d.notes || '')}')" title="Notiz bearbeiten">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            </button>
-            <button type="button" class="duty-icon-btn btn-danger-hover" onclick="window.deleteDutySlot('${escapeHtml(d.id)}')" title="Dienst löschen">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></line></svg>
-            </button>
-        `;
-    }
+    // Group duties by roleName
+    const grouped = new Map();
+    duties.forEach(d => {
+        const role = (d.roleName || 'Aufgabe').trim();
+        if (!grouped.has(role)) {
+            grouped.set(role, []);
+        }
+        grouped.get(role).push(d);
+    });
 
-    const numStr = String(orderNum).padStart(2, '0');
+    let html = '<div class="duty-tasks-container">';
+    let taskIdx = 0;
+    for (const [roleName, roleDuties] of grouped.entries()) {
+        taskIdx++;
+        const cardId = `task-${taskIdx}-${Math.random().toString(36).substring(2, 7)}`;
+        html += window.renderChurchDutyTaskCard(roleName, roleDuties, ev, cardId);
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
+};
+
+window.renderChurchDutyTaskCard = function(roleName, roleDuties, ev, cardId) {
+    const canManage = ev.canEdit || roleDuties.some(d => d.canManageDuty);
+    const safeRoleName = escapeHtml(roleName);
+    const encodedRoleName = encodeURIComponent(roleName);
+
+    // Filter out empty placeholder slots (status === 'open' with no person or group)
+    const realAssignees = roleDuties.filter(d => {
+        const hasUser = Boolean(d.assignedUser || d.requestedUser);
+        const hasGroup = Boolean(d.assignedGroup || d.assignedGroupName);
+        return hasUser || hasGroup;
+    });
+
+    // Render each real assignee item
+    const assigneesHtml = realAssignees.map(d => window.renderDutyAssigneeItem(d, ev, cardId)).join('');
+
+    // Header delete button for manager (delete whole task)
+    const taskDeleteBtn = canManage ? `
+        <button type="button" class="duty-task-delete-btn" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="Gesamte Aufgabe löschen">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        </button>
+    ` : '';
+
+    // "+ Person oder Gruppe hinzufügen" button (opens Pop-Up Modal)
+    const addAssigneeBtn = canManage ? `
+        <div style="margin-top: 4px;">
+            <button type="button" class="btn btn-ghost btn-small duty-add-person-btn" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Person oder Gruppe hinzufügen</span>
+            </button>
+        </div>
+    ` : '';
+
+    const countPill = realAssignees.length > 0 ? `<span class="duty-task-count-pill">${realAssignees.length}</span>` : '';
 
     return `
-        <div class="church-duty-card" id="duty-slot-${escapeHtml(d.id)}">
-            <div class="church-duty-main">
-                <div class="church-duty-left">
-                    <div class="church-duty-title-row">
-                        <span class="church-duty-num">${numStr}</span>
-                        <strong class="church-duty-title">${escapeHtml(d.roleName)}</strong>
-                    </div>
-                    ${d.notes ? `
-                        <div class="church-duty-notes-row" title="${escapeHtml(d.notes)}">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                            <span>${escapeHtml(d.notes)}</span>
-                        </div>
-                    ` : ''}
+        <div class="duty-task-section" id="duty-task-sec-${cardId}">
+            <div class="duty-task-header">
+                <div class="duty-task-title-wrap">
+                    <span class="duty-task-title">${safeRoleName}</span>
+                    ${countPill}
                 </div>
-                <div class="church-duty-center">
-                    ${statusPill}
-                    ${assignInfo ? `<div>${assignInfo}</div>` : ''}
-                </div>
+                ${taskDeleteBtn}
             </div>
-            <div class="church-duty-actions">
-                ${actionButtons}
-            </div>
+            ${assigneesHtml ? `<div class="duty-assignees-list">${assigneesHtml}</div>` : ''}
+            ${addAssigneeBtn}
         </div>
     `;
 };
 
-window.setAddDutyType = function(type) {
-    const hidden = document.getElementById('add-duty-assign-type-input');
-    if (hidden) hidden.value = type;
+window.renderDutyAssigneeItem = function(d, ev, cardId) {
+    const canManage = ev.canEdit || d.canManageDuty;
+    const isMe = d.assignedUser === currentUser?.id;
+    const isMeRequested = d.requestedUser === currentUser?.id;
+    const encodedRoleName = encodeURIComponent(d.roleName || '');
 
-    ['none', 'group', 'user'].forEach(t => {
-        const tab = document.getElementById(`add-tab-${t}`);
-        if (tab) tab.classList.toggle('is-active', t === type);
-    });
+    let avatarHtml = '';
+    let displayName = '';
+    let statusBadge = '';
+    let actionButtons = '';
 
-    const groupBox = document.getElementById('add-duty-group-box');
-    const userBox = document.getElementById('add-duty-user-box');
-    if (groupBox) groupBox.style.display = (type === 'group') ? 'block' : 'none';
-    if (userBox) userBox.style.display = (type === 'user') ? 'block' : 'none';
-};
+    if (d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup)) {
+        const groupName = d.assignedGroupName || d.assignedGroup;
+        displayName = `Gruppe: ${escapeHtml(groupName)}`;
+        avatarHtml = `<div class="duty-assignee-group-badge">👥</div>`;
+        statusBadge = `<span class="duty-status-sub">(Gruppe eingeteilt)</span>`;
+    } else if (d.status === 'requested') {
+        const reqName = isMeRequested ? 'Du' : (d.requestedUserName || 'Person');
+        displayName = escapeHtml(reqName);
+        const initials = getAttendeeInitials(d.requestedUserName || 'P');
+        const picUrl = d.requestedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.requestedUser)}` : '';
+        avatarHtml = `
+            <div class="duty-assignee-avatar-wrap">
+                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
+                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
+            </div>
+        `;
+        statusBadge = `<span class="duty-status-sub is-requested">(Anfrage offen)</span>`;
 
-window.openAddDutySlotModal = async function() {
-    const roleInput = document.getElementById('add-duty-role-name');
-    const notesInput = document.getElementById('add-duty-notes');
-    const subtitle = document.getElementById('subtitle-add-duty-slot');
-    if (roleInput) roleInput.value = '';
-    if (notesInput) notesInput.value = '';
-    if (subtitle && currentDetailEvent) subtitle.textContent = `Event: ${currentDetailEvent.title || 'Termin'}`;
-
-    window.setAddDutyType('none');
-
-    await window.loadEventCandidates();
-
-    const groupSelect = document.getElementById('add-duty-group-select');
-    if (groupSelect && Array.isArray(eventGroupsCache)) {
-        groupSelect.innerHTML = '<option value="">-- Gruppe auswählen --</option>' +
-            eventGroupsCache.map(g => `<option value="${escapeHtml(g.id || g.name)}">👥 ${escapeHtml(g.name)}</option>`).join('');
+        if (isMeRequested) {
+            actionButtons += `
+                <button type="button" class="btn btn-success btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'accept')">Zusagen</button>
+                <button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'decline')">Ablehnen</button>
+            `;
+        }
+    } else if (d.status === 'declined') {
+        const reqName = (d.requestedUser === currentUser?.id) ? 'Du' : (d.requestedUserName || 'Person');
+        displayName = escapeHtml(reqName);
+        const initials = getAttendeeInitials(d.requestedUserName || 'P');
+        const picUrl = d.requestedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.requestedUser)}` : '';
+        avatarHtml = `
+            <div class="duty-assignee-avatar-wrap">
+                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
+                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
+            </div>
+        `;
+        statusBadge = `<span class="duty-status-sub is-declined">✕ Abgelehnt</span>`;
+    } else if (d.status === 'confirmed' && (d.assignedUserName || d.assignedUser)) {
+        const assName = isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt');
+        displayName = escapeHtml(assName);
+        const initials = getAttendeeInitials(d.assignedUserName || 'P');
+        const picUrl = d.assignedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.assignedUser)}` : '';
+        avatarHtml = `
+            <div class="duty-assignee-avatar-wrap">
+                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
+                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
+            </div>
+        `;
+        statusBadge = `<span class="duty-status-sub is-confirmed">✓ Eingeteilt</span>`;
+    } else {
+        // Open Slot
+        displayName = `<span class="duty-empty-assigned">Noch niemand eingeteilt (Offene Aufgabe)</span>`;
+        avatarHtml = `<div class="duty-assignee-open-badge">👤</div>`;
     }
 
-    const userSelect = document.getElementById('add-duty-user-select');
-    if (userSelect && Array.isArray(eventCandidatesCache)) {
-        userSelect.innerHTML = '<option value="">-- Person auswählen --</option>' +
-            eventCandidatesCache.map(u => `<option value="${escapeHtml(u.id)}">👤 ${escapeHtml(u.name)}</option>`).join('');
-    }
+    const removeBtnTop = canManage ? `
+        <div class="duty-assignee-top-actions">
+            <button type="button" class="duty-action-icon text-danger" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="Eintrag entfernen">
+                ✕
+            </button>
+        </div>
+    ` : '';
 
-    openModal('add-duty-slot-modal');
+    return `
+        <div class="duty-assignee-item" id="duty-slot-${escapeHtml(d.id)}">
+            <div class="duty-assignee-top">
+                ${avatarHtml}
+                <div class="duty-assignee-info">
+                    <span class="duty-assignee-name ${isMe ? 'is-me' : ''}">${displayName}</span>
+                    ${statusBadge}
+                </div>
+                ${removeBtnTop}
+            </div>
+            ${actionButtons ? `<div class="duty-assignee-actions-row">${actionButtons}</div>` : ''}
+            ${d.notes ? `<div class="duty-assignee-notes">${escapeHtml(d.notes)}</div>` : ''}
+        </div>
+    `;
 };
 
-window.submitAddDutySlot = async function(e) {
-    e.preventDefault();
+// Inline Task Creation Form
+window.showAddNewTaskForm = function() {
+    const btn = document.getElementById('detail-btn-add-duty');
+    const form = document.getElementById('duty-new-task-form');
+    const input = document.getElementById('duty-new-task-name');
+    if (btn) btn.style.display = 'none';
+    if (form) form.style.display = 'block';
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+};
+
+window.hideAddNewTaskForm = function() {
+    const btn = document.getElementById('detail-btn-add-duty');
+    const form = document.getElementById('duty-new-task-form');
+    const input = document.getElementById('duty-new-task-name');
+    if (btn) btn.style.display = 'inline-flex';
+    if (form) form.style.display = 'none';
+    if (input) input.value = '';
+};
+
+window.submitAddNewTask = async function() {
     if (!currentDetailEvent) return;
-
-    const roleName = document.getElementById('add-duty-role-name')?.value?.trim();
-    const notes = document.getElementById('add-duty-notes')?.value?.trim() || '';
-    const assignType = document.getElementById('add-duty-assign-type-input')?.value || 'none';
-    const assignedGroup = (assignType === 'group') ? (document.getElementById('add-duty-group-select')?.value || '') : '';
-    const targetUserId = (assignType === 'user') ? (document.getElementById('add-duty-user-select')?.value || '') : '';
-    const sendEmail = (assignType === 'user') ? (document.getElementById('add-duty-send-email')?.checked === true) : false;
-
+    const input = document.getElementById('duty-new-task-name');
+    const roleName = input?.value?.trim();
     if (!roleName) {
-        showToast('Bitte eine Dienstbezeichnung angeben', 'warning');
-        return;
-    }
-
-    if (assignType === 'group' && !assignedGroup) {
-        showToast('Bitte wähle eine Gruppe aus', 'warning');
-        return;
-    }
-    if (assignType === 'user' && !targetUserId) {
-        showToast('Bitte wähle eine Person aus', 'warning');
+        showToast('Bitte einen Namen für die Aufgabe eingeben', 'warning');
+        if (input) input.focus();
         return;
     }
 
@@ -9835,144 +10463,267 @@ window.submitAddDutySlot = async function(e) {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${currentDetailEvent.id}/duties`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roleName, notes, assignedGroup, targetUserId, sendEmail })
+            body: JSON.stringify({ roleName })
         });
         if (res.ok) {
-            closeModal('add-duty-slot-modal');
-            showToast('Dienst erfolgreich angelegt!', 'success');
+            window.hideAddNewTaskForm();
+            showToast(`Aufgabe "${roleName}" hinzugefügt!`, 'success');
             await window.loadEventsData();
             if (currentDetailEvent) {
                 window.openEventDetailModal(currentDetailEvent.id);
+                const details = document.getElementById('detail-modal-duties-details');
+                if (details) details.open = true;
             }
         } else {
             const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Anlegen des Dienstes', 'error');
+            showToast(err.error || 'Fehler beim Anlegen der Aufgabe', 'error');
         }
     } catch {
         showToast('Verbindungsfehler', 'error');
     }
 };
 
-window.openEditDutyNotesModal = function(dutyId, currentNotes = '') {
-    const idInput = document.getElementById('edit-duty-notes-id');
-    const textarea = document.getElementById('edit-duty-notes-textarea');
-    if (idInput) idInput.value = dutyId;
-    if (textarea) textarea.value = currentNotes || '';
-    openModal('edit-duty-notes-modal');
-};
+// ==========================================================
+// Pop-Up Modal for Assigning Persons / Groups (with top tabs)
+// ==========================================================
 
-window.submitEditDutyNotes = async function(e) {
-    e.preventDefault();
-    const dutyId = document.getElementById('edit-duty-notes-id')?.value;
-    const notes = document.getElementById('edit-duty-notes-textarea')?.value?.trim() || '';
-    if (!dutyId) return;
-
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ notes })
-        });
-        if (res.ok) {
-            closeModal('edit-duty-notes-modal');
-            showToast('Notiz erfolgreich gespeichert!', 'success');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Speichern der Notiz', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-window.setAssignDutyType = function(type) {
-    const hidden = document.getElementById('assign-duty-target-type-input');
-    if (hidden) hidden.value = type;
-
-    ['group', 'user'].forEach(t => {
-        const tab = document.getElementById(`assign-tab-${t}`);
-        if (tab) tab.classList.toggle('is-active', t === type);
-    });
-
-    const groupBox = document.getElementById('assign-duty-group-box');
-    const userBox = document.getElementById('assign-duty-user-box');
-    if (groupBox) groupBox.style.display = (type === 'group') ? 'block' : 'none';
-    if (userBox) userBox.style.display = (type === 'user') ? 'block' : 'none';
-};
-
-window.openAssignDutyModal = async function(dutyId, roleName) {
-    const idInput = document.getElementById('assign-duty-id');
+window.openAssignDutyModalForRole = async function(encodedRoleName, replaceDutyId = '') {
+    const roleName = decodeURIComponent(encodedRoleName);
+    const hiddenRole = document.getElementById('assign-duty-role-encoded');
+    const hiddenReplace = document.getElementById('assign-duty-replace-id');
     const subtitle = document.getElementById('subtitle-assign-duty');
-    if (idInput) idInput.value = dutyId;
-    if (subtitle) subtitle.textContent = `Dienst: ${roleName || ''}`;
+    const searchInput = document.getElementById('assign-duty-search-input');
 
-    window.setAssignDutyType('group');
+    if (hiddenRole) hiddenRole.value = encodedRoleName;
+    if (hiddenReplace) hiddenReplace.value = replaceDutyId || '';
+    if (subtitle) subtitle.textContent = `Aufgabe: ${roleName}`;
+    if (searchInput) searchInput.value = '';
 
-    await window.loadEventCandidates();
-
-    const groupSelect = document.getElementById('assign-duty-group-select');
-    if (groupSelect && Array.isArray(eventGroupsCache)) {
-        groupSelect.innerHTML = '<option value="">-- Gruppe auswählen --</option>' +
-            eventGroupsCache.map(g => `<option value="${escapeHtml(g.id || g.name)}">👥 ${escapeHtml(g.name)}</option>`).join('');
-    }
-
-    const userSelect = document.getElementById('assign-duty-user-select');
-    if (userSelect && Array.isArray(eventCandidatesCache)) {
-        userSelect.innerHTML = '<option value="">-- Person auswählen --</option>' +
-            eventCandidatesCache.map(u => `<option value="${escapeHtml(u.id)}">👤 ${escapeHtml(u.name)}</option>`).join('');
-    }
-
+    window.switchAssignDutyTab('user');
     openModal('assign-duty-modal');
 };
 
-window.submitAssignDuty = async function(e) {
-    e.preventDefault();
-    const dutyId = document.getElementById('assign-duty-id')?.value;
-    const targetType = document.getElementById('assign-duty-target-type-input')?.value || 'group';
-    const targetGroupId = (targetType === 'group') ? (document.getElementById('assign-duty-group-select')?.value || '') : '';
-    const targetUserId = (targetType === 'user') ? (document.getElementById('assign-duty-user-select')?.value || '') : '';
-    const sendEmail = (targetType === 'user') ? (document.getElementById('assign-duty-send-email')?.checked === true) : false;
+window.switchAssignDutyTab = function(type) {
+    const hiddenTab = document.getElementById('assign-duty-active-tab');
+    if (hiddenTab) hiddenTab.value = type;
 
-    if (!dutyId) return;
+    const tabUser = document.getElementById('assign-tab-user');
+    const tabGroup = document.getElementById('assign-tab-group');
+    if (tabUser) tabUser.classList.toggle('is-active', type === 'user');
+    if (tabGroup) tabGroup.classList.toggle('is-active', type === 'group');
 
-    if (targetType === 'group' && !targetGroupId) {
-        showToast('Bitte eine Gruppe auswählen', 'warning');
-        return;
-    }
-    if (targetType === 'user' && !targetUserId) {
-        showToast('Bitte eine Person auswählen', 'warning');
-        return;
+    const searchInput = document.getElementById('assign-duty-search-input');
+    if (searchInput) {
+        searchInput.placeholder = type === 'user' ? 'Person suchen...' : 'Gruppe suchen...';
     }
 
-    const submitBtn = document.getElementById('assign-duty-submit-btn');
-    if (submitBtn) submitBtn.disabled = true;
+    const filterText = searchInput ? searchInput.value : '';
+    window.renderAssignDutyModalList(filterText);
+};
 
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/assign`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetGroupId, targetUserId, sendEmail })
+window.filterAssignDutyModalList = function(filterText) {
+    window.renderAssignDutyModalList(filterText);
+};
+
+window.renderAssignDutyModalList = async function(filterText = '') {
+    const listEl = document.getElementById('assign-duty-popup-list');
+    if (!listEl) return;
+
+    const activeTab = document.getElementById('assign-duty-active-tab')?.value || 'user';
+    const normFilter = (filterText || '').trim().toLowerCase();
+
+    listEl.innerHTML = '<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">Wird geladen...</div>';
+
+    await window.loadEventCandidates();
+
+    if (activeTab === 'user') {
+        const candidates = Array.isArray(eventCandidatesCache) ? eventCandidatesCache : [];
+        const matched = candidates.filter(c => {
+            const name = (c.name || '').toLowerCase();
+            const email = (c.email || '').toLowerCase();
+            return !normFilter || name.includes(normFilter) || email.includes(normFilter);
         });
 
+        if (matched.length === 0) {
+            listEl.innerHTML = '<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">Keine passende Person gefunden.</div>';
+            return;
+        }
+
+        listEl.innerHTML = matched.map(c => {
+            const cName = c.name || c.email || 'Mitglied';
+            const initials = getAttendeeInitials(cName);
+            const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(c.id)}`;
+            const safeName = escapeHtml(cName);
+            const safeEmail = escapeHtml(c.email || '');
+            const safeId = escapeHtml(c.id);
+
+            return `
+                <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetUserId: '${safeId}', sendEmail: true })">
+                    <div class="duty-picker-option-left">
+                        <div class="duty-assignee-avatar-wrap" style="width: 32px; height: 32px; font-size: 0.74rem;">
+                            <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
+                            <img src="${picUrl}" alt="${safeName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">
+                        </div>
+                        <div class="duty-picker-option-info">
+                            <span class="duty-picker-option-name">${safeName}</span>
+                            ${safeEmail ? `<span class="duty-picker-option-sub">${safeEmail}</span>` : ''}
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-tiny">Anfragen</button>
+                </div>
+            `;
+        }).join('');
+    } else {
+        const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0
+            ? eventGroupsCache
+            : (Array.isArray(systemGroups) ? systemGroups : []);
+        const matched = groups.filter(g => {
+            const name = (g.name || g.id || '').toLowerCase();
+            return !normFilter || name.includes(normFilter);
+        });
+
+        if (matched.length === 0) {
+            listEl.innerHTML = '<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">Keine passende Gruppe gefunden.</div>';
+            return;
+        }
+
+        listEl.innerHTML = matched.map(g => {
+            const gName = g.name || g.id;
+            const safeGName = escapeHtml(gName);
+            const safeGId = escapeHtml(g.id || gName);
+
+            return `
+                <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetGroupId: '${safeGId}' })">
+                    <div class="duty-picker-option-left">
+                        <div class="duty-assignee-group-badge" style="width: 30px; height: 30px; font-size: 0.9rem;">👥</div>
+                        <div class="duty-picker-option-info">
+                            <span class="duty-picker-option-name">${safeGName}</span>
+                            <span class="duty-picker-option-sub">Gruppe fest einteilen</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-tiny">Zuweisen</button>
+                </div>
+            `;
+        }).join('');
+    }
+};
+
+window.selectDutyAssignee = function(assignData) {
+    const encodedRoleName = document.getElementById('assign-duty-role-encoded')?.value;
+    const replaceDutyId = document.getElementById('assign-duty-replace-id')?.value;
+    closeModal('assign-duty-modal');
+    if (currentDetailEvent && encodedRoleName) {
+        window.assignToDutyRole(currentDetailEvent.id, encodedRoleName, assignData, replaceDutyId);
+    }
+};
+
+window.assignToDutyRole = async function(eventId, encodedRoleName, assignData, replaceDutyId = '') {
+    if (!eventId) return;
+    const roleName = decodeURIComponent(encodedRoleName);
+
+    try {
+        let res;
+        if (replaceDutyId) {
+            res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${replaceDutyId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...assignData, sendEmail: true })
+            });
+        } else {
+            const ev = currentDetailEvent;
+            // Check if there is an unassigned / open slot for this task
+            const openSlot = ev && Array.isArray(ev.duties) ? ev.duties.find(d => (d.roleName || '').trim() === roleName.trim() && d.status === 'open') : null;
+            if (openSlot) {
+                res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${openSlot.id}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...assignData, sendEmail: true })
+                });
+            } else {
+                res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/duties`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roleName, ...assignData, sendEmail: true })
+                });
+            }
+        }
+
         if (res.ok) {
-            closeModal('assign-duty-modal');
-            showToast(targetType === 'group' ? 'Gruppe sofort fest eingeteilt!' : 'Dienstanfrage erfolgreich versendet!', 'success');
+            showToast(assignData.targetGroupId ? 'Gruppe erfolgreich eingeteilt!' : 'Dienstanfrage versendet & E-Mail übermittelt!', 'success');
             await window.loadEventsData();
             if (currentDetailEvent) {
                 window.openEventDetailModal(currentDetailEvent.id);
+                const details = document.getElementById('detail-modal-duties-details');
+                if (details) details.open = true;
             }
         } else {
             const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Einteilen', 'error');
+            showToast(err.error || 'Fehler beim Zuweisen', 'error');
         }
     } catch {
         showToast('Verbindungsfehler', 'error');
-    } finally {
-        if (submitBtn) submitBtn.disabled = false;
+    }
+};
+
+window.deleteEntireDutyTask = async function(encodedRoleName) {
+    if (!currentDetailEvent) return;
+    const roleName = decodeURIComponent(encodedRoleName);
+    if (!confirm(`Möchtest du die gesamte Aufgabe "${roleName}" mit allen Einträgen wirklich löschen?`)) return;
+
+    try {
+        const dutiesToDelete = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
+        if (dutiesToDelete.length === 0) return;
+
+        await Promise.all(dutiesToDelete.map(d => fetchWithAuth(`${config.apiBaseUrl}/events/duties/${d.id}`, { method: 'DELETE' })));
+
+        showToast(`Aufgabe "${roleName}" gelöscht`, 'info');
+        await window.loadEventsData();
+        if (currentDetailEvent) {
+            window.openEventDetailModal(currentDetailEvent.id);
+            const details = document.getElementById('detail-modal-duties-details');
+            if (details) details.open = true;
+        }
+    } catch {
+        showToast('Fehler beim Löschen der Aufgabe', 'error');
+    }
+};
+
+window.removeDutyAssignee = async function(dutyId) {
+    if (!dutyId) return;
+    if (!confirm('Diesen Eintrag wirklich entfernen?')) return;
+
+    try {
+        const ev = currentDetailEvent;
+        const currentDuty = ev?.duties?.find(d => d.id === dutyId);
+        const roleName = currentDuty?.roleName;
+        const dutiesForThisRole = ev?.duties?.filter(d => (d.roleName || '').trim() === (roleName || '').trim()) || [];
+        const wasOnlySlot = dutiesForThisRole.length === 1;
+
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
+            method: 'DELETE'
+        });
+        if (res.ok) {
+            if (wasOnlySlot && roleName && ev?.id) {
+                // Keep the task as an empty role so it doesn't vanish
+                await fetchWithAuth(`${config.apiBaseUrl}/events/${ev.id}/duties`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roleName })
+                });
+            }
+            showToast('Eintrag entfernt', 'info');
+            await window.loadEventsData();
+            if (currentDetailEvent) {
+                window.openEventDetailModal(currentDetailEvent.id);
+                const details = document.getElementById('detail-modal-duties-details');
+                if (details) details.open = true;
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Entfernen', 'error');
+        }
+    } catch {
+        showToast('Verbindungsfehler', 'error');
     }
 };
 
@@ -9987,31 +10738,12 @@ window.cancelDutyRequest = async function(dutyId) {
             await window.loadEventsData();
             if (currentDetailEvent) {
                 window.openEventDetailModal(currentDetailEvent.id);
+                const details = document.getElementById('detail-modal-duties-details');
+                if (details) details.open = true;
             }
         } else {
             const err = await res.json().catch(() => ({}));
             showToast(err.error || 'Fehler beim Zurückziehen der Anfrage', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-window.deleteDutySlot = async function(dutyId) {
-    if (!confirm('Diesen Dienst wirklich löschen?')) return;
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
-            method: 'DELETE'
-        });
-        if (res.ok) {
-            showToast('Dienst gelöscht', 'info');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Löschen des Dienstes', 'error');
         }
     } catch {
         showToast('Verbindungsfehler', 'error');
@@ -10030,6 +10762,8 @@ window.claimEventDuty = async function(dutyId) {
             await window.loadEventsData();
             if (currentDetailEvent) {
                 window.openEventDetailModal(currentDetailEvent.id);
+                const details = document.getElementById('detail-modal-duties-details');
+                if (details) details.open = true;
             }
         } else {
             const err = await res.json().catch(() => ({}));
@@ -10053,6 +10787,8 @@ window.unclaimEventDuty = async function(dutyId) {
             await window.loadEventsData();
             if (currentDetailEvent) {
                 window.openEventDetailModal(currentDetailEvent.id);
+                const details = document.getElementById('detail-modal-duties-details');
+                if (details) details.open = true;
             }
         } else {
             showToast('Fehler beim Freigeben des Dienstes', 'error');
@@ -10062,16 +10798,51 @@ window.unclaimEventDuty = async function(dutyId) {
     }
 };
 
-window.downloadCurrentEventIcs = function() {
+// Fallback compatibility stubs
+window.renderChurchDutyCard = function(d, ev) {
+    return window.renderDutyAssigneeItem(d, ev, 'default');
+};
+window.openAddDutySlotModal = function() {
+    window.showAddNewTaskForm();
+};
+
+window.exportCurrentDetailEventIcs = async function() {
     if (!currentDetailEvent) return;
-    window.location.href = `${config.apiBaseUrl}/events/${currentDetailEvent.id}/export.ics`;
+    await window.exportEventIcs(currentDetailEvent.id, currentDetailEvent.title);
+};
+
+window.downloadCurrentEventIcs = function() {
+    window.exportCurrentDetailEventIcs();
+};
+
+window.exportEventIcs = async function(eventId, eventTitle = 'termin') {
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/export.ics`);
+        if (!res.ok) {
+            showToast('Export fehlgeschlagen', 'error');
+            return;
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        const cleanName = (eventTitle || 'termin').toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 30);
+        a.download = `${cleanName || 'termin'}.ics`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        showToast('Kalendertermin (.ics) heruntergeladen', 'success');
+    } catch (e) {
+        console.error('ICS Export error:', e);
+        showToast('Export fehlgeschlagen', 'error');
+    }
 };
 
 window.openEditEventFromDetail = function() {
     if (!currentDetailEvent) return;
-    const eventId = currentDetailEvent.id;
-    closeModal('event-detail-modal', true);
-    window.openEditEventModal(eventId);
+    window.enterDetailEditMode();
 };
 
 window.deleteCurrentEventFromDetail = async function() {
@@ -10152,9 +10923,306 @@ window.setCreateEventType = function(type) {
     const canManage = canManageEvents();
     const recWrap = document.getElementById('event-recurring-wrap');
     const pinnedWrap = document.getElementById('event-pinned-wrap');
+    const isEdit = Boolean(document.getElementById('event-input-id')?.value);
 
-    if (recWrap) recWrap.style.display = (canManage && isTermin) ? 'block' : 'none';
+    if (recWrap) recWrap.style.display = (canManage && isTermin && !isEdit) ? 'block' : 'none';
     if (pinnedWrap) pinnedWrap.style.display = (canManage && !isTermin) ? 'block' : 'none';
+};
+
+let _eventCropDataUrl = null;
+let _eventCropOriginalDataUrl = null;
+let _eventCropContext = null;
+
+function _eventCropClamp(val, min, max) {
+    if (val < min) return min;
+    if (val > max) return max;
+    return val;
+}
+
+window.openEventCrop = async function(fileOrDataUrl) {
+    let dataUrl = '';
+    if (typeof fileOrDataUrl === 'string') {
+        dataUrl = fileOrDataUrl;
+    } else if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
+        let imageFile = fileOrDataUrl;
+        const isHeic = (imageFile.name && (imageFile.name.toLowerCase().endsWith('.heic') || imageFile.name.toLowerCase().endsWith('.heif'))) ||
+            imageFile.type === 'image/heic' || imageFile.type === 'image/heif';
+        if (isHeic && typeof heic2any === 'function') {
+            try {
+                const blob = await heic2any({ blob: imageFile, toType: 'image/jpeg', quality: 0.85 });
+                const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
+                imageFile = new File([convertedBlob], (imageFile.name || 'image').replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg' });
+            } catch (e) {
+                console.error('HEIC conversion failed:', e);
+            }
+        }
+        dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(imageFile);
+        });
+    }
+
+    if (!dataUrl) return;
+    _eventCropOriginalDataUrl = dataUrl;
+    _eventCropDataUrl = dataUrl;
+
+    const viewport = document.getElementById('eventCropViewport');
+    const imgEl = document.getElementById('eventCropImage');
+    const overlay = document.getElementById('eventCropOverlay');
+    const zoomSlider = document.getElementById('eventCropZoom');
+
+    if (!viewport || !imgEl || !overlay) return;
+
+    imgEl.src = _eventCropDataUrl;
+    await new Promise(resolve => {
+        imgEl.onload = resolve;
+        imgEl.onerror = resolve;
+    });
+
+    const nw = imgEl.naturalWidth || 800;
+    const nh = imgEl.naturalHeight || 600;
+
+    // Viewport dimensions
+    const vw = viewport.clientWidth || 480;
+    const vh = Math.max(260, Math.round(vw * (9 / 16)));
+    viewport.style.height = vh + 'px';
+
+    // The crop window overlay is strictly 16:9
+    const cropW = Math.round(vw * 0.94);
+    const cropH = Math.round(cropW * (9 / 16));
+    overlay.style.width = cropW + 'px';
+    overlay.style.height = cropH + 'px';
+
+    let offsetX = Math.round((vw - cropW) / 2);
+    let offsetY = Math.round((vh - cropH) / 2);
+    overlay.style.left = offsetX + 'px';
+    overlay.style.top = offsetY + 'px';
+
+    // Scale image to cover the crop area at zoom = 1
+    const baseScale = Math.max(cropW / nw, cropH / nh);
+    let currentZoom = 1;
+
+    function applyZoom() {
+        const dispW = Math.round(nw * baseScale * currentZoom);
+        const dispH = Math.round(nh * baseScale * currentZoom);
+        imgEl.style.width = dispW + 'px';
+        imgEl.style.height = dispH + 'px';
+        imgEl.style.position = 'absolute';
+
+        // Center image relative to viewport
+        imgEl.style.left = Math.round((vw - dispW) / 2) + 'px';
+        imgEl.style.top = Math.round((vh - dispH) / 2) + 'px';
+
+        // Constrain overlay within image bounds
+        const imgL = parseInt(imgEl.style.left);
+        const imgT = parseInt(imgEl.style.top);
+        offsetX = _eventCropClamp(offsetX, imgL, imgL + dispW - cropW);
+        offsetY = _eventCropClamp(offsetY, imgT, imgT + dispH - cropH);
+        overlay.style.left = offsetX + 'px';
+        overlay.style.top = offsetY + 'px';
+    }
+
+    applyZoom();
+
+    let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartOX = 0, dragStartOY = 0;
+
+    function onPointerDown(e) {
+        e.preventDefault();
+        isDragging = true;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        dragStartX = clientX; dragStartY = clientY;
+        dragStartOX = offsetX; dragStartOY = offsetY;
+    }
+
+    function onPointerMove(e) {
+        if (!isDragging) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const imgL = parseInt(imgEl.style.left);
+        const imgT = parseInt(imgEl.style.top);
+        const dispW = Math.round(nw * baseScale * currentZoom);
+        const dispH = Math.round(nh * baseScale * currentZoom);
+        offsetX = _eventCropClamp(dragStartOX + (clientX - dragStartX), imgL, imgL + dispW - cropW);
+        offsetY = _eventCropClamp(dragStartOY + (clientY - dragStartY), imgT, imgT + dispH - cropH);
+        overlay.style.left = offsetX + 'px';
+        overlay.style.top = offsetY + 'px';
+    }
+
+    function onPointerUp() { isDragging = false; }
+
+    overlay.removeEventListener('mousedown', overlay._md);
+    overlay.removeEventListener('touchstart', overlay._td);
+    overlay._md = onPointerDown; overlay._td = onPointerDown;
+    overlay.addEventListener('mousedown', overlay._md);
+    overlay.addEventListener('touchstart', overlay._td, { passive: false });
+
+    document.removeEventListener('mousemove', overlay._mm);
+    document.removeEventListener('mouseup', overlay._mu);
+    document.removeEventListener('touchmove', overlay._tm);
+    document.removeEventListener('touchend', overlay._tu);
+    overlay._mm = onPointerMove; overlay._mu = onPointerUp;
+    overlay._tm = onPointerMove; overlay._tu = onPointerUp;
+    document.addEventListener('mousemove', overlay._mm);
+    document.addEventListener('mouseup', overlay._mu);
+    document.addEventListener('touchmove', overlay._tm, { passive: false });
+    document.addEventListener('touchend', overlay._tu);
+
+    if (zoomSlider) {
+        zoomSlider.value = 1;
+        zoomSlider.removeEventListener('input', zoomSlider._zl);
+        zoomSlider._zl = function(e) {
+            currentZoom = parseFloat(e.target.value);
+            applyZoom();
+        };
+        zoomSlider.addEventListener('input', zoomSlider._zl);
+    }
+
+    viewport.removeEventListener('wheel', viewport._wl);
+    viewport._wl = function(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        currentZoom = _eventCropClamp(currentZoom + delta, 1, 3);
+        if (zoomSlider) zoomSlider.value = currentZoom;
+        applyZoom();
+    };
+    viewport.addEventListener('wheel', viewport._wl, { passive: false });
+
+    _eventCropContext = {
+        imgEl, nw, nh,
+        get dispW() { return Math.round(nw * baseScale * currentZoom); },
+        get dispH() { return Math.round(nh * baseScale * currentZoom); },
+        get imgLeft() { return parseInt(imgEl.style.left); },
+        get imgTop() { return parseInt(imgEl.style.top); },
+        cropW, cropH, vw, vh,
+        getOffset: () => ({ x: offsetX, y: offsetY }),
+        setZoom: (z) => {
+            currentZoom = z;
+            if (zoomSlider) zoomSlider.value = z;
+            applyZoom();
+        }
+    };
+
+    openModal('event-crop-modal');
+};
+
+window.resetEventCropZoom = function() {
+    if (_eventCropContext && _eventCropContext.setZoom) {
+        _eventCropContext.setZoom(1);
+    }
+};
+
+window.cancelEventCrop = function() {
+    closeModal('event-crop-modal');
+};
+
+window.reopenEventCrop = function() {
+    if (_eventCropOriginalDataUrl) {
+        window.openEventCrop(_eventCropOriginalDataUrl);
+    } else {
+        const previewImg = document.getElementById('event-image-preview');
+        const urlInput = document.getElementById('event-input-image-url');
+        const src = (previewImg && previewImg.src) || (urlInput && urlInput.value);
+        if (src) {
+            window.openEventCrop(src);
+        }
+    }
+};
+
+window.confirmEventCrop = async function() {
+    const ctx = _eventCropContext;
+    if (!ctx) return;
+
+    const { imgEl, nw, nh, dispW, dispH, imgLeft, imgTop, cropW, cropH, getOffset } = ctx;
+    const { x: offsetX, y: offsetY } = getOffset();
+
+    const relX = offsetX - imgLeft;
+    const relY = offsetY - imgTop;
+    const scaleX = nw / dispW;
+    const scaleY = nh / dispH;
+
+    const srcX = Math.round(relX * scaleX);
+    const srcY = Math.round(relY * scaleY);
+    const srcW = Math.round(cropW * scaleX);
+    const srcH = Math.round(cropH * scaleY);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const c = canvas.getContext('2d');
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(imgEl, srcX, srcY, srcW, srcH, 0, 0, 1280, 720);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+    if (!blob) {
+        showToast('Fehler beim Zuschneiden des Bildes.', 'error');
+        return;
+    }
+
+    const jpegFile = new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' });
+    const confirmBtn = document.getElementById('btn-confirm-event-crop');
+    if (confirmBtn) setButtonLoading('btn-confirm-event-crop', true, 'Wird gespeichert...');
+
+    try {
+        const formData = new FormData();
+        formData.append('image', jpegFile);
+
+        const token = (typeof auth !== 'undefined' && auth.currentUser) 
+            ? (await auth.currentUser.getIdToken()) 
+            : (localStorage.getItem('token') || '');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${config.apiBaseUrl}/events/upload-image`, {
+            method: 'POST',
+            headers,
+            body: formData
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            const urlInput = document.getElementById('event-input-image-url');
+            const previewImg = document.getElementById('event-image-preview');
+            const previewWrap = document.getElementById('event-image-preview-wrap');
+            const placeholder = document.getElementById('event-image-placeholder');
+
+            if (urlInput) urlInput.value = data.url;
+            if (previewImg) previewImg.src = data.url;
+            if (previewWrap) previewWrap.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+
+            // If triggered from detail edit mode, also update the detail cover image
+            const isDetailEditing = Boolean(window._detailEditImagePending || document.querySelector('.event-detail-modal-card.detail-is-editing'));
+            if (isDetailEditing) {
+                window._detailEditImagePending = false;
+                const detailImgInput = document.getElementById('detail-edit-image-url');
+                if (detailImgInput) detailImgInput.value = data.url;
+                // Update detail cover banner
+                const detailCoverImg = document.getElementById('detail-modal-cover-img');
+                const detailCoverWrap = document.getElementById('detail-modal-cover-wrap');
+                const detailPlaceholder = document.getElementById('detail-edit-cover-placeholder');
+                const modalCard = document.querySelector('.event-detail-modal-card');
+                if (detailCoverImg) detailCoverImg.src = data.url;
+                if (detailCoverWrap) detailCoverWrap.style.display = 'block';
+                if (detailPlaceholder) detailPlaceholder.style.display = 'none';
+                if (modalCard) modalCard.classList.add('has-hero-image');
+            }
+
+            closeModal('event-crop-modal');
+            showToast('Eventbild im 16:9-Format übernommen!', 'success');
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Upload fehlgeschlagen', 'error');
+        }
+    } catch (e) {
+        console.error('Crop upload error:', e);
+        showToast('Fehler beim Speichern des Eventbildes', 'error');
+    } finally {
+        if (confirmBtn) setButtonLoading('btn-confirm-event-crop', false, null);
+    }
 };
 
 window.compressEventImage = async function(file, quality = 0.60) {
@@ -10216,6 +11284,8 @@ window.compressEventImage = async function(file, quality = 0.60) {
 };
 
 window.removeEventImage = function() {
+    _eventCropOriginalDataUrl = null;
+    _eventCropDataUrl = null;
     const previewWrap = document.getElementById('event-image-preview-wrap');
     const placeholder = document.getElementById('event-image-placeholder');
     const previewImg = document.getElementById('event-image-preview');
@@ -10232,214 +11302,49 @@ window.removeEventImage = function() {
 window.handleEventImageSelect = async function(files) {
     if (!files || !files[0]) return;
     const file = files[0];
-
-    const placeholder = document.getElementById('event-image-placeholder');
-    const previewWrap = document.getElementById('event-image-preview-wrap');
-    const previewImg = document.getElementById('event-image-preview');
-    const urlInput = document.getElementById('event-input-image-url');
-
-    let originalPlaceholderHtml = '';
-    if (placeholder) {
-        originalPlaceholderHtml = placeholder.innerHTML;
-        placeholder.innerHTML = '<div style="font-size:1.6rem; margin-bottom:4px;">⏳</div><div style="font-weight:600; font-size:0.88rem; color:var(--text);">Bild wird komprimiert & hochgeladen...</div>';
-    }
-
-    try {
-        const processedFile = await window.compressEventImage(file, 0.60);
-        const formData = new FormData();
-        formData.append('image', processedFile);
-
-        const token = (typeof auth !== 'undefined' && auth.currentUser) 
-            ? (await auth.currentUser.getIdToken()) 
-            : (localStorage.getItem('token') || '');
-        const headers = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch(`${config.apiBaseUrl}/events/upload-image`, {
-            method: 'POST',
-            headers,
-            body: formData
-        });
-
-        if (res.ok) {
-            const data = await res.json();
-            if (urlInput) urlInput.value = data.url;
-            if (previewImg) previewImg.src = data.url;
-            if (previewWrap) previewWrap.style.display = 'block';
-            if (placeholder) placeholder.style.display = 'none';
-            showToast('Eventbild erfolgreich hochgeladen', 'success');
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Upload fehlgeschlagen', 'error');
-            if (placeholder) {
-                placeholder.innerHTML = originalPlaceholderHtml;
-                placeholder.style.display = 'block';
-            }
-        }
-    } catch (e) {
-        console.error('Event image upload error:', e);
-        showToast('Fehler beim Verarbeiten des Eventbildes', 'error');
-        if (placeholder) {
-            placeholder.innerHTML = originalPlaceholderHtml;
-            placeholder.style.display = 'block';
-        }
-    } finally {
-        const fileInput = document.getElementById('event-input-file');
-        if (fileInput) fileInput.value = '';
-    }
+    await window.openEventCrop(file);
+    const fileInput = document.getElementById('event-input-file');
+    if (fileInput) fileInput.value = '';
 };
 
-window.openCreateEventModal = function(requiresRegistration = false) {
-    const form = document.getElementById('create-event-form');
-    if (form) form.reset();
-    window.removeEventImage();
+function renderQuickDutyChips() {
+    const chipsContainer = document.getElementById('event-quick-duty-chips');
+    if (!chipsContainer) return;
+    const suggestions = (Array.isArray(eventSettings?.defaultDuties) && eventSettings.defaultDuties.length > 0)
+        ? eventSettings.defaultDuties
+        : ['Bistro-Team', 'Technik', 'Moderation', 'Musik / Lobpreis', 'Begrüßung', 'Kinderbetreuung'];
 
-    const idInput = document.getElementById('event-input-id');
-    if (idInput) idInput.value = '';
+    chipsContainer.innerHTML = suggestions.map(role => `
+        <button type="button" class="duty-suggestion-chip" onclick="window.addEventDutySlot('${escapeHtml(role)}')">
+            + ${escapeHtml(role)}
+        </button>
+    `).join('');
+}
 
-    const modalTitle = document.getElementById('title-create-event');
-    if (modalTitle) modalTitle.textContent = 'Neuen Eintrag erstellen';
-    const submitBtn = document.getElementById('event-submit-btn');
-    if (submitBtn) submitBtn.textContent = 'Veröffentlichen';
-
-    // Set default date to tomorrow
-    const dateInput = document.getElementById('event-input-date');
-    if (dateInput) {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        dateInput.value = d.toISOString().split('T')[0];
-    }
-    const endDateInput = document.getElementById('event-input-end-date');
-    if (endDateInput) endDateInput.value = '';
-
-    const pinnedCheck = document.getElementById('event-check-pinned');
-    if (pinnedCheck) pinnedCheck.checked = false;
-
-    // Type selector visibility (only for managers)
+window.openCreateEventModal = function(requiresRegistration = false, defaultType = null) {
     const canManage = canManageEvents();
-    const typeWrap = document.getElementById('event-type-selection-wrap');
-    if (typeWrap) typeWrap.style.display = canManage ? 'block' : 'none';
-
-    const defaultType = (canManage && currentEventsSubTab === 'termine') ? 'termin' : 'event';
-    window.setCreateEventType(defaultType);
-
-    const recurringOpts = document.getElementById('event-recurring-options');
-    if (recurringOpts) recurringOpts.style.display = 'none';
-
-    // Set requiresRegistration based on selection
-    const regCheckbox = document.getElementById('event-check-requires-reg');
-    if (regCheckbox) regCheckbox.checked = requiresRegistration === true;
-    const regOpts = document.getElementById('event-reg-options');
-    if (regOpts) regOpts.style.display = requiresRegistration === true ? 'grid' : 'none';
-
-    const modalSubtitle = document.querySelector('#create-event-modal .modal-subtitle');
-    if (modalSubtitle) {
-        modalSubtitle.textContent = requiresRegistration ? 'Mit verbindlicher Anmeldung & Teilnehmerbegrenzung' : 'Offener Eintrag für alle Teilnehmer';
+    const chosenType = canManage ? (defaultType || (currentEventsSubTab === 'termine' ? 'termin' : 'event')) : 'event';
+    window.openNewEventDetailModal(chosenType);
+    if (requiresRegistration) {
+        const regCheck = document.getElementById('detail-edit-requires-reg');
+        if (regCheck) {
+            regCheck.checked = true;
+            window.toggleDetailRegFields(true);
+        }
     }
-
-    // Populate Target Groups Checkboxes
-    populateTargetGroupsCheckboxes([]);
-
-    // Populate default duties from settings
-    const dutiesList = document.getElementById('event-duties-input-list');
-    if (dutiesList) {
-        dutiesList.innerHTML = '';
-        const defaultRole = (Array.isArray(eventSettings.defaultDuties) && eventSettings.defaultDuties.length > 0)
-            ? eventSettings.defaultDuties[0]
-            : 'Bistro-Team';
-        window.addEventDutySlot(defaultRole);
-    }
-
-    openModal('create-event-modal');
 };
 
 window.openCreateEventModalForDate = function(dateStr) {
-    window.openCreateEventModal(false);
-    const dateInput = document.getElementById('event-input-date');
+    const canManage = canManageEvents();
+    const chosenType = canManage ? (currentEventsSubTab === 'termine' ? 'termin' : 'event') : 'event';
+    window.openNewEventDetailModal(chosenType);
+    const dateInput = document.getElementById('detail-edit-date');
     if (dateInput && dateStr) dateInput.value = dateStr;
 };
 
-window.openEditEventModal = function(eventId) {
-    const ev = appEvents.find(e => e.id === eventId);
-    if (!ev) return;
-
-    const form = document.getElementById('create-event-form');
-    if (form) form.reset();
-
-    const idInput = document.getElementById('event-input-id');
-    if (idInput) idInput.value = ev.id;
-
-    const modalTitle = document.getElementById('title-create-event');
-    if (modalTitle) modalTitle.textContent = 'Eintrag bearbeiten';
-    const submitBtn = document.getElementById('event-submit-btn');
-    if (submitBtn) submitBtn.textContent = 'Änderungen speichern';
-
-    document.getElementById('event-input-title').value = ev.title || '';
-    document.getElementById('event-input-date').value = ev.date || '';
-    const endDateInput = document.getElementById('event-input-end-date');
-    if (endDateInput) endDateInput.value = ev.endDate || '';
-    document.getElementById('event-input-location').value = ev.location || '';
-    document.getElementById('event-input-start-time').value = ev.startTime || '';
-    document.getElementById('event-input-end-time').value = ev.endTime || '';
-    document.getElementById('event-input-description').value = ev.description || '';
-
-    // Pinned
-    const pinnedCheck = document.getElementById('event-check-pinned');
-    if (pinnedCheck) pinnedCheck.checked = ev.isPinned === true;
-
-    // Type Selector
-    const canManage = canManageEvents();
-    const typeWrap = document.getElementById('event-type-selection-wrap');
-    if (typeWrap) typeWrap.style.display = canManage ? 'block' : 'none';
-    const evType = ev.eventType || (ev.isOfficialTermin ? 'termin' : 'event');
-    window.setCreateEventType(evType);
-
-    // Target Groups
-    populateTargetGroupsCheckboxes(ev.targetGroups || []);
-
-    // Registration
-    const regCheck = document.getElementById('event-check-requires-reg');
-    if (regCheck) regCheck.checked = ev.requiresRegistration === true;
-    const regOpts = document.getElementById('event-reg-options');
-    if (regOpts) regOpts.style.display = ev.requiresRegistration ? 'grid' : 'none';
-    document.getElementById('event-input-min-participants').value = ev.minParticipants || 0;
-    document.getElementById('event-input-max-participants').value = ev.maxParticipants || 0;
-
-    // Recurring
-    const recCheck = document.getElementById('event-check-recurring');
-    if (recCheck) recCheck.checked = ev.isRecurring === true;
-    const recOpts = document.getElementById('event-recurring-options');
-    if (recOpts) recOpts.style.display = ev.isRecurring ? 'block' : 'none';
-    if (ev.recurringRule) {
-        document.getElementById('event-select-recurring-rule').value = ev.recurringRule;
-    }
-
-    // Image
-    if (ev.imageUrl) {
-        const previewWrap = document.getElementById('event-image-preview-wrap');
-        const placeholder = document.getElementById('event-image-placeholder');
-        const previewImg = document.getElementById('event-image-preview');
-        const urlInput = document.getElementById('event-input-image-url');
-        if (urlInput) urlInput.value = ev.imageUrl;
-        if (previewImg) previewImg.src = ev.imageUrl;
-        if (previewWrap) previewWrap.style.display = 'block';
-        if (placeholder) placeholder.style.display = 'none';
-    } else {
-        window.removeEventImage();
-    }
-
-    // Duties
-    const dutiesList = document.getElementById('event-duties-input-list');
-    if (dutiesList) {
-        dutiesList.innerHTML = '';
-        if (Array.isArray(ev.duties) && ev.duties.length > 0) {
-            ev.duties.forEach(d => {
-                window.addEventDutySlot(d.roleName, d.assignedGroup || d.assignedGroupName || '', d.id);
-            });
-        }
-    }
-
-    openModal('create-event-modal');
+window.openEditEventModal = async function(eventId) {
+    await window.openEventDetailModal(eventId);
+    window.enterDetailEditMode();
 };
 
 function populateTargetGroupsCheckboxes(selectedGroups = []) {
@@ -10542,8 +11447,9 @@ window.handleCreateEventSubmit = async function(e) {
     const minParticipants = parseInt(document.getElementById('event-input-min-participants')?.value, 10) || 0;
     const maxParticipants = parseInt(document.getElementById('event-input-max-participants')?.value, 10) || 0;
 
-    const isRecurring = document.getElementById('event-check-recurring')?.checked === true;
+    const isRecurring = !eventId && (eventType === 'termin') && (document.getElementById('event-check-recurring')?.checked === true);
     const recurringRule = document.getElementById('event-select-recurring-rule')?.value || 'weekly';
+    const recurringCount = isRecurring ? Math.min(52, Math.max(2, parseInt(document.getElementById('event-recurring-count')?.value, 10) || 10)) : 1;
 
     // Target Groups
     const targetGroupCheckboxes = document.querySelectorAll('input[name="event-target-group"]:checked');
@@ -10582,8 +11488,9 @@ window.handleCreateEventSubmit = async function(e) {
         requiresRegistration,
         minParticipants,
         maxParticipants,
-        isRecurring: (eventType === 'termin') ? isRecurring : false,
+        isRecurring,
         recurringRule,
+        recurringCount,
         targetGroups,
         duties
     };
@@ -10750,4 +11657,524 @@ window.saveEventSystemSettings = async function() {
 };
 
 
+
+
+// ==========================================================
+// DETAIL MODAL — INLINE EDIT MODE
+// ==========================================================
+
+/**
+ * Enter edit mode on the currently open detail modal.
+ * Populates all edit inputs from currentDetailEvent and adds .detail-is-editing class.
+ */
+window.enterDetailEditMode = function() {
+    const ev = currentDetailEvent;
+    const modalCard = document.querySelector('.event-detail-modal-card');
+    if (!modalCard) return;
+
+    modalCard.classList.add('detail-is-editing');
+
+    // Populate title
+    const titleInput = document.getElementById('detail-edit-title');
+    if (titleInput) titleInput.value = ev ? (ev.title || '') : '';
+
+    // Type selector (strictly only for managers with extended event permissions)
+    const canManage = canManageEvents();
+    if (modalCard) modalCard.classList.toggle('can-manage-events', canManage);
+    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
+    if (typeWrap) {
+        typeWrap.classList.toggle('can-manage-events', canManage);
+        typeWrap.classList.toggle('is-hidden', !canManage);
+        typeWrap.style.removeProperty('display');
+    }
+    const evType = canManage ? (ev ? (ev.eventType || (ev.isOfficialTermin ? 'termin' : 'event')) : 'termin') : 'event';
+    window.setDetailEditType(evType);
+
+    // Highlight (Großevent) toggle
+    const pinnedWrap = document.getElementById('detail-edit-pinned-wrap');
+    const pinnedCheck = document.getElementById('detail-edit-pinned');
+    const isPinned = ev ? (ev.isPinned === true) : false;
+    if (pinnedCheck) pinnedCheck.checked = isPinned;
+    if (pinnedWrap) {
+        pinnedWrap.classList.toggle('is-active', isPinned);
+        pinnedWrap.style.display = (canManage && evType === 'event') ? 'flex' : 'none';
+    }
+
+    // Date / Time / Multi-day
+    const isMultiDay = Boolean(ev && ev.endDate && ev.endDate !== ev.date);
+    const multiDayCheck = document.getElementById('detail-edit-is-multiday');
+    if (multiDayCheck) multiDayCheck.checked = isMultiDay;
+    window.toggleDetailMultiDay(isMultiDay);
+
+    const dateInput = document.getElementById('detail-edit-date');
+    const endDateInput = document.getElementById('detail-edit-end-date');
+    const startTimeInput = document.getElementById('detail-edit-start-time');
+    const endTimeInput = document.getElementById('detail-edit-end-time');
+
+    if (ev) {
+        if (dateInput) dateInput.value = ev.date || '';
+        if (endDateInput) endDateInput.value = ev.endDate || '';
+        if (startTimeInput) startTimeInput.value = ev.startTime || '';
+        if (endTimeInput) endTimeInput.value = ev.endTime || '';
+    } else {
+        // New event: default to tomorrow if empty
+        if (dateInput && !dateInput.value) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            dateInput.value = tomorrow.toISOString().split('T')[0];
+        }
+        if (endDateInput) endDateInput.value = '';
+        if (startTimeInput) startTimeInput.value = '';
+        if (endTimeInput) endTimeInput.value = '';
+    }
+
+    // Recurring toggle (only for creating new routine appointments)
+    const recWrap = document.getElementById('detail-edit-recurring-toggle-wrap');
+    const recCheck = document.getElementById('detail-edit-is-recurring');
+    const recPanel = document.getElementById('detail-recurring-options-panel');
+    const isNew = !ev;
+    if (recWrap) recWrap.style.display = (canManage && evType === 'termin' && isNew) ? 'inline-flex' : 'none';
+    if (recCheck) recCheck.checked = false;
+    if (recPanel) recPanel.style.display = 'none';
+
+    // Location
+    const locInput = document.getElementById('detail-edit-location');
+    if (locInput) locInput.value = ev ? (ev.location || '') : '';
+
+    // Description
+    const descInput = document.getElementById('detail-edit-description');
+    if (descInput) {
+        descInput.value = ev ? (ev.description || '') : '';
+        window.autoResizeDetailTextarea(descInput);
+    }
+
+    // Registration
+    const regCheck = document.getElementById('detail-edit-requires-reg');
+    const minPart = document.getElementById('detail-edit-min-participants');
+    const maxPart = document.getElementById('detail-edit-max-participants');
+    const reqReg = ev ? (ev.requiresRegistration === true) : false;
+    if (regCheck) regCheck.checked = reqReg;
+    if (minPart) minPart.value = (ev && ev.minParticipants) ? ev.minParticipants : '';
+    if (maxPart) maxPart.value = (ev && ev.maxParticipants) ? ev.maxParticipants : '';
+    window.toggleDetailRegFields(reqReg);
+
+    // Image & banner
+    const detailImgInput = document.getElementById('detail-edit-image-url');
+    const coverWrap = document.getElementById('detail-modal-cover-wrap');
+    const coverImg = document.getElementById('detail-modal-cover-img');
+    const placeholder = document.getElementById('detail-edit-cover-placeholder');
+    const rawImg = ev ? (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '') : '';
+    const imgSrc = typeof rawImg === 'string' ? rawImg.trim() : '';
+
+    if (detailImgInput) detailImgInput.value = imgSrc;
+    if (imgSrc) {
+        if (coverImg) coverImg.src = imgSrc;
+        if (coverWrap) coverWrap.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+        modalCard.classList.add('has-hero-image');
+    } else {
+        if (coverImg) coverImg.src = '';
+        if (coverWrap) coverWrap.style.display = 'none';
+        if (placeholder) placeholder.style.display = 'flex';
+        modalCard.classList.remove('has-hero-image');
+    }
+
+    // Target groups
+    _populateDetailEditTargetGroups(ev ? (ev.targetGroups || []) : []);
+    if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
+        loadSystemGroups().then(() => {
+            _populateDetailEditTargetGroups(ev ? (ev.targetGroups || []) : []);
+        });
+    }
+
+    // Action bar & save button label
+    const actionBar = document.getElementById('detail-modal-action-bar');
+    if (actionBar) actionBar.style.display = 'flex';
+    const saveBtnText = document.getElementById('detail-btn-save-text');
+    if (saveBtnText) saveBtnText.textContent = ev ? 'Speichern' : 'Veröffentlichen';
+};
+
+/**
+ * Cancel edit mode — remove editing class and restore view.
+ */
+window.cancelDetailEditMode = function() {
+    const modalCard = document.querySelector('.event-detail-modal-card');
+    if (modalCard) modalCard.classList.remove('detail-is-editing', 'detail-is-new', 'can-manage-events');
+
+    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
+    if (typeWrap) {
+        typeWrap.style.removeProperty('display');
+        typeWrap.style.display = 'none';
+        typeWrap.classList.add('is-hidden');
+    }
+
+    // If we were creating a new event (no currentDetailEvent), close the modal
+    if (!currentDetailEvent) {
+        closeModal('event-detail-modal');
+        return;
+    }
+
+    // Restore cover image placeholder visibility
+    const placeholder = document.getElementById('detail-edit-cover-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+
+    // Re-sync display from currentDetailEvent
+    const rawImg = (currentDetailEvent.imageUrl || currentDetailEvent.image || currentDetailEvent.coverUrl || currentDetailEvent.photo || '');
+    const imgSrc = typeof rawImg === 'string' ? rawImg.trim() : '';
+    const coverWrap = document.getElementById('detail-modal-cover-wrap');
+    if (coverWrap) coverWrap.style.display = imgSrc ? 'block' : 'none';
+    if (modalCard) modalCard.classList.toggle('has-hero-image', Boolean(imgSrc));
+};
+
+/**
+ * Save the detail edit form — POST (new) or PATCH (edit).
+ */
+window.saveDetailEditMode = async function() {
+    const title = (document.getElementById('detail-edit-title')?.value || '').trim();
+    const date = (document.getElementById('detail-edit-date')?.value || '').trim();
+    const isMultiDay = document.getElementById('detail-edit-is-multiday')?.checked === true;
+    let endDate = '';
+    let startTime = '';
+    let endTime = '';
+
+    if (isMultiDay) {
+        endDate = (document.getElementById('detail-edit-end-date')?.value || '').trim();
+        // Rule: "Wenn es ein mehrtägiges Event ist, dann soll Uhrzeit wegfallen"
+        startTime = '';
+        endTime = '';
+    } else {
+        endDate = '';
+        startTime = (document.getElementById('detail-edit-start-time')?.value || '').trim();
+        endTime = (document.getElementById('detail-edit-end-time')?.value || '').trim();
+    }
+
+    const location = (document.getElementById('detail-edit-location')?.value || '').trim();
+    const description = (document.getElementById('detail-edit-description')?.value || '').trim();
+    const imageUrl = (document.getElementById('detail-edit-image-url')?.value || '').trim();
+    const canManage = canManageEvents();
+    const rawEventType = document.getElementById('detail-edit-type')?.value || 'event';
+    const eventType = canManage ? rawEventType : 'event';
+    const isPinned = canManage && (eventType === 'event') && (document.getElementById('detail-edit-pinned')?.checked === true);
+    const requiresRegistration = document.getElementById('detail-edit-requires-reg')?.checked === true;
+    const minParticipants = parseInt(document.getElementById('detail-edit-min-participants')?.value, 10) || 0;
+    const maxParticipants = parseInt(document.getElementById('detail-edit-max-participants')?.value, 10) || 0;
+
+    // Recurring (only valid for users with manage permissions and routine appointments)
+    const isRecurring = canManage && !currentDetailEvent && (eventType === 'termin') && (document.getElementById('detail-edit-is-recurring')?.checked === true);
+    const recurringRule = document.getElementById('detail-edit-recurring-rule')?.value || 'weekly';
+    const recurringCount = isRecurring ? Math.min(52, Math.max(2, parseInt(document.getElementById('detail-edit-recurring-count')?.value, 10) || 10)) : 1;
+
+    // Validation
+    if (!title) {
+        showToast('Bitte gib einen Titel ein', 'warning');
+        document.getElementById('detail-edit-title')?.focus();
+        return;
+    }
+    if (!date) {
+        showToast('Bitte gib ein Datum ein', 'warning');
+        document.getElementById('detail-edit-date')?.focus();
+        return;
+    }
+    if (isMultiDay && endDate && endDate < date) {
+        showToast('Das Enddatum darf nicht vor dem Startdatum liegen', 'warning');
+        return;
+    }
+
+    // Target groups
+    const selectedChips = document.querySelectorAll('#detail-edit-target-groups-container .detail-group-chip.is-selected');
+    const targetGroups = Array.from(selectedChips).map(c => c.dataset.group).filter(Boolean);
+
+    const payload = {
+        title,
+        date,
+        endDate,
+        startTime,
+        endTime,
+        location,
+        description,
+        imageUrl,
+        eventType,
+        isPinned,
+        requiresRegistration,
+        minParticipants,
+        maxParticipants,
+        targetGroups,
+        isRecurring,
+        recurringRule,
+        recurringCount
+    };
+
+    const saveBtn = document.getElementById('detail-btn-save');
+    const saveBtnText = document.getElementById('detail-btn-save-text');
+    if (saveBtn) saveBtn.disabled = true;
+    if (saveBtnText) saveBtnText.textContent = 'Wird gespeichert...';
+
+    try {
+        const eventId = currentDetailEvent ? currentDetailEvent.id : null;
+        const url = eventId ? `${config.apiBaseUrl}/events/${eventId}` : `${config.apiBaseUrl}/events`;
+        const method = eventId ? 'PATCH' : 'POST';
+
+        const res = await fetchWithAuth(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            const saved = await res.json().catch(() => ({}));
+            showToast(eventId ? 'Erfolgreich aktualisiert!' : (isRecurring ? `${recurringCount} Termine erfolgreich erstellt!` : 'Erfolgreich veröffentlicht!'), 'success');
+
+            // Exit edit mode
+            const modalCard = document.querySelector('.event-detail-modal-card');
+            if (modalCard) modalCard.classList.remove('detail-is-editing', 'detail-is-new');
+            const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
+            if (typeWrap) {
+                typeWrap.style.removeProperty('display');
+                typeWrap.style.display = 'none';
+                typeWrap.classList.add('is-hidden');
+            }
+
+            // Reload events
+            await window.loadEventsData();
+
+            const reopenId = eventId || (saved && (saved.id || saved._id || (saved.event && (saved.event.id || saved.event._id))));
+            if (reopenId) {
+                window.openEventDetailModal(reopenId);
+            } else {
+                closeModal('event-detail-modal');
+            }
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Fehler beim Speichern', 'error');
+        }
+    } catch (err) {
+        console.error('saveDetailEditMode error:', err);
+        showToast('Verbindungsfehler beim Speichern', 'error');
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+        if (saveBtnText) saveBtnText.textContent = currentDetailEvent ? 'Speichern' : 'Veröffentlichen';
+    }
+};
+
+/**
+ * Open the detail modal in "new event / termin" mode.
+ * @param {string} defaultType - 'termin' or 'event'
+ */
+window.openNewEventDetailModal = function(defaultType) {
+    currentDetailEvent = null;
+    const canManage = canManageEvents();
+    const effectiveType = canManage ? (defaultType || 'termin') : 'event';
+
+    const modalCard = document.querySelector('.event-detail-modal-card');
+    if (modalCard) {
+        modalCard.classList.remove('detail-is-editing', 'detail-is-new', 'has-hero-image');
+        modalCard.classList.toggle('can-manage-events', canManage);
+    }
+    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
+    if (typeWrap) {
+        typeWrap.classList.toggle('can-manage-events', canManage);
+        typeWrap.classList.toggle('is-hidden', !canManage);
+        typeWrap.style.removeProperty('display');
+    }
+
+    // Reset cover image
+    const coverWrap = document.getElementById('detail-modal-cover-wrap');
+    const coverImg = document.getElementById('detail-modal-cover-img');
+    if (coverWrap) coverWrap.style.display = 'none';
+    if (coverImg) coverImg.src = '';
+
+    // Reset view-mode elements
+    const titleEl = document.getElementById('detail-modal-title');
+    if (titleEl) titleEl.textContent = effectiveType === 'event' ? 'Neues Event' : 'Neuer Termin';
+    const orgPill = document.getElementById('detail-modal-organizer-pill');
+    if (orgPill) orgPill.style.display = 'none';
+    const tagsContainer = document.getElementById('detail-modal-tags');
+    if (tagsContainer) { tagsContainer.innerHTML = ''; tagsContainer.style.display = 'none'; }
+    const regBox = document.getElementById('detail-modal-reg-box');
+    if (regBox) regBox.style.display = 'block';
+    const dutiesBox = document.getElementById('detail-modal-duties-box');
+    if (dutiesBox) dutiesBox.style.display = 'block';
+    const descCard = document.getElementById('detail-modal-desc-card');
+    if (descCard) descCard.style.display = 'block';
+
+    // Admin bar
+    const actionBar = document.getElementById('detail-modal-action-bar');
+    if (actionBar) actionBar.style.display = 'flex';
+    const editBtn = document.getElementById('detail-btn-edit');
+    if (editBtn) editBtn.style.display = 'none';
+    const deleteBtn = document.getElementById('detail-btn-delete');
+    if (deleteBtn) deleteBtn.style.display = 'none';
+
+    openModal('event-detail-modal');
+
+    // Add edit mode classes after opening
+    if (modalCard) {
+        modalCard.classList.add('detail-is-editing', 'detail-is-new');
+    }
+
+    // Populate edit fields for new event
+    window.enterDetailEditMode();
+    window.setDetailEditType(effectiveType);
+};
+
+/**
+ * Set the event type in the detail edit type selector.
+ */
+window.setDetailEditType = function(type) {
+    const canManage = canManageEvents();
+    const effectiveType = canManage ? type : 'event';
+    const isTermin = (effectiveType === 'termin');
+    const hidden = document.getElementById('detail-edit-type');
+    if (hidden) hidden.value = isTermin ? 'termin' : 'event';
+
+    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
+    if (typeWrap) {
+        typeWrap.classList.toggle('can-manage-events', canManage);
+        typeWrap.classList.toggle('is-hidden', !canManage);
+        typeWrap.style.removeProperty('display');
+    }
+
+    const cardTermin = document.getElementById('detail-type-card-termin') || document.getElementById('detail-type-tab-termin');
+    const cardEvent = document.getElementById('detail-type-card-event') || document.getElementById('detail-type-tab-event');
+    if (cardTermin) cardTermin.classList.toggle('is-active', isTermin);
+    if (cardEvent) cardEvent.classList.toggle('is-active', !isTermin);
+
+    const descText = document.getElementById('detail-type-desc-text');
+    if (descText) {
+        descText.textContent = isTermin
+            ? 'Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.'
+            : 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.';
+    }
+
+    // Show/hide pinned toggle based on type (only for events)
+    const pinnedWrap = document.getElementById('detail-edit-pinned-wrap');
+    if (pinnedWrap) pinnedWrap.style.display = (canManage && !isTermin) ? 'flex' : 'none';
+
+    // Show/hide recurring toggle (only for new routine appointments)
+    const recWrap = document.getElementById('detail-edit-recurring-toggle-wrap');
+    const isNew = !currentDetailEvent;
+    if (recWrap) recWrap.style.display = (canManage && isTermin && isNew) ? 'inline-flex' : 'none';
+};
+
+/**
+ * Toggle Highlight (Großevent) state
+ */
+window.toggleDetailPinnedState = function(isChecked) {
+    const wrap = document.getElementById('detail-edit-pinned-wrap');
+    if (wrap) wrap.classList.toggle('is-active', isChecked);
+};
+
+/**
+ * Toggle multi-day event state.
+ * When multi-day is active: show end date and hide time fields ("Uhrzeit entfällt").
+ */
+window.toggleDetailMultiDay = function(isChecked) {
+    const endField = document.getElementById('detail-field-end-date');
+    const timeRow = document.getElementById('detail-when-time-row');
+    const hint = document.getElementById('detail-multiday-hint');
+    const dateLabel = document.querySelector('label[for="detail-edit-date"]');
+
+    if (endField) endField.style.display = isChecked ? 'flex' : 'none';
+    if (timeRow) timeRow.style.display = isChecked ? 'none' : 'grid';
+    if (hint) hint.style.display = isChecked ? 'flex' : 'none';
+    if (dateLabel) dateLabel.textContent = isChecked ? 'Startdatum' : 'Datum';
+
+    if (isChecked) {
+        const startDate = document.getElementById('detail-edit-date')?.value;
+        const endDateInput = document.getElementById('detail-edit-end-date');
+        if (endDateInput && !endDateInput.value && startDate) {
+            endDateInput.value = startDate;
+        }
+    }
+};
+
+/**
+ * Toggle recurring options panel.
+ */
+window.toggleDetailRecurring = function(isChecked) {
+    const panel = document.getElementById('detail-recurring-options-panel');
+    if (panel) panel.style.display = isChecked ? 'block' : 'none';
+};
+
+/**
+ * Toggle registration options in detail edit mode.
+ */
+window.toggleDetailRegFields = function(isChecked) {
+    const regOpts = document.getElementById('detail-edit-reg-options');
+    if (regOpts) regOpts.style.display = isChecked ? 'block' : 'none';
+    const card = document.querySelector('.detail-reg-card');
+    if (card) card.classList.toggle('is-active', isChecked);
+};
+
+
+/**
+ * Populate the detail edit target groups clickable chips.
+ */
+function _populateDetailEditTargetGroups(selectedGroups = []) {
+    const container = document.getElementById('detail-edit-target-groups-container');
+    if (!container) return;
+    const groups = Array.isArray(systemGroups) ? systemGroups : [];
+    if (groups.length > 0) {
+        container.innerHTML = groups.map(g => {
+            const gName = g.name || g.id;
+            const isChecked = selectedGroups.includes(gName) || selectedGroups.includes(g.id);
+            return `
+                <button type="button" class="detail-group-chip ${isChecked ? 'is-selected' : ''}" data-group="${escapeHtml(gName)}" onclick="this.classList.toggle('is-selected')">
+                    <span>👥 ${escapeHtml(gName)}</span>
+                </button>
+            `;
+        }).join('');
+    } else {
+        container.innerHTML = '<span style="font-size:0.78rem; color:var(--text-secondary);">Öffentlich für alle Mitglieder</span>';
+    }
+}
+
+/**
+ * Trigger file selection for detail edit cover image.
+ */
+window.detailEditSelectImage = function() {
+    const fileInput = document.getElementById('detail-edit-file-input');
+    if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+    }
+};
+
+/**
+ * Remove cover image in detail edit mode.
+ */
+window.detailEditRemoveImage = function() {
+    const detailImgInput = document.getElementById('detail-edit-image-url');
+    if (detailImgInput) detailImgInput.value = '';
+    const coverImg = document.getElementById('detail-modal-cover-img');
+    if (coverImg) coverImg.src = '';
+    const coverWrap = document.getElementById('detail-modal-cover-wrap');
+    if (coverWrap) coverWrap.style.display = 'none';
+    const placeholder = document.getElementById('detail-edit-cover-placeholder');
+    if (placeholder) placeholder.style.display = 'flex';
+    const modalCard = document.querySelector('.event-detail-modal-card');
+    if (modalCard) modalCard.classList.remove('has-hero-image');
+};
+
+/**
+ * Handle file selection for detail edit mode — pipes through the existing crop flow.
+ */
+window.detailEditImageFileSelected = async function(files) {
+    if (!files || !files[0]) return;
+    window._detailEditImagePending = true;
+    await window.openEventCrop(files[0]);
+    const fileInput = document.getElementById('detail-edit-file-input');
+    if (fileInput) fileInput.value = '';
+};
+
+/**
+ * Auto-resize textarea smoothly as user types.
+ */
+window.autoResizeDetailTextarea = function(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(300, Math.max(85, el.scrollHeight)) + 'px';
+};
+
+window._detailEditImagePending = false;
 
