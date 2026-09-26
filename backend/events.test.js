@@ -589,4 +589,113 @@ test('Home page duties and requests aggregation & sorting logic', () => {
   assert.equal(dutyEvents[1].id, 'ev-1');
 });
 
+test('Event push notification payload and recipient filtering logic', () => {
+  function userMatchesTargetGroups(user, targetGroups = []) {
+    if (!Array.isArray(targetGroups) || targetGroups.length === 0) return true;
+    if (!user) return false;
+    if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) return true;
+    const userGroups = Array.isArray(user.groups) ? user.groups : [];
+    return userGroups.some(g => {
+      const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+      const gname = typeof g === 'object' && g ? g.name : String(g);
+      return targetGroups.includes(gid) || targetGroups.includes(gname);
+    });
+  }
+
+  function buildEventPushNotification(firstEv, createdCount) {
+    const isTermin = firstEv.eventType === 'termin';
+    const titlePrefix = isTermin ? 'Neuer Termin' : 'Neues Event';
+    const dateFormatted = firstEv.date ? firstEv.date.split('-').reverse().join('.') : '';
+    const timeInfo = firstEv.startTime ? ` um ${firstEv.startTime} Uhr` : '';
+    const locInfo = firstEv.location ? ` • ${firstEv.location}` : '';
+    const recurringInfo = createdCount > 1 ? ` (${createdCount} Termine)` : '';
+    const pushBody = `Am ${dateFormatted}${timeInfo}${locInfo}${recurringInfo}`.trim();
+    return {
+      title: `${titlePrefix}: ${firstEv.title}`,
+      body: pushBody,
+      data: { url: '/#events', eventId: firstEv.id },
+      tag: `agora-event-${firstEv.id}`
+    };
+  }
+
+  // 1. Test payload formatting
+  const payload1 = buildEventPushNotification({
+    id: 'e1',
+    title: 'Gottesdienst',
+    eventType: 'termin',
+    date: '2026-10-15',
+    startTime: '10:00',
+    location: 'Hauptsaal'
+  }, 1);
+  assert.equal(payload1.title, 'Neuer Termin: Gottesdienst');
+  assert.equal(payload1.body, 'Am 15.10.2026 um 10:00 Uhr • Hauptsaal');
+  assert.equal(payload1.data.url, '/#events');
+  assert.equal(payload1.data.eventId, 'e1');
+  assert.equal(payload1.tag, 'agora-event-e1');
+
+  // 2. Test recurring event formatting
+  const payload2 = buildEventPushNotification({
+    id: 'e2',
+    title: 'Jugendtreff',
+    eventType: 'event',
+    date: '2026-10-16',
+    startTime: '18:30',
+    location: 'Jugendkeller'
+  }, 4);
+  assert.equal(payload2.title, 'Neues Event: Jugendtreff');
+  assert.equal(payload2.body, 'Am 16.10.2026 um 18:30 Uhr • Jugendkeller (4 Termine)');
+
+  // 3. Test recipient filtering
+  const allUsers = [
+    { id: 'u-creator', emailNotifications: true, groups: ['Jugend'] },
+    { id: 'u-optout', emailNotifications: false, groups: ['Jugend'] },
+    { id: 'u-jugend', emailNotifications: true, groups: ['Jugend'] },
+    { id: 'u-other', emailNotifications: true, groups: ['Senioren'] },
+    { id: 'u-admin', emailNotifications: true, admin: true, groups: [] }
+  ];
+
+  const targetGroups = ['Jugend'];
+  const creatorId = 'u-creator';
+
+  // 4. Test granular notification preferences filtering
+  function userWantsNotification(user, type) {
+    if (!user) return false;
+    if (user.notificationSettings && typeof user.notificationSettings === 'object') {
+      if (typeof user.notificationSettings[type] === 'boolean') {
+        return user.notificationSettings[type];
+      }
+    }
+    return user.emailNotifications !== false;
+  }
+
+  const recipients = allUsers
+    .filter(u => u && u.id && u.id !== creatorId && userWantsNotification(u, 'events') && userMatchesTargetGroups(u, targetGroups))
+    .map(u => u.id);
+
+  assert.deepEqual(recipients, ['u-jugend', 'u-admin']);
+
+  const userWithPrefs = {
+    id: 'u-pref',
+    notificationSettings: {
+      duties: true,
+      events: false,
+      messages: true,
+      finances: false
+    }
+  };
+  assert.equal(userWantsNotification(userWithPrefs, 'duties'), true);
+  assert.equal(userWantsNotification(userWithPrefs, 'events'), false);
+  assert.equal(userWantsNotification(userWithPrefs, 'messages'), true);
+  assert.equal(userWantsNotification(userWithPrefs, 'finances'), false);
+
+  const userLegacyOptout = { id: 'u-legacy', emailNotifications: false };
+  assert.equal(userWantsNotification(userLegacyOptout, 'events'), false);
+  assert.equal(userWantsNotification(userLegacyOptout, 'duties'), false);
+
+  const userDefault = { id: 'u-def' };
+  assert.equal(userWantsNotification(userDefault, 'events'), true);
+  assert.equal(userWantsNotification(userDefault, 'duties'), true);
+});
+
+
 

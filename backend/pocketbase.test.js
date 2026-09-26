@@ -68,6 +68,12 @@ test('toPublicUser falls back to first and last name when the auth record has no
     pays: true,
     groups: [],
     emailNotifications: true,
+    notificationSettings: {
+      duties: true,
+      events: true,
+      messages: true,
+      finances: true
+    },
     isClaimed: true
   });
 });
@@ -97,6 +103,12 @@ test('toPublicUser preserves owner, pays, and groups fields', () => {
     pays: false,
     groups: ['Admins', 'Board'],
     emailNotifications: true,
+    notificationSettings: {
+      duties: true,
+      events: true,
+      messages: true,
+      finances: true
+    },
     isClaimed: true
   });
 });

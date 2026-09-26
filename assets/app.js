@@ -1110,6 +1110,8 @@ window.switchTab = function(tabName, btn) {
         window.switchFinanceSubpage('members');
     } else if (tabName === 'user-history' || tabName === 'user-requests') {
         tabName = 'user-finances';
+    } else if (tabName === 'calendar') {
+        tabName = 'events';
     }
 
     if (tabName === 'finances' && !canViewFinances()) {
@@ -1146,8 +1148,8 @@ window.switchTab = function(tabName, btn) {
                 inviteCardUser.style.setProperty('display', 'none', 'important');
             }
         }
-        if (typeof updatePushNotificationUI === 'function') {
-            updatePushNotificationUI();
+        if (typeof updateNotificationPreferencesUI === 'function') {
+            updateNotificationPreferencesUI();
         }
     }
 
@@ -1512,6 +1514,19 @@ window.addEventListener('popstate', (e) => {
         // Close the top-most modal
         const topModal = window._modalStack[window._modalStack.length - 1];
         closeModal(topModal, true);
+    }
+});
+
+window.addEventListener('hashchange', () => {
+    if (!isAuthenticated) return;
+    const rawHash = (window.location.hash || '').replace(/^#\/?/, '').trim();
+    if (!rawHash) return;
+    let targetTab = rawHash.split('?')[0].split('/')[0];
+    if (targetTab === 'calendar') targetTab = 'events';
+    if (targetTab === 'requests') targetTab = canViewFinances() ? 'finances' : 'user-finances';
+    const targetEl = document.getElementById(targetTab);
+    if (targetEl && targetEl.classList.contains('tab-content')) {
+        window.switchTab(targetTab);
     }
 });
 
@@ -2439,10 +2454,22 @@ async function loadData(silent = false) {
             window.loadEventsData().catch(() => {});
         }
 
-        // Default to Home page (user-overview) only if no tab is currently active
-        const hasActiveTab = document.querySelector('.tab-content.active');
-        if (!hasActiveTab) {
-            switchTab('user-overview');
+        // Respect URL hash if present (e.g. from push notifications /#events or /#calendar)
+        if (window.location.hash) {
+            const rawHash = (window.location.hash || '').replace(/^#\/?/, '').trim();
+            let targetTab = rawHash.split('?')[0].split('/')[0];
+            if (targetTab === 'calendar') targetTab = 'events';
+            if (targetTab === 'requests') targetTab = canViewFinances() ? 'finances' : 'user-finances';
+            const targetEl = document.getElementById(targetTab);
+            if (targetEl && targetEl.classList.contains('tab-content')) {
+                switchTab(targetTab);
+            }
+        } else {
+            // Default to Home page (user-overview) only if no tab is currently active
+            const hasActiveTab = document.querySelector('.tab-content.active');
+            if (!hasActiveTab) {
+                switchTab('user-overview');
+            }
         }
 
         // Normalize people data
@@ -2514,8 +2541,8 @@ async function renderAll() {
         if (document.getElementById('rate-keinverdiener')) document.getElementById('rate-keinverdiener').value = settings.keinverdiener || 0;
     }
 
-    if (currentUser && document.getElementById('admin-email-notifications')) {
-        document.getElementById('admin-email-notifications').checked = !!currentUser.emailNotifications;
+    if (typeof updateNotificationPreferencesUI === 'function') {
+        updateNotificationPreferencesUI();
     }
     if (typeof ensurePushNotificationSubscription === 'function') {
         ensurePushNotificationSubscription();
@@ -6255,22 +6282,82 @@ window.autoSaveRate = async function(fieldId) {
     }
 };
 
-// Auto-save email notifications toggle
-window.autoSaveEmailNotifications = async function() {
-    const el = document.getElementById('admin-email-notifications');
-    if (!el) return;
-    const emailNotifications = el.checked;
+// Auto-save notification preferences
+window.autoSaveNotificationPreferences = async function() {
+    if (!currentUser || !currentUser.uid) return;
+
+    const isUserTab = (typeof currentActiveTab !== 'undefined' && currentActiveTab === 'user-settings');
+    const prefix = isUserTab ? 'user-notif-pref-' : 'notif-pref-';
+
+    const getPrefVal = (key) => {
+        const elTab = document.getElementById(prefix + key);
+        if (elTab) return elTab.checked;
+        const elOther = document.getElementById((isUserTab ? 'notif-pref-' : 'user-notif-pref-') + key);
+        if (elOther) return elOther.checked;
+        return true;
+    };
+
+    const notificationSettings = {
+        duties: getPrefVal('duties'),
+        events: getPrefVal('events'),
+        messages: getPrefVal('messages'),
+        finances: getPrefVal('finances')
+    };
+
+    // Keep emailNotifications in sync for backwards compatibility
+    const emailNotifications = Object.values(notificationSettings).some(Boolean);
+
     try {
-        if (currentUser && currentUser.uid) {
-            await update(ref(db, 'users/' + currentUser.uid), { emailNotifications });
-            currentUser.emailNotifications = emailNotifications;
-        }
-        showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
+        await update(ref(db, 'users/' + currentUser.uid), {
+            notificationSettings,
+            emailNotifications
+        });
+        currentUser.notificationSettings = notificationSettings;
+        currentUser.emailNotifications = emailNotifications;
+
+        // Synchronize all checkboxes across both tabs
+        ['duties', 'events', 'messages', 'finances'].forEach(key => {
+            const el1 = document.getElementById('notif-pref-' + key);
+            const el2 = document.getElementById('user-notif-pref-' + key);
+            if (el1) el1.checked = notificationSettings[key];
+            if (el2) el2.checked = notificationSettings[key];
+        });
+
+        showToast(t('notification_settings_saved', 'Benachrichtigungseinstellungen gespeichert'));
     } catch (err) {
-        console.error('Fehler beim Speichern der Benachrichtigungseinstellung:', err);
+        console.error('Fehler beim Speichern der Benachrichtigungseinstellungen:', err);
         showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
     }
 };
+
+window.updateNotificationPreferencesUI = function() {
+    if (!currentUser) return;
+
+    const canManageFin = typeof canManageFinances === 'function' ? canManageFinances() : false;
+    const canViewFin = typeof canViewFinances === 'function' ? canViewFinances() : false;
+    const isFinAllowed = canManageFin || canViewFin || currentUser.admin === true || currentUser.owner === true || currentUser.superAdmin === true;
+
+    // Show/hide finances notification option based on permission
+    const finWrap = document.getElementById('notif-pref-finances-wrap');
+    const userFinWrap = document.getElementById('user-notif-pref-finances-wrap');
+    if (finWrap) finWrap.style.display = isFinAllowed ? 'flex' : 'none';
+    if (userFinWrap) userFinWrap.style.display = isFinAllowed ? 'flex' : 'none';
+
+    const defaultSettings = { duties: true, events: true, messages: true, finances: true };
+    let settings = Object.assign({}, defaultSettings, currentUser.notificationSettings || {});
+    if (currentUser.emailNotifications === false && !currentUser.notificationSettings) {
+        settings = { duties: false, events: false, messages: false, finances: false };
+    }
+
+    ['duties', 'events', 'messages', 'finances'].forEach(key => {
+        const el1 = document.getElementById('notif-pref-' + key);
+        const el2 = document.getElementById('user-notif-pref-' + key);
+        if (el1) el1.checked = settings[key] !== false;
+        if (el2) el2.checked = settings[key] !== false;
+    });
+};
+
+window.autoSaveEmailNotifications = window.autoSaveNotificationPreferences;
 
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -6318,7 +6405,39 @@ window.updatePushNotificationUI = async function() {
     }
 };
 
-window.ensurePushNotificationSubscription = async function() {
+window.setupPwaPushAutoPrompt = function() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        return;
+    }
+    if (Notification.permission !== 'default') {
+        return;
+    }
+    if (window._pushAutoPromptRegistered) {
+        return;
+    }
+    window._pushAutoPromptRegistered = true;
+
+    const onUserInteraction = async () => {
+        window.removeEventListener('click', onUserInteraction, true);
+        window.removeEventListener('touchend', onUserInteraction, true);
+
+        try {
+            if (Notification.permission === 'default') {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    await window.ensurePushNotificationSubscription(true);
+                }
+            }
+        } catch (err) {
+            console.warn('Auto-request push permission error:', err);
+        }
+    };
+
+    window.addEventListener('click', onUserInteraction, { capture: true, once: true });
+    window.addEventListener('touchend', onUserInteraction, { capture: true, once: true });
+};
+
+window.ensurePushNotificationSubscription = async function(interactive = false) {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
         if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
         return;
@@ -6333,7 +6452,15 @@ window.ensurePushNotificationSubscription = async function() {
 
         let permission = Notification.permission;
         if (permission === 'default') {
-            permission = await Notification.requestPermission();
+            if (interactive) {
+                permission = await Notification.requestPermission();
+            } else {
+                // Background/startup call: iOS Safari and Android require a direct user gesture to show the OS dialog.
+                // Schedule the request on the user's first tap/click so the system prompt appears with zero friction.
+                window.setupPwaPushAutoPrompt();
+                if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
+                return;
+            }
         }
 
         if (permission !== 'granted') {
@@ -6381,7 +6508,7 @@ window.ensurePushNotificationSubscription = async function() {
 
 window.sendTestPushNotification = async function() {
     try {
-        await ensurePushNotificationSubscription();
+        await ensurePushNotificationSubscription(true);
         const token = (typeof auth !== 'undefined' && auth.currentUser) 
             ? (await auth.currentUser.getIdToken()) 
             : (localStorage.getItem('token') || '');
@@ -7771,6 +7898,9 @@ window.addEventListener('appinstalled', () => {
     // Clear the deferredPrompt so it can be garbage collected
     deferredPrompt = null;
     console.log('PWA was installed');
+    if (typeof window.setupPwaPushAutoPrompt === 'function') {
+        window.setupPwaPushAutoPrompt();
+    }
 });
 
 let toastTimeout;

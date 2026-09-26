@@ -124,7 +124,7 @@ async function sendPushToAdmins(appConfig, payload) {
     const { listUserRecords } = require('./pocketbase');
     const allUsers = await listUserRecords(appConfig);
     const adminUserIds = allUsers
-      .filter(u => u.admin === true && u.emailNotifications !== false)
+      .filter(u => (u.admin === true || u.owner === true || u.superAdmin === true) && (u.notificationSettings?.finances !== false && u.emailNotifications !== false))
       .map(u => u.id);
     await sendPushToUsers(appConfig, adminUserIds, payload);
   } catch (err) {

@@ -4459,25 +4459,26 @@ details[open] .ai-thinking-summary::before {
     margin-left: 6px;
 }
 
-/* Chat & Threads Layout */
+/* Chat & Threads Layout - Free Floating Contacts */
 .mentoring-threads-layout {
     display: grid;
-    grid-template-columns: 340px 1fr;
+    grid-template-columns: 360px 1fr;
     /* Clamp between a minimum and the remaining viewport height after all chrome */
     height: clamp(340px, calc(100dvh - var(--mentoring-desktop-chrome)), 720px);
     min-height: 340px;
-    background: var(--surface);
-    border: 1px solid var(--border-light);
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    box-shadow: none;
+    gap: 16px;
 }
 
 .mentoring-threads-sidebar {
-    border-right: 1px solid var(--border-light);
+    border: none;
     display: flex;
     flex-direction: column;
-    background: var(--surface);
+    background: transparent;
     overflow: hidden;
 }
 
@@ -4516,15 +4517,15 @@ details[open] .ai-thinking-summary::before {
 }
 
 .mentoring-sidebar-search {
-    padding: 9px 16px;
+    padding: 10px 18px;
     border: 1px solid var(--border-light);
     border-radius: 999px;
-    margin: 14px 14px 8px 14px;
+    margin: 0 0 12px 0;
     display: flex;
     align-items: center;
     background: var(--surface);
     transition: border-color 0.15s, box-shadow 0.15s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    box-shadow: var(--shadow);
 }
 
 .mentoring-sidebar-search:focus-within {
@@ -4558,18 +4559,25 @@ details[open] .ai-thinking-summary::before {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 4px 0;
+    gap: 10px;
+    padding: 2px 2px 8px 2px;
 }
 
 .mentoring-threads-empty {
     text-align: center;
-    padding: 40px 16px;
+    padding: 36px 20px;
     color: var(--text-secondary);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    margin: auto;
+    margin: 8px auto;
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .mentoring-empty-icon {
@@ -4593,37 +4601,40 @@ details[open] .ai-thinking-summary::before {
     line-height: 1.4;
 }
 
-/* Contact Item Card */
+/* Contact Item Card - Free Floating Cards */
 .mentoring-thread-item {
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
     padding: 13px 16px;
-    border: none;
+    box-shadow: var(--shadow);
     cursor: pointer;
-    transition: all 0.15s ease-in-out;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     gap: 14px;
     position: relative;
-    background: transparent;
     user-select: none;
 }
 
 .mentoring-thread-item:not(:last-child)::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 74px;
-    right: 16px;
-    height: 1px;
-    background: var(--border-light);
-    opacity: 0.85;
+    display: none;
 }
 
 .mentoring-thread-item:hover {
-    background: rgba(0, 0, 0, 0.02);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+    border-color: rgba(6, 182, 212, 0.35);
+}
+
+.mentoring-thread-item:active {
+    transform: scale(0.98);
 }
 
 .mentoring-thread-item.active {
-    background: rgba(6, 182, 212, 0.08) !important;
+    background: var(--surface) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.22), 0 6px 16px rgba(0, 0, 0, 0.06);
 }
 
 .mentoring-thread-item.active::before {
@@ -4637,12 +4648,22 @@ details[open] .ai-thinking-summary::before {
     border-radius: 0 3px 3px 0;
 }
 
+[data-theme="dark"] .mentoring-thread-item {
+    background: var(--surface);
+    border-color: var(--border-light);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
 [data-theme="dark"] .mentoring-thread-item:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-alt);
+    border-color: var(--primary);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="dark"] .mentoring-thread-item.active {
-    background: rgba(34, 211, 238, 0.14) !important;
+    background: var(--surface) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.25), 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
 [data-theme="dark"] .mentoring-thread-item.active::before {
@@ -4651,7 +4672,8 @@ details[open] .ai-thinking-summary::before {
 
 /* Unread state */
 .mentoring-thread-item.unread {
-    background: rgba(6, 182, 212, 0.04);
+    border-color: rgba(6, 182, 212, 0.35);
+    box-shadow: 0 4px 14px rgba(6, 182, 212, 0.10);
 }
 
 .mentoring-thread-item.unread .mentoring-thread-name {
@@ -4851,12 +4873,6 @@ details[open] .ai-thinking-summary::before {
     flex-shrink: 0;
     box-shadow: 0 2px 5px rgba(6, 182, 212, 0.35);
 }
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    flex-shrink: 0;
-    box-shadow: 0 2px 5px rgba(168, 85, 247, 0.35);
-}
 
 /* Chat Pane */
 .mentoring-chat-pane {
@@ -4864,7 +4880,10 @@ details[open] .ai-thinking-summary::before {
     flex-direction: column;
     height: 100%;
     background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: 20px;
     overflow: hidden;
+    box-shadow: var(--shadow);
 }
 
 .mentoring-chat-header {
@@ -5308,23 +5327,32 @@ details[open] .ai-thinking-summary::before {
         grid-template-columns: 1fr;
     }
 
-    /* Mobile Single-Pane Chat Toggle */
+    /* Mobile Single-Pane Chat Toggle - Free Floating Contacts */
     .mentoring-threads-layout {
         display: flex;
         flex-direction: column;
-        border-radius: 16px;
-        height: clamp(280px, calc(100dvh - var(--mentoring-mobile-chrome)), 100dvh);
-        min-height: 280px;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        border-radius: 0;
+        gap: 0;
+        height: auto;
+        min-height: auto;
     }
 
     .mentoring-threads-layout:not(.in-chat) .mentoring-threads-sidebar {
         display: flex;
         width: 100%;
-        height: 100%;
+        background: transparent;
+        border: none;
     }
 
     .mentoring-threads-layout:not(.in-chat) .mentoring-chat-pane {
         display: none !important;
+    }
+
+    .mentoring-threads-layout.in-chat {
+        height: clamp(300px, calc(100dvh - var(--mentoring-mobile-chrome)), 100dvh);
     }
 
     .mentoring-threads-layout.in-chat .mentoring-threads-sidebar {
@@ -5335,6 +5363,10 @@ details[open] .ai-thinking-summary::before {
         display: flex !important;
         width: 100%;
         height: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border-light);
+        border-radius: 20px;
+        box-shadow: var(--shadow);
     }
 
     .mentoring-threads-layout.in-chat .mentoring-back-btn {

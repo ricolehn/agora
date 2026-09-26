@@ -139,6 +139,16 @@ function buildSmtpTransport(smtp) {
   });
 }
 
+function userWantsNotification(user, type) {
+  if (!user) return false;
+  if (user.notificationSettings && typeof user.notificationSettings === 'object') {
+    if (typeof user.notificationSettings[type] === 'boolean') {
+      return user.notificationSettings[type];
+    }
+  }
+  return user.emailNotifications !== false;
+}
+
 async function initializeRuntime(config) {
   if (!config?.appName || !config?.pocketbase?.adminEmail || !config?.pocketbase?.adminPassword) {
     appConfig = null;
@@ -2023,7 +2033,7 @@ app.post('/api/notify-admins', protectedActionRateLimit, verifyToken, async (req
 
     const allUsers = await listUserRecords(appConfig);
     const adminEmails = allUsers
-      .filter((record) => record.admin === true && record.email && record.emailNotifications !== false)
+      .filter((record) => (record.admin === true || record.owner === true || record.superAdmin === true) && record.email && userWantsNotification(record, 'finances'))
       .map((record) => record.email);
 
     if (adminEmails.length === 0) {
@@ -2131,19 +2141,22 @@ async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUs
     const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : 'Ein Event-Organisator';
     const dutyName = duty.roleName || duty.section || 'Dienst';
 
-    // Dispatch push notification to recipient user regardless of SMTP configuration
-    sendPushToUser(appConfig, recipientUserId, {
-      title: `Dienstanfrage: ${dutyName}`,
-      body: `${requesterName} hat dich für "${dutyName}" bei "${event.title || 'Event'}" angefragt.`,
-      data: { url: '/#calendar' }
-    }).catch(err => console.warn('[WebPush] Failed sending duty push:', err.message));
+    const recipient = allUsers.find(u => u.id === recipientUserId);
+
+    // Dispatch push notification to recipient user if wanted
+    if (userWantsNotification(recipient, 'duties')) {
+      sendPushToUser(appConfig, recipientUserId, {
+        title: `Dienstanfrage: ${dutyName}`,
+        body: `${requesterName} hat dich für "${dutyName}" bei "${event.title || 'Event'}" angefragt.`,
+        data: { url: '/#events' }
+      }).catch(err => console.warn('[WebPush] Failed sending duty push:', err.message));
+    }
 
     if (!transporter || !appConfig?.smtp?.user || !appConfig?.smtp?.host) {
       return { skipped: true, reason: 'smtp_not_configured' };
     }
 
-    const recipient = allUsers.find(u => u.id === recipientUserId);
-    if (!recipient || !recipient.email || recipient.emailNotifications === false) {
+    if (!recipient || !recipient.email || !userWantsNotification(recipient, 'duties')) {
       return { skipped: true, reason: 'recipient_no_email_or_disabled' };
     }
 
@@ -2704,11 +2717,16 @@ app.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, asyn
       });
     }
 
-    sendPushToUser(appConfig, mentorRec.user, {
-      title: `Mentoring: ${menteeAlias || 'Suchender'}`,
-      body: initialMessage ? String(initialMessage).trim() : 'Neue Begleitungsanfrage erhalten.',
-      data: { url: '/#mentoring' }
-    }).catch(e => console.warn('[WebPush] Mentoring thread push error:', e.message));
+    try {
+      const mentorUser = await getUserRecord(appConfig, mentorRec.user);
+      if (userWantsNotification(mentorUser, 'messages')) {
+        sendPushToUser(appConfig, mentorRec.user, {
+          title: `Mentoring: ${menteeAlias || 'Suchender'}`,
+          body: initialMessage ? String(initialMessage).trim() : 'Neue Begleitungsanfrage erhalten.',
+          data: { url: '/#mentoring' }
+        }).catch(e => console.warn('[WebPush] Mentoring thread push error:', e.message));
+      }
+    } catch (e) {}
 
     broadcastDataUpdate();
     res.json({ success: true, thread, threadId: thread.id, menteeAlias });
@@ -2822,11 +2840,16 @@ app.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPart
       senderTitle = `Mentoring: ${thread.mentee_alias || 'Suchender'}`;
     }
 
-    sendPushToUser(appConfig, recipientUid, {
-      title: senderTitle,
-      body: String(text).trim(),
-      data: { url: '/#mentoring' }
-    }).catch(e => console.warn('[WebPush] Mentoring message push error:', e.message));
+    try {
+      const recipientUser = await getUserRecord(appConfig, recipientUid);
+      if (userWantsNotification(recipientUser, 'messages')) {
+        sendPushToUser(appConfig, recipientUid, {
+          title: senderTitle,
+          body: String(text).trim(),
+          data: { url: '/#mentoring' }
+        }).catch(e => console.warn('[WebPush] Mentoring message push error:', e.message));
+      }
+    } catch (e) {}
 
     broadcastDataUpdate();
     res.json({
@@ -3241,6 +3264,39 @@ app.post('/api/events', verifyToken, async (req, res) => {
 
     broadcastDataUpdate();
     res.status(201).json({ success: true, event: createdEvents[0], count: createdEvents.length });
+
+    // Send push notification to eligible users
+    if (createdEvents.length > 0) {
+      const firstEv = createdEvents[0];
+      (async () => {
+        try {
+          const allUsers = await listUserRecords(appConfig);
+          const targetGroupsList = Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [];
+          const recipientUserIds = allUsers
+            .filter(u => u && u.id && u.id !== currentUid && userWantsNotification(u, 'events') && userMatchesTargetGroups(u, targetGroupsList))
+            .map(u => u.id);
+
+          if (recipientUserIds.length > 0) {
+            const isTermin = firstEv.eventType === 'termin';
+            const titlePrefix = isTermin ? 'Neuer Termin' : 'Neues Event';
+            const dateFormatted = firstEv.date ? firstEv.date.split('-').reverse().join('.') : '';
+            const timeInfo = firstEv.startTime ? ` um ${firstEv.startTime} Uhr` : '';
+            const locInfo = firstEv.location ? ` • ${firstEv.location}` : '';
+            const recurringInfo = createdEvents.length > 1 ? ` (${createdEvents.length} Termine)` : '';
+            const pushBody = `Am ${dateFormatted}${timeInfo}${locInfo}${recurringInfo}`.trim();
+
+            await sendPushToUsers(appConfig, recipientUserIds, {
+              title: `${titlePrefix}: ${firstEv.title}`,
+              body: pushBody,
+              data: { url: '/#events', eventId: firstEv.id },
+              tag: `agora-event-${firstEv.id}`
+            });
+          }
+        } catch (pushErr) {
+          console.warn('[WebPush] Failed sending event creation push:', pushErr.message);
+        }
+      })();
+    }
   } catch (err) {
     console.error('Failed to create event:', err);
     res.status(500).json({ error: 'Event konnte nicht erstellt werden' });
@@ -3787,15 +3843,18 @@ app.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) => 
       if (duty.requestedBy && duty.requestedBy !== currentUid) {
         try {
           const allUsers = await listUserRecords(appConfig);
-          const responder = allUsers.find(u => u.id === currentUid);
-          const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
-          const dutyName = duty.roleName || duty.section || 'Dienst';
-          const event = await getEventRecord(appConfig, duty.event);
-          sendPushToUser(appConfig, duty.requestedBy, {
-            title: `Dienstanfrage angenommen: ${dutyName}`,
-            body: `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) angenommen.`,
-            data: { url: '/#calendar' }
-          }).catch(e => console.warn('[WebPush] Duty accept push error:', e.message));
+          const requesterUser = allUsers.find(u => u.id === duty.requestedBy);
+          if (userWantsNotification(requesterUser, 'duties')) {
+            const responder = allUsers.find(u => u.id === currentUid);
+            const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
+            const dutyName = duty.roleName || duty.section || 'Dienst';
+            const event = await getEventRecord(appConfig, duty.event);
+            sendPushToUser(appConfig, duty.requestedBy, {
+              title: `Dienstanfrage angenommen: ${dutyName}`,
+              body: `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) angenommen.`,
+              data: { url: '/#events' }
+            }).catch(e => console.warn('[WebPush] Duty accept push error:', e.message));
+          }
         } catch (e) {}
       }
 
@@ -3811,15 +3870,18 @@ app.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) => 
       if (duty.requestedBy && duty.requestedBy !== currentUid) {
         try {
           const allUsers = await listUserRecords(appConfig);
-          const responder = allUsers.find(u => u.id === currentUid);
-          const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
-          const dutyName = duty.roleName || duty.section || 'Dienst';
-          const event = await getEventRecord(appConfig, duty.event);
-          sendPushToUser(appConfig, duty.requestedBy, {
-            title: `Dienstanfrage abgelehnt: ${dutyName}`,
-            body: `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) abgelehnt.`,
-            data: { url: '/#calendar' }
-          }).catch(e => console.warn('[WebPush] Duty decline push error:', e.message));
+          const requesterUser = allUsers.find(u => u.id === duty.requestedBy);
+          if (userWantsNotification(requesterUser, 'duties')) {
+            const responder = allUsers.find(u => u.id === currentUid);
+            const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
+            const dutyName = duty.roleName || duty.section || 'Dienst';
+            const event = await getEventRecord(appConfig, duty.event);
+            sendPushToUser(appConfig, duty.requestedBy, {
+              title: `Dienstanfrage abgelehnt: ${dutyName}`,
+              body: `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) abgelehnt.`,
+              data: { url: '/#events' }
+            }).catch(e => console.warn('[WebPush] Duty decline push error:', e.message));
+          }
         } catch (e) {}
       }
 

@@ -370,25 +370,51 @@
             <div class="card card-settings" id="card-security">
                 <div class="card-header" data-i18n="security_title">Sicherheit &amp; Benachrichtigungen</div>
                 <div class="card-body">
-                    <div class="form-group" style="display:flex; align-items:center; gap:10px;">
-                        <label class="switch">
-                            <input type="checkbox" id="admin-email-notifications" onchange="autoSaveEmailNotifications()">
+                    <div style="font-weight:600; font-size:0.95rem; margin-bottom:4px;" data-i18n="notif_channels_title">Benachrichtigungen</div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;" data-i18n="notif_channels_desc">Lege fest, worüber du benachrichtigt werden möchtest (per Push &amp; E-Mail):</div>
+
+                    <div class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_duties_title">Dienstanfragen</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_duties_desc">Anfragen, Bestätigungen &amp; Änderungen deiner Dienste</div>
+                        </div>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="notif-pref-duties" onchange="autoSaveNotificationPreferences()">
                             <span class="slider"></span>
                         </label>
-                        <label for="admin-email-notifications" style="margin:0; font-weight:600; cursor:pointer" data-i18n="email_notifications">E-Mail Benachrichtigungen bei Anfragen</label>
                     </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
-                        <div>
-                            <div style="font-weight:600; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                                <span>Push-Benachrichtigungen (VAPID / OS)</span>
-                            </div>
-                            <div id="push-status-hint" style="font-size:0.8rem; color:var(--text-muted, #64748b); margin-top:2px;">Immer aktiv (automatisch synchronisiert)</div>
+
+                    <div class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_events_title">Neue Events &amp; Termine</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_events_desc">Neue Veranstaltungen und Termine der Gemeinde</div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendTestPushNotification()" style="font-size:0.8rem; padding: 5px 12px; display:inline-flex; align-items:center; gap:6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                            <span data-i18n="test_push_btn">Test-Push senden</span>
-                        </button>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="notif-pref-events" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_messages_title">Nachrichten</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_messages_desc">Begleitungsanfragen und Mentoring-Nachrichten</div>
+                        </div>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="notif-pref-messages" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="notif-pref-finances-wrap" class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_finances_title">Finanzielle Anträge</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_finances_desc">Neue Kassen- und Erstattungsanträge</div>
+                        </div>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="notif-pref-finances" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
                     </div>
                     <div class="form-group" style="margin-top:20px;">
                         <label class="form-label" data-i18n="change_password_title">Passwort ändern</label>
@@ -674,14 +700,10 @@
             <div class="mentoring-container">
                 <!-- Mentoring Hero Card -->
                 <div class="mentoring-header-card">
-                    <span class="mentoring-privacy-pill" data-i18n-title="mentoring_privacy_pill_tooltip" title="End-to-End Vertraulichkeit & Pseudonymisierung">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        <span data-i18n="mentoring_privacy_pill">100% Anonym & Geschützt</span>
-                    </span>
                     <h2 class="mentoring-hero-title">
                         <span data-i18n="mentoring_title">Mentoring</span>
                     </h2>
-                    <p class="mentoring-hero-desc" data-i18n="mentoring_subtitle">Persönliche Begleitung, offene Ohren & vertrauliche 1-on-1 Gespräche</p>
+                    <p class="mentoring-hero-desc" data-i18n="mentoring_subtitle">Persönliche Begleitung, offene Ohren & anonyme Gespräche</p>
                     <div class="mentoring-header-action-wrap">
                         <button id="mentor-apply-btn" class="btn btn-mentor-primary" onclick="openMentorApplicationModal()" data-i18n="mentoring_apply_btn">
                             Als Mentor bewerben
@@ -958,18 +980,51 @@
             <div class="card card-settings" id="card-security-user">
                 <div class="card-header" data-i18n="security_title">Sicherheit &amp; Benachrichtigungen</div>
                 <div class="card-body">
-                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-                        <div>
-                            <div style="font-weight:600; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                                <span>Push-Benachrichtigungen (VAPID / OS)</span>
-                            </div>
-                            <div id="user-push-status-hint" style="font-size:0.8rem; color:var(--text-muted, #64748b); margin-top:2px;">Immer aktiv (automatisch synchronisiert)</div>
+                    <div style="font-weight:600; font-size:0.95rem; margin-bottom:4px;" data-i18n="notif_channels_title">Benachrichtigungen</div>
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;" data-i18n="notif_channels_desc">Lege fest, worüber du benachrichtigt werden möchtest (per Push &amp; E-Mail):</div>
+
+                    <div class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_duties_title">Dienstanfragen</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_duties_desc">Anfragen, Bestätigungen &amp; Änderungen deiner Dienste</div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="sendTestPushNotification()" style="font-size:0.8rem; padding: 5px 12px; display:inline-flex; align-items:center; gap:6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                            <span data-i18n="test_push_btn">Test-Push senden</span>
-                        </button>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="user-notif-pref-duties" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_events_title">Neue Events &amp; Termine</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_events_desc">Neue Veranstaltungen und Termine der Gemeinde</div>
+                        </div>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="user-notif-pref-events" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_messages_title">Nachrichten</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_messages_desc">Begleitungsanfragen und Mentoring-Nachrichten</div>
+                        </div>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="user-notif-pref-messages" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="user-notif-pref-finances-wrap" class="notification-pref-item" style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="padding-right:12px;">
+                            <div style="font-weight:600; font-size:0.9rem;" data-i18n="notif_finances_title">Finanzielle Anträge</div>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;" data-i18n="notif_finances_desc">Neue Kassen- und Erstattungsanträge</div>
+                        </div>
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="user-notif-pref-finances" onchange="autoSaveNotificationPreferences()">
+                            <span class="slider"></span>
+                        </label>
                     </div>
                 </div>
             </div>

@@ -416,6 +416,19 @@ function toPublicUser(record) {
     pays: record.pays !== false,
     groups: Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []),
     emailNotifications: record.emailNotifications !== false,
+    notificationSettings: record.notificationSettings && typeof record.notificationSettings === 'object'
+      ? {
+          duties: record.notificationSettings.duties !== false,
+          events: record.notificationSettings.events !== false,
+          messages: record.notificationSettings.messages !== false,
+          finances: record.notificationSettings.finances !== false
+        }
+      : {
+          duties: record.emailNotifications !== false,
+          events: record.emailNotifications !== false,
+          messages: record.emailNotifications !== false,
+          finances: record.emailNotifications !== false
+        },
     isClaimed
   };
 }
@@ -425,6 +438,14 @@ function sanitizeSelfUserWrite(input = {}) {
   if (typeof input.firstName === 'string') output.firstName = input.firstName.trim();
   if (typeof input.lastName === 'string') output.lastName = input.lastName.trim();
   if (typeof input.emailNotifications === 'boolean') output.emailNotifications = input.emailNotifications;
+  if (input.notificationSettings && typeof input.notificationSettings === 'object') {
+    output.notificationSettings = {
+      duties: input.notificationSettings.duties !== false,
+      events: input.notificationSettings.events !== false,
+      messages: input.notificationSettings.messages !== false,
+      finances: input.notificationSettings.finances !== false
+    };
+  }
   if (output.firstName || output.lastName) {
     output.name = `${output.firstName || ''} ${output.lastName || ''}`.trim();
   }
@@ -559,6 +580,7 @@ async function ensureUsersCollection(appConfig) {
     { name: 'pays', type: 'bool' },
     { name: 'groups', type: 'json' },
     { name: 'emailNotifications', type: 'bool' },
+    { name: 'notificationSettings', type: 'json' },
     { name: 'isClaimed', type: 'bool' }
   ];
 
