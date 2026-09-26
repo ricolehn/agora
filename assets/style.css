@@ -997,6 +997,13 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 .fab-menu.show .fab-menu-item:nth-child(2) { transition-delay: 0.05s; }
 .fab-menu.show .fab-menu-item:nth-child(3) { transition-delay: 0s; }
 
+#fab-finances-items,
+#fab-events-items {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
 .fab-menu-icon {
     width: 40px; height: 40px;
     border-radius: 12px; background: var(--surface-alt);
