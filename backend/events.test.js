@@ -697,5 +697,97 @@ test('Event push notification payload and recipient filtering logic', () => {
   assert.equal(userWantsNotification(userDefault, 'duties'), true);
 });
 
+test('Personal calendar feed generation and duty details logic', () => {
+  function escapeIcsText(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r?\n/g, '\\n');
+  }
+
+  function formatIcsDateTime(dateStr, timeStr) {
+    if (!dateStr) return '';
+    const cleanDate = dateStr.replace(/-/g, '');
+    if (!timeStr) return `VALUE=DATE:${cleanDate}`;
+    const cleanTime = timeStr.replace(/:/g, '').padEnd(6, '0').slice(0, 6);
+    return `${cleanDate}T${cleanTime}`;
+  }
+
+  function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid = null, allDuties = []) {
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Agora//Event Calendar//DE',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:${escapeIcsText(calendarName)}`,
+      'X-WR-TIMEZONE:Europe/Berlin',
+      'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
+      'X-PUBLISHED-TTL:PT1H'
+    ];
+
+    for (const ev of events) {
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:event-${ev.id}@agora`);
+      lines.push(`DTSTAMP:20260926T120000Z`);
+
+      if (ev.startTime) {
+        lines.push(`DTSTART;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, ev.startTime)}`);
+        if (ev.endTime) {
+          lines.push(`DTEND;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, ev.endTime)}`);
+        }
+      } else {
+        lines.push(`DTSTART;${formatIcsDateTime(ev.date, '')}`);
+      }
+
+      let dutiesInfo = '';
+      if (currentUid && Array.isArray(allDuties)) {
+        const myDuties = allDuties.filter(d => d.event === ev.id && (d.assignedUser === currentUid || d.requestedUser === currentUid));
+        if (myDuties.length > 0) {
+          dutiesInfo = myDuties.map(d => {
+            const isReq = d.requestedUser === currentUid && d.assignedUser !== currentUid;
+            return `• ${d.role || 'Dienst'}${isReq ? ' (Anfrage ausstehend)' : ' (Eingeteilt)'}`;
+          }).join('\n');
+        }
+      }
+
+      lines.push(`SUMMARY:${escapeIcsText(ev.title || 'Event')}`);
+
+      let descriptionText = ev.description || '';
+      if (dutiesInfo) {
+        descriptionText = `[MEINE DIENSTE]\n${dutiesInfo}\n\n${descriptionText}`.trim();
+      }
+      if (descriptionText) lines.push(`DESCRIPTION:${escapeIcsText(descriptionText)}`);
+      if (ev.location) lines.push(`LOCATION:${escapeIcsText(ev.location)}`);
+      lines.push('STATUS:CONFIRMED');
+      lines.push('END:VEVENT');
+    }
+
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n') + '\r\n';
+  }
+
+  const events = [
+    { id: 'ev-1', title: 'Gottesdienst', date: '2026-10-04', startTime: '10:00', endTime: '11:30', description: 'Sonntagsgottesdienst' },
+    { id: 'ev-2', title: 'Gemeindeabend', date: '2026-10-06', startTime: '19:00', location: 'Gemeindesaal' }
+  ];
+
+  const duties = [
+    { id: 'd-1', event: 'ev-1', role: 'Technik / Ton', assignedUser: 'user-max' },
+    { id: 'd-2', event: 'ev-1', role: 'Bistro', assignedUser: 'user-anna' },
+    { id: 'd-3', event: 'ev-2', role: 'Begrüßung', requestedUser: 'user-max', assignedUser: '' }
+  ];
+
+  const icsUserMax = generateIcsCalendar(events, 'Agora - Max Mustermann', 'user-max', duties);
+
+  assert.ok(icsUserMax.includes('X-WR-CALNAME:Agora - Max Mustermann'));
+  assert.ok(icsUserMax.includes('REFRESH-INTERVAL;VALUE=DURATION:PT1H'));
+  assert.ok(icsUserMax.includes('Technik / Ton (Eingeteilt)'));
+  assert.ok(icsUserMax.includes('Begrüßung (Anfrage ausstehend)'));
+  assert.ok(!icsUserMax.includes('Bistro')); // Anna's duty should not appear in Max's duty section
+});
+
 
 

@@ -90,7 +90,11 @@ const {
   deleteEventDuty,
   pbFilterEquals,
   upsertPushSubscription,
-  deletePushSubscription
+  deletePushSubscription,
+  toPublicUser,
+  getOrCreateUserCalendarToken,
+  regenerateUserCalendarToken,
+  findUserByCalendarToken
 } = require('./pocketbase');
 const {
   getVapidPublicKey,
@@ -2939,7 +2943,7 @@ function escapeIcsText(str) {
     .replace(/\r?\n/g, '\\n');
 }
 
-function generateIcsCalendar(events, calendarName = 'Agora Events') {
+function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid = null, allDuties = []) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -2947,7 +2951,9 @@ function generateIcsCalendar(events, calendarName = 'Agora Events') {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${escapeIcsText(calendarName)}`,
-    'X-WR-TIMEZONE:Europe/Berlin'
+    'X-WR-TIMEZONE:Europe/Berlin',
+    'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
+    'X-PUBLISHED-TTL:PT1H'
   ];
 
   for (const ev of events) {
@@ -2968,8 +2974,24 @@ function generateIcsCalendar(events, calendarName = 'Agora Events') {
       lines.push(`DTSTART;${formatIcsDateTime(ev.date, '')}`);
     }
 
+    let dutiesInfo = '';
+    if (currentUid && Array.isArray(allDuties)) {
+      const myDuties = allDuties.filter(d => d.event === ev.id && (d.assignedUser === currentUid || d.requestedUser === currentUid));
+      if (myDuties.length > 0) {
+        dutiesInfo = myDuties.map(d => {
+          const isReq = d.requestedUser === currentUid && d.assignedUser !== currentUid;
+          return `• ${d.role || 'Dienst'}${isReq ? ' (Anfrage ausstehend)' : ' (Eingeteilt)'}`;
+        }).join('\n');
+      }
+    }
+
     lines.push(`SUMMARY:${escapeIcsText(ev.title || 'Event')}`);
-    if (ev.description) lines.push(`DESCRIPTION:${escapeIcsText(ev.description)}`);
+
+    let descriptionText = ev.description || '';
+    if (dutiesInfo) {
+      descriptionText = `[MEINE DIENSTE]\n${dutiesInfo}\n\n${descriptionText}`.trim();
+    }
+    if (descriptionText) lines.push(`DESCRIPTION:${escapeIcsText(descriptionText)}`);
     if (ev.location) lines.push(`LOCATION:${escapeIcsText(ev.location)}`);
     lines.push('STATUS:CONFIRMED');
     lines.push('END:VEVENT');
@@ -4076,20 +4098,150 @@ app.get('/api/events/:id/export.ics', verifyToken, async (req, res) => {
   }
 });
 
-// 13. Full calendar feed (supports WebCal subscriptions via ?token=...)
-app.get('/api/events/calendar.ics', verifyToken, async (req, res) => {
+async function authenticateCalendarFeed(req, res, next) {
+  if (setupMode) {
+    return res.status(503).send('App is in setup mode');
+  }
+
+  try {
+    await runtimeReady;
+  } catch {
+    return res.status(503).send('PocketBase is still starting. Please try again.');
+  }
+
+  const tokenParam = (req.query && req.query.token && typeof req.query.token === 'string') ? req.query.token.trim() : null;
+  const userParam = (req.query && (req.query.user || req.query.uid) && typeof (req.query.user || req.query.uid) === 'string') ? (req.query.user || req.query.uid).trim() : null;
+
+  let authenticatedUser = null;
+
+  // 1. Direct user + token match (O(1) lookup via getUserRecord)
+  if (userParam && tokenParam) {
+    try {
+      const userRecord = await getUserRecord(appConfig, userParam);
+      if (userRecord && userRecord.calendarToken && userRecord.calendarToken === tokenParam) {
+        authenticatedUser = toPublicUser(userRecord);
+      }
+    } catch {}
+  }
+
+  // 2. Token param matched against calendarToken directly
+  if (!authenticatedUser && tokenParam) {
+    try {
+      const matched = await findUserByCalendarToken(appConfig, tokenParam);
+      if (matched) {
+        authenticatedUser = toPublicUser(matched);
+      }
+    } catch {}
+  }
+
+  // 3. Fallback to standard token verification (JWT bearer or query token)
+  if (!authenticatedUser) {
+    const bearer = extractBearerToken(req);
+    if (bearer) {
+      try {
+        authenticatedUser = await verifyUserToken(bearer);
+      } catch {}
+    }
+  }
+
+  if (!authenticatedUser) {
+    return res.status(401).send('Unauthorized: Ungültiger oder abgelaufener Kalender-Link');
+  }
+
+  let allGroups = [];
+  try {
+    allGroups = await listGroupRecords(appConfig);
+  } catch { /* ignore */ }
+  const groupPerms = resolveUserPermissions(authenticatedUser.groups, allGroups);
+  authenticatedUser.permissions = groupPerms.permissions;
+  authenticatedUser.canManageFinances = groupPerms.canManageFinances;
+  authenticatedUser.canViewFinances = groupPerms.canViewFinances;
+  authenticatedUser.canManageRegistrationCode = groupPerms.canManageRegistrationCode === true;
+  authenticatedUser.canAccessAi = groupPerms.canAccessAi;
+  authenticatedUser.canParticipateMentoring = groupPerms.canParticipateMentoring;
+  authenticatedUser.canManageMentoring = groupPerms.canManageMentoring;
+  authenticatedUser.canManageEvents = groupPerms.canManageEvents === true;
+
+  req.user = authenticatedUser;
+  next();
+}
+
+// User personal calendar feed details & regeneration
+app.get('/api/user/calendar-feed', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const token = await getOrCreateUserCalendarToken(appConfig, currentUid);
+    const host = req.get('host') || 'localhost:3000';
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const baseUrl = `${protocol}://${host}`;
+    const feedPath = `/api/events/calendar.ics?user=${encodeURIComponent(currentUid)}&token=${encodeURIComponent(token)}`;
+    const feedUrl = `${baseUrl}${feedPath}`;
+    const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
+
+    res.json({
+      userId: currentUid,
+      calendarToken: token,
+      feedUrl,
+      webcalUrl
+    });
+  } catch (err) {
+    console.error('Failed to get user calendar feed:', err);
+    res.status(500).json({ error: 'Kalender-Feed konnte nicht abgerufen werden' });
+  }
+});
+
+app.post('/api/user/calendar-feed/reset', verifyToken, async (req, res) => {
+  try {
+    const currentUid = req.user.uid || req.user.id;
+    const token = await regenerateUserCalendarToken(appConfig, currentUid);
+    const host = req.get('host') || 'localhost:3000';
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const baseUrl = `${protocol}://${host}`;
+    const feedPath = `/api/events/calendar.ics?user=${encodeURIComponent(currentUid)}&token=${encodeURIComponent(token)}`;
+    const feedUrl = `${baseUrl}${feedPath}`;
+    const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
+
+    res.json({
+      success: true,
+      userId: currentUid,
+      calendarToken: token,
+      feedUrl,
+      webcalUrl
+    });
+  } catch (err) {
+    console.error('Failed to reset user calendar feed token:', err);
+    res.status(500).json({ error: 'Kalender-Token konnte nicht zurückgesetzt werden' });
+  }
+});
+
+// 13. Full calendar feed (supports WebCal subscriptions via ?user=...&token=... or ?token=...)
+app.get('/api/events/calendar.ics', authenticateCalendarFeed, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
     const allEvents = await listEvents(appConfig, '', '+date,+startTime');
+    const allDuties = await listAllRecords('event_duties', '', appConfig).catch(() => []);
+
+    const userAssignedEventIds = new Set(
+      allDuties
+        .filter(d => (d.assignedUser === currentUid || d.requestedUser === currentUid))
+        .map(d => d.event)
+    );
+
+    const isEventManager = req.user.canManageEvents === true || 
+      (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events')) ||
+      req.user.admin === true || req.user.owner === true || req.user.superAdmin === true;
 
     const visibleEvents = allEvents.filter(ev => {
-      const isCreator = ev.createdBy === currentUid;
-      if (isCreator) return true;
+      if (ev.createdBy === currentUid) return true;
+      if (userAssignedEventIds.has(ev.id)) return true;
+      if (isEventManager) return true;
       return userMatchesTargetGroups(req.user, ev.targetGroups);
     });
 
     const appName = appConfig?.appName || 'Agora';
-    const icsContent = generateIcsCalendar(visibleEvents, `${appName} Terminkalender`);
+    const userName = req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    const calendarTitle = userName ? `${appName} - ${userName}` : `${appName} Terminkalender`;
+    const icsContent = generateIcsCalendar(visibleEvents, calendarTitle, currentUid, allDuties);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', 'inline; filename="agora-kalender.ics"');
     res.send(icsContent);

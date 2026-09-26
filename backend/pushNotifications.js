@@ -5,11 +5,63 @@ let vapidConfigured = false;
 let currentVapidKeys = null;
 
 /**
+ * Dynamically resolves a valid VAPID subject email for Web Push.
+ * Apple APNs requires a valid, publicly reachable mailto: or https: URL as VAPID subject.
+ * Prefers the owner's email address, then SMTP user email, falling back to admin or valid domain default.
+ */
+async function resolveVapidSubject(appConfig) {
+  try {
+    const { listUserRecords, isPlaceholderEmail } = require('./pocketbase');
+    if (appConfig) {
+      const allUsers = await listUserRecords(appConfig).catch(() => []);
+      const ownerUser = allUsers.find(u => (u.owner === true || u.superAdmin === true) && u.email && !isPlaceholderEmail(u.email));
+      if (ownerUser && ownerUser.email && ownerUser.email.includes('@')) {
+        const email = ownerUser.email.trim();
+        if (!email.endsWith('.local') && !email.endsWith('.internal')) {
+          return `mailto:${email}`;
+        }
+      }
+
+      const smtpUser = appConfig.smtp?.user;
+      if (smtpUser && typeof smtpUser === 'string' && smtpUser.includes('@') && !smtpUser.endsWith('.local')) {
+        return `mailto:${smtpUser.trim()}`;
+      }
+
+      const adminUser = allUsers.find(u => (u.admin === true) && u.email && !isPlaceholderEmail(u.email));
+      if (adminUser && adminUser.email && adminUser.email.includes('@') && !adminUser.email.endsWith('.local')) {
+        return `mailto:${adminUser.email.trim()}`;
+      }
+
+      if (ownerUser?.email) {
+        return `mailto:${ownerUser.email.trim()}`;
+      }
+      if (smtpUser) {
+        return `mailto:${smtpUser.trim()}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[WebPush] Error resolving VAPID subject:', err.message);
+  }
+  return 'mailto:admin@agora.app';
+}
+
+/**
  * Initializes or retrieves existing VAPID keys for Web Push.
  * If none exist in app_state, a new cryptographic pair is generated and persisted.
  */
 async function getOrInitVapidKeys(appConfig) {
+  const resolvedSubject = await resolveVapidSubject(appConfig);
+
   if (currentVapidKeys && vapidConfigured) {
+    if (currentVapidKeys.subject !== resolvedSubject) {
+      currentVapidKeys.subject = resolvedSubject;
+      webpush.setVapidDetails(resolvedSubject, currentVapidKeys.publicKey, currentVapidKeys.privateKey);
+      if (appConfig?._mockUpsertState) {
+        await appConfig._mockUpsertState('vapid_keys', currentVapidKeys);
+      } else {
+        await upsertStateValue(appConfig, 'vapid_keys', currentVapidKeys).catch(() => {});
+      }
+    }
     return currentVapidKeys;
   }
 
@@ -19,25 +71,28 @@ async function getOrInitVapidKeys(appConfig) {
     : await getStateValue(appConfig, 'vapid_keys', null);
 
   if (existing?.publicKey && existing?.privateKey) {
-    currentVapidKeys = existing;
+    currentVapidKeys = {
+      ...existing,
+      subject: resolvedSubject
+    };
   } else {
     // Generate fresh VAPID keypair
     const generated = webpush.generateVAPIDKeys();
     currentVapidKeys = {
       publicKey: generated.publicKey,
       privateKey: generated.privateKey,
-      subject: `mailto:${appConfig?.smtp?.user || 'admin@agora.local'}`
+      subject: resolvedSubject
     };
-    if (appConfig?._mockUpsertState) {
-      await appConfig._mockUpsertState('vapid_keys', currentVapidKeys);
-    } else {
-      await upsertStateValue(appConfig, 'vapid_keys', currentVapidKeys);
-    }
     console.log('[WebPush] Generated and persisted new VAPID keypair');
   }
 
-  const subject = currentVapidKeys.subject || `mailto:${appConfig?.smtp?.user || 'admin@agora.local'}`;
-  webpush.setVapidDetails(subject, currentVapidKeys.publicKey, currentVapidKeys.privateKey);
+  if (appConfig?._mockUpsertState) {
+    await appConfig._mockUpsertState('vapid_keys', currentVapidKeys);
+  } else {
+    await upsertStateValue(appConfig, 'vapid_keys', currentVapidKeys).catch(() => {});
+  }
+
+  webpush.setVapidDetails(resolvedSubject, currentVapidKeys.publicKey, currentVapidKeys.privateKey);
   vapidConfigured = true;
   return currentVapidKeys;
 }

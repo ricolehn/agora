@@ -1151,6 +1151,9 @@ window.switchTab = function(tabName, btn) {
         if (typeof updateNotificationPreferencesUI === 'function') {
             updateNotificationPreferencesUI();
         }
+        if (typeof window.loadPersonalCalendarFeedSettings === 'function') {
+            window.loadPersonalCalendarFeedSettings();
+        }
     }
 
     const allTabs = Array.from(document.querySelectorAll('.tab-content'));
@@ -1339,6 +1342,11 @@ document.addEventListener('click', (e) => {
 });
 
 window.toggleFab = function() {
+    if (currentActiveTab === 'events' && !canManageEvents()) {
+        window.openNewEventDetailModal('event');
+        return;
+    }
+
     const menu = document.getElementById('fabMenu');
     if (!menu) return;
 
@@ -3669,7 +3677,7 @@ function renderUserView() {
                             <div class="user-finance-stat-value">${formatCurrency(monthlyRate)} €</div>
                         </div>
                         <div class="user-finance-stat-divider"></div>
-                        <div class="user-finance-stat">
+                        <div class="user-finance-stat user-finance-stat-clickable" role="button" tabindex="0" onclick="openUserRequestModal('status')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openUserRequestModal('status');}" title="${t('user_req_status_tooltip', 'Statuswechsel beantragen')}" aria-label="${t('user_req_status_tooltip', 'Statuswechsel beantragen')}">
                             <div class="user-finance-stat-label">${t('user_current_status', 'Status')}</div>
                             <div class="user-finance-stat-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
                         </div>
@@ -5507,9 +5515,11 @@ window.handleAiChatInput = (event) => {
 };
 
 window.handleAiChatKey = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         sendAiMessage();
+    } else if (event.key === 'Enter') {
+        setTimeout(() => adjustAiInputHeight(event.target), 0);
     }
 };
 
@@ -6942,6 +6952,11 @@ window.openUserRequestModal = (type) => {
             if (title) title.innerText = t('user_req_status_title', "Statusänderung beantragen");
             if (subtitle) subtitle.innerText = t('user_req_status_subtitle', "Neuen Mitgliedsstatus anfragen");
 
+            const myPerson = (people && people.length > 0)
+                ? people.find(p => p.uid === currentUser?.uid || (p.data && p.data.uid === currentUser?.uid))
+                : null;
+            const currentStatusVal = myPerson?._currentStatus || myPerson?.status;
+
             container.innerHTML = `
                 <div class="modal-section-card">
                     <div class="modal-section-header">
@@ -6949,10 +6964,10 @@ window.openUserRequestModal = (type) => {
                     </div>
                     <div class="form-group">
                         <select id="req-status" class="form-select">
-                            <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
-                            <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
-                            <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
-                            <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
+                            <option value="vollverdiener" ${currentStatusVal === 'vollverdiener' ? 'selected' : ''}>${t('member_status_full', '💼 Vollverdiener')}</option>
+                            <option value="geringverdiener" ${currentStatusVal === 'geringverdiener' ? 'selected' : ''}>${t('member_status_low', '📉 Geringverdiener')}</option>
+                            <option value="keinverdiener" ${currentStatusVal === 'keinverdiener' ? 'selected' : ''}>${t('member_status_none', '🎓 Keinverdiener')}</option>
+                            <option value="pausiert" ${currentStatusVal === 'pausiert' ? 'selected' : ''}>${t('member_status_paused', '⏸️ Pausiert')}</option>
                         </select>
                     </div>
                 </div>
@@ -8725,9 +8740,11 @@ window.sendMentoringMessage = async function() {
 };
 
 window.handleMentoringChatKey = function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         window.sendMentoringMessage();
+    } else if (e.key === 'Enter') {
+        setTimeout(() => window.autoResizeMentoringInput(e.target), 0);
     }
 };
 
@@ -9686,7 +9703,7 @@ function formatEventDateSpanCompact(startDateStr, endDateStr) {
 
 
 
-function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-card-') {
+window.renderChurchtoolsEventCard = function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-card-') {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const isPast = forcePast || isEventPast(ev, todayStr);
@@ -9825,7 +9842,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-car
     `;
 }
 
-function renderEventCard(ev, idPrefix = 'event-card-') {
+window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') {
     const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
     const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}` : ev.startTime) : '';
 
@@ -11704,39 +11721,119 @@ window.handleEditDutySubmit = async function(e) {
 // ==========================================================
 // Calendar Subscription & WebCal Feed
 // ==========================================================
+let cachedCalendarFeedData = null;
+
+async function fetchPersonalCalendarFeed(forceRefresh = false) {
+    if (cachedCalendarFeedData && !forceRefresh) {
+        return cachedCalendarFeedData;
+    }
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/user/calendar-feed`);
+        if (res.ok) {
+            const data = await res.json();
+            cachedCalendarFeedData = data;
+            return data;
+        }
+    } catch (err) {
+        console.warn('Failed to load personal calendar feed:', err);
+    }
+    const token = typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('token') || '');
+    const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
+    const fallbackUrl = `${protocol}//${location.host}/api/events/calendar.ics?token=${encodeURIComponent(token)}`;
+    return {
+        feedUrl: fallbackUrl,
+        webcalUrl: fallbackUrl.replace(/^https?:/, 'webcal:'),
+        calendarToken: ''
+    };
+}
+
 function getWebCalFeedUrl() {
+    if (cachedCalendarFeedData && cachedCalendarFeedData.feedUrl) {
+        return cachedCalendarFeedData.feedUrl;
+    }
     const token = typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('token') || '');
     const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
     return `${protocol}//${location.host}/api/events/calendar.ics?token=${encodeURIComponent(token)}`;
 }
 
-window.openSubscribeCalendarModal = function() {
-    const urlInput = document.getElementById('sub-cal-feed-url');
-    if (urlInput) {
-        urlInput.value = getWebCalFeedUrl();
-    }
+window.getPersonalCalendarFeedUrl = getWebCalFeedUrl;
+
+window.loadPersonalCalendarFeedSettings = async function(force = false) {
+    const feed = await fetchPersonalCalendarFeed(force);
+    if (!feed) return;
+    const url = feed.feedUrl;
+
+    const userCalInput = document.getElementById('user-cal-feed-url');
+    if (userCalInput) userCalInput.value = url;
+
+    const adminCalInput = document.getElementById('admin-cal-feed-url');
+    if (adminCalInput) adminCalInput.value = url;
+
+    const subCalInput = document.getElementById('sub-cal-feed-url');
+    if (subCalInput) subCalInput.value = url;
+
+    const superAdminFeedInput = document.getElementById('super-admin-events-feed-url');
+    if (superAdminFeedInput) superAdminFeedInput.value = url;
+};
+
+window.openSubscribeCalendarModal = async function() {
+    await window.loadPersonalCalendarFeedSettings();
     openModal('subscribe-calendar-modal');
 };
 
 window.copyCalendarFeedUrl = function(type) {
-    const url = getWebCalFeedUrl();
+    window.copyPersonalCalendarFeedUrl();
+};
+
+window.copyPersonalCalendarFeedUrl = async function() {
+    const feed = await fetchPersonalCalendarFeed();
+    const url = feed?.feedUrl || getWebCalFeedUrl();
     navigator.clipboard.writeText(url).then(() => {
-        showToast('Kalender-URL in die Zwischenablage kopiert!', 'success');
+        showToast((typeof i18n === 'function' && i18n('calendar_sub_copied')) || 'Kalender-URL in die Zwischenablage kopiert!', 'success');
     }).catch(() => {
-        showToast('Fehler beim Kopieren in die Zwischenablage', 'error');
+        showToast('Fehler beim Kopieren der Kalender-URL', 'error');
     });
 };
 
-window.openWebCalDirectly = function() {
-    const feedUrl = getWebCalFeedUrl();
+window.openWebCalDirectly = async function() {
+    const feed = await fetchPersonalCalendarFeed();
+    const feedUrl = feed?.feedUrl || getWebCalFeedUrl();
     const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
     window.location.href = webcalUrl;
 };
 
-window.openGoogleCalendarSubscription = function() {
-    const feedUrl = getWebCalFeedUrl();
+window.openGoogleCalendarSubscription = async function() {
+    const feed = await fetchPersonalCalendarFeed();
+    const feedUrl = feed?.feedUrl || getWebCalFeedUrl();
     const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(feedUrl)}`;
     window.open(googleUrl, '_blank', 'noopener,noreferrer');
+};
+
+window.downloadIcsFile = async function() {
+    const feed = await fetchPersonalCalendarFeed();
+    const feedUrl = feed?.feedUrl || getWebCalFeedUrl();
+    window.open(feedUrl, '_blank');
+};
+
+window.resetCalendarFeedToken = async function() {
+    const confirmPrompt = (typeof i18n === 'function' && i18n('calendar_sub_reset_confirm')) || 'Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.';
+    if (!confirm(confirmPrompt)) return;
+
+    try {
+        const res = await fetchWithAuth(`${config.apiBaseUrl}/user/calendar-feed/reset`, {
+            method: 'POST'
+        });
+        if (res.ok) {
+            const data = await res.json();
+            cachedCalendarFeedData = data;
+            await window.loadPersonalCalendarFeedSettings(true);
+            showToast((typeof i18n === 'function' && i18n('calendar_sub_reset_success')) || 'Neuer Kalender-Link erfolgreich generiert!', 'success');
+        } else {
+            showToast('Fehler beim Zurücksetzen des Links', 'error');
+        }
+    } catch (err) {
+        showToast('Verbindungsfehler beim Zurücksetzen', 'error');
+    }
 };
 
 // ==========================================================

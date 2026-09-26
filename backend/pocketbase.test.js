@@ -74,7 +74,8 @@ test('toPublicUser falls back to first and last name when the auth record has no
       messages: true,
       finances: true
     },
-    isClaimed: true
+    isClaimed: true,
+    calendarToken: ''
   });
 });
 
@@ -109,8 +110,21 @@ test('toPublicUser preserves owner, pays, and groups fields', () => {
       messages: true,
       finances: true
     },
-    isClaimed: true
+    isClaimed: true,
+    calendarToken: ''
   });
+});
+
+test('toPublicUser preserves custom calendarToken', () => {
+  const user = toPublicUser({
+    id: 'user-cal',
+    email: 'cal@example.com',
+    firstName: 'Cal',
+    lastName: 'Endar',
+    calendarToken: 'secure-token-12345'
+  });
+
+  assert.equal(user.calendarToken, 'secure-token-12345');
 });
 
 test('toPublicUser handles unclaimed placeholder email accounts', () => {

@@ -429,7 +429,8 @@ function toPublicUser(record) {
           messages: record.emailNotifications !== false,
           finances: record.emailNotifications !== false
         },
-    isClaimed
+    isClaimed,
+    calendarToken: record.calendarToken || ''
   };
 }
 
@@ -581,7 +582,8 @@ async function ensureUsersCollection(appConfig) {
     { name: 'groups', type: 'json' },
     { name: 'emailNotifications', type: 'bool' },
     { name: 'notificationSettings', type: 'json' },
-    { name: 'isClaimed', type: 'bool' }
+    { name: 'isClaimed', type: 'bool' },
+    { name: 'calendarToken', type: 'text' }
   ];
 
   for (const field of wantedFields) {
@@ -1378,6 +1380,33 @@ async function deleteUserRecord(appConfig, uid) {
   return deleteRecord('users', uid, appConfig);
 }
 
+async function getOrCreateUserCalendarToken(appConfig, uid) {
+  const user = await getUserRecord(appConfig, uid);
+  if (!user) throw new Error('Benutzer nicht gefunden');
+  if (user.calendarToken && typeof user.calendarToken === 'string' && user.calendarToken.trim()) {
+    return user.calendarToken.trim();
+  }
+  const newToken = crypto.randomBytes(24).toString('hex');
+  await updateUserRecord(appConfig, uid, { calendarToken: newToken });
+  return newToken;
+}
+
+async function regenerateUserCalendarToken(appConfig, uid) {
+  const user = await getUserRecord(appConfig, uid);
+  if (!user) throw new Error('Benutzer nicht gefunden');
+  const newToken = crypto.randomBytes(24).toString('hex');
+  await updateUserRecord(appConfig, uid, { calendarToken: newToken });
+  return newToken;
+}
+
+async function findUserByCalendarToken(appConfig, token) {
+  if (!token || typeof token !== 'string') return null;
+  const clean = token.trim();
+  if (!clean) return null;
+  const users = await listAllRecords('users', pbFilterEquals('calendarToken', clean), appConfig);
+  return users && users.length > 0 ? users[0] : null;
+}
+
 function buildPersonRecordPayload(personKey, value) {
   return {
     personKey: String(personKey),
@@ -2074,5 +2103,8 @@ module.exports = {
   createEventDuty,
   updateEventDuty,
   deleteEventDuty,
-  pbFilterEquals
+  pbFilterEquals,
+  getOrCreateUserCalendarToken,
+  regenerateUserCalendarToken,
+  findUserByCalendarToken
 };
