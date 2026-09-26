@@ -5751,8 +5751,8 @@ details[open] .ai-thinking-summary::before {
     display: flex;
     align-items: center;
     flex: 1;
-    min-width: 200px;
-    max-width: 320px;
+    width: 100%;
+    max-width: 100%;
     margin-bottom: 0;
 }
 
