@@ -4219,7 +4219,7 @@ app.get('/api/events/calendar.ics', authenticateCalendarFeed, async (req, res) =
   try {
     const currentUid = req.user.uid || req.user.id;
     const allEvents = await listEvents(appConfig, '', '+date,+startTime');
-    const allDuties = await listAllRecords('event_duties', '', appConfig).catch(() => []);
+    const allDuties = await listEventDuties(appConfig).catch(() => []);
 
     const userAssignedEventIds = new Set(
       allDuties
