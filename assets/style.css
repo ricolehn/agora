@@ -5456,8 +5456,8 @@ details[open] .ai-thinking-summary::before {
         height: 60px !important;
         padding: 12px 16px !important;
         margin: 0 !important;
-        background: var(--surface) !important;
-        border-bottom: 1px solid var(--border-light) !important;
+        background: var(--bg) !important;
+        border-bottom: none !important;
         box-shadow: none !important;
         z-index: 1005 !important;
         display: flex !important;
@@ -5490,10 +5490,10 @@ details[open] .ai-thinking-summary::before {
 
     body.mentoring-mobile-chat-open .mentoring-chat-header {
         flex-shrink: 0;
-        background: var(--surface);
-        border-bottom: 1px solid var(--border-light);
-        padding: 10px 14px;
-        min-height: 52px;
+        background: transparent;
+        border-bottom: none;
+        padding: 4px 14px 6px;
+        min-height: auto;
     }
 
     body.mentoring-mobile-chat-open .mentoring-chat-messages {
@@ -5501,7 +5501,7 @@ details[open] .ai-thinking-summary::before {
         min-height: 0;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
-        padding: 14px 14px 8px;
+        padding: 8px 14px 8px;
     }
 
     body.mentoring-mobile-chat-open .mentoring-chat-input-bar {
