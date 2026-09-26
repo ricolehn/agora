@@ -3669,7 +3669,7 @@ function renderUserView() {
                             <div class="user-finance-stat-value">${formatCurrency(monthlyRate)} €</div>
                         </div>
                         <div class="user-finance-stat-divider"></div>
-                        <div class="user-finance-stat">
+                        <div class="user-finance-stat user-finance-stat-clickable" role="button" tabindex="0" onclick="openUserRequestModal('status')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openUserRequestModal('status');}" title="${t('user_req_status_tooltip', 'Statuswechsel beantragen')}" aria-label="${t('user_req_status_tooltip', 'Statuswechsel beantragen')}">
                             <div class="user-finance-stat-label">${t('user_current_status', 'Status')}</div>
                             <div class="user-finance-stat-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
                         </div>
@@ -5507,9 +5507,11 @@ window.handleAiChatInput = (event) => {
 };
 
 window.handleAiChatKey = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         sendAiMessage();
+    } else if (event.key === 'Enter') {
+        setTimeout(() => adjustAiInputHeight(event.target), 0);
     }
 };
 
@@ -6942,6 +6944,11 @@ window.openUserRequestModal = (type) => {
             if (title) title.innerText = t('user_req_status_title', "Statusänderung beantragen");
             if (subtitle) subtitle.innerText = t('user_req_status_subtitle', "Neuen Mitgliedsstatus anfragen");
 
+            const myPerson = (people && people.length > 0)
+                ? people.find(p => p.uid === currentUser?.uid || (p.data && p.data.uid === currentUser?.uid))
+                : null;
+            const currentStatusVal = myPerson?._currentStatus || myPerson?.status;
+
             container.innerHTML = `
                 <div class="modal-section-card">
                     <div class="modal-section-header">
@@ -6949,10 +6956,10 @@ window.openUserRequestModal = (type) => {
                     </div>
                     <div class="form-group">
                         <select id="req-status" class="form-select">
-                            <option value="vollverdiener">${t('member_status_full', '💼 Vollverdiener')}</option>
-                            <option value="geringverdiener">${t('member_status_low', '📉 Geringverdiener')}</option>
-                            <option value="keinverdiener">${t('member_status_none', '🎓 Keinverdiener')}</option>
-                            <option value="pausiert">${t('member_status_paused', '⏸️ Pausiert')}</option>
+                            <option value="vollverdiener" ${currentStatusVal === 'vollverdiener' ? 'selected' : ''}>${t('member_status_full', '💼 Vollverdiener')}</option>
+                            <option value="geringverdiener" ${currentStatusVal === 'geringverdiener' ? 'selected' : ''}>${t('member_status_low', '📉 Geringverdiener')}</option>
+                            <option value="keinverdiener" ${currentStatusVal === 'keinverdiener' ? 'selected' : ''}>${t('member_status_none', '🎓 Keinverdiener')}</option>
+                            <option value="pausiert" ${currentStatusVal === 'pausiert' ? 'selected' : ''}>${t('member_status_paused', '⏸️ Pausiert')}</option>
                         </select>
                     </div>
                 </div>
@@ -8725,9 +8732,11 @@ window.sendMentoringMessage = async function() {
 };
 
 window.handleMentoringChatKey = function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         window.sendMentoringMessage();
+    } else if (e.key === 'Enter') {
+        setTimeout(() => window.autoResizeMentoringInput(e.target), 0);
     }
 };
 

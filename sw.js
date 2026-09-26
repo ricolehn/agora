@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agora-v1.0.17';
+const CACHE_NAME = 'agora-v1.0.19';
 const URLS_TO_CACHE = [
     './',
     './index.html',

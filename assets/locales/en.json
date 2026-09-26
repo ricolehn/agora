@@ -468,6 +468,8 @@
   "user_standing_order_active": "Standing order active",
   "user_monthly_rate": "Monthly rate",
   "user_current_status": "Current status",
+  "user_req_status_tooltip": "Request status change",
+  "chat_enter_hint": "Enter for new line, Ctrl+Enter to send",
   "user_history_title": "History",
   "req_status_rejected": "Rejected",
   "req_status_approved": "Approved",

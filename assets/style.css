@@ -1868,6 +1868,27 @@ input:checked + .slider:before { transform: translateX(22px); }
     min-width: 0;
 }
 
+.user-finance-stat.user-finance-stat-clickable {
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+}
+
+.user-finance-stat.user-finance-stat-clickable:hover {
+    background: var(--surface-alt);
+}
+
+.user-finance-stat.user-finance-stat-clickable:active {
+    transform: scale(0.98);
+}
+
+.user-finance-stat.user-finance-stat-clickable:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+}
+
 .user-finance-stat-divider {
     width: 1px;
     align-self: stretch;
@@ -5047,6 +5068,7 @@ details[open] .ai-thinking-summary::before {
     font-size: 0.92rem;
     line-height: 1.45;
     word-break: break-word;
+    white-space: pre-wrap;
 }
 
 .mentoring-message.outgoing .mentoring-message-bubble,

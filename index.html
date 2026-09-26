@@ -687,7 +687,7 @@
 
                 <div class="ai-chat-input-bar ai-chat-input-styled">
                     <div class="ai-chat-input-inner">
-                        <textarea id="ai-chat-input" rows="1" data-i18n-placeholder="ai_chat_input_placeholder" placeholder="Nachricht eingeben…" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
+                        <textarea id="ai-chat-input" rows="1" data-i18n-placeholder="ai_chat_input_placeholder" placeholder="Nachricht eingeben…" data-i18n-title="chat_enter_hint" title="Enter für neue Zeile, Strg+Enter zum Senden" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
                         <button id="ai-chat-send-btn" type="button" class="ai-chat-send-btn" onclick="sendAiMessage()" aria-label="Nachricht senden" data-i18n-title="ai_chat_send_tooltip">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
@@ -783,7 +783,7 @@
                             </div>
                             <div id="mentoring-chat-input-container" class="mentoring-chat-input-bar" style="display:none;">
                                 <div class="mentoring-input-inner">
-                                    <textarea id="mentoring-chat-input" data-i18n-placeholder="mentoring_chat_input_placeholder" placeholder="Vertrauliche Nachricht schreiben…" rows="1" onkeydown="handleMentoringChatKey(event)" oninput="autoResizeMentoringInput(this)"></textarea>
+                                    <textarea id="mentoring-chat-input" data-i18n-placeholder="mentoring_chat_input_placeholder" placeholder="Vertrauliche Nachricht schreiben…" data-i18n-title="chat_enter_hint" title="Enter für neue Zeile, Strg+Enter zum Senden" rows="1" onkeydown="handleMentoringChatKey(event)" oninput="autoResizeMentoringInput(this)"></textarea>
                                     <button type="button" class="mentoring-send-btn" onclick="sendMentoringMessage()" id="mentoring-send-btn" data-i18n-title="mentoring_chat_send_tooltip" data-i18n-aria-label="mentoring_chat_send_label" title="Nachricht senden" aria-label="Senden">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                             <line x1="22" y1="2" x2="11" y2="13"></line>

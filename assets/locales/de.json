@@ -469,6 +469,8 @@
   "user_standing_order_active": "Dauerauftrag aktiv",
   "user_monthly_rate": "Monatsbeitrag",
   "user_current_status": "Status",
+  "user_req_status_tooltip": "Statuswechsel beantragen",
+  "chat_enter_hint": "Enter für neue Zeile, Strg+Enter zum Senden",
   "user_history_title": "Verlauf",
   "req_status_rejected": "Abgelehnt",
   "req_status_approved": "Genehmigt",
