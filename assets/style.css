@@ -5475,6 +5475,7 @@ details[open] .ai-thinking-summary::before {
     body.mentoring-mobile-chat-open .bottom-nav {
         z-index: 1005 !important;
         box-shadow: none !important;
+        border-top: none !important;
     }
 
     body.mentoring-mobile-chat-open .mentoring-threads-layout.in-chat .mentoring-chat-pane {
