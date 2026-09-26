@@ -8282,7 +8282,8 @@ window.openMentorContactModal = function(userId, mentorName) {
     setTimeout(() => { if (msgInput) msgInput.focus(); }, 150);
 };
 
-window.submitMentorContact = async function() {
+window.submitMentorContact = async function(e) {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const uidInput = document.getElementById('mentor-contact-user-id');
     const msgInput = document.getElementById('mentor-contact-message');
     const mentorId = uidInput ? uidInput.value : '';
@@ -8825,7 +8826,8 @@ window.openMentorApplicationModal = async function() {
     openModal('mentor-application-modal');
 };
 
-window.submitMentorApplication = async function() {
+window.submitMentorApplication = async function(e) {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const bioEl = document.getElementById('mentor-app-bio');
     const maxEl = document.getElementById('mentor-app-max');
 
