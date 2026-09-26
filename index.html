@@ -1902,7 +1902,7 @@
             </div>
             <button class="close-btn" onclick="closeModal('mentor-application-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <form onsubmit="event.preventDefault(); window.submitMentorApplication();" class="modal-body-enhanced">
+        <form onsubmit="window.submitMentorApplication(event);" class="modal-body-enhanced">
             <div class="modal-section-card">
                 <div class="modal-section-header">
                     <span>✨</span> <span data-i18n="mentor_app_section_bio">Über mich & Motivation</span>
@@ -1943,7 +1943,7 @@
             </div>
             <button class="close-btn" onclick="closeModal('mentor-contact-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <form onsubmit="event.preventDefault(); window.submitMentorContact();" class="modal-body-enhanced">
+        <form onsubmit="window.submitMentorContact(event);" class="modal-body-enhanced">
             <input type="hidden" id="mentor-contact-user-id">
 
             <div class="mentor-contact-privacy-note">
