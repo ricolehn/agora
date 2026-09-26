@@ -9695,7 +9695,7 @@ function formatEventDateSpanCompact(startDateStr, endDateStr) {
 
 
 
-function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-card-') {
+window.renderChurchtoolsEventCard = function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-card-') {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const isPast = forcePast || isEventPast(ev, todayStr);
@@ -9834,7 +9834,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-car
     `;
 }
 
-function renderEventCard(ev, idPrefix = 'event-card-') {
+window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') {
     const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
     const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}` : ev.startTime) : '';
 
