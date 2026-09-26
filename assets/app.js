@@ -1339,6 +1339,11 @@ document.addEventListener('click', (e) => {
 });
 
 window.toggleFab = function() {
+    if (currentActiveTab === 'events' && !canManageEvents()) {
+        window.openNewEventDetailModal('event');
+        return;
+    }
+
     const menu = document.getElementById('fabMenu');
     if (!menu) return;
 
