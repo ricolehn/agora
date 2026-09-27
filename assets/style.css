@@ -2774,28 +2774,49 @@ details[open] .ai-thinking-summary::before {
 }
 .auth-tabs {
     display: flex;
-    background: var(--surface-alt);
-    padding: 4px;
-    border-radius: 16px;
+    background: #edf2f7;
+    padding: 3px;
+    border-radius: 999px;
     margin-bottom: 24px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-light);
+    gap: 3px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
 }
+
+[data-theme="dark"] .auth-tabs {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
 .auth-tab-btn {
     flex: 1;
     padding: 10px;
     border: none;
     background: transparent;
-    border-radius: 12px;
+    border-radius: 999px;
     font-weight: 600;
     color: var(--text-secondary);
     font-size: 0.95rem;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
 }
+
+.auth-tab-btn:hover {
+    color: var(--text);
+}
+
 .auth-tab-btn.active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--shadow);
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .auth-tab-btn.active {
+    background: var(--surface-alt);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .input-with-icon {
     position: relative;
@@ -2826,12 +2847,12 @@ details[open] .ai-thinking-summary::before {
 }
 .search-bar-wrapper .form-input.search-input {
     background: var(--surface-alt);
-    border: none;
-    border-radius: 14px;
-    padding: 12px 12px 12px 42px;
-    font-size: 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    padding: 10px 16px 10px 42px;
+    font-size: 0.92rem;
     color: var(--text);
-    box-shadow: none;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 .search-bar-wrapper .form-input.search-input:focus {
     background: var(--surface-alt);
@@ -3388,11 +3409,17 @@ details[open] .ai-thinking-summary::before {
 /* --- System Settings Sub-Navigation --- */
 .sys-subnav {
     display: flex;
-    gap: 6px;
-    background: var(--surface-alt);
-    padding: 4px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    gap: 3px;
+    background: #edf2f7;
+    padding: 3px;
+    border-radius: 999px;
+    border: 1px solid var(--border-light);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .sys-subnav {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.05);
 }
 
 .sys-subnav-btn {
@@ -3402,12 +3429,13 @@ details[open] .ai-thinking-summary::before {
     background: transparent;
     border: none;
     padding: 8px 14px;
-    border-radius: 8px;
+    border-radius: 999px;
     color: var(--text-secondary);
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
 }
 
 .sys-subnav-btn:hover {
@@ -3417,7 +3445,14 @@ details[open] .ai-thinking-summary::before {
 .sys-subnav-btn.active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .sys-subnav-btn.active {
+    background: var(--surface-alt);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* --- Nextcloud Inspired Accounts Table --- */
@@ -3571,12 +3606,18 @@ details[open] .ai-thinking-summary::before {
 /* --- Finances Subpage Segmented Navigation --- */
 .finance-subnav {
     display: flex;
-    background: var(--surface-alt);
-    padding: 4px;
-    border-radius: 14px;
+    background: #edf2f7;
+    padding: 3px;
+    border-radius: 999px;
     margin-bottom: 20px;
-    border: 1px solid var(--border);
-    gap: 4px;
+    border: 1px solid var(--border-light);
+    gap: 3px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .finance-subnav {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.05);
 }
 
 .finance-subnav-btn {
@@ -3584,16 +3625,17 @@ details[open] .ai-thinking-summary::before {
     padding: 9px 16px;
     border: none;
     background: transparent;
-    border-radius: 10px;
+    border-radius: 999px;
     font-weight: 600;
     color: var(--text-secondary);
     font-size: 0.92rem;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    user-select: none;
 }
 
 .finance-subnav-btn:hover {
@@ -3603,7 +3645,14 @@ details[open] .ai-thinking-summary::before {
 .finance-subnav-btn.active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--shadow);
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .finance-subnav-btn.active {
+    background: var(--surface-alt);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .finance-subpage-content {
@@ -3927,9 +3976,10 @@ details[open] .ai-thinking-summary::before {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
-        padding: 4px;
-        gap: 6px;
+        padding: 3px;
+        gap: 3px;
         width: 100%;
+        border-radius: 999px;
     }
 
     .sys-subnav::-webkit-scrollbar {
@@ -3943,6 +3993,7 @@ details[open] .ai-thinking-summary::before {
         font-size: 0.85rem;
         justify-content: center;
         min-height: 40px;
+        border-radius: 999px;
     }
 
     .nc-accounts-layout {
@@ -4545,15 +4596,15 @@ details[open] .ai-thinking-summary::before {
 }
 
 .mentoring-sidebar-search {
-    padding: 10px 18px;
+    padding: 8px 16px;
     border: 1px solid var(--border-light);
     border-radius: 999px;
     margin: 0 0 12px 0;
     display: flex;
     align-items: center;
-    background: var(--surface);
+    background: var(--surface-alt);
     transition: border-color 0.15s, box-shadow 0.15s;
-    box-shadow: var(--shadow);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .mentoring-sidebar-search:focus-within {
@@ -5768,7 +5819,17 @@ details[open] .ai-thinking-summary::before {
     width: 100%;
     padding: 9px 34px 9px 40px;
     font-size: 0.88rem;
-    border-radius: 12px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+#accounts-search {
+    border-radius: 999px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .events-search-clear {
@@ -8374,11 +8435,17 @@ details[open] .event-duties-chevron svg {
 
 .events-subnav-segments {
     display: flex;
-    background: var(--surface-alt);
-    padding: 4px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    gap: 4px;
+    background: #edf2f7;
+    padding: 3px;
+    border-radius: 999px;
+    border: 1px solid var(--border-light);
+    gap: 3px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .events-subnav-segments {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.05);
 }
 
 .events-subnav-segment {
@@ -8386,16 +8453,17 @@ details[open] .event-duties-chevron svg {
     padding: 9px 16px;
     border: none;
     background: transparent;
-    border-radius: 10px;
+    border-radius: 999px;
     font-weight: 600;
     color: var(--text-secondary);
     font-size: 0.92rem;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    user-select: none;
 }
 
 .events-subnav-segment:hover {
@@ -8406,7 +8474,15 @@ details[open] .event-duties-chevron svg {
 .events-subnav-segment.active {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--shadow);
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .events-subnav-segment.is-active,
+[data-theme="dark"] .events-subnav-segment.active {
+    background: var(--surface-alt);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* ChurchTools-inspired Event Card Grid & Layout */
