@@ -1111,7 +1111,7 @@ async function migrateUserAndOwnerSchema(appConfig) {
       if (userRecord.superAdmin !== false && userRecord.superAdmin !== undefined) { updates.superAdmin = false; needsPatch = true; }
     }
 
-    if (userRecord.pays === undefined || userRecord.pays === null) {
+    if (userRecord.pays !== true) {
       updates.pays = true;
       needsPatch = true;
     }

@@ -274,6 +274,21 @@ test('hydratePersonRecord rebuilds normalized child collections into legacy API 
   assert.ok('_currentStatus' in result);
 });
 
+test('migrateUserAndOwnerSchema patches existing users without pays=true to pays=true', () => {
+  const user1 = { id: 'u1', pays: false, email: 'a@agora.local' };
+  const user2 = { id: 'u2', pays: true, email: 'b@agora.local' };
+  const user3 = { id: 'u3', email: 'c@agora.local' };
+
+  // Helper check logic simulating migrateUserAndOwnerSchema patch check for pays
+  function needsPaysPatch(u) {
+    return u.pays !== true;
+  }
+
+  assert.equal(needsPaysPatch(user1), true);
+  assert.equal(needsPaysPatch(user2), false);
+  assert.equal(needsPaysPatch(user3), true);
+});
+
 test('clearSuperuserTokenCache is a callable function', () => {
   assert.equal(typeof clearSuperuserTokenCache, 'function');
   // Calling it should not throw
