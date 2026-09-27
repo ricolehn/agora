@@ -683,7 +683,7 @@ window.deleteCurrentGroup = async function() {
     const id = document.getElementById('manage-group-id').value;
     if (!id) return;
 
-    if (!confirm(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) {
+    if (!confirmAction(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) {
         return;
     }
 
@@ -1452,6 +1452,75 @@ window.closeModal = (id, fromPopstate = false) => {
             prevModal.classList.add('show');
         }
     }
+
+    if (typeof modal._customOnClose === 'function') {
+        try { modal._customOnClose(); } catch (e) {}
+        delete modal._customOnClose;
+    }
+};
+
+window.closeActiveModal = () => {
+    if (window._modalStack && window._modalStack.length > 0) {
+        const topModalId = window._modalStack[window._modalStack.length - 1];
+        window.closeModal(topModalId);
+    }
+};
+
+window.confirmAction = (options) => {
+    const text = typeof options === 'string' ? options : (options?.text || options?.message || '');
+    const onConfirm = typeof options === 'function' ? options : options?.onConfirm;
+    if (window.confirm(text)) {
+        if (typeof onConfirm === 'function') {
+            onConfirm();
+        }
+        return true;
+    }
+    return false;
+};
+
+window.showDynamicModal = ({ id, title, subtitle, icon, contentHtml, bodyHtml, footerHtml, maxWidth, onClose }) => {
+    const modalId = id || 'dynamic-ui-modal';
+    let modal = document.getElementById(modalId);
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        document.body.appendChild(modal);
+    }
+
+    const styleAttr = maxWidth ? `style="max-width: ${maxWidth};"` : '';
+    const iconMarkup = icon ? `<div class="modal-icon-badge">${icon}</div>` : '';
+    const subMarkup = subtitle ? `<div class="modal-subtitle">${subtitle}</div>` : '';
+    const bodyMarkup = contentHtml || bodyHtml || '';
+    const footerMarkup = footerHtml ? `<div class="modal-footer-enhanced">${footerHtml}</div>` : '';
+
+    modal.innerHTML = `
+        <div class="modal-content modal-content-enhanced" ${styleAttr}>
+            <div class="modal-header-enhanced">
+                <div class="modal-header-title-group">
+                    ${iconMarkup}
+                    <div>
+                        <div class="modal-title-main">${title || ''}</div>
+                        ${subMarkup}
+                    </div>
+                </div>
+                <button type="button" class="btn-close-enhanced" onclick="closeModal('${modalId}')" aria-label="Schließen">✕</button>
+            </div>
+            <div class="modal-body-enhanced">
+                ${bodyMarkup}
+            </div>
+            ${footerMarkup}
+        </div>
+    `;
+
+    if (onClose) {
+        modal._customOnClose = onClose;
+    }
+
+    window.openModal(modalId);
+    return modal;
 };
 
 window.closeMultipleModals = (ids) => {
@@ -3120,7 +3189,7 @@ window.submitResetPassword = async () => {
 };
 
 window.deleteUserAccount = async (uid) => {
-    if (!confirm(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
+    if (!confirmAction(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
 
     try {
         const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}`, {
@@ -3398,7 +3467,7 @@ window.renderEditReceiptsList = async function() {
 };
 
 window.deleteEditReceipt = function(filename) {
-    if (confirm(t('confirm_delete_receipt', 'Möchtest du diesen Beleg wirklich löschen?'))) {
+    if (confirmAction(t('confirm_delete_receipt', 'Möchtest du diesen Beleg wirklich löschen?'))) {
         currentEditedReceipts = currentEditedReceipts.filter(fn => fn !== filename);
         renderEditReceiptsList();
     }
@@ -5075,7 +5144,7 @@ window.saveStandingOrderEnd = async () => {
 };
 
 window.deleteStandingOrderCompletely = async () => {
-    if (!confirm(t('confirm_delete_so', 'Dauerauftrag wirklich komplett entfernen? Historie geht verloren.'))) return;
+    if (!confirmAction(t('confirm_delete_so', 'Dauerauftrag wirklich komplett entfernen? Historie geht verloren.'))) return;
 
     try {
         await mutatePerson(editingPersonId, (person) => {
@@ -5094,7 +5163,7 @@ window.deleteStandingOrderCompletely = async () => {
 window.deleteEditedPayment = async () => {
     if (!isSuperAdminUser() || !currentEditedPayment) return;
 
-    if (!confirm(t('confirm_delete_payment', 'Achtung: Soll dieser Eintrag wirklich gelöscht werden? Dies kann nicht rückgängig gemacht werden.'))) {
+    if (!confirmAction(t('confirm_delete_payment', 'Achtung: Soll dieser Eintrag wirklich gelöscht werden? Dies kann nicht rückgängig gemacht werden.'))) {
         return;
     }
 
@@ -8783,7 +8852,7 @@ window.toggleCloseCurrentThread = async function(forcedStatus) {
         ? t('mentoring_confirm_close', 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.')
         : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?');
 
-    if (!confirm(confirmMsg)) return;
+    if (!confirmAction(confirmMsg)) return;
 
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads/${activeMentoringThreadId}/status`, {
@@ -8953,7 +9022,7 @@ window.loadMentoringReviewList = async function() {
 
 window.setMentorStatus = async function(mentorId, status) {
     const actionLabel = status === 'approved' ? t('mentoring_action_approve', 'genehmigen') : t('mentoring_action_reject', 'ablehnen');
-    if (!confirm(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action: actionLabel }))) return;
+    if (!confirmAction(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action: actionLabel }))) return;
 
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/manage/${mentorId}/status`, {
@@ -10382,7 +10451,7 @@ window.toggleDetailAttendeesList = function() {
 };
 
 window.removeEventAttendee = async function(eventId, userId) {
-    if (!confirm('Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?')) return;
+    if (!confirmAction('Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?')) return;
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/attendees/${userId}`, {
             method: 'DELETE'
@@ -10817,7 +10886,7 @@ window.assignToDutyRole = async function(eventId, encodedRoleName, assignData, r
 window.deleteEntireDutyTask = async function(encodedRoleName) {
     if (!currentDetailEvent) return;
     const roleName = decodeURIComponent(encodedRoleName);
-    if (!confirm(`Möchtest du die gesamte Aufgabe "${roleName}" mit allen Einträgen wirklich löschen?`)) return;
+    if (!confirmAction(`Möchtest du die gesamte Aufgabe "${roleName}" mit allen Einträgen wirklich löschen?`)) return;
 
     try {
         const dutiesToDelete = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
@@ -10839,7 +10908,7 @@ window.deleteEntireDutyTask = async function(encodedRoleName) {
 
 window.removeDutyAssignee = async function(dutyId) {
     if (!dutyId) return;
-    if (!confirm('Diesen Eintrag wirklich entfernen?')) return;
+    if (!confirmAction('Diesen Eintrag wirklich entfernen?')) return;
 
     try {
         const ev = currentDetailEvent;
@@ -10877,7 +10946,7 @@ window.removeDutyAssignee = async function(dutyId) {
 };
 
 window.cancelDutyRequest = async function(dutyId) {
-    if (!confirm('Möchtest du diese Dienstanfrage wirklich zurückziehen?')) return;
+    if (!confirmAction('Möchtest du diese Dienstanfrage wirklich zurückziehen?')) return;
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/cancel-request`, {
             method: 'POST'
@@ -10924,7 +10993,7 @@ window.claimEventDuty = async function(dutyId) {
 };
 
 window.unclaimEventDuty = async function(dutyId) {
-    if (!confirm('Möchtest du diese Zuweisung wirklich aufheben / austragen?')) return;
+    if (!confirmAction('Möchtest du diese Zuweisung wirklich aufheben / austragen?')) return;
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/claim`, {
             method: 'POST',
@@ -11039,7 +11108,7 @@ window.toggleEventRegistration = async function(eventId, currentStatus) {
 // Delete Event
 // ==========================================================
 window.deleteEvent = async function(eventId) {
-    if (!confirm(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
+    if (!confirmAction(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}`, {
             method: 'DELETE'
@@ -11819,7 +11888,7 @@ window.downloadIcsFile = async function() {
 
 window.resetCalendarFeedToken = async function() {
     const confirmPrompt = (typeof i18n === 'function' && i18n('calendar_sub_reset_confirm')) || 'Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.';
-    if (!confirm(confirmPrompt)) return;
+    if (!confirmAction(confirmPrompt)) return;
 
     try {
         const res = await fetchWithAuth(`${config.apiBaseUrl}/user/calendar-feed/reset`, {
