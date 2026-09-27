@@ -1265,6 +1265,21 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     margin: 0;
 }
 
+/* Modal Footer Enhanced */
+.modal-footer-enhanced {
+    padding: 12px 18px 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    background: var(--surface);
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    flex-shrink: 0;
+}
+[data-theme="dark"] .modal-footer-enhanced {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
 /* Action button inside modal */
 .modal-body-enhanced .btn-block,
 .modal-body-enhanced > .btn {
@@ -10225,17 +10240,29 @@ details[open] .event-duties-chevron svg {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 7px 10px;
-    border-radius: 8px;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 10px;
     cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
-    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    border: 1px solid var(--border-light);
+    background: var(--surface);
 }
 
 .duty-picker-option:hover {
     background: var(--surface-alt);
-    border-color: var(--border-light);
+    border-color: var(--border);
+}
+
+.duty-picker-btn-action {
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    padding: 6px 14px !important;
+    border-radius: 8px !important;
+    flex-shrink: 0;
+    line-height: 1.2 !important;
+    height: auto !important;
+    min-height: 32px;
 }
 
 .duty-picker-option-left {
