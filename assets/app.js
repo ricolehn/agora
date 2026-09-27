@@ -1559,6 +1559,79 @@ window.renderReceiptPreviewCard = (imgUrl, filename, label) => {
     `;
 };
 
+window.UI_ICONS = {
+    calendar: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>',
+    clock: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+    location: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>',
+    user: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
+    trash: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+    chevronRight: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+};
+
+window.renderAvatarWrap = (userId, userName, options = {}) => {
+    const name = userName || 'P';
+    const initials = typeof getAttendeeInitials === 'function' ? getAttendeeInitials(name) : name.charAt(0).toUpperCase();
+    const picUrl = userId ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(userId)}` : '';
+    const wrapClass = options.wrapClass || 'duty-assignee-avatar-wrap';
+    const imgClass = options.imgClass || 'duty-assignee-avatar-img';
+    const initialsClass = options.initialsClass || 'duty-assignee-initials';
+    const style = options.style ? `style="${options.style}"` : '';
+
+    return `
+        <div class="${wrapClass}" ${style}>
+            <span class="${initialsClass}">${escapeHtml(initials)}</span>
+            ${picUrl ? `<img src="${picUrl}" alt="${escapeHtml(name)}" class="${imgClass}" onerror="this.style.display='none'">` : ''}
+        </div>
+    `;
+};
+
+window.renderPickerOption = ({ name, subtitle, icon, badgeHtml, btnText, btnClass = 'btn-primary', onclick }) => {
+    const safeName = escapeHtml(name || '');
+    const safeSub = subtitle ? `<span class="duty-picker-option-sub">${escapeHtml(subtitle)}</span>` : '';
+    const leftIcon = badgeHtml || (icon ? `<div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">${icon}</div>` : '');
+
+    return `
+        <div class="duty-picker-option" onclick="${onclick}">
+            <div class="duty-picker-option-left">
+                ${leftIcon}
+                <div class="duty-picker-option-info">
+                    <span class="duty-picker-option-name">${safeName}</span>
+                    ${safeSub}
+                </div>
+            </div>
+            <button type="button" class="btn ${btnClass} duty-picker-btn-action">${escapeHtml(btnText)}</button>
+        </div>
+    `;
+};
+
+window.getEventCardStatusInfo = (ev, user) => {
+    const currentUid = user?.uid || user?.id;
+    const userGroups = Array.isArray(user?.groups) ? user.groups : [];
+    const isUserInGroup = (groupId) => userGroups.some(g => {
+        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
+        const gname = typeof g === 'object' && g ? g.name : String(g);
+        return gid === groupId || gname === groupId;
+    });
+
+    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
+    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
+
+    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
+        ((d.assignedUser === currentUid || d.assignedUser === user?.id) && (d.status === 'confirmed' || d.status === 'assigned')) ||
+        (d.status === 'assigned' && d.assignedGroup && isUserInGroup(d.assignedGroup))
+    ) : null;
+
+    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
+        (d.requestedUser === currentUid || d.requestedUser === user?.id) && d.status === 'requested'
+    ) : null;
+
+    const openDutiesCount = (ev.canAccessDutyPlan && Array.isArray(ev.duties))
+        ? ev.duties.filter(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup && !d.requestedUser)).length
+        : 0;
+
+    return { myDuty, myRequestedDuty, isRegistered, isWaitlist, openDutiesCount, isUserInGroup };
+};
+
 window.closeMultipleModals = (ids) => {
     let programmaticBacksCount = 0;
     let finalFocusElement = null;
@@ -9796,48 +9869,25 @@ window.renderChurchtoolsEventCard = function renderChurchtoolsEventCard(ev, forc
     const isPast = forcePast || isEventPast(ev, todayStr);
     const isPinned = Boolean(ev.isPinned);
 
-    const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
+    const { dayNum, weekdayStr } = parseEventDateComponents(ev.date);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
     const timeDisplay = (!isMultiDay && ev.startTime) ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
     const dateSpan = isMultiDay ? `Bis ${formatEventDate(ev.endDate)}` : '';
 
-    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
+    const { myDuty, myRequestedDuty, isWaitlist } = getEventCardStatusInfo(ev, currentUser);
 
-    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.assignedUser === currentUser?.id) : null;
-    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.requestedUser === currentUser?.id && d.status === 'requested') : null;
-
-    let floatingBadges = '';
-    floatingBadges += `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`;
+    let floatingBadges = `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`;
 
     if (isPast) {
         floatingBadges += `<span class="event-card-status status-past">⌛ Vorbei</span>`;
     } else if (myDuty) {
-        floatingBadges += `
-            <span class="event-card-status status-duty">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <span>${escapeHtml(myDuty.roleName || 'Dienst')}</span>
-            </span>
-        `;
+        floatingBadges += `<span class="event-card-status status-duty">${UI_ICONS.user}<span>${escapeHtml(myDuty.roleName || 'Dienst')}</span></span>`;
     } else if (myRequestedDuty) {
-        floatingBadges += `
-            <span class="event-card-status status-requested">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-                <span>Anfrage offen</span>
-            </span>
-        `;
+        floatingBadges += `<span class="event-card-status status-requested">${UI_ICONS.clock}<span>Anfrage offen</span></span>`;
     } else if (isWaitlist) {
-        floatingBadges += `
-            <span class="event-card-status status-waitlist">
-                <span>Warteliste</span>
-            </span>
-        `;
-    } else if (ev.requiresRegistration && ev.isFull && !isRegistered) {
-        floatingBadges += `
-            <span class="event-card-status status-full">
-                <span>Ausgebucht</span>
-            </span>
-        `;
+        floatingBadges += `<span class="event-card-status status-waitlist"><span>Warteliste</span></span>`;
+    } else if (ev.requiresRegistration && ev.isFull && !ev.myRegistration) {
+        floatingBadges += `<span class="event-card-status status-full"><span>Ausgebucht</span></span>`;
     }
 
     const dateBadgeClass = isPinned ? 'is-pinned-date' : 'is-event-date';
@@ -9848,30 +9898,18 @@ window.renderChurchtoolsEventCard = function renderChurchtoolsEventCard(ev, forc
         </div>
     `;
 
-    let coverHtml = '';
-    if (ev.imageUrl) {
-        coverHtml = `
-            <div class="ct-event-card-cover-wrap">
-                <img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">
-                ${dateBadgeHtml}
-                <div class="ct-event-card-badges-floating">${floatingBadges}</div>
-            </div>
-        `;
-    } else {
-        coverHtml = `
-            <div class="ct-event-card-cover-wrap">
-                <div class="ct-event-card-fallback-cover">
-                    <div class="ct-fallback-icon-wrap">
-                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    </div>
-                </div>
-                ${dateBadgeHtml}
-                <div class="ct-event-card-badges-floating">${floatingBadges}</div>
-            </div>
-        `;
-    }
+    const coverWrapHtml = `
+        <div class="ct-event-card-cover-wrap">
+            ${ev.imageUrl
+                ? `<img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">`
+                : `<div class="ct-event-card-fallback-cover"><div class="ct-fallback-icon-wrap">${UI_ICONS.calendar}</div></div>`
+            }
+            ${dateBadgeHtml}
+            <div class="ct-event-card-badges-floating">${floatingBadges}</div>
+        </div>
+    `;
 
-    let footerBadges = '';
+    let footerBadges = '<span class="ct-footer-pill-muted">Ohne Anmeldung</span>';
     if (ev.requiresRegistration) {
         const regCount = ev.registeredCount || 0;
         const max = ev.maxParticipants || 0;
@@ -9886,51 +9924,31 @@ window.renderChurchtoolsEventCard = function renderChurchtoolsEventCard(ev, forc
         } else {
             footerBadges = `<span class="ct-footer-pill">${regCount} angemeldet</span>`;
         }
-    } else {
-        footerBadges = `<span class="ct-footer-pill-muted">Ohne Anmeldung</span>`;
     }
 
     const cardClass = `churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}`;
 
     return `
         <div class="${cardClass}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
-            ${coverHtml}
+            ${coverWrapHtml}
             <div class="ct-event-card-body">
                 <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="ct-event-card-meta">
-                    ${isMultiDay ? `
-                        <div class="ct-event-card-meta-row multiday-row">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            <span>${escapeHtml(dateSpan)}</span>
-                        </div>
-                    ` : ''}
-                    ${timeDisplay ? `
-                        <div class="ct-event-card-meta-row">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                            <span>${escapeHtml(timeDisplay)}</span>
-                        </div>
-                    ` : ''}
-                    ${ev.location ? `
-                        <div class="ct-event-card-meta-row">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                            <span>${escapeHtml(ev.location)}</span>
-                        </div>
-                    ` : ''}
+                    ${isMultiDay ? `<div class="ct-event-card-meta-row multiday-row">${UI_ICONS.calendar}<span>${escapeHtml(dateSpan)}</span></div>` : ''}
+                    ${timeDisplay ? `<div class="ct-event-card-meta-row">${UI_ICONS.clock}<span>${escapeHtml(timeDisplay)}</span></div>` : ''}
+                    ${ev.location ? `<div class="ct-event-card-meta-row">${UI_ICONS.location}<span>${escapeHtml(ev.location)}</span></div>` : ''}
                 </div>
                 <div class="ct-event-card-footer">
                     <div>${footerBadges}</div>
-                    <div class="ct-details-btn">
-                        <span>Details</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    </div>
+                    <div class="ct-details-btn"><span>Details</span>${UI_ICONS.chevronRight}</div>
                 </div>
             </div>
         </div>
     `;
-}
+};
 
 window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') {
-    const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
+    const { dayNum, weekdayStr } = parseEventDateComponents(ev.date);
     const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}` : ev.startTime) : '';
 
     const today = new Date();
@@ -9942,81 +9960,29 @@ window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') 
     const isEvent = ev.eventType ? (ev.eventType === 'event') : !ev.isOfficialTermin;
     const isPinned = isEvent && Boolean(ev.isPinned);
 
-    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
+    const { myDuty, myRequestedDuty, isRegistered, isWaitlist, openDutiesCount, isUserInGroup } = getEventCardStatusInfo(ev, currentUser);
 
-    const currentUid = currentUser?.uid || currentUser?.id;
-    const userGroups = Array.isArray(currentUser?.groups) ? currentUser.groups : [];
-    const isUserInGroup = (groupId) => userGroups.some(g => {
-        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-        const gname = typeof g === 'object' && g ? g.name : String(g);
-        return gid === groupId || gname === groupId;
-    });
-
-    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
-        ((d.assignedUser === currentUid || d.assignedUser === currentUser?.id) && (d.status === 'confirmed' || d.status === 'assigned')) ||
-        (d.status === 'assigned' && d.assignedGroup && isUserInGroup(d.assignedGroup))
-    ) : null;
-    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
-        (d.requestedUser === currentUid || d.requestedUser === currentUser?.id) && d.status === 'requested'
-    ) : null;
-    const openDutiesCount = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.filter(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup && !d.requestedUser)).length : 0;
-
-    let cardClass = 'event-card';
-    if (isEvent) {
-        cardClass += isPinned ? ' is-event is-pinned' : ' is-event';
-    } else {
-        cardClass += ' is-termin';
-    }
-    if (isPast) cardClass += ' is-past';
-    if (isToday) cardClass += ' is-today';
-
+    let cardClass = `event-card ${isEvent ? (isPinned ? 'is-event is-pinned' : 'is-event') : 'is-termin'} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}`;
     const dateBoxClass = isEvent ? 'is-event-date' : 'is-termin-date';
 
-    // Single prioritized status indicator on the right side
     let statusHtml = '';
+    const currentUid = currentUser?.uid || currentUser?.id;
     if (myDuty) {
         const dutyLabel = myDuty.assignedGroup && isUserInGroup(myDuty.assignedGroup) && myDuty.assignedUser !== currentUid && myDuty.assignedUser !== currentUser?.id
             ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || 'Dienst')
             : (myDuty.roleName || 'Dienst');
-        statusHtml = `
-            <span class="event-card-status status-duty" title="Eingeteilter Dienst">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <span>${escapeHtml(dutyLabel)}</span>
-            </span>
-        `;
+        statusHtml = `<span class="event-card-status status-duty" title="Eingeteilter Dienst">${UI_ICONS.user}<span>${escapeHtml(dutyLabel)}</span></span>`;
     } else if (myRequestedDuty) {
-        statusHtml = `
-            <span class="event-card-status status-requested" title="Dienstanfrage offen">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-                <span>Anfrage offen</span>
-            </span>
-        `;
+        statusHtml = `<span class="event-card-status status-requested" title="Dienstanfrage offen">${UI_ICONS.clock}<span>Anfrage offen</span></span>`;
     } else if (isWaitlist) {
-        statusHtml = `
-            <span class="event-card-status status-waitlist" title="Auf der Warteliste">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <span>Warteliste</span>
-            </span>
-        `;
+        statusHtml = `<span class="event-card-status status-waitlist" title="Auf der Warteliste"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span>Warteliste</span></span>`;
     } else if (!isRegistered && openDutiesCount > 0 && ev.canAccessDutyPlan) {
-        statusHtml = `
-            <span class="event-card-status status-open-duties" title="${openDutiesCount} offene Dienste">
-                <span>${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst frei' : 'Dienste frei'}</span>
-            </span>
-        `;
+        statusHtml = `<span class="event-card-status status-open-duties" title="${openDutiesCount} offene Dienste"><span>${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst frei' : 'Dienste frei'}</span></span>`;
     } else if (!isRegistered && ev.requiresRegistration && ev.isFull) {
-        statusHtml = `
-            <span class="event-card-status status-full">
-                <span>Ausgebucht</span>
-            </span>
-        `;
+        statusHtml = `<span class="event-card-status status-full"><span>Ausgebucht</span></span>`;
     }
 
-    // Top-right rounded label for Events
-    const eventTopLabelHtml = isEvent
-        ? `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`
-        : '';
+    const eventTopLabelHtml = isEvent ? `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>` : '';
 
     return `
         <div class="${cardClass}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
@@ -10028,24 +9994,9 @@ window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') 
                 <div class="event-card-body">
                     <div class="event-card-title">${escapeHtml(ev.title)}</div>
                     <div class="event-card-subline">
-                        ${isToday ? `<span class="event-type-pill pill-today">Heute</span>` : ''}
-                        ${isMultiDay ? `
-                            <span class="event-card-subline-item multiday-item">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                <span>Bis ${escapeHtml(formatEventDate(ev.endDate))}</span>
-                            </span>
-                        ` : (timeDisplay ? `
-                            <span class="event-card-subline-item">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                                <span>${escapeHtml(timeDisplay)} Uhr</span>
-                            </span>
-                        ` : '')}
-                        ${ev.location ? `
-                            <span class="event-card-subline-item">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                <span>${escapeHtml(ev.location)}</span>
-                            </span>
-                        ` : ''}
+                        ${isToday ? '<span class="event-type-pill pill-today">Heute</span>' : ''}
+                        ${isMultiDay ? `<span class="event-card-subline-item multiday-item">${UI_ICONS.calendar}<span>Bis ${escapeHtml(formatEventDate(ev.endDate))}</span></span>` : (timeDisplay ? `<span class="event-card-subline-item">${UI_ICONS.clock}<span>${escapeHtml(timeDisplay)} Uhr</span></span>` : '')}
+                        ${ev.location ? `<span class="event-card-subline-item">${UI_ICONS.location}<span>${escapeHtml(ev.location)}</span></span>` : ''}
                     </div>
                 </div>
             </div>
@@ -10053,14 +10004,12 @@ window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') 
                 ${eventTopLabelHtml}
                 <div class="event-card-right-actions">
                     ${statusHtml}
-                    <div class="event-card-arrow">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    </div>
+                    <div class="event-card-arrow">${UI_ICONS.chevronRight}</div>
                 </div>
             </div>
         </div>
     `;
-}
+};
 
 // ==========================================================
 // Event Detail Modal & Actions
@@ -10402,54 +10351,33 @@ async function loadEventAttendees(eventId) {
                 const regList = currentDetailAttendees.registered || [];
                 const waitList = currentDetailAttendees.waitlist || [];
 
-                const regRows = regList.map(att => {
-                    const initials = getAttendeeInitials(att.name);
-                    const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(att.userId)}`;
+                const renderAttendeeRow = (att, isWaitlist = false) => {
+                    const avatar = renderAvatarWrap(att.userId, att.name, {
+                        wrapClass: 'event-attendee-avatar-wrap',
+                        imgClass: 'event-attendee-avatar-img',
+                        initialsClass: 'event-attendee-initials'
+                    });
                     const removeBtn = canManage ? `
-                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Teilnehmer entfernen">
+                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="${isWaitlist ? 'Von Warteliste entfernen' : 'Teilnehmer entfernen'}">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                     ` : '';
                     return `
-                        <div class="event-attendee-row">
+                        <div class="event-attendee-row ${isWaitlist ? 'is-waitlist' : ''}">
                             <div class="event-attendee-left">
-                                <div class="event-attendee-avatar-wrap">
-                                    <span class="event-attendee-initials">${escapeHtml(initials)}</span>
-                                    <img src="${picUrl}" alt="${escapeHtml(att.name)}" class="event-attendee-avatar-img" onerror="this.style.display='none'">
-                                </div>
+                                ${avatar}
                                 <div class="event-attendee-name-wrap">
                                     <span class="event-attendee-name">${escapeHtml(att.name)}</span>
+                                    ${isWaitlist ? '<span class="event-attendee-waitlist-badge">Warteliste</span>' : ''}
                                 </div>
                             </div>
                             ${removeBtn}
                         </div>
                     `;
-                }).join('');
+                };
 
-                const waitRows = waitList.map(att => {
-                    const initials = getAttendeeInitials(att.name);
-                    const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(att.userId)}`;
-                    const removeBtn = canManage ? `
-                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Von Warteliste entfernen">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                    ` : '';
-                    return `
-                        <div class="event-attendee-row is-waitlist">
-                            <div class="event-attendee-left">
-                                <div class="event-attendee-avatar-wrap">
-                                    <span class="event-attendee-initials">${escapeHtml(initials)}</span>
-                                    <img src="${picUrl}" alt="${escapeHtml(att.name)}" class="event-attendee-avatar-img" onerror="this.style.display='none'">
-                                </div>
-                                <div class="event-attendee-name-wrap">
-                                    <span class="event-attendee-name">${escapeHtml(att.name)}</span>
-                                    <span class="event-attendee-waitlist-badge">Warteliste</span>
-                                </div>
-                            </div>
-                            ${removeBtn}
-                        </div>
-                    `;
-                }).join('');
+                const regRows = regList.map(att => renderAttendeeRow(att, false)).join('');
+                const waitRows = waitList.map(att => renderAttendeeRow(att, true)).join('');
 
                 itemsEl.innerHTML = (regRows + waitRows) || '<div class="event-attendees-empty">Noch keine Teilnehmer angemeldet</div>';
             }
@@ -10576,7 +10504,6 @@ window.renderDutyAssigneeItem = function(d, ev, cardId) {
     const canManage = ev.canEdit || d.canManageDuty;
     const isMe = d.assignedUser === currentUser?.id;
     const isMeRequested = d.requestedUser === currentUser?.id;
-    const encodedRoleName = encodeURIComponent(d.roleName || '');
 
     let avatarHtml = '';
     let displayName = '';
@@ -10591,14 +10518,7 @@ window.renderDutyAssigneeItem = function(d, ev, cardId) {
     } else if (d.status === 'requested') {
         const reqName = isMeRequested ? 'Du' : (d.requestedUserName || 'Person');
         displayName = escapeHtml(reqName);
-        const initials = getAttendeeInitials(d.requestedUserName || 'P');
-        const picUrl = d.requestedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.requestedUser)}` : '';
-        avatarHtml = `
-            <div class="duty-assignee-avatar-wrap">
-                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>
-        `;
+        avatarHtml = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P');
         statusBadge = `<span class="duty-status-sub is-requested">(Anfrage offen)</span>`;
 
         if (isMeRequested) {
@@ -10610,29 +10530,14 @@ window.renderDutyAssigneeItem = function(d, ev, cardId) {
     } else if (d.status === 'declined') {
         const reqName = (d.requestedUser === currentUser?.id) ? 'Du' : (d.requestedUserName || 'Person');
         displayName = escapeHtml(reqName);
-        const initials = getAttendeeInitials(d.requestedUserName || 'P');
-        const picUrl = d.requestedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.requestedUser)}` : '';
-        avatarHtml = `
-            <div class="duty-assignee-avatar-wrap">
-                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>
-        `;
+        avatarHtml = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P');
         statusBadge = `<span class="duty-status-sub is-declined">✕ Abgelehnt</span>`;
     } else if (d.status === 'confirmed' && (d.assignedUserName || d.assignedUser)) {
         const assName = isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt');
         displayName = escapeHtml(assName);
-        const initials = getAttendeeInitials(d.assignedUserName || 'P');
-        const picUrl = d.assignedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.assignedUser)}` : '';
-        avatarHtml = `
-            <div class="duty-assignee-avatar-wrap">
-                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>
-        `;
+        avatarHtml = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P');
         statusBadge = `<span class="duty-status-sub is-confirmed">✓ Eingeteilt</span>`;
     } else {
-        // Open Slot
         displayName = `<span class="duty-empty-assigned">Noch niemand eingeteilt (Offene Aufgabe)</span>`;
         avatarHtml = `<div class="duty-assignee-open-badge">👤</div>`;
     }
@@ -10785,27 +10690,15 @@ window.renderAssignDutyModalList = async function(filterText = '') {
 
         listEl.innerHTML = matched.map(c => {
             const cName = c.name || c.email || 'Mitglied';
-            const initials = getAttendeeInitials(cName);
-            const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(c.id)}`;
-            const safeName = escapeHtml(cName);
-            const safeEmail = escapeHtml(c.email || '');
-            const safeId = escapeHtml(c.id);
-
-            return `
-                <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetUserId: '${safeId}', sendEmail: true })">
-                    <div class="duty-picker-option-left">
-                        <div class="duty-assignee-avatar-wrap" style="width: 36px; height: 36px; font-size: 0.8rem;">
-                            <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                            <img src="${picUrl}" alt="${safeName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">
-                        </div>
-                        <div class="duty-picker-option-info">
-                            <span class="duty-picker-option-name">${safeName}</span>
-                            ${safeEmail ? `<span class="duty-picker-option-sub">${safeEmail}</span>` : ''}
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-primary duty-picker-btn-action">Anfragen</button>
-                </div>
-            `;
+            const badge = renderAvatarWrap(c.id, cName, { style: 'width: 36px; height: 36px; font-size: 0.8rem;' });
+            return renderPickerOption({
+                name: cName,
+                subtitle: c.email || '',
+                badgeHtml: badge,
+                btnText: 'Anfragen',
+                btnClass: 'btn-primary',
+                onclick: `window.selectDutyAssignee({ targetUserId: '${escapeHtml(c.id)}', sendEmail: true })`
+            });
         }).join('');
     } else {
         const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0
@@ -10823,21 +10716,14 @@ window.renderAssignDutyModalList = async function(filterText = '') {
 
         listEl.innerHTML = matched.map(g => {
             const gName = g.name || g.id;
-            const safeGName = escapeHtml(gName);
-            const safeGId = escapeHtml(g.id || gName);
-
-            return `
-                <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetGroupId: '${safeGId}' })">
-                    <div class="duty-picker-option-left">
-                        <div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>
-                        <div class="duty-picker-option-info">
-                            <span class="duty-picker-option-name">${safeGName}</span>
-                            <span class="duty-picker-option-sub">Gruppe fest einteilen</span>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-secondary duty-picker-btn-action">Zuweisen</button>
-                </div>
-            `;
+            return renderPickerOption({
+                name: gName,
+                subtitle: 'Gruppe fest einteilen',
+                icon: '👥',
+                btnText: 'Zuweisen',
+                btnClass: 'btn-secondary',
+                onclick: `window.selectDutyAssignee({ targetGroupId: '${escapeHtml(g.id || gName)}' })`
+            });
         }).join('');
     }
 };
