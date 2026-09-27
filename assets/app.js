@@ -1544,6 +1544,21 @@ window.showReceiptImageModal = function(title, imageUrl, filename) {
     });
 };
 
+window.renderReceiptPreviewCard = (imgUrl, filename, label) => {
+    const titleText = label || t('receipt', 'Beleg');
+    return `
+        <div style="position:relative; border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-alt);">
+            <img src="${imgUrl}" style="width:100%; border-radius:8px; opacity:0; transition:opacity 0.3s ease-in; cursor:pointer;" onload="this.style.opacity=1" onclick="window.showReceiptImageModal('${escapeHtml(titleText)}', '${imgUrl}', '${escapeHtml(filename)}')" alt="${escapeHtml(titleText)}">
+            <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
+                <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    ${t('download_btn', 'Herunterladen')}
+                </a>
+            </div>
+        </div>
+    `;
+};
+
 window.closeMultipleModals = (ids) => {
     let programmaticBacksCount = 0;
     let finalFocusElement = null;
@@ -7781,17 +7796,7 @@ window.viewRequestReceipt = async function(receiptField, containerId) {
         for (const filename of filenames) {
             const imgUrl = await fetchReceiptImage(filename);
             imgUrls.push(imgUrl);
-            html += `
-                <div style="position:relative; border:1px solid var(--border); border-radius:8px; padding:8px; background:var(--surface-alt);">
-                    <img src="${imgUrl}" style="width:100%; max-width:100%; border-radius:6px; opacity:0; transition:opacity 0.3s ease-in;" onload="this.style.opacity=1" alt="Beleg">
-                    <div style="margin-top:8px; display:flex; gap:10px; justify-content:flex-end;">
-                        <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:0.8rem;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Herunterladen
-                        </a>
-                    </div>
-                </div>
-            `;
+            html += renderReceiptPreviewCard(imgUrl, filename, t('receipt', 'Beleg'));
         }
         html += '</div>';
 
@@ -7942,17 +7947,7 @@ window.showTransactionDetails = async function(id, type) {
             for (const filename of filenames) {
                 const imgUrl = await fetchReceiptImage(filename);
                 imgUrls.push(imgUrl);
-                html += `
-                    <div style="position:relative; border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-alt);">
-                        <img src="${imgUrl}" style="width:100%; border-radius:8px; opacity:0; transition:opacity 0.3s ease-in;" onload="this.style.opacity=1" alt="${t('receipt', 'Beleg')}">
-                        <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
-                            <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                ${t('download_btn', 'Herunterladen')}
-                            </a>
-                        </div>
-                    </div>
-                `;
+                html += renderReceiptPreviewCard(imgUrl, filename, t('receipt', 'Beleg'));
             }
             html += '</div>';
 
