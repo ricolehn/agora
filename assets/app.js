@@ -1523,6 +1523,27 @@ window.showDynamicModal = ({ id, title, subtitle, icon, contentHtml, bodyHtml, f
     return modal;
 };
 
+window.showReceiptImageModal = function(title, imageUrl, filename) {
+    return window.showDynamicModal({
+        id: 'receipt-preview-modal',
+        title: title || t('receipt', 'Beleg'),
+        subtitle: filename || '',
+        icon: '📎',
+        maxWidth: '520px',
+        contentHtml: `
+            <div style="text-align: center;">
+                <img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 1px solid var(--border);" alt="Beleg">
+            </div>
+        `,
+        footerHtml: `
+            <a href="${imageUrl}" download="${filename || 'beleg'}" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                📥 ${t('download_btn', 'Herunterladen')}
+            </a>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('receipt-preview-modal')">${t('btn_cancel', 'Schließen')}</button>
+        `
+    });
+};
+
 window.closeMultipleModals = (ids) => {
     let programmaticBacksCount = 0;
     let finalFocusElement = null;
