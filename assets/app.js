@@ -10709,7 +10709,7 @@ window.renderAssignDutyModalList = async function(filterText = '') {
             return `
                 <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetUserId: '${safeId}', sendEmail: true })">
                     <div class="duty-picker-option-left">
-                        <div class="duty-assignee-avatar-wrap" style="width: 32px; height: 32px; font-size: 0.74rem;">
+                        <div class="duty-assignee-avatar-wrap" style="width: 36px; height: 36px; font-size: 0.8rem;">
                             <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
                             <img src="${picUrl}" alt="${safeName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">
                         </div>
@@ -10718,7 +10718,7 @@ window.renderAssignDutyModalList = async function(filterText = '') {
                             ${safeEmail ? `<span class="duty-picker-option-sub">${safeEmail}</span>` : ''}
                         </div>
                     </div>
-                    <button type="button" class="btn btn-primary btn-tiny">Anfragen</button>
+                    <button type="button" class="btn btn-primary duty-picker-btn-action">Anfragen</button>
                 </div>
             `;
         }).join('');
@@ -10744,13 +10744,13 @@ window.renderAssignDutyModalList = async function(filterText = '') {
             return `
                 <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetGroupId: '${safeGId}' })">
                     <div class="duty-picker-option-left">
-                        <div class="duty-assignee-group-badge" style="width: 30px; height: 30px; font-size: 0.9rem;">👥</div>
+                        <div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>
                         <div class="duty-picker-option-info">
                             <span class="duty-picker-option-name">${safeGName}</span>
                             <span class="duty-picker-option-sub">Gruppe fest einteilen</span>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-secondary btn-tiny">Zuweisen</button>
+                    <button type="button" class="btn btn-secondary duty-picker-btn-action">Zuweisen</button>
                 </div>
             `;
         }).join('');
