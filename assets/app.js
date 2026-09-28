@@ -1,793 +1,1758 @@
-import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, remove, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
+import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 
-
-if(window.pendingExpenseFiles) { window.pendingExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
-window.pendingExpenseFiles = [];
-
-window.renderExpenseReceiptPreview = function() {
-    const listEl = document.getElementById('expense-receipt-preview-list');
-    if (!listEl) return;
-
-    listEl.innerHTML = '';
-
-    if (window.pendingExpenseFiles.length === 0) {
-        listEl.innerHTML = '';
-        return;
-    }
-
-    window.pendingExpenseFiles.forEach((file, index) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.style = "display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-alt); border:1px solid var(--border); border-radius:12px; padding:8px 12px; transition: transform 0.2s;";
-
-        const isImage = file.type && file.type.startsWith('image/');
-        if (!file.previewUrl && isImage) file.previewUrl = URL.createObjectURL(file);
-        const previewUrl = file.previewUrl || null;
-
-        const previewHtml = isImage
-            ? `<img src="${previewUrl}" style="width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" alt="Beleg">`
-            : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>`;
-
-        itemDiv.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-                ${previewHtml}
-                <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text); font-weight:600;">${escapeHtml(file.name)}</span>
-            </div>
-            <div style="display:flex; gap:6px;">
-                <button type="button" class="btn btn-danger btn-small" style="padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" onclick="removePendingExpenseFile(${index})" title="Entfernen">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
-            </div>
-        `;
-        listEl.appendChild(itemDiv);
-    });
-};
-
-window.removePendingExpenseFile = function(index) {
-    if (index >= 0 && index < window.pendingExpenseFiles.length) {
-        const removed = window.pendingExpenseFiles.splice(index, 1);
-        if(removed[0] && removed[0].previewUrl) URL.revokeObjectURL(removed[0].previewUrl);
-        window.renderExpenseReceiptPreview();
-    }
-};
-
-if(window.pendingReqExpenseFiles) { window.pendingReqExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
-window.pendingReqExpenseFiles = [];
-
-window.renderReqReceiptPreview = function() {
-    const listEl = document.getElementById('req-receipt-preview-list');
-    if (!listEl) return;
-    listEl.innerHTML = '';
-    if (window.pendingReqExpenseFiles.length === 0) return;
-
-    window.pendingReqExpenseFiles.forEach((file, index) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.style = "display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-alt); border:1px solid var(--border); border-radius:12px; padding:8px 12px; transition: transform 0.2s;";
-
-        const isImage = file.type && file.type.startsWith('image/');
-        if (!file.previewUrl && isImage) file.previewUrl = URL.createObjectURL(file);
-        const previewUrl = file.previewUrl || null;
-
-        const previewHtml = isImage
-            ? `<img src="${previewUrl}" style="width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" alt="Beleg">`
-            : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg></div>`;
-
-        itemDiv.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-                ${previewHtml}
-                <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text); font-weight:600;">${escapeHtml(file.name)}</span>
-            </div>
-            <div style="display:flex; gap:6px;">
-                <button type="button" class="btn btn-danger btn-small" style="padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" onclick="removePendingReqFile(${index})" title="Entfernen">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
-            </div>
-        `;
-        listEl.appendChild(itemDiv);
-    });
-};
-
-window.handleReqReceiptFiles = function(files) {
-    if (!files || files.length === 0) return;
-    const newFiles = Array.from(files);
-    window.pendingReqExpenseFiles = window.pendingReqExpenseFiles.concat(newFiles);
-    window.renderReqReceiptPreview();
-};
-
-window.removePendingReqFile = function(index) {
-    if (index >= 0 && index < window.pendingReqExpenseFiles.length) {
-        const removed = window.pendingReqExpenseFiles.splice(index, 1);
-        if(removed[0] && removed[0].previewUrl) URL.revokeObjectURL(removed[0].previewUrl);
-        window.renderReqReceiptPreview();
-    }
-};
-
-
-const app = initializeApp(config);
-const db = getDatabase(app);
-const auth = getAuth(app);
+const db = getDatabase(initializeApp(config));
+const auth = getAuth();
+const API = config.apiBaseUrl;
+const APP_NAME = config.appName || 'Agora';
 
 let people = [];
-let donations = [];
-let expenses = [];
+let requests = [];
+let users = [];
 let settings = { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, pausiert: 0, reportStartDate: null };
-let settingsVersion = 0;
 let currentPersonId = null;
 let isAuthenticated = false;
 let currentUser = null;
-let users = [];
-let chartDataCache = null;
 let advancedConfigLoaded = false;
 let advancedConfigAppName = null;
-let superAdminPaymentRows = [];
-let superAdminUserRows = [];
 let currentEditedPayment = null;
 let currentEditedReceipts = [];
 let currentActiveTab = 'user-overview';
 
+// --- DOM & formatting helpers ---
+const $ = id => document.getElementById(id);
+const toElement = target => (typeof target === 'string' ? $(target) : target);
+function show(target, visible, display = '') {
+    const el = toElement(target);
+    if (el) el.style.display = visible ? display : 'none';
+}
+function setValue(id, value) {
+    const el = $(id);
+    if (el) el.value = value;
+}
+function setText(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text;
+}
+const inputValue = id => $(id)?.value || '';
+const isChecked = id => $(id)?.checked === true;
+const inList = (list, item) => Array.isArray(list) && list.includes(item);
+const safeList = val => (!val ? [] : Array.isArray(val) ? val : Object.values(val));
+const fullName = u => `${u?.firstName || ''} ${u?.lastName || ''}`.trim();
+
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+function escapeHtml(text) {
+    return text ? String(text).replace(/[&<>"']/g, m => HTML_ESCAPES[m]) : '';
+}
+
+const numberFormatter = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const currencyFormatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const dateFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const monthYearFormatter = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' });
+const dateTimeFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const WEEKDAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+function formatCurrency(amount) {
+    const num = parseFloat(amount);
+    return isNaN(num) ? '0,00' : numberFormatter.format(num);
+}
+const euro = amount => `${formatCurrency(amount)} €`;
+
+function formatDateFast(dateInput) {
+    if (!dateInput) return '';
+    const str = String(dateInput);
+    if (str.length === 10 && str[4] === '-' && str[7] === '-') return `${str.slice(8, 10)}.${str.slice(5, 7)}.${str.slice(0, 4)}`;
+    const d = new Date(dateInput);
+    return Number.isNaN(d.getTime()) ? 'Kein Datum' : dateFormatter.format(d);
+}
+
+const pad2 = n => String(n).padStart(2, '0');
+const toDateStr = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const getTodayStr = () => toDateStr(new Date());
+const normalizeAmount = raw => String(raw ?? '').replace(/\.(?=.*,)/g, '').replace(',', '.').trim();
+const parseAmount = raw => parseFloat(normalizeAmount(raw));
+
 function parseReceipts(receiptField) {
-    if (!receiptField) return [];
     if (Array.isArray(receiptField)) return receiptField.filter(Boolean);
-    const trimmed = String(receiptField).trim();
-    if (!trimmed) return [];
+    const trimmed = String(receiptField || '').trim();
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-        try {
-            return JSON.parse(trimmed).filter(Boolean);
-        } catch (e) {
-            // fallback
-        }
+        try { return JSON.parse(trimmed).filter(Boolean); } catch { /* fall through to CSV */ }
     }
     return trimmed.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-// --- i18n Translation Engine ---
-let currentLang = localStorage.getItem('app_lang');
-if (!currentLang) {
-    currentLang = 'system';
-    localStorage.setItem('app_lang', 'system');
+function groupBy(list, keyFn) {
+    const groups = new Map();
+    for (const item of list) {
+        const key = keyFn(item);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+    }
+    return groups;
 }
+
+function debounce(fn, wait) {
+    let timeout;
+    return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => fn(...args), wait);
+    };
+}
+
+function setButtonLoading(btnId, isLoading, loadingText = 'Laden...') {
+    const btn = $(btnId);
+    if (!btn) return;
+    if (isLoading) {
+        btn.dataset.originalText = btn.innerText;
+        btn.innerText = loadingText;
+    } else if (btn.dataset.originalText) {
+        btn.innerText = btn.dataset.originalText;
+    }
+    btn.disabled = isLoading;
+}
+
+function validateRequired(ids) {
+    const missing = ids.map($).filter(el => !el || !el.value.trim());
+    missing.forEach(el => {
+        if (!el) return;
+        el.classList.add('input-error');
+        el.addEventListener('input', () => el.classList.remove('input-error'), { once: true });
+    });
+    return missing.length === 0;
+}
+
+const readAsDataUrl = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+});
+
+const isHeic = (name = '', type = '') => /\.hei[cf]$/i.test(name) || type === 'image/heic' || type === 'image/heif';
+
+// Converts HEIC/HEIF files/blobs to JPEG via heic2any; returns the input unchanged when not HEIC or on failure.
+async function convertHeic(file, quality, name = file.name) {
+    if (!isHeic(name, file.type) || typeof heic2any !== 'function') return file;
+    try {
+        const out = await heic2any({ blob: file, toType: 'image/jpeg', quality });
+        const blob = Array.isArray(out) ? out[0] : out;
+        return file instanceof File ? new File([blob], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg' }) : blob;
+    } catch (e) {
+        console.error('HEIC conversion failed:', e);
+        return file;
+    }
+}
+
+// --- Icons & shared inline styles ---
+const ICONS = {
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+    trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    coin: '<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/>',
+    history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+    receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 14h-8"/><path d="M16 18h-8"/><path d="M16 10h-8"/>',
+    repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    person: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    location: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+    lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+    refresh: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    rotate: '<path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>',
+    edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+    alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+    heart: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+    dollar: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    paperclip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+};
+const svgIcon = (name, size = 14, strokeWidth = 2, attrs = '') =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${attrs ? ' ' + attrs : ''}>${ICONS[name]}</svg>`;
+
+const STYLE = {
+    fileRow: 'display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-alt); border:1px solid var(--border); border-radius:12px; padding:8px 12px; transition: transform 0.2s;',
+    fileName: 'font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;',
+    thumb: 'width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--border);',
+    iconBtn: 'padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;',
+    outlineBtn: 'background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none;',
+    muted: 'color:var(--text-secondary);'
+};
+const iconButton = (onclick, title, icon = 'trash') =>
+    `<button type="button" class="btn btn-danger btn-small" style="${STYLE.iconBtn}" onclick="${onclick}" title="${title}">${svgIcon(icon)}</button>`;
+const fileRow = (preview, name, actions, nameStyle = 'color:var(--text); font-weight:600;') => `
+    <div style="${STYLE.fileRow}">
+        <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+            ${preview}
+            <span style="${STYLE.fileName} ${nameStyle}">${escapeHtml(name)}</span>
+        </div>
+        ${actions ? `<div style="display:flex; gap:6px;">${actions}</div>` : ''}
+    </div>`;
+const emptyNotice = (text, style = 'text-align:center; padding:20px; color:var(--text-secondary);') => `<div style="${style}">${text}</div>`;
+
+// --- Pending receipt uploads (add-expense form & user expense request) ---
+const pendingUploads = {
+    expense: { files: [], listId: 'expense-receipt-preview-list', remove: 'removePendingExpenseFile' },
+    req: { files: [], listId: 'req-receipt-preview-list', remove: 'removePendingReqFile' }
+};
+function renderPendingFiles(kind) {
+    const { files, listId, remove } = pendingUploads[kind];
+    const listEl = $(listId);
+    if (!listEl) return;
+    listEl.innerHTML = files.map((file, index) => {
+        const isImage = file.type && file.type.startsWith('image/');
+        if (isImage && !file.previewUrl) file.previewUrl = URL.createObjectURL(file);
+        const preview = isImage
+            ? `<img src="${file.previewUrl}" style="${STYLE.thumb}" alt="Beleg">`
+            : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);">${svgIcon('file', 20)}</div>`;
+        return fileRow(preview, file.name, iconButton(`${remove}(${index})`, 'Entfernen'));
+    }).join('');
+}
+function resetPendingFiles(kind) {
+    pendingUploads[kind].files.forEach(f => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
+    pendingUploads[kind].files = [];
+    renderPendingFiles(kind);
+}
+function addPendingFiles(kind, files) {
+    if (!files || files.length === 0) return;
+    pendingUploads[kind].files.push(...files);
+    renderPendingFiles(kind);
+}
+function removePendingFile(kind, index) {
+    if (index < 0) return;
+    const [removed] = pendingUploads[kind].files.splice(index, 1);
+    if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+    renderPendingFiles(kind);
+}
+async function uploadAll(files, name, date) {
+    const filenames = [];
+    for (const file of files) filenames.push(await uploadReceipt(file, name, date));
+    return JSON.stringify(filenames);
+}
+
+// --- i18n ---
+let currentLang = localStorage.getItem('app_lang') || 'system';
+localStorage.setItem('app_lang', currentLang);
 let translations = {};
 
 async function loadLanguage(lang) {
     try {
-        let fetchLang = lang;
-        if (lang === 'system') {
-            const browserLang = (navigator.language || navigator.userLanguage || 'de').toLowerCase();
-            fetchLang = browserLang.startsWith('de') ? 'de' : 'en';
-        }
-        const response = await fetch(`./assets/locales/${fetchLang}.json`);
-        translations = await response.json();
+        const browserLang = (navigator.language || navigator.userLanguage || 'de').toLowerCase();
+        const fetchLang = lang === 'system' ? (browserLang.startsWith('de') ? 'de' : 'en') : lang;
+        translations = await (await fetch(`./assets/locales/${fetchLang}.json`)).json();
         currentLang = lang;
         localStorage.setItem('app_lang', lang);
         applyTranslations();
     } catch (e) {
-        console.error("Failed to load translation:", e);
+        console.error('Failed to load translation:', e);
     }
 }
 
 function t(key, fallback = '', params = null) {
     let str = translations[key] !== undefined ? translations[key] : fallback;
-    if (params && typeof params === 'object') {
-        for (const [k, v] of Object.entries(params)) {
-            str = str.replaceAll(`{${k}}`, v);
-        }
-    }
+    for (const [k, v] of Object.entries(params || {})) str = str.replaceAll(`{${k}}`, v);
     return str;
 }
 
+const STATUS_TEXT_KEYS = {
+    'Dauerauftrag läuft': ['status_standing_order_active', 'Dauerauftrag läuft'],
+    'Dauerauftrag läuft für den Beitrag': ['status_standing_order_active', 'Dauerauftrag läuft'],
+    'Dauerauftrag aktiv': ['status_standing_order_active', 'Dauerauftrag läuft'],
+    'Alles in Ordnung': ['status_all_ok', 'Alles in Ordnung'],
+    'Zahlung überfällig': ['status_payment_overdue', 'Zahlung überfällig'],
+    'Keine Zahlungen': ['status_no_payments', 'Keine Zahlungen'],
+    'läuft diesen Monat ab': ['status_expires_this_month', 'läuft diesen Monat ab'],
+    'läuft nächsten Monat ab': ['status_expires_next_month', 'läuft nächsten Monat ab']
+};
 function translateStatusText(text) {
     if (!text) return '';
-    const cleanText = text.trim();
-    if (cleanText === 'Dauerauftrag läuft' || cleanText === 'Dauerauftrag läuft für den Beitrag' || cleanText === 'Dauerauftrag aktiv') {
-        return t('status_standing_order_active', 'Dauerauftrag läuft');
-    }
-    if (cleanText === 'Alles in Ordnung') return t('status_all_ok', 'Alles in Ordnung');
-    if (cleanText === 'Zahlung überfällig') return t('status_payment_overdue', 'Zahlung überfällig');
-    if (cleanText === 'Keine Zahlungen') return t('status_no_payments', 'Keine Zahlungen');
-    if (cleanText === 'läuft diesen Monat ab') return t('status_expires_this_month', 'läuft diesen Monat ab');
-    if (cleanText === 'läuft nächsten Monat ab') return t('status_expires_next_month', 'läuft nächsten Monat ab');
-    
-    // Check for "X Monate überfällig" or "1 Monat überfällig"
-    const overdueMatch = cleanText.match(/(\d+)\s+Monat[e]?\s+überfällig/);
-    if (overdueMatch) {
-        const months = overdueMatch[1];
-        if (months === '1') {
-            return t('status_one_month_overdue', '1 Monat überfällig');
-        } else {
-            return t('status_months_overdue', '{months} Monate überfällig').replace('{months}', months);
-        }
-    }
-    
-    // Check for "noch X Monate" or "noch 1 Monat"
-    const leftMatch = cleanText.match(/noch\s+(\d+)\s+Monat[e]?/);
-    if (leftMatch) {
-        const months = leftMatch[1];
-        if (months === '1') {
-            return t('status_one_month_left', 'noch 1 Monat');
-        } else {
-            return t('status_months_left', 'noch {months} Monate').replace('{months}', months);
-        }
-    }
-    
+    const clean = text.trim();
+    if (STATUS_TEXT_KEYS[clean]) return t(...STATUS_TEXT_KEYS[clean]);
+    const overdue = clean.match(/(\d+)\s+Monat[e]?\s+überfällig/);
+    if (overdue) return overdue[1] === '1' ? t('status_one_month_overdue', '1 Monat überfällig') : t('status_months_overdue', '{months} Monate überfällig', { months: overdue[1] });
+    const left = clean.match(/noch\s+(\d+)\s+Monat[e]?/);
+    if (left) return left[1] === '1' ? t('status_one_month_left', 'noch 1 Monat') : t('status_months_left', 'noch {months} Monate', { months: left[1] });
     return text;
 }
-window.translateStatusText = translateStatusText;
 
 function getStatusLabels(withEmoji = false) {
-    const raw = {
-        'vollverdiener': t('member_status_full', '💼 Vollverdiener'),
-        'geringverdiener': t('member_status_low', '📉 Geringverdiener'),
-        'keinverdiener': t('member_status_none', '🎓 Keinverdiener'),
-        'pausiert': t('member_status_paused', '⏸️ Pausiert')
+    const labels = {
+        vollverdiener: t('member_status_full', '💼 Vollverdiener'),
+        geringverdiener: t('member_status_low', '📉 Geringverdiener'),
+        keinverdiener: t('member_status_none', '🎓 Keinverdiener'),
+        pausiert: t('member_status_paused', '⏸️ Pausiert')
     };
-    if (withEmoji) {
-        return raw;
-    }
-    const stripped = {};
-    for (const [k, v] of Object.entries(raw)) {
-        stripped[k] = v.replace(/^[💼📉🎓⏸️\s]+/u, '').trim();
-    }
-    return stripped;
+    if (!withEmoji) for (const k in labels) labels[k] = labels[k].replace(/^[💼📉🎓⏸️\s]+/u, '').trim();
+    return labels;
 }
 
 function applyTranslations() {
-    // Translate elements with data-i18n
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (translations[key]) {
-            // Use innerHTML only if translation contains HTML tags (like <strong> or <br>)
-            if (translations[key].includes('<')) {
-                el.innerHTML = translations[key];
-            } else {
-                el.textContent = translations[key];
-            }
-        }
-    });
-    // Translate elements with data-i18n-placeholder
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (translations[key]) el.setAttribute('placeholder', translations[key]);
-    });
-    // Translate elements with data-i18n-aria-label
-    document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
-        const key = el.getAttribute('data-i18n-aria-label');
-        if (translations[key]) el.setAttribute('aria-label', translations[key]);
-    });
-    // Translate elements with data-i18n-title
-    document.querySelectorAll('[data-i18n-title]').forEach(el => {
-        const key = el.getAttribute('data-i18n-title');
-        if (translations[key]) el.setAttribute('title', translations[key]);
-    });
-    // Sync language selection dropdowns
-    const langSelect = document.getElementById('settings-language');
-    if (langSelect) langSelect.value = currentLang;
-    const userLangSelect = document.getElementById('user-settings-language');
-    if (userLangSelect) userLangSelect.value = currentLang;
-
-    // Sync theme selection dropdowns
-    const currentTheme = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
-    const themeSelect = document.getElementById('settings-theme');
-    if (themeSelect) themeSelect.value = currentTheme;
-    const userThemeSelect = document.getElementById('user-settings-theme');
-    if (userThemeSelect) userThemeSelect.value = currentTheme;
+    const setters = {
+        'data-i18n': (el, text) => { if (text.includes('<')) el.innerHTML = text; else el.textContent = text; },
+        'data-i18n-placeholder': (el, text) => el.setAttribute('placeholder', text),
+        'data-i18n-aria-label': (el, text) => el.setAttribute('aria-label', text),
+        'data-i18n-title': (el, text) => el.setAttribute('title', text)
+    };
+    for (const [attr, apply] of Object.entries(setters)) {
+        document.querySelectorAll(`[${attr}]`).forEach(el => {
+            const text = translations[el.getAttribute(attr)];
+            if (text) apply(el, text);
+        });
+    }
+    syncPreferenceSelects();
 }
 
-window.changeAppLanguage = async function(lang) {
+function syncPreferenceSelects(theme = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system') {
+    ['settings-language', 'user-settings-language'].forEach(id => setValue(id, currentLang));
+    ['settings-theme', 'user-settings-theme'].forEach(id => setValue(id, theme));
+}
+
+async function changeAppLanguage(lang) {
     await loadLanguage(lang);
     renderPeople();
     renderStats();
-    renderHistory();
+    renderUserView();
     renderSuperAdminPaymentEditor();
-    if (typeof renderUserView === 'function') renderUserView();
-    if (typeof renderHomeMentoringCard === 'function') renderHomeMentoringCard();
-    if (typeof loadMentoringData === 'function' && (canParticipateMentoring() || canManageMentoring())) {
-        loadMentoringData();
-    }
-};
+    renderHomeMentoringCard();
+    if (currentUser) loadMentoringData();
+}
 
-// Initialize immediately
-window.loadLanguage = loadLanguage;
 loadLanguage(currentLang);
 
+// --- Toasts & dialogs (with automatic translation of legacy German messages) ---
+const TOAST_KEYS = {
+    'Zahlung aktualisiert': 'toast_updated', 'Spende aktualisiert': 'toast_updated', 'Ausgabe aktualisiert': 'toast_updated', 'Status geändert': 'toast_updated',
+    'Zahlung erfolgreich gesendet': 'toast_saved', 'Anfrage erfolgreich gesendet': 'toast_saved', 'Code kopiert': 'toast_saved', 'Profilbild gespeichert': 'toast_saved',
+    'Toast erfolgreich': 'toast_saved', 'Zahlung gebucht': 'toast_saved', 'Spende gebucht': 'toast_saved', 'Ausgabe gebucht': 'toast_saved', 'Person hinzugefügt': 'toast_saved'
+};
+let toastTimeout;
+function showToast(msg, type = 'success') {
+    const key = TOAST_KEYS[String(msg).trim().replace(/[!.]/g, '')] || msg;
+    let toast = $('toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+        document.body.appendChild(toast);
+    }
+    toast.className = `toast toast-${type} show`;
+    toast.innerHTML = `${type === 'success' ? '✅' : '⚠️'} ${translations[key] || msg}`;
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+const ALERT_KEYS = {
+    'Bitte alle Felder ausfüllen': 'alert_fill_fields', 'Ungültiger Betrag': 'alert_invalid_amount', 'Ungültiges Datum': 'alert_invalid_date',
+    'Bitte ein Datum angeben': 'alert_invalid_date', 'Bitte Datum wählen': 'alert_invalid_date', 'Bitte eine Person auswählen': 'modal_person_name',
+    'Bitte geben Sie Ihr altes Passwort ein': 'old_password',
+    ...Object.fromEntries(['Fehler beim Laden der Daten. Bitte Seite neu laden', 'Person nicht gefunden', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen',
+        'Kein Personenprofil gefunden', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen', 'Neuer Code konnte nicht gespeichert werden',
+        'Fehler beim Speichern', 'Fehler beim Löschen', 'Fehler beim Löschen des Eintrags', 'Neues Passwort muss mindestens 6 Zeichen lang sein',
+        'Kein Benutzer angemeldet'].map(msg => [msg, 'toast_error']))
+};
+const nativeAlert = window.alert.bind(window);
+window.alert = msg => {
+    if (!msg) return;
+    const key = ALERT_KEYS[String(msg).trim().replace(/\.$/, '')] || String(msg).trim().replace(/\.$/, '');
+    nativeAlert(translations[key] || msg);
+};
+
+function confirmAction(options) {
+    const text = typeof options === 'string' ? options : (options?.text || options?.message || '');
+    const onConfirm = typeof options === 'function' ? options : options?.onConfirm;
+    if (!window.confirm(text)) return false;
+    if (typeof onConfirm === 'function') onConfirm();
+    return true;
+}
+
+// --- Permissions ---
+const hasPermission = (flag, permission) => !!(currentUser && (currentUser[flag] || inList(currentUser.permissions, permission)));
+const isSuperAdminUser = () => !!(currentUser && (currentUser.admin || currentUser.owner || currentUser.superAdmin));
+const isOwnerUser = () => !!(currentUser && (currentUser.owner || currentUser.superAdmin));
+const canManageFinances = () => hasPermission('canManageFinances', 'manage_finances');
+const canViewFinances = () => canManageFinances() || hasPermission('canViewFinances', 'view_finances');
+const canAccessAi = () => hasPermission('canAccessAi', 'access_ai');
+const canUseMentoring = () => !!currentUser;
+const canManageMentoring = () => hasPermission('canManageMentoring', 'manage_mentoring');
+const canManageEvents = () => isSuperAdminUser() || hasPermission('canManageEvents', 'manage_events');
+const canManageRegistrationCode = () => hasPermission('canManageRegistrationCode', 'manage_registration_code');
+const currentUid = () => currentUser?.uid || currentUser?.id;
+const isCurrentUser = id => !!currentUser && (id === currentUser.uid || id === currentUser.id);
+
+function getAvatarRingClass(user) {
+    if (user?.canManageMentoring || inList(user?.permissions, 'manage_mentoring')) return 'avatar-ring-manager';
+    if (user?.isApprovedMentor || user?.mentorStatus === 'approved') return 'avatar-ring-mentor';
+    return 'avatar-ring-standard';
+}
+
+// --- API ---
+async function fetchWithAuth(url, options = {}) {
+    let token;
+    try {
+        token = await auth.currentUser.getIdToken();
+    } catch (tokenError) {
+        throw new Error('Authentifizierung fehlgeschlagen. Bitte erneut anmelden. (' + (tokenError?.code || tokenError?.message || 'Unbekannter Fehler') + ')');
+    }
+    const headers = { ...(options.headers || {}), Authorization: `Bearer ${token}` };
+    if (typeof options.body === 'string' && !headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
+    return fetch(url, { ...options, headers });
+}
+
+// JSON-aware request against the backend API. Plain objects are sent as JSON, FormData as-is.
+function api(path, method = 'GET', body) {
+    const isJson = body !== undefined && !(body instanceof FormData);
+    return fetchWithAuth(API + path, { method, body: isJson ? JSON.stringify(body) : body });
+}
+
+// Like api(), but resolves to the parsed JSON body and throws the backend's error message on failure.
+async function apiJson(path, method = 'GET', body, fallbackError) {
+    const res = await api(path, method, body);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error || data.message || fallbackError || `HTTP ${res.status}`), { data });
+    return data;
+}
+
+const getToken = async () => (auth.currentUser ? auth.currentUser.getIdToken() : (localStorage.getItem('token') || ''));
+
+// --- Modal stack with browser-history integration ---
+const modalStack = [];
+let programmaticBacks = 0;
+
+function openModal(id) {
+    const modal = $(id);
+    if (!modal) return;
+    if (id === 'add-expense-modal') {
+        resetPendingFiles('expense');
+        setValue('expense-receipt', '');
+    }
+    if (!modalStack.includes(id)) {
+        modalStack.push(id);
+        history[history.state?.isModal ? 'replaceState' : 'pushState']({ isModal: true, modalId: id }, '');
+    }
+    modal._returnFocusTo = document.activeElement;
+    modal.style.zIndex = 2000 + modalStack.length * 10;
+    modal.classList.add('show');
+    if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
+    modal._escHandler = e => { if (e.key === 'Escape') closeModal(id); };
+    document.addEventListener('keydown', modal._escHandler);
+}
+
+function hideModal(modal) {
+    modal.classList.remove('show');
+    modal.style.zIndex = '';
+    if (modal._escHandler) {
+        document.removeEventListener('keydown', modal._escHandler);
+        delete modal._escHandler;
+    }
+}
+
+function restoreFocus(el) {
+    if (el && document.body.contains(el)) {
+        try { el.focus(); } catch { /* element no longer focusable */ }
+    }
+}
+
+const reshowTopModal = () => modalStack.length && $(modalStack[modalStack.length - 1])?.classList.add('show');
+
+function closeModal(id, fromPopstate = false) {
+    const modal = $(id);
+    if (!modal) return;
+    const stackIndex = modalStack.indexOf(id);
+    if (stackIndex > -1) {
+        modalStack.splice(stackIndex, 1);
+        if (!fromPopstate && history.state?.isModal) {
+            programmaticBacks++;
+            history.back();
+        }
+    }
+    hideModal(modal);
+    restoreFocus(modal._returnFocusTo);
+    delete modal._returnFocusTo;
+    reshowTopModal();
+    if (typeof modal._customOnClose === 'function') {
+        try { modal._customOnClose(); } catch { /* ignore */ }
+        delete modal._customOnClose;
+    }
+}
+
+function closeMultipleModals(ids) {
+    let backs = 0;
+    let finalFocus = null;
+    ids.forEach(id => {
+        const modal = $(id);
+        if (!modal) return;
+        if (modal._returnFocusTo && !ids.some(other => $(other)?.contains(modal._returnFocusTo))) finalFocus = modal._returnFocusTo;
+        const stackIndex = modalStack.indexOf(id);
+        if (stackIndex > -1) {
+            modalStack.splice(stackIndex, 1);
+            backs++;
+        }
+        hideModal(modal);
+        delete modal._returnFocusTo;
+    });
+    restoreFocus(finalFocus);
+    // Nested modals share a single history entry (replaceState), so step back at most once
+    if (backs > 0 && history.state?.isModal) {
+        programmaticBacks++;
+        history.back();
+    }
+    reshowTopModal();
+}
+
+window.addEventListener('popstate', () => {
+    if (programmaticBacks > 0) {
+        programmaticBacks--;
+        return;
+    }
+    if ($('mentoring-threads-layout')?.classList.contains('in-chat') && window.matchMedia('(max-width: 768px)').matches) {
+        mentoringChatHistoryPushed = false;
+        closeMentoringChatMobile(true);
+        return;
+    }
+    if (modalStack.length > 0) closeModal(modalStack[modalStack.length - 1], true);
+});
+
+function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, contentHtml, bodyHtml, footerHtml, maxWidth, onClose }) {
+    let modal = $(id);
+    if (!modal) {
+        modal = Object.assign(document.createElement('div'), { id, className: 'modal' });
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+        <div class="modal-content modal-content-enhanced" ${maxWidth ? `style="max-width: ${maxWidth};"` : ''}>
+            <div class="modal-header-enhanced">
+                <div class="modal-header-title-group">
+                    ${icon ? `<div class="modal-icon-badge">${icon}</div>` : ''}
+                    <div>
+                        <div class="modal-title-main">${title || ''}</div>
+                        ${subtitle ? `<div class="modal-subtitle">${subtitle}</div>` : ''}
+                    </div>
+                </div>
+                <button type="button" class="btn-close-enhanced" onclick="closeModal('${id}')" aria-label="Schließen">✕</button>
+            </div>
+            <div class="modal-body-enhanced">${contentHtml || bodyHtml || ''}</div>
+            ${footerHtml ? `<div class="modal-footer-enhanced">${footerHtml}</div>` : ''}
+        </div>`;
+    if (onClose) modal._customOnClose = onClose;
+    openModal(id);
+    return modal;
+}
+
+function showReceiptImageModal(title, imageUrl, filename) {
+    return showDynamicModal({
+        id: 'receipt-preview-modal',
+        title: title || t('receipt', 'Beleg'),
+        subtitle: filename || '',
+        icon: '📎',
+        maxWidth: '520px',
+        contentHtml: `<div style="text-align: center;"><img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 1px solid var(--border);" alt="Beleg"></div>`,
+        footerHtml: `
+            <a href="${imageUrl}" download="${filename || 'beleg'}" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📥 ${t('download_btn', 'Herunterladen')}</a>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('receipt-preview-modal')">${t('btn_cancel', 'Schließen')}</button>`
+    });
+}
+
+function renderReceiptPreviewCard(imgUrl, filename, label) {
+    const title = label || t('receipt', 'Beleg');
+    return `
+        <div style="position:relative; border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-alt);">
+            <img src="${imgUrl}" style="width:100%; border-radius:8px; opacity:0; transition:opacity 0.3s ease-in; cursor:pointer;" onload="this.style.opacity=1" onclick="window.showReceiptImageModal('${escapeHtml(title)}', '${imgUrl}', '${escapeHtml(filename)}')" alt="${escapeHtml(title)}">
+            <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
+                <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;">
+                    ${svgIcon('download')} ${t('download_btn', 'Herunterladen')}
+                </a>
+            </div>
+        </div>`;
+}
+
+// Loads receipt images into `container`, revoking object URLs from a previous render.
+async function renderReceiptsInto(container, receiptField, { loading, header = '', empty, error, listStyle }) {
+    JSON.parse(container.dataset.blobUrls || '[]').forEach(url => URL.revokeObjectURL(url));
+    delete container.dataset.blobUrls;
+    container.innerHTML = loading;
+    try {
+        const filenames = parseReceipts(receiptField);
+        if (filenames.length === 0) {
+            container.innerHTML = empty;
+            return;
+        }
+        const urls = [];
+        for (const filename of filenames) urls.push(await fetchReceiptImage(filename));
+        container.dataset.blobUrls = JSON.stringify(urls);
+        container.innerHTML = `${header}<div style="${listStyle}">${urls.map((url, i) => renderReceiptPreviewCard(url, filenames[i], t('receipt', 'Beleg'))).join('')}</div>`;
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = error;
+    }
+}
+
+function renderAvatarWrap(userId, userName, { wrapClass = 'duty-assignee-avatar-wrap', imgClass = 'duty-assignee-avatar-img', initialsClass = 'duty-assignee-initials', style } = {}) {
+    const name = userName || 'P';
+    return `
+        <div class="${wrapClass}" ${style ? `style="${style}"` : ''}>
+            <span class="${initialsClass}">${escapeHtml(getInitials(name))}</span>
+            ${userId ? `<img src="${API}/profile/picture/${encodeURIComponent(userId)}" alt="${escapeHtml(name)}" class="${imgClass}" onerror="this.style.display='none'">` : ''}
+        </div>`;
+}
+
+function getInitials(name) {
+    const parts = typeof name === 'string' ? name.trim().split(/\s+/).filter(Boolean) : [];
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return (parts[0] || '?').slice(0, 2).toUpperCase();
+}
+
+function togglePassword(inputId, btn) {
+    const input = $(inputId);
+    if (!input) return;
+    const reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    btn.innerHTML = svgIcon(reveal ? 'eyeOff' : 'eye', 20);
+    btn.setAttribute('aria-label', reveal ? 'Passwort verbergen' : 'Passwort anzeigen');
+}
+
+Object.assign(window, {
+    escapeHtml, openModal, closeModal, showToast, confirmAction, togglePassword, showReceiptImageModal, changeAppLanguage, loadLanguage, translateStatusText,
+    removePendingExpenseFile: index => removePendingFile('expense', index),
+    removePendingReqFile: index => removePendingFile('req', index),
+    handleReqReceiptFiles: files => addPendingFiles('req', Array.from(files || []))
+});
+
+// --- Navigation & layout ---
 let sseConnection = null;
 let aiEnabled = false;
-let aiMessages = [];
-let aiStreaming = false;
-const MAX_AI_CHAT_INPUT_HEIGHT = 120;
 
 function connectSSE() {
     if (sseConnection) return;
-    sseConnection = new EventSource(config.apiBaseUrl + '/stream', { withCredentials: true });
+    sseConnection = new EventSource(API + '/stream', { withCredentials: true });
     sseConnection.addEventListener('data_update', () => {
-        console.log("SSE: Data updated remotely, refreshing...");
-        if (isAuthenticated) {
-            loadData(true);
-        }
+        console.log('SSE: Data updated remotely, refreshing...');
+        if (isAuthenticated) loadData(true);
     });
     sseConnection.onerror = () => {
-        console.log("SSE error, reconnecting...");
+        console.log('SSE error, reconnecting...');
         sseConnection.close();
         sseConnection = null;
         setTimeout(connectSSE, 5000);
     };
 }
 
-// ⚡ Bolt: Global variable to handle paginated display of historical transactions
-let transactionPage = 1;
-const transactionPerPage = 150;
-let cachedTransactions = null;
-let transactionTotalItems = 0;
-let transactionSearchQuery = '';
-
-// ⚡ Bolt: Global formatters for improved performance (avoiding re-initialization)
-const numberFormatter = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const currencyFormatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const dateFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-const monthYearFormatter = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' });
-const dateTimeFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-const shortDateFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' });
-
-// ⚡ Bolt: Fast path for ISO date formatting
-// Avoids expensive Date parsing and Intl.DateTimeFormat overhead for standard database dates
-function formatDateFast(dateInput) {
-    if (!dateInput) return '';
-    const dStr = String(dateInput);
-    if (dStr.length === 10 && dStr[4] === '-' && dStr[7] === '-') {
-        return `${dStr.substring(8, 10)}.${dStr.substring(5, 7)}.${dStr.substring(0, 4)}`;
-    }
-    const d = new Date(dateInput);
-    return Number.isNaN(d.getTime()) ? 'Kein Datum' : dateFormatter.format(d);
+function syncInviteCards() {
+    const allowed = canManageRegistrationCode();
+    ['card-invite', 'card-invite-user'].forEach(id => {
+        const card = $(id);
+        if (!card) return;
+        if (allowed) card.style.removeProperty('display');
+        else card.style.setProperty('display', 'none', 'important');
+    });
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const appName = config.appName || "Agora";
+function updateInviteCodeDisplay(code) {
+    const safeCode = canManageRegistrationCode() ? (code || '------') : '';
+    ['admin', 'user'].forEach(prefix => {
+        setValue(`${prefix}-invite-code`, safeCode);
+        setText(`${prefix}-invite-code-display`, safeCode || '------');
+    });
+    syncInviteCards();
+}
 
-    // Update visual elements
-    const headerEl = document.getElementById('app-name-header');
-    if (headerEl) headerEl.textContent = appName;
-    const loginHeaderEl = document.getElementById('login-app-name');
-    if (loginHeaderEl) loginHeaderEl.textContent = appName;
+function updateNavVisibility() {
+    const navVisibility = {
+        'admin-finances-nav-btn': canViewFinances(),
+        'user-finances-nav-btn': !canViewFinances(),
+        'events-nav-btn': !!currentUser,
+        'mentoring-nav-btn': canUseMentoring()
+    };
+    for (const [prefix, visible] of Object.entries(navVisibility)) {
+        show(`${prefix}-desktop`, visible);
+        show(`${prefix}-bottom`, visible);
+    }
+    updateAiNavVisibility();
+    show('profile-sys-settings-btn', isSuperAdminUser());
+    syncInviteCards();
+    const profileBtn = document.querySelector('.profile-btn');
+    if (profileBtn) {
+        profileBtn.classList.remove('avatar-ring-manager', 'avatar-ring-mentor', 'avatar-ring-standard');
+        profileBtn.classList.add(getAvatarRingClass(currentUser));
+    }
+    updateFabVisibility();
+}
 
-    // Update document title
-    document.title = appName;
+function updateAiNavVisibility() {
+    const visible = aiEnabled && canAccessAi();
+    show('admin-ai-nav-btn-bottom', visible);
+    show('admin-ai-nav-btn-desktop', visible);
+}
+
+function updateFabVisibility() {
+    const financesFab = currentActiveTab === 'finances' && canManageFinances();
+    const eventsFab = currentActiveTab === 'events' && !!currentUser;
+    const visible = financesFab || eventsFab;
+    show('fab-finances-items', financesFab, 'block');
+    show('fab-events-items', eventsFab, 'block');
+    const desktopFab = $('desktop-fab');
+    if (desktopFab) {
+        desktopFab.style.display = visible ? 'flex' : 'none';
+        if (!visible) {
+            desktopFab.classList.remove('active');
+            desktopFab.setAttribute('aria-expanded', 'false');
+        }
+    }
+    const fabMenu = $('fabMenu');
+    if (fabMenu) {
+        if (!visible) fabMenu.classList.remove('show');
+        fabMenu.style.display = visible ? '' : 'none';
+    }
+}
+
+function switchFinanceSubpage(subpage) {
+    const members = subpage === 'members';
+    $('finances-subpage-members')?.classList.toggle('active', members);
+    $('finances-subpage-history')?.classList.toggle('active', !members);
+    $('finances-sub-btn-members')?.classList.toggle('active', members);
+    $('finances-sub-btn-history')?.classList.toggle('active', !members);
+    if (members) {
+        renderPeople();
+    } else {
+        renderHistoryTab(true);
+        renderStats();
+    }
+}
+
+const TAB_ALIASES = { overview: 'finances', 'payment-history': 'finances', 'people-view': 'finances', 'user-history': 'user-finances', 'user-requests': 'user-finances', calendar: 'events' };
+const TAB_GUARDS = {
+    finances: () => canViewFinances(),
+    'super-admin-settings': () => isSuperAdminUser(),
+    'ai-chat': () => canAccessAi() && aiEnabled,
+    mentoring: () => canUseMentoring()
+};
+const TAB_LOADERS = {
+    finances: () => {
+        if ($('finances-subpage-members')?.classList.contains('active')) {
+            renderPeople();
+        } else {
+            renderHistoryTab(true);
+            renderStats();
+        }
+    },
+    'user-overview': () => renderUserView(),
+    'super-admin-settings': () => {
+        switchSysSettingsTab(currentSysSettingsTab);
+        loadSystemGroups();
+    },
+    mentoring: () => {
+        if (!openingDirectChat) currentMentoringSubTab = 'chats';
+        loadMentoringData();
+    },
+    events: () => loadEventsData(),
+    settings: () => {
+        updateNotificationPreferencesUI();
+        loadPersonalCalendarFeedSettings();
+    }
+};
+TAB_LOADERS['user-settings'] = TAB_LOADERS.settings;
+
+function switchTab(tabName) {
+    if (tabName !== 'mentoring') closeMentoringChatMobile(true);
+    if (tabName === 'overview' || tabName === 'payment-history') switchFinanceSubpage('history');
+    else if (tabName === 'people-view') switchFinanceSubpage('members');
+    tabName = TAB_ALIASES[tabName] || tabName;
+    if (TAB_GUARDS[tabName] && !TAB_GUARDS[tabName]()) tabName = 'user-overview';
+
+    currentActiveTab = tabName;
+    updateNavVisibility();
+
+    const desktopNav = [...document.querySelectorAll('#desktop-nav [data-tab], .desktop-nav [data-tab]')];
+    const currentIndex = desktopNav.findLastIndex(el => el.classList.contains('active'));
+    const targetIndex = desktopNav.findLastIndex(el => el.dataset.tab === tabName);
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active', 'slide-in-right', 'slide-in-left'));
+    $(tabName)?.classList.add('active', currentIndex > -1 && targetIndex > -1 && targetIndex < currentIndex ? 'slide-in-left' : 'slide-in-right');
+
+    const container = document.querySelector('.container');
+    if (container) {
+        container.classList.toggle('ai-chat-active', tabName === 'ai-chat');
+        if (tabName === 'ai-chat') {
+            requestAnimationFrame(() => {
+                adjustAiInputHeight($('ai-chat-input'));
+                const messagesEl = $('ai-chat-messages');
+                if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+            });
+        }
+    }
+
+    document.querySelectorAll('#desktop-nav [data-tab], #bottom-nav [data-tab], .desktop-nav [data-tab], .bottom-nav [data-tab]').forEach(el => {
+        const active = el.dataset.tab === tabName;
+        el.classList.toggle('active', active);
+        el.setAttribute('aria-selected', String(active));
+    });
+    TAB_LOADERS[tabName]?.();
+}
+
+function resolveHashTab() {
+    let tab = (window.location.hash || '').replace(/^#\/?/, '').trim().split('?')[0].split('/')[0];
+    if (tab === 'calendar') tab = 'events';
+    if (tab === 'requests') tab = canViewFinances() ? 'finances' : 'user-finances';
+    return tab && $(tab)?.classList.contains('tab-content') ? tab : null;
+}
+
+window.addEventListener('hashchange', () => {
+    const tab = isAuthenticated && resolveHashTab();
+    if (tab) switchTab(tab);
 });
 
-window.showLogin = () => {
-    document.getElementById('login-form').style.display = 'block';
-    document.getElementById('register-form').style.display = 'none';
-    document.getElementById('btn-show-login').classList.add('active');
-    document.getElementById('btn-show-register').classList.remove('active');
-    const authSub = document.getElementById('auth-subtitle');
-    if (authSub) {
-        authSub.setAttribute('data-i18n', 'login_subtitle');
-        authSub.innerText = t('login_subtitle', 'Melden Sie sich an, um fortzufahren');
-    }
-    document.getElementById('auth-error').style.display = 'none';
-};
+function closeProfileMenu() {
+    $('profileDropdown')?.classList.remove('show');
+    document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
+}
 
-window.showRegister = () => {
-    document.getElementById('login-form').style.display = 'none';
-    document.getElementById('register-form').style.display = 'block';
-    document.getElementById('btn-show-register').classList.add('active');
-    document.getElementById('btn-show-login').classList.remove('active');
-    const authSub = document.getElementById('auth-subtitle');
-    if (authSub) {
-        authSub.setAttribute('data-i18n', 'register_subtitle');
-        authSub.innerText = t('register_subtitle', 'Erstellen Sie ein neues Konto');
-    }
-    document.getElementById('auth-error').style.display = 'none';
-    setButtonLoading('btn-login', false, null); // Reset login button state
-};
+function toggleProfileMenu() {
+    const menu = $('profileDropdown');
+    const btn = document.querySelector('.profile-btn');
+    if (!menu || !btn) return;
+    menu.classList.toggle('show');
+    btn.setAttribute('aria-expanded', menu.classList.contains('show'));
+}
 
-// Helper: Changes button state to loading/disabled
-function setButtonLoading(btnId, isLoading, loadingText = "Laden...") {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    if (isLoading) {
-        btn.dataset.originalText = btn.innerText;
-        btn.innerText = loadingText;
-        btn.disabled = true;
+document.addEventListener('click', e => {
+    const container = document.querySelector('.profile-menu-container');
+    if (container && !container.contains(e.target) && $('profileDropdown')?.classList.contains('show')) closeProfileMenu();
+    const dropdown = $('mentoring-chat-menu-dropdown');
+    if (dropdown?.style.display === 'block' && !$('mentoring-chat-menu-btn')?.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+});
+
+function toggleFab() {
+    if (currentActiveTab === 'events' && !canManageEvents()) {
+        openNewEventDetailModal('event');
+        return;
+    }
+    const menu = $('fabMenu');
+    if (!menu) return;
+    const expanded = menu.classList.toggle('show');
+    document.querySelectorAll('.nav-fab, .desktop-fab, .mobile-fab').forEach(fab => {
+        fab.classList.toggle('active', expanded);
+        fab.setAttribute('aria-expanded', expanded);
+    });
+}
+
+// --- Theme ---
+function applyActualTheme(theme) {
+    const actual = theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
+    document.documentElement.setAttribute('data-theme', actual);
+    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => { meta.content = actual === 'dark' ? '#0f172a' : '#e6f2fa'; });
+}
+
+const storedTheme = () => localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
+
+function setTheme(theme) {
+    localStorage.setItem('agora-theme', theme);
+    applyActualTheme(theme);
+    syncPreferenceSelects(theme);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setText('app-name-header', APP_NAME);
+    setText('login-app-name', APP_NAME);
+    document.title = APP_NAME;
+    setTheme(storedTheme());
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (storedTheme() === 'system') applyActualTheme('system');
+    });
+    $('expense-receipt')?.addEventListener('change', e => {
+        addPendingFiles('expense', Array.from(e.target.files || []));
+        e.target.value = '';
+    });
+    ['payment-date', 'donation-date', 'expense-date', 'change-status-date'].forEach(id => setValue(id, getTodayStr()));
+    adjustAiInputHeight($('ai-chat-input'));
+});
+
+// --- Data loading ---
+async function refreshCurrentUser() {
+    try {
+        const data = await apiJson('/auth/me');
+        if (data?.user) {
+            currentUser = { ...currentUser, ...data.user };
+            updateNavVisibility();
+        }
+    } catch (err) {
+        console.warn('Could not refresh current user info:', err);
+    }
+}
+
+const findLinkedPerson = uid => people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+const findPerson = id => people.find(p => String(p.id) === String(id));
+
+// Members only see their own person entry and requests; the person is auto-linked by name on first login.
+async function loadMemberData() {
+    try {
+        const snap = await get(ref(db, 'settings'));
+        if (snap.exists()) {
+            settings = snap.val();
+        }
+    } catch (err) {
+        console.warn('Could not fetch settings:', err);
+    }
+
+    const uid = currentUser.uid;
+    const peopleRef = ref(db, 'people');
+    const linkPerson = key => update(child(peopleRef, key), { uid }).catch(err => console.warn('Auto-link update failed:', err));
+    let peopleList = [];
+    try {
+        let snap = await get(query(peopleRef, orderByChild('uid'), equalTo(uid)));
+        if (snap.exists()) peopleList = safeList(snap.val());
+        const name = fullName(currentUser) || currentUser.name || '';
+        if (peopleList.length === 0 && name) {
+            snap = await get(query(peopleRef, orderByChild('name'), equalTo(name)));
+            const val = snap.exists() ? snap.val() : {};
+            const key = Object.keys(val)[0];
+            if (key) {
+                await linkPerson(key);
+                peopleList = [{ ...val[key], uid }];
+            }
+        }
+    } catch (queryErr) {
+        console.warn('Index missing, falling back to client-side filtering:', queryErr);
+        try {
+            const snap = await get(peopleRef);
+            const all = snap.val();
+            const name = (fullName(currentUser) || currentUser.name || '').toLowerCase();
+            const nameMatches = p => p.name && p.name.toLowerCase() === name;
+            peopleList = safeList(all).filter(p => p.uid === uid || nameMatches(p));
+            const first = peopleList[0];
+            if (first && !first.uid && nameMatches(first)) {
+                first.uid = uid;
+                const key = snap.exists() && Object.keys(all).find(k => all[k].id === first.id || all[k].personKey === first.id);
+                if (key) await linkPerson(key);
+            }
+        } catch (err) {
+            console.warn('Could not load people:', err);
+        }
+    }
+    people = peopleList.filter(p => !p.isDeleted);
+
+    let rSnap = null;
+    try {
+        rSnap = await get(query(ref(db, 'requests'), orderByChild('userId'), equalTo(uid)));
+    } catch (reqErr) {
+        console.warn('Request index missing, fetching all requests:', reqErr);
+        rSnap = await get(ref(db, 'requests')).catch(err => {
+            console.warn('Could not get requests:', err);
+            return null;
+        });
+    }
+    requests = (rSnap?.exists() ? safeList(rSnap.val()) : []).filter(r => r.userId === uid);
+}
+
+async function loadAdminData() {
+    const withFinances = canViewFinances();
+    const [pData, sData, rData, uData] = await Promise.all(['people', 'settings', withFinances && 'requests', 'users'].map(path => path ? apiGet(path).catch(() => null) : null));
+    people = safeList(pData).filter(p => !p.isDeleted);
+    requests = safeList(rData);
+    if (sData) {
+        settings = sData;
+    }
+    users = Object.entries(uData || {}).map(([uid, data]) => {
+        if (!withFinances) return { ...data, uid };
+        const linked = findLinkedPerson(uid);
+        return {
+            ...data,
+            uid,
+            memberSince: data.memberSince || linked?.memberSince || linked?.data?.memberSince || '',
+            status: data.status || linked?.status || linked?.data?.status || ''
+        };
+    });
+}
+
+async function loadData(silent = false) {
+    const loader = $('loading-overlay');
+    if (loader && !silent) loader.style.display = 'flex';
+    try {
+        if (isAuthenticated) await refreshCurrentUser();
+        advancedConfigLoaded = false;
+        advancedConfigAppName = null;
+        if (canViewFinances() || isSuperAdminUser()) await loadAdminData();
+        else await loadMemberData();
+
+        if (canManageRegistrationCode()) {
+            const code = await apiGet('system/inviteCode').catch(() => null);
+            if (code) updateInviteCodeDisplay(code);
+        } else {
+            updateInviteCodeDisplay('');
+        }
+
+        setText('user-name-display', fullName(currentUser) || currentUser.name || '');
+        setText('user-email-display', currentUser.email || '');
+        if (canAccessAi()) {
+            apiJson('/admin/ai-status').then(data => {
+                aiEnabled = !!data.enabled;
+                updateAiNavVisibility();
+            }).catch(() => {});
+        }
+        updateNavVisibility();
+        if (isAuthenticated) {
+            loadMentoringThreads(false);
+            loadEventsData();
+        }
+
+        if (window.location.hash) {
+            const tab = resolveHashTab();
+            if (tab) switchTab(tab);
+        } else if (!document.querySelector('.tab-content.active')) {
+            switchTab('user-overview');
+        }
+
+        people.forEach(preprocessPerson);
+        if (canManageFinances()) {
+            const updates = [];
+            for (const person of people) {
+                const result = checkAndExecuteStandingOrders(person);
+                if (!result) continue;
+                const totalPaid = sumAmounts(result.payments);
+                updates.push(update(ref(db, 'people/' + person.id), { payments: result.payments, standingOrders: result.standingOrders, totalPaid }));
+                Object.assign(person, result, { totalPaid });
+            }
+            await Promise.all(updates);
+        }
+        await renderViews(!silent);
+    } catch (err) {
+        console.error('Ladefehler:', err);
+        alert(t('alert_error_loading_data', 'Fehler beim Laden der Daten. Bitte Seite neu laden.'));
+    } finally {
+        if (loader && !silent) loader.style.display = 'none';
+    }
+}
+
+// Re-renders all data-driven views; `full` additionally syncs settings inputs, push state and system tools.
+async function renderViews(full = true) {
+    renderUserView();
+    if (canViewFinances()) {
+        renderPeople();
+        await renderStats();
+        renderAdminRequests();
+        renderUnlinkedUsers();
+    }
+    if (full) {
+        ['vollverdiener', 'geringverdiener', 'keinverdiener'].forEach(key => setValue('rate-' + key, settings[key] || 0));
+        updateNotificationPreferencesUI();
+        ensurePushNotificationSubscription();
+    }
+    if (isSuperAdminUser()) {
+        await loadSystemGroups();
+        renderAccountsTab();
+        if (full) {
+            renderSuperAdminPaymentEditor();
+            if (!advancedConfigLoaded) loadAdvancedSystemConfig();
+        }
+    }
+    updateNavVisibility();
+}
+
+// --- Authentication ---
+function setLoadingMessage(msg) {
+    setText('loading-message', msg);
+}
+
+function showAuthLoader(message) {
+    $('login-modal').classList.remove('show');
+    show('loading-overlay', true, 'flex');
+    setLoadingMessage(message);
+}
+
+async function fetchUserProfile(uid, retries = 2) {
+    const snap = await get(ref(db, 'users/' + uid));
+    if (snap.exists()) return { ...snap.val(), uid };
+    if (retries <= 0) return null;
+    await new Promise(res => setTimeout(res, 400));
+    return fetchUserProfile(uid, retries - 1);
+}
+
+async function bootstrapSuperAdmin(user) {
+    try {
+        const res = await api('/admin/bootstrap-super-admin', 'POST');
+        if (!res.ok) return;
+        const result = await res.json();
+        if (result.isSuperAdmin || result.isOwner) {
+            currentUser = { ...(currentUser || {}), admin: true, owner: true, superAdmin: true };
+            currentUser = (await fetchUserProfile(user.uid, 2)) || currentUser;
+        }
+    } catch (error) {
+        console.warn('Super admin bootstrap skipped:', error);
+    }
+}
+
+onAuthStateChanged(auth, async user => {
+    if (user) {
+        showAuthLoader('Profil wird geladen...');
+        localStorage.setItem('agora-is-logged-in', 'true');
+        currentUser = await fetchUserProfile(user.uid, 2);
+        if (!currentUser) {
+            setLoadingMessage('Profil nicht gefunden, bitte Admin kontaktieren.');
+            currentUser = { role: 'user', email: user.email, uid: user.uid };
+        }
+        await bootstrapSuperAdmin(user);
+        $('login-modal').classList.remove('show');
+        isAuthenticated = true;
+        connectSSE();
+        loadData();
+        loadCurrentProfilePicture();
+        ensurePushNotificationSubscription();
     } else {
-        if(btn.dataset.originalText) btn.innerText = btn.dataset.originalText;
-        btn.disabled = false;
+        localStorage.removeItem('agora-is-logged-in');
+        localStorage.removeItem('nova-is-logged-in');
+        isAuthenticated = false;
+        advancedConfigLoaded = false;
+        advancedConfigAppName = null;
+        currentUser = null;
+        $('login-modal')?.classList.add('show');
+        show('loading-overlay', false);
+        showAuthForm(true);
+    }
+});
+
+function showAuthForm(isLogin) {
+    show('login-form', isLogin, 'block');
+    show('register-form', !isLogin, 'block');
+    $('btn-show-login').classList.toggle('active', isLogin);
+    $('btn-show-register').classList.toggle('active', !isLogin);
+    const subtitle = $('auth-subtitle');
+    if (subtitle) {
+        const key = isLogin ? 'login_subtitle' : 'register_subtitle';
+        subtitle.setAttribute('data-i18n', key);
+        subtitle.innerText = t(key, isLogin ? 'Melden Sie sich an, um fortzufahren' : 'Erstellen Sie ein neues Konto');
+    }
+    show('auth-error', false);
+    if (!isLogin) setButtonLoading('btn-login', false, null);
+}
+
+function showAuthError(msg) {
+    const errDiv = $('auth-error');
+    errDiv.innerText = msg;
+    errDiv.style.display = 'block';
+}
+
+async function attemptLogin() {
+    const email = inputValue('login-email');
+    const pass = inputValue('login-password');
+    setButtonLoading('btn-login', true, 'Anmelden...');
+    if (!email || !pass) {
+        showAuthError('Bitte E-Mail und Passwort eingeben.');
+    } else {
+        try {
+            show('auth-error', false);
+            await signInWithEmailAndPassword(auth, email, pass);
+            showAuthLoader('Profil wird geladen...');
+        } catch (error) {
+            console.error(error);
+            showAuthError('Login fehlgeschlagen: ' + error.message);
+        }
+    }
+    setButtonLoading('btn-login', false);
+}
+
+async function attemptRegister() {
+    const [code, email, first, last, p1, p2] = ['reg-code', 'reg-email', 'reg-firstname', 'reg-lastname', 'reg-pass1', 'reg-pass2'].map(inputValue);
+    const validationError = (!code || !email || !first || !last || !p1 || !p2) ? 'Bitte alle Felder ausfüllen.'
+        : p1.length < 6 ? 'Passwort muss mindestens 6 Zeichen lang sein.'
+        : p1 !== p2 ? 'Passwörter stimmen nicht überein.' : null;
+    if (validationError) return showAuthError(validationError);
+    try {
+        show('auth-error', false);
+        showAuthLoader('Profil wird initialisiert...');
+        await createUserWithEmailAndPassword(auth, email, p1, { inviteCode: code, firstName: first, lastName: last, name: `${first} ${last}`.trim() });
+    } catch (error) {
+        console.error(error);
+        showAuthError(error.message?.includes('Ungültiger Registrierungscode') ? 'Ungültiger Registrierungscode.' : 'Registrierung fehlgeschlagen: ' + error.message);
+        show('loading-overlay', false);
+        $('login-modal').classList.add('show');
     }
 }
 
-// Helper: the backend can return lists as objects {0:.., 1:..}, this fixes that.
-function safeList(val) {
-    if (!val) return [];
-    if (Array.isArray(val)) return val;
-    return Object.values(val);
-}
-
-function isSuperAdminUser() {
-    return !!(currentUser && (currentUser.admin || currentUser.owner || currentUser.superAdmin));
-}
-
-function isOwnerUser() {
-    return !!(currentUser && (currentUser.owner || currentUser.superAdmin));
-}
-
-function canManageFinances() {
-    return !!(currentUser && (currentUser.canManageFinances || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_finances'))));
-}
-
-function canViewFinances() {
-    return canManageFinances() || !!(currentUser && (currentUser.canViewFinances || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('view_finances'))));
-}
-
-function canAccessAi() {
-    return !!(currentUser && (currentUser.canAccessAi || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('access_ai'))));
-}
-
-function canParticipateMentoring() {
-    return !!currentUser;
-}
-
-function canManageMentoring() {
-    return !!(currentUser && (currentUser.canManageMentoring || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_mentoring'))));
-}
-
-function canManageEvents() {
-    return isSuperAdminUser() || !!(currentUser && (currentUser.canManageEvents === true || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_events'))));
-}
-window.canManageEvents = canManageEvents;
-
-function canManageRegistrationCode() {
-    return !!(currentUser && (currentUser.canManageRegistrationCode || (Array.isArray(currentUser.permissions) && currentUser.permissions.includes('manage_registration_code'))));
-}
-window.canManageRegistrationCode = canManageRegistrationCode;
-
-function isApprovedMentor() {
-    return !!(currentUser && (currentUser.isApprovedMentor || currentUser.mentorStatus === 'approved'));
-}
-
-function getAvatarRingClass(user) {
-    if (!user) return 'avatar-ring-standard';
-    const canManage = user.canManageMentoring || (Array.isArray(user.permissions) && user.permissions.includes('manage_mentoring'));
-    if (canManage) {
-        return 'avatar-ring-manager';
+async function logout() {
+    try {
+        sseConnection?.close();
+        sseConnection = null;
+        applyProfilePicture(null);
+        await signOut(auth);
+    } catch (error) {
+        console.error('Logout Error:', error);
     }
-    const isMentor = user.isApprovedMentor || user.mentorStatus === 'approved';
-    if (isMentor) {
-        return 'avatar-ring-mentor';
+}
+
+async function changePassword(isUser = false) {
+    const [newId, oldId] = isUser ? ['user-new-password', 'user-old-password'] : ['new-password', 'old-password'];
+    const pw = $(newId).value;
+    const oldPw = $(oldId).value;
+    if (!oldPw) return alert(t('alert_enter_old_password', 'Bitte geben Sie Ihr altes Passwort ein.'));
+    if (!pw || pw.length < 6) return alert(t('alert_new_password_length', 'Neues Passwort muss mindestens 6 Zeichen lang sein.'));
+    try {
+        if (!auth.currentUser) return alert(t('alert_no_user_logged_in', 'Kein Benutzer angemeldet.'));
+        await updatePassword(auth.currentUser, oldPw, pw);
+        showToast(t('toast_password_changed', 'Passwort erfolgreich geändert'));
+        setValue(newId, '');
+        setValue(oldId, '');
+    } catch (error) {
+        console.error(error);
+        alert(t('alert_password_change_failed', 'Fehler beim Ändern des Passworts: ') + error.message);
     }
-    return 'avatar-ring-standard';
 }
 
-function isSystemAdmin() {
-    return isSuperAdminUser();
+// --- Registration code ---
+async function generateNewCode() {
+    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
+    const newCode = String(100000 + (window.crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+    try {
+        await set(ref(db, 'system/inviteCode'), newCode);
+        updateInviteCodeDisplay(newCode);
+    } catch (err) {
+        console.error('Fehler beim Generieren des Codes:', err);
+        alert(t('alert_save_code_failed', 'Neuer Code konnte nicht gespeichert werden.'));
+    }
 }
 
+async function copyInviteCode() {
+    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
+    const code = inputValue('admin-invite-code') || inputValue('user-invite-code');
+    if (!code || code === '------') return;
+    try {
+        await navigator.clipboard.writeText(code);
+        showToast(t('toast_code_copied', 'Code kopiert!'));
+    } catch (err) {
+        console.error('Kopieren fehlgeschlagen:', err);
+        alert(t('toast_copy_failed', 'Kopieren fehlgeschlagen'));
+    }
+}
+
+// --- Notification preferences & web push ---
+const NOTIFICATION_KEYS = ['duties', 'events', 'messages', 'finances'];
+function setNotificationCheckboxes(values) {
+    NOTIFICATION_KEYS.forEach(key => ['notif-pref-', 'user-notif-pref-'].forEach(prefix => {
+        const el = $(prefix + key);
+        if (el) el.checked = values[key];
+    }));
+}
+
+async function autoSaveNotificationPreferences() {
+    if (!currentUser?.uid) return;
+    const [own, other] = currentActiveTab === 'user-settings' ? ['user-notif-pref-', 'notif-pref-'] : ['notif-pref-', 'user-notif-pref-'];
+    const notificationSettings = Object.fromEntries(NOTIFICATION_KEYS.map(key => [key, ($(own + key) || $(other + key))?.checked ?? true]));
+    // Keep emailNotifications in sync for backwards compatibility
+    const emailNotifications = Object.values(notificationSettings).some(Boolean);
+    try {
+        await update(ref(db, 'users/' + currentUser.uid), { notificationSettings, emailNotifications });
+        Object.assign(currentUser, { notificationSettings, emailNotifications });
+        setNotificationCheckboxes(notificationSettings);
+        showToast(t('notification_settings_saved', 'Benachrichtigungseinstellungen gespeichert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern der Benachrichtigungseinstellungen:', err);
+        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
+    }
+}
+
+function updateNotificationPreferencesUI() {
+    if (!currentUser) return;
+    const financesAllowed = canViewFinances() || currentUser.admin === true || currentUser.owner === true || currentUser.superAdmin === true;
+    show('notif-pref-finances-wrap', financesAllowed, 'flex');
+    show('user-notif-pref-finances-wrap', financesAllowed, 'flex');
+    const allDisabled = currentUser.emailNotifications === false && !currentUser.notificationSettings;
+    const prefs = { duties: true, events: true, messages: true, finances: true, ...currentUser.notificationSettings };
+    setNotificationCheckboxes(Object.fromEntries(NOTIFICATION_KEYS.map(key => [key, !allDisabled && prefs[key] !== false])));
+}
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+function urlBase64ToUint8Array(base64String) {
+    const base64 = (base64String + '='.repeat((4 - (base64String.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(window.atob(base64), c => c.charCodeAt(0));
+}
+
+// Mobile browsers require a user gesture for the permission prompt, so ask on the first tap/click.
+let pushAutoPromptRegistered = false;
+function setupPwaPushAutoPrompt() {
+    if (!pushSupported() || Notification.permission !== 'default' || pushAutoPromptRegistered) return;
+    pushAutoPromptRegistered = true;
+    const onUserInteraction = async () => {
+        window.removeEventListener('click', onUserInteraction, true);
+        window.removeEventListener('touchend', onUserInteraction, true);
+        try {
+            if (Notification.permission === 'default' && await Notification.requestPermission() === 'granted') {
+                await ensurePushNotificationSubscription(true);
+            }
+        } catch (err) {
+            console.warn('Auto-request push permission error:', err);
+        }
+    };
+    window.addEventListener('click', onUserInteraction, { capture: true, once: true });
+    window.addEventListener('touchend', onUserInteraction, { capture: true, once: true });
+}
+
+async function ensurePushNotificationSubscription(interactive = false) {
+    if (!pushSupported()) return;
+    try {
+        const token = await getToken();
+        if (!token) return;
+        let permission = Notification.permission;
+        if (permission === 'default') {
+            if (!interactive) return setupPwaPushAutoPrompt();
+            permission = await Notification.requestPermission();
+        }
+        if (permission !== 'granted') return;
+        const authHeader = { Authorization: `Bearer ${token}` };
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+            const keyRes = await fetch(`${API}/push/vapid-public-key`, { headers: authHeader });
+            if (keyRes.ok) {
+                const { publicKey } = await keyRes.json();
+                subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+            }
+        }
+        if (subscription) {
+            await fetch(`${API}/push/subscribe`, {
+                method: 'POST',
+                headers: { ...authHeader, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscription: subscription.toJSON(), userAgent: navigator.userAgent })
+            }).catch(e => console.warn('Push sync error:', e));
+        }
+    } catch (err) {
+        console.warn('Auto-subscribe push notification error:', err);
+    }
+}
+
+// --- PWA install ---
+let deferredInstallPrompt = null;
+const installBtn = $('install-pwa-btn');
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    show(installBtn, true, 'inline-flex');
+});
+installBtn?.addEventListener('click', async () => {
+    show(installBtn, false);
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    deferredInstallPrompt = null;
+});
+window.addEventListener('appinstalled', () => {
+    show(installBtn, false);
+    deferredInstallPrompt = null;
+    console.log('PWA was installed');
+    setupPwaPushAutoPrompt();
+});
+
+// --- Profile pictures ---
+async function fetchProfilePicUrl(uid) {
+    const res = await api(`/profile/picture/${encodeURIComponent(uid)}`);
+    if (res.ok && res.status === 200) {
+        const blob = await res.blob();
+        if (blob && blob.size > 0) return URL.createObjectURL(blob);
+    }
+    return null;
+}
+
+// Cached per uid (including in-flight requests) so list renders fetch each picture only once.
+const profilePicCache = new Map();
+function getProfilePicUrl(uid) {
+    if (!uid) return Promise.resolve(null);
+    if (!profilePicCache.has(uid)) profilePicCache.set(uid, fetchProfilePicUrl(uid).catch(() => null));
+    return profilePicCache.get(uid);
+}
+
+async function loadCurrentProfilePicture() {
+    const uid = currentUid();
+    if (uid) applyProfilePicture(await fetchProfilePicUrl(uid).catch(() => null));
+}
+
+let profilePictureObjectUrl = null;
+function applyProfilePicture(url) {
+    if (profilePictureObjectUrl) URL.revokeObjectURL(profilePictureObjectUrl);
+    profilePictureObjectUrl = url;
+    [['admin-profile-pic-preview', 'admin-profile-pic-placeholder'], ['user-profile-pic-preview', 'user-profile-pic-placeholder'], ['header-profile-pic', 'header-profile-icon']].forEach(([imgId, placeholderId]) => {
+        const img = $(imgId);
+        if (img) {
+            if (url) img.src = url;
+            img.style.display = url ? '' : 'none';
+        }
+        show(placeholderId, !url);
+    });
+}
+
+const toFormData = fields => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) if (value) form.append(key, value);
+    return form;
+};
+
+// --- Image cropping (profile pictures 1:1, event covers 16:9) ---
+const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
+function rebindListener(target, type, owner, key, handler, options) {
+    target.removeEventListener(type, owner[key]);
+    owner[key] = handler;
+    target.addEventListener(type, handler, options);
+}
+
+// Shows `src` inside the crop viewport with a draggable crop overlay and zoom (slider + wheel).
+// `layout(viewportWidth, naturalW, naturalH)` returns { vw, vh, cropW, cropH, scale }.
+async function initCropper({ viewport, img, overlay, zoomSlider, src, layout, fallbackSize }) {
+    img.src = src;
+    const loaded = await new Promise(resolve => {
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+    });
+    if (!loaded && !fallbackSize) return null;
+    const nw = img.naturalWidth || fallbackSize[0];
+    const nh = img.naturalHeight || fallbackSize[1];
+    const { vw, vh, cropW, cropH, scale } = layout(viewport.clientWidth, nw, nh);
+    viewport.style.height = vh + 'px';
+    overlay.style.width = cropW + 'px';
+    overlay.style.height = cropH + 'px';
+
+    let zoom = 1;
+    let offsetX = Math.round((vw - cropW) / 2);
+    let offsetY = Math.round((vh - cropH) / 2);
+    const displaySize = () => [Math.round(nw * scale * zoom), Math.round(nh * scale * zoom)];
+    const imagePos = () => [parseInt(img.style.left), parseInt(img.style.top)];
+    const moveOverlay = (x, y) => {
+        const [w, h] = displaySize();
+        const [left, top] = imagePos();
+        offsetX = clamp(x, left, left + w - cropW);
+        offsetY = clamp(y, top, top + h - cropH);
+        overlay.style.left = offsetX + 'px';
+        overlay.style.top = offsetY + 'px';
+    };
+    const applyZoom = () => {
+        const [w, h] = displaySize();
+        Object.assign(img.style, { width: w + 'px', height: h + 'px', position: 'absolute', left: Math.round((vw - w) / 2) + 'px', top: Math.round((vh - h) / 2) + 'px' });
+        moveOverlay(offsetX, offsetY);
+    };
+    const setZoom = z => {
+        zoom = z;
+        if (zoomSlider) zoomSlider.value = z;
+        applyZoom();
+    };
+    applyZoom();
+
+    let drag = null;
+    const pointer = e => (e.touches ? e.touches[0] : e);
+    const onDown = e => {
+        e.preventDefault();
+        const p = pointer(e);
+        drag = { x: p.clientX, y: p.clientY, ox: offsetX, oy: offsetY };
+    };
+    const onMove = e => {
+        if (!drag) return;
+        const p = pointer(e);
+        moveOverlay(drag.ox + p.clientX - drag.x, drag.oy + p.clientY - drag.y);
+    };
+    const onUp = () => { drag = null; };
+    rebindListener(overlay, 'mousedown', overlay, '_md', onDown);
+    rebindListener(overlay, 'touchstart', overlay, '_td', onDown, { passive: false });
+    rebindListener(document, 'mousemove', overlay, '_mm', onMove);
+    rebindListener(document, 'mouseup', overlay, '_mu', onUp);
+    rebindListener(document, 'touchmove', overlay, '_tm', onMove, { passive: false });
+    rebindListener(document, 'touchend', overlay, '_tu', onUp);
+    if (zoomSlider) {
+        zoomSlider.value = 1;
+        rebindListener(zoomSlider, 'input', zoomSlider, '_zl', e => {
+            zoom = parseFloat(e.target.value);
+            applyZoom();
+        });
+    }
+    rebindListener(viewport, 'wheel', viewport, '_wl', e => {
+        e.preventDefault();
+        setZoom(clamp(zoom + (e.deltaY > 0 ? -0.1 : 0.1), 1, 3));
+    }, { passive: false });
+
+    return {
+        img, cropW, cropH, setZoom,
+        // Crop origin in natural image pixels plus the display→natural scale factors
+        region() {
+            const [w, h] = displaySize();
+            const [left, top] = imagePos();
+            return { x: Math.round((offsetX - left) * nw / w), y: Math.round((offsetY - top) * nh / h), scaleX: nw / w, scaleY: nh / h };
+        }
+    };
+}
+
+function cropToJpeg(img, [sx, sy, sw, sh], width, height, quality) {
+    const canvas = Object.assign(document.createElement('canvas'), { width, height });
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+}
+
+let profileCropper = null;
+async function openProfileCrop(input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    profileCropper = await initCropper({
+        viewport: $('profileCropViewport'),
+        img: $('profileCropImage'),
+        overlay: $('profileCropOverlay'),
+        zoomSlider: $('profileCropZoom'),
+        src: await readAsDataUrl(await convertHeic(file, 0.9)),
+        layout: (width, nw, nh) => {
+            const vw = width || 360;
+            const vh = Math.round(vw * 0.75);
+            const scale = Math.min(vw / nw, vh / nh);
+            const size = Math.min(Math.round(nw * scale), Math.round(nh * scale), Math.min(vw, vh) - 20);
+            return { vw, vh, cropW: size, cropH: size, scale };
+        }
+    });
+    if (profileCropper) openModal('profile-crop-modal');
+}
+
+function cancelProfileCrop() {
+    profileCropper = null;
+    closeModal('profile-crop-modal');
+}
+
+async function confirmProfileCrop() {
+    if (!profileCropper) return;
+    const { x, y, scaleX, scaleY } = profileCropper.region();
+    const size = Math.round(profileCropper.cropW * Math.min(scaleX, scaleY));
+    const blob = await cropToJpeg(profileCropper.img, [x, y, size, size], 256, 256, 0.85);
+    if (!blob) return showToast('Fehler beim Verarbeiten des Bildes.', 'error');
+    setButtonLoading('btn-confirm-crop', true, 'Speichern...');
+    try {
+        await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), 'Upload fehlgeschlagen');
+        closeModal('profile-crop-modal');
+        showToast('Profilbild gespeichert!', 'success');
+        await loadCurrentProfilePicture();
+    } catch (e) {
+        console.error('Profile upload error:', e);
+        showToast('Fehler beim Hochladen: ' + e.message, 'error');
+    } finally {
+        setButtonLoading('btn-confirm-crop', false, null);
+    }
+}
+
+Object.assign(window, {
+    switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword,
+    generateNewCode, copyInviteCode, autoSaveNotificationPreferences, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    showLogin: () => showAuthForm(true),
+    showRegister: () => showAuthForm(false),
+    openHomeTab: () => {
+        closeProfileMenu();
+        switchTab('user-overview');
+    },
+    openSettingsTab: () => {
+        closeProfileMenu();
+        switchTab(canViewFinances() || isSuperAdminUser() ? 'settings' : 'user-settings');
+    },
+    openSystemSettingsTab: () => {
+        closeProfileMenu();
+        if (isSuperAdminUser()) switchTab('super-admin-settings');
+    }
+});
+
+// --- Groups & permissions (system settings) ---
 let systemGroups = [];
 let systemPermissions = [];
 let activeGroupFilter = null;
+let currentSysSettingsTab = 'accounts';
+let accountsSearchQuery = '';
 
-async function loadSystemPermissions() {
-    if (!isSuperAdminUser()) return;
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/permissions`);
-        if (res.ok) {
-            systemPermissions = await res.json();
-        }
-    } catch (err) {
-        console.warn('Failed to load permissions list:', err);
-    }
-    if (!Array.isArray(systemPermissions) || systemPermissions.length === 0) {
-        systemPermissions = [
-            { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
-            { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
-            { id: 'manage_registration_code', name: 'Registrierungscode verwalten', description: 'Erlaubt das Einsehen, Kopieren und Neugenerieren des Registrierungscodes für neue Mitglieder' },
-            { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-            { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
-            { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
-        ];
-    }
-}
+const DEFAULT_PERMISSIONS = [
+    { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
+    { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
+    { id: 'manage_registration_code', name: 'Registrierungscode verwalten', description: 'Erlaubt das Einsehen, Kopieren und Neugenerieren des Registrierungscodes für neue Mitglieder' },
+    { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
+    { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
+    { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
+];
 
 async function loadSystemGroups() {
     if (!currentUser) return;
     try {
         if (isSuperAdminUser()) {
-            await loadSystemPermissions();
-            const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`);
+            try {
+                const res = await api('/admin/permissions');
+                if (res.ok) systemPermissions = await res.json();
+            } catch (err) {
+                console.warn('Failed to load permissions list:', err);
+            }
+            if (!Array.isArray(systemPermissions) || systemPermissions.length === 0) systemPermissions = DEFAULT_PERMISSIONS;
+            const res = await api('/admin/groups');
             if (res.ok) {
                 systemGroups = await res.json();
-                renderSystemGroups();
                 renderAccountsTab();
                 return;
             }
         }
-        // Load groups for all authenticated members
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/groups`);
-        if (res.ok) {
-            systemGroups = await res.json();
-        }
+        const res = await api('/groups');
+        if (res.ok) systemGroups = await res.json();
     } catch (err) {
         console.error('Failed to load groups:', err);
     }
 }
 
+const groupList = () => (Array.isArray(systemGroups) ? systemGroups : []);
+const findGroup = idOrName => systemGroups.find(g => g.id === idOrName || g.name === idOrName);
+const checkedValues = selector => [...document.querySelectorAll(selector)].filter(cb => cb.checked).map(cb => cb.value);
+
 function renderSystemGroups() {
-    const listEl = document.getElementById('nc-groups-list');
+    const listEl = $('nc-groups-list');
     if (!listEl) return;
-
-    const totalUsersCount = Array.isArray(users) ? users.length : 0;
-    const isAllActive = activeGroupFilter === null;
-
-    let itemsHtml = `
-        <div class="nc-group-item ${isAllActive ? 'active' : ''}" onclick="window.filterByGroup(null)">
+    const item = (active, onclick, icon, label, count, actions = '') => `
+        <div class="nc-group-item ${active ? 'active' : ''}" onclick="${onclick}">
             <div class="nc-group-item-name">
-                <span>👥</span>
-                <span data-i18n="group_all_users">${t('group_all_users', 'Alle Benutzer')}</span>
+                <span>${icon}</span>
+                ${label}
             </div>
             <div class="nc-group-item-actions">
-                <span class="nc-group-count">${totalUsersCount}</span>
+                <span class="nc-group-count">${count}</span>
+                ${actions}
             </div>
-        </div>
-    `;
-
-    if (Array.isArray(systemGroups) && systemGroups.length > 0) {
-        systemGroups.forEach(g => {
-            const isGroupActive = activeGroupFilter === g.id || activeGroupFilter === g.name;
-            const count = g.memberCount !== undefined ? g.memberCount : 0;
-            itemsHtml += `
-                <div class="nc-group-item ${isGroupActive ? 'active' : ''}" onclick="window.filterByGroup('${escapeHtml(g.id)}')">
-                    <div class="nc-group-item-name">
-                        <span>🏷️</span>
-                        <span>${escapeHtml(g.name)}</span>
-                    </div>
-                    <div class="nc-group-item-actions">
-                        <span class="nc-group-count">${count}</span>
-                        <button type="button" class="nc-group-action-btn" title="${t('modal_manage_group_title', 'Gruppe verwalten')}" onclick="event.stopPropagation(); window.openManageGroupModal('${escapeHtml(g.id)}');">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-    }
-
-    listEl.innerHTML = itemsHtml;
+        </div>`;
+    listEl.innerHTML = item(activeGroupFilter === null, 'window.filterByGroup(null)', '👥', `<span data-i18n="group_all_users">${t('group_all_users', 'Alle Benutzer')}</span>`, Array.isArray(users) ? users.length : 0)
+        + groupList().map(g => item(
+            activeGroupFilter === g.id || activeGroupFilter === g.name,
+            `window.filterByGroup('${escapeHtml(g.id)}')`, '🏷️', `<span>${escapeHtml(g.name)}</span>`, g.memberCount !== undefined ? g.memberCount : 0,
+            `<button type="button" class="nc-group-action-btn" title="${t('modal_manage_group_title', 'Gruppe verwalten')}" onclick="event.stopPropagation(); window.openManageGroupModal('${escapeHtml(g.id)}');">${svgIcon('gear')}</button>`
+        )).join('');
 }
 
-window.filterByGroup = function(groupId) {
+function filterByGroup(groupId) {
     activeGroupFilter = groupId;
-    renderSystemGroups();
     renderAccountsTab();
-};
+}
 
-window.clearGroupFilter = function() {
-    activeGroupFilter = null;
-    renderSystemGroups();
-    renderAccountsTab();
-};
+async function refreshGroupsAndUsers(refreshSelf = true) {
+    await loadSystemGroups();
+    await reloadUsersData();
+    if (refreshSelf) await refreshCurrentUser();
+}
 
-window.submitQuickAddGroup = async function() {
-    const input = document.getElementById('nc-new-group-name');
-    if (!input) return;
-    const name = input.value.trim();
+async function submitQuickAddGroup() {
+    const input = $('nc-new-group-name');
+    const name = input?.value.trim();
     if (!name) return;
-
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, permissions: [] })
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Fehler beim Erstellen der Gruppe');
-        }
+        await apiJson('/admin/groups', 'POST', { name, permissions: [] }, 'Fehler beim Erstellen der Gruppe');
         input.value = '';
         showToast(t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
-        await loadSystemGroups();
-        await reloadUsersData();
+        await refreshGroupsAndUsers(false);
     } catch (err) {
         alert(err.message || 'Fehler beim Erstellen der Gruppe');
     }
-};
-
-window.openCreateGroupModal = function() {
-    document.getElementById('manage-group-id').value = '';
-    document.getElementById('manage-group-name').value = '';
-    document.getElementById('manage-group-modal-title').textContent = t('modal_create_group_title', 'Neue Gruppe erstellen');
-    const deleteBtn = document.getElementById('btn-delete-group');
-    if (deleteBtn) deleteBtn.style.display = 'none';
-
-    renderGroupPermissionsChecklist([]);
-    openModal('manage-group-modal');
-};
-
-window.openCreateGroupFromAssignModal = function() {
-    closeModal('assign-group-modal');
-    setTimeout(() => {
-        window.openCreateGroupModal();
-    }, 60);
-};
-
-window.openManageGroupModal = function(groupId) {
-    const group = systemGroups.find(g => g.id === groupId);
-    if (!group) return;
-
-    document.getElementById('manage-group-id').value = group.id;
-    document.getElementById('manage-group-name').value = group.name;
-    document.getElementById('manage-group-modal-title').textContent = t('modal_manage_group_title', 'Gruppe verwalten');
-    const deleteBtn = document.getElementById('btn-delete-group');
-    if (deleteBtn) deleteBtn.style.display = 'inline-block';
-
-    renderGroupPermissionsChecklist(group.permissions || []);
-    openModal('manage-group-modal');
-};
-
-function renderGroupPermissionsChecklist(activePermissions = []) {
-    const list = document.getElementById('manage-group-permissions-list');
-    if (!list) return;
-
-    if (!Array.isArray(systemPermissions) || systemPermissions.length === 0) {
-        list.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem;">Keine Berechtigungs-Definitionen gefunden.</div>`;
-        return;
-    }
-
-    list.innerHTML = systemPermissions.map(p => {
-        const isChecked = activePermissions.includes(p.id);
-        return `
-            <label class="nc-permission-item">
-                <input type="checkbox" class="group-permission-cb" value="${escapeHtml(p.id)}" ${isChecked ? 'checked' : ''}>
-                <div class="nc-permission-info">
-                    <span class="nc-permission-name">${escapeHtml(p.name)}</span>
-                    <span class="nc-permission-desc">${escapeHtml(p.description || '')}</span>
-                </div>
-            </label>
-        `;
-    }).join('');
 }
 
-window.submitSaveGroup = async function() {
-    const id = document.getElementById('manage-group-id').value;
-    const name = document.getElementById('manage-group-name').value.trim();
-    if (!name) {
-        alert(t('alert_fill_fields', 'Bitte Gruppennamen eingeben.'));
-        return;
+const checkItem = (prefix, cbClass, value, checked, name, desc) => `
+    <label class="${prefix}-item">
+        <input type="checkbox" class="${cbClass}" value="${escapeHtml(value)}" ${checked ? 'checked' : ''}>
+        <div class="${prefix}-info">
+            <span class="${prefix}-name">${escapeHtml(name)}</span>
+            <span class="${prefix}-desc">${desc}</span>
+        </div>
+    </label>`;
+
+function openGroupModal(group) {
+    setValue('manage-group-id', group ? group.id : '');
+    setValue('manage-group-name', group ? group.name : '');
+    setText('manage-group-modal-title', group ? t('modal_manage_group_title', 'Gruppe verwalten') : t('modal_create_group_title', 'Neue Gruppe erstellen'));
+    show('btn-delete-group', !!group, 'inline-block');
+    const list = $('manage-group-permissions-list');
+    if (list) {
+        const active = group?.permissions || [];
+        list.innerHTML = systemPermissions.length
+            ? systemPermissions.map(p => checkItem('nc-permission', 'group-permission-cb', p.id, active.includes(p.id), p.name, escapeHtml(p.description || ''))).join('')
+            : '<div style="color: var(--text-secondary); font-size: 0.85rem;">Keine Berechtigungs-Definitionen gefunden.</div>';
     }
+    openModal('manage-group-modal');
+}
 
-    const checkboxes = document.querySelectorAll('#manage-group-permissions-list .group-permission-cb');
-    const permissions = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-
+async function submitSaveGroup() {
+    const id = inputValue('manage-group-id');
+    const name = inputValue('manage-group-name').trim();
+    if (!name) return alert(t('alert_fill_fields', 'Bitte Gruppennamen eingeben.'));
     try {
-        const url = id ? `${config.apiBaseUrl}/admin/groups/${id}` : `${config.apiBaseUrl}/admin/groups`;
-        const method = id ? 'PUT' : 'POST';
-        const res = await fetchWithAuth(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, permissions })
-        });
-
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Fehler beim Speichern der Gruppe');
-        }
-
+        const permissions = checkedValues('#manage-group-permissions-list .group-permission-cb');
+        await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, 'Fehler beim Speichern der Gruppe');
         closeModal('manage-group-modal');
         showToast(id ? t('toast_group_updated', 'Gruppe erfolgreich aktualisiert') : t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
-        await loadSystemGroups();
-        await reloadUsersData();
-        await refreshCurrentUser();
+        await refreshGroupsAndUsers();
     } catch (err) {
         console.error('Fehler beim Speichern der Gruppe:', err);
         alert(err.message || 'Fehler beim Speichern der Gruppe');
     }
-};
+}
 
-window.deleteCurrentGroup = async function() {
-    const id = document.getElementById('manage-group-id').value;
-    if (!id) return;
-
-    if (!confirm(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) {
-        return;
-    }
-
+async function deleteCurrentGroup() {
+    const id = inputValue('manage-group-id');
+    if (!id || !confirmAction(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) return;
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/groups/${id}`, {
-            method: 'DELETE'
-        });
-
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Fehler beim Löschen der Gruppe');
-        }
-
-        if (activeGroupFilter === id) {
-            activeGroupFilter = null;
-        }
-
+        await apiJson(`/admin/groups/${id}`, 'DELETE', undefined, 'Fehler beim Löschen der Gruppe');
+        if (activeGroupFilter === id) activeGroupFilter = null;
         closeModal('manage-group-modal');
         showToast(t('toast_group_deleted', 'Gruppe erfolgreich gelöscht'), 'success');
-        await loadSystemGroups();
-        await reloadUsersData();
-        await refreshCurrentUser();
+        await refreshGroupsAndUsers();
     } catch (err) {
         console.error('Fehler beim Löschen der Gruppe:', err);
         alert(err.message || 'Fehler beim Löschen der Gruppe');
     }
-};
+}
 
-window.openAssignGroupModal = function(uid) {
+function openAssignGroupModal(uid) {
     const user = users.find(u => u.uid === uid);
     if (!user) return;
-
-    document.getElementById('assign-group-uid').value = uid;
-    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Benutzer';
-    document.getElementById('assign-group-user-display').textContent = `${fullName} (${user.email || 'Kein Login'})`;
-
-    const list = document.getElementById('assign-group-checklist');
+    setValue('assign-group-uid', uid);
+    setText('assign-group-user-display', `${fullName(user) || user.email || 'Benutzer'} (${user.email || 'Kein Login'})`);
+    const list = $('assign-group-checklist');
     if (!list) return;
-
-    if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
-        list.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">Keine Gruppen vorhanden. Erstellen Sie zuerst eine Gruppe.</div>`;
-    } else {
-        const userGroupIds = Array.isArray(user.groups) ? user.groups : [];
-        list.innerHTML = systemGroups.map(g => {
-            const isChecked = userGroupIds.includes(g.id) || userGroupIds.includes(g.name);
+    const userGroups = Array.isArray(user.groups) ? user.groups : [];
+    list.innerHTML = groupList().length
+        ? systemGroups.map(g => {
             const perms = Array.isArray(g.permissions) ? g.permissions : [];
-            const permSummary = perms.length > 0 ? `${perms.length} Berechtigungen` : 'Standard-Zugriff';
-
-            return `
-                <label class="nc-group-check-item">
-                    <input type="checkbox" class="user-group-assign-cb" value="${escapeHtml(g.id)}" ${isChecked ? 'checked' : ''}>
-                    <div class="nc-group-check-info">
-                        <span class="nc-group-check-name">${escapeHtml(g.name)}</span>
-                        <span class="nc-group-check-desc">${permSummary}</span>
-                    </div>
-                </label>
-            `;
-        }).join('');
-    }
-
+            return checkItem('nc-group-check', 'user-group-assign-cb', g.id, userGroups.includes(g.id) || userGroups.includes(g.name), g.name, perms.length > 0 ? `${perms.length} Berechtigungen` : 'Standard-Zugriff');
+        }).join('')
+        : '<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">Keine Gruppen vorhanden. Erstellen Sie zuerst eine Gruppe.</div>';
     openModal('assign-group-modal');
-};
+}
 
-window.submitAssignGroups = async function() {
-    const uid = document.getElementById('assign-group-uid').value;
+async function submitAssignGroups() {
+    const uid = inputValue('assign-group-uid');
     if (!uid) return;
-
-    const checkboxes = document.querySelectorAll('#assign-group-checklist .user-group-assign-cb');
-    const selectedGroupIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-
+    const groups = checkedValues('#assign-group-checklist .user-group-assign-cb');
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/groups`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ groups: selectedGroupIds })
-        });
-
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Fehler beim Zuweisen der Gruppen');
-        }
-
+        await apiJson(`/admin/users/${uid}/groups`, 'PUT', { groups }, 'Fehler beim Zuweisen der Gruppen');
         const localUser = users.find(u => u.uid === uid);
         if (localUser) {
-            localUser.groups = selectedGroupIds;
-            localUser.groupObjects = selectedGroupIds.map(gid => systemGroups.find(g => g.id === gid || g.name === gid) || { id: gid, name: gid });
+            localUser.groups = groups;
+            localUser.groupObjects = groups.map(gid => findGroup(gid) || { id: gid, name: gid });
         }
-
         closeModal('assign-group-modal');
         showToast(t('toast_user_groups_updated', 'Benutzergruppen erfolgreich aktualisiert'), 'success');
-        await loadSystemGroups();
-        await reloadUsersData();
-        if (currentUser && currentUser.uid === uid) {
-            await refreshCurrentUser();
-        }
+        await refreshGroupsAndUsers(currentUser?.uid === uid);
     } catch (err) {
         console.error('Fehler beim Zuweisen der Gruppen:', err);
         alert(err.message || 'Fehler beim Zuweisen der Gruppen');
     }
-};
+}
 
 async function reloadUsersData() {
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/admin/users`);
+        const res = await api('/admin/users');
         if (res.ok) {
             users = await res.json();
             renderAccountsTab();
@@ -797,2283 +1762,174 @@ async function reloadUsersData() {
     }
 }
 
-async function refreshCurrentUser() {
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/auth/me`);
-        if (res.ok) {
-            const data = await res.json();
-            if (data?.user) {
-                currentUser = {
-                    ...currentUser,
-                    ...data.user
-                };
-                updateNavVisibility();
-            }
-        }
-    } catch (err) {
-        console.warn('Could not refresh current user info:', err);
-    }
-}
-
-function updateHeaderAvatarRing() {
-    const profileBtn = document.querySelector('.profile-btn');
-    if (!profileBtn) return;
-    profileBtn.classList.remove('avatar-ring-manager', 'avatar-ring-mentor', 'avatar-ring-standard');
-    const ringClass = getAvatarRingClass(currentUser);
-    profileBtn.classList.add(ringClass);
-}
-
-function updateNavVisibility() {
-    const hasFinances = canViewFinances() || canManageFinances();
-    const isSysAdmin = isSystemAdmin();
-    const canManage = canManageFinances();
-
-    // Finances tab (Admin / Finance Managers)
-    const financesDesktop = document.getElementById('admin-finances-nav-btn-desktop');
-    const financesBottom = document.getElementById('admin-finances-nav-btn-bottom');
-    if (financesDesktop) financesDesktop.style.display = hasFinances ? '' : 'none';
-    if (financesBottom) financesBottom.style.display = hasFinances ? '' : 'none';
-
-    // Personal user finances tab (Regular Members)
-    const userFinancesDesktop = document.getElementById('user-finances-nav-btn-desktop');
-    const userFinancesBottom = document.getElementById('user-finances-nav-btn-bottom');
-    if (userFinancesDesktop) userFinancesDesktop.style.display = hasFinances ? 'none' : '';
-    if (userFinancesBottom) userFinancesBottom.style.display = hasFinances ? 'none' : '';
-
-    // Events tab (All authenticated users)
-    const eventsDesktop = document.getElementById('events-nav-btn-desktop');
-    const eventsBottom = document.getElementById('events-nav-btn-bottom');
-    if (eventsDesktop) eventsDesktop.style.display = currentUser ? '' : 'none';
-    if (eventsBottom) eventsBottom.style.display = currentUser ? '' : 'none';
-
-    // Mentoring tab (Users with mentoring_participate or manage_mentoring)
-    const hasMentoring = canParticipateMentoring() || canManageMentoring();
-    const mentoringDesktop = document.getElementById('mentoring-nav-btn-desktop');
-    const mentoringBottom = document.getElementById('mentoring-nav-btn-bottom');
-    if (mentoringDesktop) mentoringDesktop.style.display = hasMentoring ? '' : 'none';
-    if (mentoringBottom) mentoringBottom.style.display = hasMentoring ? '' : 'none';
-
-    // AI tab
-    if (typeof updateAiNavVisibility === 'function') updateAiNavVisibility();
-
-    // System Settings button
-    const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
-    if (sysSettingsBtn) sysSettingsBtn.style.display = isSysAdmin ? '' : 'none';
-
-    // Registration code card visibility
-    const canManageCode = canManageRegistrationCode();
-    const inviteCardAdmin = document.getElementById('card-invite');
-    if (inviteCardAdmin) {
-        if (canManageCode) {
-            inviteCardAdmin.style.removeProperty('display');
-            inviteCardAdmin.style.display = '';
-        } else {
-            inviteCardAdmin.style.setProperty('display', 'none', 'important');
-        }
-    }
-    const inviteCardUser = document.getElementById('card-invite-user');
-    if (inviteCardUser) {
-        if (canManageCode) {
-            inviteCardUser.style.removeProperty('display');
-            inviteCardUser.style.display = '';
-        } else {
-            inviteCardUser.style.setProperty('display', 'none', 'important');
-        }
-    }
-
-    // Avatar ring
-    updateHeaderAvatarRing();
-
-    // FAB / quick actions (Only visible on finances tab for users who can manage finances)
-    updateFabVisibility();
-}
-
-function updateFabVisibility() {
-    const isFinances = currentActiveTab === 'finances';
-    const canManage = canManageFinances();
-    const isEvents = currentActiveTab === 'events';
-    const showFinancesFab = isFinances && canManage;
-    const showEventsFab = isEvents && !!currentUser;
-    const showFab = showFinancesFab || showEventsFab;
-
-    const desktopFab = document.getElementById('desktop-fab');
-    const mobileFabItem = document.getElementById('mobile-fab-nav-item');
-    if (mobileFabItem) mobileFabItem.style.display = 'none';
-    const fabMenu = document.getElementById('fabMenu');
-    const financesItems = document.getElementById('fab-finances-items');
-    const eventsItems = document.getElementById('fab-events-items');
-
-    if (financesItems) financesItems.style.display = showFinancesFab ? 'block' : 'none';
-    if (eventsItems) eventsItems.style.display = showEventsFab ? 'block' : 'none';
-
-    if (desktopFab) {
-        desktopFab.style.display = showFab ? 'flex' : 'none';
-        if (!showFab) {
-            desktopFab.classList.remove('active');
-            desktopFab.setAttribute('aria-expanded', 'false');
-        }
-    }
-    if (fabMenu) {
-        if (!showFab) {
-            fabMenu.classList.remove('show');
-            fabMenu.style.display = 'none';
-        } else {
-            fabMenu.style.display = '';
-        }
-    }
-}
-
-async function fetchWithAuth(url, options = {}) {
-    let token;
-    try {
-        token = await auth.currentUser.getIdToken();
-    } catch (tokenError) {
-        throw new Error('Authentifizierung fehlgeschlagen. Bitte erneut anmelden. (' + (tokenError?.code || tokenError?.message || 'Unbekannter Fehler') + ')');
-    }
-    const headers = {
-        ...(options.headers || {}),
-        'Authorization': `Bearer ${token}`
-    };
-    if (options.body && typeof options.body === 'string' && !headers['Content-Type'] && !headers['content-type']) {
-        headers['Content-Type'] = 'application/json';
-    }
-    return fetch(url, { ...options, headers });
-}
-
-// ⚡ Bolt: Centralized date helper
-function getTodayStr() {
-    return new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-}
-
-// ⚡ Bolt: Replaced Array.reduce with a for loop to eliminate callback execution overhead and reduce CPU time
-function calculateTotalPaidLoop(payments) {
-    let sum = 0;
-    for (let i = 0; i < payments.length; i++) {
-        sum += parseFloat(payments[i].amount || 0);
-    }
-    return sum;
-}
-
-// ⚡ Bolt: Helper to normalize and pre-calculate person data for performance
-function preprocessPerson(person) {
-    if (!person.memberSince) person.memberSince = getTodayStr();
-    if (!person.originalMemberSince) person.originalMemberSince = person.memberSince;
-    person.payments = safeList(person.payments);
-
-    // ⚡ Bolt: Ensure totalPaid is accurately cached in memory
-    person.totalPaid = calculateTotalPaidLoop(person.payments);
-
-    // Pre-process history for faster lookup (avoid Date creation in loops)
-    // ⚡ Bolt: Fast string comparison for ISO dates
-    person.statusHistory = safeList(person.statusHistory).sort(
-        (a, b) => a.startDate.localeCompare(b.startDate)
-    );
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}/;
-    person.statusHistory.forEach(entry => {
-        if (entry.startDate && isoDateRegex.test(entry.startDate)) {
-            entry.startTotal = parseInt(entry.startDate.substring(0, 4), 10) * 12 + (parseInt(entry.startDate.substring(5, 7), 10) - 1);
-        } else {
-            const s = new Date(entry.startDate);
-            entry.startTotal = s.getFullYear() * 12 + s.getMonth();
-        }
-
-        if (entry.endDate) {
-            if (isoDateRegex.test(entry.endDate)) {
-                entry.endTotal = parseInt(entry.endDate.substring(0, 4), 10) * 12 + (parseInt(entry.endDate.substring(5, 7), 10) - 1);
-            } else {
-                const e = new Date(entry.endDate);
-                entry.endTotal = e.getFullYear() * 12 + e.getMonth();
-            }
-        } else {
-            entry.endTotal = null;
-        }
-    });
-
-    // Cache memberSince date object
-    person.memberSinceObj = new Date(person.originalMemberSince || person.memberSince);
-    return person;
-}
-
-// ⚡ Bolt: Helper to find status in sorted history efficiently
-function findStatusInHistory(history, idx, currentTotal) {
-    let newIdx = idx;
-    let status = null;
-
-    // Advance to find relevant entry
-    while (newIdx < history.length) {
-        const entry = history[newIdx];
-        // If endTotal is set and we passed it, move to next
-        if (entry.endTotal !== null && currentTotal >= entry.endTotal) {
-            newIdx++;
-        } else {
-            // Found potential candidate (or gap before it)
-            break;
-        }
-    }
-
-    // Check if current candidate covers us
-    if (newIdx < history.length) {
-        const entry = history[newIdx];
-        if (currentTotal >= entry.startTotal) {
-            status = entry.status;
-        }
-    }
-
-    return { status, newIdx };
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    // ⚡ Bolt: Single-pass regex for HTML escaping
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-    return String(text).replace(/[&<>"']/g, m => map[m]);
-}
-
-function formatCurrency(amount) {
-    const val = parseFloat(amount);
-    if (isNaN(val)) return "0,00";
-    // ⚡ Bolt: Using persistent NumberFormat for performance
-    return numberFormatter.format(val);
-}
-
-function validateRequired(ids) {
-    let isValid = true;
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el || !el.value.trim()) {
-            isValid = false;
-            if(el) {
-                el.classList.add('input-error');
-                el.addEventListener('input', () => el.classList.remove('input-error'), {once: true});
-            }
-        }
-    });
-    return isValid;
-}
-
-document.addEventListener('DOMContentLoaded', async () => {
-    initTheme();
-    checkAuth();
-
-
-    const expenseReceiptInput = document.getElementById('expense-receipt');
-    if (expenseReceiptInput) {
-        expenseReceiptInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files.length > 0) {
-                const newFiles = Array.from(e.target.files);
-                window.pendingExpenseFiles = window.pendingExpenseFiles.concat(newFiles);
-                window.renderExpenseReceiptPreview();
-                e.target.value = ''; // Reset input to allow selecting the same file again
-            }
-        });
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    ['payment-date', 'donation-date', 'expense-date', 'change-status-date', 'new-person-start'].forEach(id => {
-        const el = document.getElementById(id);
-        if(el) el.value = today;
-    });
-});
-
-window.switchFinanceSubpage = function(subpage, btn) {
-    const historySubpage = document.getElementById('finances-subpage-history');
-    const membersSubpage = document.getElementById('finances-subpage-members');
-    const historyBtn = document.getElementById('finances-sub-btn-history');
-    const membersBtn = document.getElementById('finances-sub-btn-members');
-
-    if (subpage === 'members') {
-        if (historySubpage) historySubpage.classList.remove('active');
-        if (membersSubpage) membersSubpage.classList.add('active');
-        if (historyBtn) historyBtn.classList.remove('active');
-        if (membersBtn) membersBtn.classList.add('active');
-        if (typeof window.renderPeople === 'function') window.renderPeople();
-    } else {
-        if (membersSubpage) membersSubpage.classList.remove('active');
-        if (historySubpage) historySubpage.classList.add('active');
-        if (membersBtn) membersBtn.classList.remove('active');
-        if (historyBtn) historyBtn.classList.add('active');
-        if (typeof window.renderHistoryTab === 'function') window.renderHistoryTab(true);
-        if (typeof renderStats === 'function') renderStats();
-    }
-};
-
-window.switchTab = function(tabName, btn) {
-    if (tabName !== 'mentoring' && typeof window.closeMentoringChatMobile === 'function') {
-        window.closeMentoringChatMobile(true);
-    }
-    // Handle alias redirects for backward compatibility
-    if (tabName === 'overview' || tabName === 'payment-history') {
-        tabName = 'finances';
-        window.switchFinanceSubpage('history');
-    } else if (tabName === 'people-view') {
-        tabName = 'finances';
-        window.switchFinanceSubpage('members');
-    } else if (tabName === 'user-history' || tabName === 'user-requests') {
-        tabName = 'user-finances';
-    } else if (tabName === 'calendar') {
-        tabName = 'events';
-    }
-
-    if (tabName === 'finances' && !canViewFinances()) {
-        tabName = 'user-overview';
-    } else if (tabName === 'super-admin-settings' && !isSuperAdminUser()) {
-        tabName = 'user-overview';
-    } else if (tabName === 'ai-chat' && (!canAccessAi() || !aiEnabled)) {
-        tabName = 'user-overview';
-    } else if (tabName === 'mentoring' && !canParticipateMentoring() && !canManageMentoring()) {
-        tabName = 'user-overview';
-    }
-
-    currentActiveTab = tabName;
-    updateFabVisibility();
-    updateNavVisibility();
-
-    if (tabName === 'settings' || tabName === 'user-settings') {
-        const canManageCode = canManageRegistrationCode();
-        const inviteCardAdmin = document.getElementById('card-invite');
-        if (inviteCardAdmin) {
-            if (canManageCode) {
-                inviteCardAdmin.style.removeProperty('display');
-                inviteCardAdmin.style.display = '';
-            } else {
-                inviteCardAdmin.style.setProperty('display', 'none', 'important');
-            }
-        }
-        const inviteCardUser = document.getElementById('card-invite-user');
-        if (inviteCardUser) {
-            if (canManageCode) {
-                inviteCardUser.style.removeProperty('display');
-                inviteCardUser.style.display = '';
-            } else {
-                inviteCardUser.style.setProperty('display', 'none', 'important');
-            }
-        }
-        if (typeof updateNotificationPreferencesUI === 'function') {
-            updateNotificationPreferencesUI();
-        }
-        if (typeof window.loadPersonalCalendarFeedSettings === 'function') {
-            window.loadPersonalCalendarFeedSettings();
-        }
-    }
-
-    const allTabs = Array.from(document.querySelectorAll('.tab-content'));
-    const navButtonsDesktop = Array.from(document.querySelectorAll('#desktop-nav [data-tab], .desktop-nav [data-tab]'));
-
-    let currentIndex = -1;
-    let targetIndex = -1;
-
-    // Find indices based on desktop nav
-    navButtonsDesktop.forEach((el, index) => {
-        if (el.classList.contains('active')) currentIndex = index;
-        if (el.dataset.tab === tabName) targetIndex = index;
-    });
-
-    // Hide all tab contents
-    allTabs.forEach(el => {
-        el.classList.remove('active', 'slide-in-right', 'slide-in-left');
-    });
-
-    // Show target tab content
-    const targetContent = document.getElementById(tabName);
-    if (targetContent) {
-        targetContent.classList.add('active');
-
-        if (currentIndex !== -1 && targetIndex !== -1 && currentIndex !== targetIndex) {
-            if (targetIndex < currentIndex) {
-                targetContent.classList.add('slide-in-left');
-            } else {
-                targetContent.classList.add('slide-in-right');
-            }
-        } else {
-            targetContent.classList.add('slide-in-right');
-        }
-    }
-
-    const appContainer = document.querySelector('.container');
-    if (appContainer) {
-        const isAiChatActive = tabName === 'ai-chat';
-        appContainer.classList.toggle('ai-chat-active', isAiChatActive);
-        if (isAiChatActive) {
-            requestAnimationFrame(() => {
-                const inputEl = document.getElementById('ai-chat-input');
-                adjustAiInputHeight(inputEl);
-                const messagesEl = document.getElementById('ai-chat-messages');
-                if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-            });
-        }
-    }
-
-    const allNavButtons = document.querySelectorAll('#desktop-nav [data-tab], #bottom-nav [data-tab], .desktop-nav [data-tab], .bottom-nav [data-tab]');
-    allNavButtons.forEach(el => {
-        const isActive = el.dataset.tab === tabName;
-        if (isActive) {
-            el.classList.add('active');
-            el.setAttribute('aria-selected', 'true');
-        } else {
-            el.classList.remove('active');
-            el.setAttribute('aria-selected', 'false');
-        }
-    });
-
-    if (tabName === 'finances') {
-        const membersActive = document.getElementById('finances-subpage-members')?.classList.contains('active');
-        if (membersActive) {
-            if (typeof window.renderPeople === 'function') window.renderPeople();
-        } else {
-            if (typeof window.renderHistoryTab === 'function') window.renderHistoryTab(true);
-            if (typeof renderStats === 'function') renderStats();
-        }
-    } else if (tabName === 'user-overview') {
-        if (typeof renderUserView === 'function') renderUserView();
-    } else if (tabName === 'super-admin-settings') {
-        if (typeof window.switchSysSettingsTab === 'function') {
-            window.switchSysSettingsTab(currentSysSettingsTab || 'accounts');
-        }
-        if (typeof loadSystemGroups === 'function') {
-            loadSystemGroups();
-        }
-    } else if (tabName === 'mentoring') {
-        if (!window._openingDirectChat) {
-            currentMentoringSubTab = 'chats';
-        }
-        if (typeof window.loadMentoringData === 'function') {
-            window.loadMentoringData();
-        }
-    } else if (tabName === 'events') {
-        if (typeof window.loadEventsData === 'function') {
-            window.loadEventsData();
-        }
-    }
-};
-
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-window.filterPeopleSync = function() {
-    const query = document.getElementById('people-search')?.value.toLowerCase() || '';
-    const items = document.querySelectorAll('.person-wrapper');
-    items.forEach(item => {
-        const nameEl = item.querySelector('.person-name');
-        if (nameEl && nameEl.textContent.toLowerCase().includes(query)) {
-            item.style.display = 'block';
-        } else {
-            item.style.display = 'none';
-        }
-    });
-};
-
-// ⚡ Bolt: Debounce search to prevent synchronous layout thrashing on every keystroke
-// Expected impact: Removes main thread blocking during fast typing, especially for large lists
-window.filterPeople = debounce(function() {
-    window.filterPeopleSync();
-}, 300);
-
-window.filterHistory = debounce(function() {
-    const query = document.getElementById('history-search')?.value.trim() || '';
-    if (transactionSearchQuery !== query) {
-        transactionSearchQuery = query;
-        window.renderHistoryTab(true);
-    }
-}, 300);
-
-window.toggleProfileMenu = function() {
-    const menu = document.getElementById('profileDropdown');
-    const btn = document.querySelector('.profile-btn');
-    if (!menu || !btn) return;
-
-    menu.classList.toggle('show');
-    btn.setAttribute('aria-expanded', menu.classList.contains('show'));
-};
-
-window.openSystemSettingsTab = function() {
-    const menu = document.getElementById('profileDropdown');
-    if (menu) {
-        menu.classList.remove('show');
-        document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
-    }
-    if (isSuperAdminUser()) {
-        switchTab('super-admin-settings', null);
-    }
-};
-
-window.openSettingsTab = function() {
-    const menu = document.getElementById('profileDropdown');
-    if (menu) {
-        menu.classList.remove('show');
-        document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
-    }
-
-    const isAdminView = canViewFinances() || isSystemAdmin();
-    if (isAdminView) {
-        switchTab('settings');
-    } else {
-        switchTab('user-settings');
-    }
-};
-
-window.openHomeTab = function() {
-    const menu = document.getElementById('profileDropdown');
-    if (menu) {
-        menu.classList.remove('show');
-        document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
-    }
-    switchTab('user-overview');
-};
-
-// Close profile menu when clicking outside
-document.addEventListener('click', (e) => {
-    const container = document.querySelector('.profile-menu-container');
-    if (container && !container.contains(e.target)) {
-        const menu = document.getElementById('profileDropdown');
-        if (menu && menu.classList.contains('show')) {
-            menu.classList.remove('show');
-            document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
-        }
-    }
-});
-
-window.toggleFab = function() {
-    if (currentActiveTab === 'events' && !canManageEvents()) {
-        window.openNewEventDetailModal('event');
-        return;
-    }
-
-    const menu = document.getElementById('fabMenu');
-    if (!menu) return;
-
-    menu.classList.toggle('show');
-    const isExpanded = menu.classList.contains('show');
-
-    const fabs = document.querySelectorAll('.nav-fab, .desktop-fab, .mobile-fab');
-    fabs.forEach(fab => {
-        if (isExpanded) {
-            fab.classList.add('active');
-        } else {
-            fab.classList.remove('active');
-        }
-        fab.setAttribute('aria-expanded', isExpanded);
-    });
-};
-
-// Web History API tracking for modals
-window._modalStack = window._modalStack || [];
-window._programmaticBacks = window._programmaticBacks || 0;
-
-window.openModal = (id) => {
-    const modal = document.getElementById(id);
-    if (!modal) return;
-
-    if (id === 'add-expense-modal') {
-        if(window.pendingExpenseFiles) { window.pendingExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
-window.pendingExpenseFiles = [];
-        if (typeof window.renderExpenseReceiptPreview === 'function') {
-            window.renderExpenseReceiptPreview();
-        }
-        const fileInput = document.getElementById('expense-receipt');
-        if (fileInput) fileInput.value = '';
-    }
-
-    // Web History API integration
-    if (!window._modalStack.includes(id)) {
-        window._modalStack.push(id);
-        if (history.state && history.state.isModal) {
-            history.replaceState({ isModal: true, modalId: id }, "");
-        } else {
-            history.pushState({ isModal: true, modalId: id }, "");
-        }
-    }
-
-    // Store current focus on the modal instance itself to handle nesting
-    modal._returnFocusTo = document.activeElement;
-
-    // Dynamically increase z-index for nested modals to guarantee correct stacking order
-    const baseZIndex = 2000;
-    const currentStackDepth = (window._modalStack || []).length;
-    modal.style.zIndex = baseZIndex + (currentStackDepth * 10);
-
-    modal.classList.add('show');
-
-    // Removed automatic focus management to prevent soft keyboard from popping up on mobile devices
-
-    // Escape to close
-    const handleEsc = (e) => {
-        if (e.key === 'Escape') {
-            closeModal(id);
-        }
-    };
-    document.addEventListener('keydown', handleEsc);
-    modal._escHandler = handleEsc;
-};
-
-window.closeModal = (id, fromPopstate = false) => {
-    const modal = document.getElementById(id);
-    if (!modal) return;
-
-    // Web History API integration
-    const stackIndex = window._modalStack ? window._modalStack.indexOf(id) : -1;
-    if (stackIndex > -1) {
-        window._modalStack.splice(stackIndex, 1);
-        if (!fromPopstate) {
-            if (history.state && history.state.isModal) {
-                window._programmaticBacks = (window._programmaticBacks || 0) + 1;
-                history.back();
-            }
-        }
-    }
-
-    modal.classList.remove('show');
-    modal.style.zIndex = ''; // Reset z-index to default CSS/inline style
-
-    if (modal._escHandler) {
-        document.removeEventListener('keydown', modal._escHandler);
-        delete modal._escHandler;
-    }
-
-    const returnFocus = modal._returnFocusTo;
-    if (returnFocus && document.body.contains(returnFocus)) {
-        try { returnFocus.focus(); } catch(e){}
-    }
-    delete modal._returnFocusTo;
-
-    // Re-show the previous modal in the stack if one exists
-    if (window._modalStack && window._modalStack.length > 0) {
-        const prevModalId = window._modalStack[window._modalStack.length - 1];
-        const prevModal = document.getElementById(prevModalId);
-        if (prevModal) {
-            prevModal.classList.add('show');
-        }
-    }
-};
-
-window.closeMultipleModals = (ids) => {
-    let programmaticBacksCount = 0;
-    let finalFocusElement = null;
-
-    ids.forEach(id => {
-        const modal = document.getElementById(id);
-        if (!modal) return;
-
-        if (modal._returnFocusTo && !ids.some(closeId => document.getElementById(closeId)?.contains(modal._returnFocusTo))) {
-            finalFocusElement = modal._returnFocusTo;
-        }
-
-        const stackIndex = window._modalStack ? window._modalStack.indexOf(id) : -1;
-        if (stackIndex > -1) {
-            window._modalStack.splice(stackIndex, 1);
-            programmaticBacksCount++;
-        }
-
-        modal.classList.remove('show');
-        modal.style.zIndex = '';
-
-        if (modal._escHandler) {
-            document.removeEventListener('keydown', modal._escHandler);
-            delete modal._escHandler;
-        }
-        delete modal._returnFocusTo;
-    });
-
-    if (finalFocusElement && document.body.contains(finalFocusElement)) {
-        try { finalFocusElement.focus(); } catch (e) {}
-    }
-
-    if (programmaticBacksCount > 0) {
-        window._programmaticBacks = (window._programmaticBacks || 0) + programmaticBacksCount;
-        history.go(-programmaticBacksCount);
-    }
-
-    // Re-show the previous modal in the stack if one exists
-    if (window._modalStack && window._modalStack.length > 0) {
-        const prevModalId = window._modalStack[window._modalStack.length - 1];
-        const prevModal = document.getElementById(prevModalId);
-        if (prevModal) {
-            prevModal.classList.add('show');
-        }
-    }
-};
-
-// Web History API event listener for system back gesture
-window.addEventListener('popstate', (e) => {
-    if (window._programmaticBacks > 0) {
-        window._programmaticBacks--;
-        return;
-    }
-
-    // Check if mentoring mobile chat is open
-    const mentoringLayout = document.getElementById('mentoring-threads-layout');
-    if (mentoringLayout && mentoringLayout.classList.contains('in-chat') && window.matchMedia('(max-width: 768px)').matches) {
-        window._mentoringChatHistoryPushed = false;
-        if (typeof window.backToMentoringThreadList === 'function') {
-            window.backToMentoringThreadList(true);
-            return;
-        }
-    }
-
-    if (window._modalStack && window._modalStack.length > 0) {
-        // Close the top-most modal
-        const topModal = window._modalStack[window._modalStack.length - 1];
-        closeModal(topModal, true);
-    }
-});
-
-window.addEventListener('hashchange', () => {
-    if (!isAuthenticated) return;
-    const rawHash = (window.location.hash || '').replace(/^#\/?/, '').trim();
-    if (!rawHash) return;
-    let targetTab = rawHash.split('?')[0].split('/')[0];
-    if (targetTab === 'calendar') targetTab = 'events';
-    if (targetTab === 'requests') targetTab = canViewFinances() ? 'finances' : 'user-finances';
-    const targetEl = document.getElementById(targetTab);
-    if (targetEl && targetEl.classList.contains('tab-content')) {
-        window.switchTab(targetTab);
-    }
-});
-
-// Improved Toggle Details
-window.toggleDetails = function(id) {
-    const drawer = document.getElementById(`drawer-${id}`);
-    const header = document.getElementById(`person-item-${id}`);
-    const wrapper = header.closest('.person-wrapper');
-
-    const isOpen = drawer.style.maxHeight;
-
-    document.querySelectorAll('.person-details').forEach(el => {
-        el.style.maxHeight = null;
-        el.classList.remove('active');
-    });
-    document.querySelectorAll('.person-item').forEach(el => {
-        el.classList.remove('active');
-        el.setAttribute('aria-expanded', 'false');
-    });
-    document.querySelectorAll('.person-wrapper').forEach(el => {
-        el.classList.remove('active');
-    });
-
-    if (!isOpen) {
-        // ⚡ Bolt: Lazy Timeline Injection
-        const placeholder = document.getElementById(`timeline-${id}`);
-        if (placeholder && !placeholder.dataset.loaded) {
-            const person = people.find(p => String(p.id) === String(id));
-            if (person) {
-                placeholder.innerHTML = generateTimelineHTML(person);
-                placeholder.dataset.loaded = "true";
-            }
-        }
-
-        header.classList.add('active');
-        header.setAttribute('aria-expanded', 'true');
-        drawer.classList.add('active');
-        drawer.style.maxHeight = drawer.scrollHeight + "px";
-        if(wrapper) wrapper.classList.add('active');
-    }
-};
-
-// --- MATHEMATIK & LOGIK (VEREINFACHT & STABIL) ---
-
-/**
- * Gibt den aktuell gültigen Status einer Person zurück (für heute).
- * @param {Object} person - Die Person
- * @returns {string} - Der aktuell gültige Status
- */
-function getCurrentStatus(person) {
-    const today = new Date();
-    return getStatusForMonth(person, today.getFullYear(), today.getMonth());
-}
-
-/**
- * Gibt den Status einer Person für einen bestimmten Monat zurück.
- * Berücksichtigt die komplette Statushistorie inkl. rückwirkender/zukünftiger Änderungen.
- * @param {Object} person - Die Person
- * @param {number} year - Das Jahr
- * @param {number} month - Der Monat (0-11)
- * @returns {string|null} - Der Status oder null wenn vor Mitgliedschaft
- */
-function getStatusForMonth(person, year, month, sortedHistory = null) {
-    // ⚡ Bolt: Fast integer comparison using pre-calculated values
-    const currentTotal = year * 12 + month;
-
-    // Check if before membership
-    const memberSince = person.memberSinceObj || new Date(person.originalMemberSince || person.memberSince);
-    const memberStartTotal = memberSince.getFullYear() * 12 + memberSince.getMonth();
-
-    if (currentTotal < memberStartTotal) {
-        return null;
-    }
-
-    // Use passed sortedHistory or person.statusHistory (which is now pre-sorted in loadData)
-    const history = sortedHistory || person.statusHistory;
-
-    // Fast path: loop through pre-processed history
-    if (history && history.length > 0 && history[0].startTotal !== undefined) {
-        for (const entry of history) {
-            if (currentTotal >= entry.startTotal && (!entry.endTotal || currentTotal < entry.endTotal)) {
-                return entry.status;
-            }
-        }
-    } else {
-        // Fallback for safety (e.g. if data not normalized)
-        const targetDate = new Date(year, month, 15);
-        const startOfMemberMonth = new Date(memberSince.getFullYear(), memberSince.getMonth(), 1);
-
-        if (targetDate < startOfMemberMonth) return null;
-
-        const fallbackHistory = safeList(person.statusHistory).slice().sort(
-            (a, b) => new Date(a.startDate) - new Date(b.startDate)
-        );
-
-        for (const entry of fallbackHistory) {
-            const start = new Date(entry.startDate);
-            const end = entry.endDate ? new Date(entry.endDate) : null;
-            const startMonth = new Date(start.getFullYear(), start.getMonth(), 1);
-
-            if (targetDate >= startMonth && (!end || targetDate < new Date(end.getFullYear(), end.getMonth(), 1))) {
-                return entry.status;
-            }
-        }
-    }
-
-    // Kein Treffer in Historie? Aktueller Status gilt
-    return person.status;
-}
-
-/**
- * Berechnet die Gesamtkosten für alle Monate seit Mitgliedschaft bis zu einem Zieldatum.
- * @param {Object} person - Die Person
- * @param {Date} untilDate - Bis zu welchem Datum berechnen
- * @returns {number} - Gesamtkosten in Euro
- */
-function calculateTotalCostUntil(person, untilDate) {
-    const memberSince = person.memberSinceObj || new Date(person.originalMemberSince || person.memberSince);
-    let totalCost = 0;
-
-    let year = memberSince.getFullYear();
-    let month = memberSince.getMonth();
-
-    // History is already sorted in loadData
-    const sortedHistory = person.statusHistory;
-
-    // ⚡ Bolt: Optimized linear scan
-    let historyIdx = 0;
-
-    // ⚡ Bolt: Pre-calculate target months for faster integer comparison
-    const targetTotal = untilDate.getFullYear() * 12 + untilDate.getMonth();
-
-    while ((year * 12 + month) <= targetTotal) {
-        const currentTotal = year * 12 + month;
-
-        const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
-        historyIdx = newIdx;
-
-        const status = historyStatus || person.status;
-
-        if (status && settings[status]) {
-            totalCost += settings[status];
-        }
-
-        // Nächster Monat
-        month++;
-        if (month > 11) {
-            month = 0;
-            year++;
-        }
-    }
-
-    return totalCost;
-}
-
-/**
- * Berechnet das "Bezahlt bis" Datum basierend auf einfacher Logik:
- * Geht Monat für Monat durch und zieht den jeweiligen Beitrag ab,
- * bis das Guthaben aufgebraucht ist.
- * @param {Object} person - Die Person
- * @returns {Date|null} - Das Datum bis zu dem bezahlt wurde
- */
-function calculatePaidUntil(person) {
-    return calculatePaymentStatus(person).paidUntil;
-}
-
-/**
- * ⚡ Bolt: New function returning detailed payment status including remaining credit.
- * Used to optimize overdue calculation.
- */
-function calculatePaymentStatus(person) {
-    // ⚡ Bolt: Memoization to avoid costly re-calculation on every render
-    if (person._cache_paymentStatus &&
-        person._cache_version === settingsVersion &&
-        person._cache_totalPaid === person.totalPaid) {
-        return person._cache_paymentStatus;
-    }
-
-    const totalPaid = person.totalPaid || 0;
-    const start = person.memberSinceObj || new Date(person.originalMemberSince || person.memberSince);
-    let result;
-
-    // Fall 1: Keine Zahlungen
-    if (totalPaid === 0) {
-        // Letzter Tag des Vormonats
-        result = {
-            paidUntil: new Date(start.getFullYear(), start.getMonth(), 0),
-            remainingCredit: 0
-        };
-    } else {
-        let remainingCredit = totalPaid;
-
-        let year = start.getFullYear();
-        let month = start.getMonth();
-
-        // History is already sorted in loadData
-        const sortedHistory = person.statusHistory;
-
-        // Maximal 1200 Monate (100 Jahre) in die Zukunft prüfen
-        const maxIterations = 1200;
-        let iterations = 0;
-
-        // ⚡ Bolt: Optimized linear scan through history
-        let historyIdx = 0;
-
-        while (remainingCredit >= 0 && iterations < maxIterations) {
-            // Fast status lookup using pre-calculated total months
-            const currentTotal = year * 12 + month;
-
-            const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
-            historyIdx = newIdx;
-
-            const status = historyStatus || person.status; // Default/Fallback
-            const monthlyRate = status ? (settings[status] || 0) : 0;
-
-            if (monthlyRate > 0) {
-                if (remainingCredit >= monthlyRate) {
-                    remainingCredit -= monthlyRate;
-                } else {
-                    // Nicht genug für den vollen Monat - Vormonat ist bezahlt
-                    break;
-                }
-            }
-
-            // Nächster Monat
-            month++;
-            if (month > 11) {
-                month = 0;
-                year++;
-            }
-            iterations++;
-        }
-
-        // Der letzte vollständig bezahlte Monat ist der Vormonat
-        month--;
-        if (month < 0) {
-            month = 11;
-            year--;
-        }
-
-        // Letzter Tag dieses Monats
-        result = {
-            paidUntil: new Date(year, month + 1, 0),
-            remainingCredit: remainingCredit
-        };
-    }
-
-    // Cache the result
-    person._cache_paymentStatus = result;
-    person._cache_version = settingsVersion;
-    person._cache_totalPaid = totalPaid;
-
-    return result;
-}
-
-/**
- * ⚡ Bolt: Helper to calculate cost for a range. Used by optimized overdue calculation.
- */
-function calculateCostRange(person, startDate, endDate) {
-    let totalCost = 0;
-    let year = startDate.getFullYear();
-    let month = startDate.getMonth();
-    const sortedHistory = person.statusHistory;
-
-    // Safety break
-    let limit = 0;
-
-    // ⚡ Bolt: Optimized linear scan
-    let historyIdx = 0;
-
-    // ⚡ Bolt: Pre-calculate target months for faster integer comparison
-    const targetTotal = endDate.getFullYear() * 12 + endDate.getMonth();
-
-    while ((year * 12 + month) <= targetTotal && limit < 1200) {
-        const currentTotal = year * 12 + month;
-
-        const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
-        historyIdx = newIdx;
-
-        const status = historyStatus || person.status;
-
-        if (status && settings[status]) {
-            totalCost += settings[status];
-        }
-        month++;
-        if (month > 11) { month = 0; year++; }
-        limit++;
-    }
-    return totalCost;
-}
-
-/**
- * Berechnet den verbleibenden Zeitraum und Status für eine Person.
- * @param {Object} person - Die Person
- * @returns {Object} - { text, isOverdue, isSoonDue }
- */
-function calculateTimeRemaining(person, preCalculatedPaidUntil, todayStrArg = null, preCalcCredit = null) {
-    // START CHECK
-    const standingOrders = safeList(person.standingOrders);
-    const todayStr = todayStrArg || getTodayStr();
-
-    let totalSOAmount = 0;
-    const activeSOs = standingOrders.filter(so => {
-         if (so.startDate > todayStr) return false;
-         if (so.endDate && so.endDate < todayStr) return false;
-         return true;
-    });
-    activeSOs.forEach(so => totalSOAmount += parseFloat(so.amount || 0));
-    const hasActiveSO = activeSOs.length > 0;
-
-    const paidUntil = preCalculatedPaidUntil !== undefined ? preCalculatedPaidUntil : calculatePaidUntil(person);
-    if (!paidUntil) {
-        if (hasActiveSO) {
-             return { text: 'Keine Zahlungen', isOverdue: true, isSoonDue: false, isActiveStandingOrder: true };
-        }
-        return { text: 'Keine Zahlungen', isOverdue: true, isSoonDue: false };
-    }
-
-    const today = new Date();
-    // ⚡ Bolt: Calculate monthsDiff using integer math
-    const currentTotal = today.getFullYear() * 12 + today.getMonth();
-    const paidTotal = paidUntil.getFullYear() * 12 + paidUntil.getMonth();
-    const monthsDiff = paidTotal - currentTotal;
-
-    // CALCULATE TRUE MISSING AMOUNT FOR CURRENT MONTH
-    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0); // End of current month
-
-    const startCalc = new Date(paidUntil);
-    startCalc.setDate(1);
-    startCalc.setMonth(startCalc.getMonth() + 1);
-
-    let trueMissingAmount = 0;
-    if (startCalc <= targetDate) {
-        const missingCost = calculateCostRange(person, startCalc, targetDate);
-
-        let creditToUse = preCalcCredit;
-        if (creditToUse === null || creditToUse === undefined) {
-             const paymentStatus = calculatePaymentStatus(person);
-             creditToUse = paymentStatus.remainingCredit;
-        }
-
-        trueMissingAmount = missingCost - (creditToUse || 0);
-        if (trueMissingAmount < 0) trueMissingAmount = 0;
-    }
-
-    if (monthsDiff < 0) {
-        const overdueMonths = Math.abs(monthsDiff);
-
-        // Only allow standing order buffer for the current month (monthsDiff === -1)
-        if (hasActiveSO && overdueMonths === 1) {
-            // Check if the standing order covers the missing amount
-            // Since the standing order will run this month, it will contribute `totalSOAmount`
-            // If trueMissingAmount <= totalSOAmount, then after SO executes, they will owe 0.
-            if (trueMissingAmount <= totalSOAmount) {
-                return {
-                    text: 'Dauerauftrag läuft',
-                    isOverdue: false,
-                    isSoonDue: true, // Mark them as soon due since the standing order is expected this month
-                    isActiveStandingOrder: true
-                };
-            } else {
-                return {
-                    text: 'Zahlung überfällig',
-                    isOverdue: true,
-                    isSoonDue: false,
-                    isActiveStandingOrder: true
-                };
-            }
-        }
-
-        return {
-            text: `${overdueMonths} Monat${overdueMonths !== 1 ? 'e' : ''} überfällig`,
-            isOverdue: true,
-            isSoonDue: false
-        };
-    }
-
-    if (hasActiveSO) {
-        return {
-            text: 'Dauerauftrag läuft',
-            isOverdue: false,
-            isSoonDue: false,
-            isActiveStandingOrder: true
-        };
-    }
-
-    if (monthsDiff === 0) {
-        return { text: 'läuft diesen Monat ab', isOverdue: false, isSoonDue: true };
-    } else if (monthsDiff === 1) {
-        return { text: 'läuft nächsten Monat ab', isOverdue: false, isSoonDue: true };
-    } else {
-        return { text: `noch ${monthsDiff} Monat${monthsDiff !== 1 ? 'e' : ''}`, isOverdue: false, isSoonDue: false };
-    }
-}
-
-/**
- * Berechnet den fehlenden Betrag in Euro bis zum Ende des aktuellen Monats.
- * @param {Object} person - Die Person
- * @param {Date} [preCalcPaidUntil] - Optional: Vorberechnetes "Bezahlt bis" Datum
- * @param {number} [preCalcCredit] - Optional: Vorberechnetes Restguthaben
- * @returns {number} - Fehlender Betrag (0 wenn ausgeglichen oder Guthaben)
- */
-function isPaymentInCurrentMonth(paymentDate, today) {
-    if (!paymentDate) return false;
-    const parsed = new Date(paymentDate);
-    if (Number.isNaN(parsed.getTime())) return false;
-    return parsed.getFullYear() === today.getFullYear() && parsed.getMonth() === today.getMonth();
-}
-
-function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
-    const payments = safeList(person.payments);
-    const soAmount = parseFloat(standingOrder.amount || 0);
-    const soIdPrefix = standingOrder.id ? `auto_${standingOrder.id}_` : null;
-
-    return payments.some((payment) => {
-        if (!isPaymentInCurrentMonth(payment.date, today)) {
-            return false;
-        }
-
-        if (soIdPrefix && typeof payment.id === 'string' && payment.id.startsWith(soIdPrefix)) {
-            return true;
-        }
-
-        const isAutoLike = payment.isAuto === true || String(payment.description || '').includes('(Auto)');
-        const amountMatches = Math.abs(parseFloat(payment.amount || 0) - soAmount) < 0.0001;
-        return isAutoLike && amountMatches;
-    });
-}
-
-/**
- * Berechnet den fehlenden Betrag in Euro bis zum Ende des aktuellen Monats.
- * @param {Object} person - Die Person
- * @param {Date} [preCalcPaidUntil] - Optional: Vorberechnetes "Bezahlt bis" Datum
- * @param {number} [preCalcCredit] - Optional: Vorberechnetes Restguthaben
- * @returns {number} - Fehlender Betrag (0 wenn ausgeglichen oder Guthaben)
- */
-function calculateOverdueAmount(person, preCalcPaidUntil, preCalcCredit, todayStrArg = null) {
-    const today = new Date();
-
-    // Check for active standing orders
-    const standingOrders = safeList(person.standingOrders);
-    const todayStr = todayStrArg || getTodayStr();
-
-    let anticipatedSOAmount = 0;
-    const activeSOs = standingOrders.filter(so => {
-         if (so.startDate > todayStr) return false;
-         if (so.endDate && so.endDate < todayStr) return false;
-         return true;
-    });
-
-    activeSOs.forEach(so => {
-        // Only consider it an anticipated buffer if it hasn't been executed yet this month
-        if (!hasStandingOrderPaidThisMonth(person, so, today)) {
-            anticipatedSOAmount += parseFloat(so.amount || 0);
-        }
-    });
-    const hasActiveSO = activeSOs.length > 0;
-
-    // ALWAYS calculate up to the end of the current month
-    const targetDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-    let finalMissing = 0;
-
-    // ⚡ Bolt: Optimized path avoiding full history iteration
-    if (preCalcPaidUntil) {
-        // Start calculation from the month AFTER paidUntil
-        const startCalc = new Date(preCalcPaidUntil);
-        startCalc.setDate(1);
-        startCalc.setMonth(startCalc.getMonth() + 1);
-
-        if (startCalc <= targetDate) {
-             const missingCost = calculateCostRange(person, startCalc, targetDate);
-             const credit = preCalcCredit || 0;
-             finalMissing = missingCost - credit;
-        }
-    } else {
-        const totalCost = calculateTotalCostUntil(person, targetDate);
-        const totalPaid = person.totalPaid || 0;
-        finalMissing = totalCost - totalPaid;
-    }
-
-    if (finalMissing < 0) finalMissing = 0;
-
-    // If the user has active standing orders scheduled for this month,
-    // we subtract that anticipated payment from the total missing amount
-    // so it doesn't show as an overdue sum yet.
-    if (hasActiveSO && finalMissing > 0) {
-        finalMissing = finalMissing - anticipatedSOAmount;
-    }
-
-    return finalMissing > 0 ? finalMissing : 0;
-}
-
-/**
- * Generiert HTML für die Statushistorie einer Person.
- * @param {Object} person - Die Person
- * @returns {string} - HTML String
- */
-function generateStatusHistoryHTML(person) {
-    // ⚡ Bolt: Fast string comparison for ISO dates
-    const history = safeList(person.statusHistory).slice().sort(
-        (a, b) => b.startDate.localeCompare(a.startDate)
-    );
-
-    // Aktueller Status hinzufügen (offen)
-    const currentStatusStart = history.length > 0
-        ? history[0].endDate
-        : (person.originalMemberSince || person.memberSince);
-
-    const statusLabels = getStatusLabels(true);
-
-    let html = `
-        <div class="trans-item" style="background: rgba(6, 182, 212, 0.05); border: 1px solid rgba(6, 182, 212, 0.2);">
-            <div class="trans-left">
-                <span style="font-weight:600;">${escapeHtml(statusLabels[person.status] || person.status)}</span>
-                <div class="trans-meta">Seit ${formatDateFast(currentStatusStart)} • Aktuell</div>
-            </div>
-            <div style="font-size:0.75rem; color:var(--success); font-weight:600;">AKTIV</div>
-        </div>
-    `;
-
-    if (history.length === 0) {
-        return html;
-    }
-
-    html += history.map(entry => {
-        const start = formatDateFast(entry.startDate);
-        const end = entry.endDate ? formatDateFast(entry.endDate) : 'Offen';
-        const rate = settings[entry.status] || 0;
-
-        return `
-            <div class="trans-item">
-                <div class="trans-left">
-                    <span>${escapeHtml(statusLabels[entry.status] || entry.status)}</span>
-                    <div class="trans-meta">${start} – ${end}</div>
-                </div>
-                <div style="font-size:0.8rem; color:var(--text-secondary);">${formatCurrency(rate)}€/Monat</div>
-            </div>
-        `;
-    }).join('');
-
-    return html;
-}
-
-// --- ENDE MATHEMATIK & LOGIK ---
-
-function parseUtcDate(str) {
-    if (!str) return new Date();
-    if (str instanceof Date) return new Date(str.getTime());
-    const s = String(str).trim().slice(0, 10);
-    const parts = s.split('-').map(Number);
-    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-    }
-    return new Date(str);
-}
-
-function checkAndExecuteStandingOrders(person) {
-    if (!person.standingOrders || !Array.isArray(person.standingOrders) || person.standingOrders.length === 0) return null;
-
-    let modified = false;
-    const payments = safeList(person.payments);
-    const standingOrders = safeList(person.standingOrders);
-
-    const now = new Date();
-    const limitDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
-
-    // ⚡ Bolt: Build a Set for O(1) payment ID lookups, avoiding O(N) array scans inside the loop
-    const existingPaymentIds = new Set(payments.map(p => p.id));
-    const updatedStandingOrders = [];
-
-    for (const so of standingOrders) {
-        let soModified = false;
-        let currentSO = { ...so };
-        const startDate = parseUtcDate(currentSO.startDate);
-        const dayOfMonth = startDate.getUTCDate();
-        let lastAuto = currentSO.lastAutoPayment ? parseUtcDate(currentSO.lastAutoPayment) : null;
-
-        let soEndDate = null;
-        let isExpired = false;
-
-        if (currentSO.endDate) {
-            const end = parseUtcDate(currentSO.endDate);
-            end.setUTCHours(23, 59, 59, 999);
-            soEndDate = end;
-
-            if (end < limitDate) {
-                isExpired = true;
-            }
-        }
-
-        let nextDueDate;
-        if (!lastAuto) {
-            nextDueDate = new Date(startDate);
-        } else {
-            nextDueDate = new Date(lastAuto);
-            nextDueDate.setUTCDate(1);
-            nextDueDate.setUTCMonth(nextDueDate.getUTCMonth() + 1);
-            const maxDays = new Date(Date.UTC(nextDueDate.getUTCFullYear(), nextDueDate.getUTCMonth() + 1, 0)).getUTCDate();
-            nextDueDate.setUTCDate(Math.min(dayOfMonth, maxDays));
-        }
-
-        let safety = 0;
-        while (safety < 1200) {
-            if (soEndDate && nextDueDate > soEndDate) {
-                break;
-            }
-
-            let executionDate = new Date(nextDueDate);
-            const dayOfWeek = executionDate.getUTCDay();
-            if (dayOfWeek === 6) { // Saturday -> Monday
-                executionDate.setUTCDate(executionDate.getUTCDate() + 2);
-            } else if (dayOfWeek === 0) { // Sunday -> Monday
-                executionDate.setUTCDate(executionDate.getUTCDate() + 1);
-            }
-
-            if (executionDate > limitDate) {
-                break;
-            }
-
-            const baseDateStr = nextDueDate.toISOString().split('T')[0];
-            const executionDateStr = executionDate.toISOString().split('T')[0];
-            const paymentId = `auto_${currentSO.id}_${baseDateStr}`;
-
-            // ⚡ Bolt: O(1) lookup instead of O(N) payments.some(...)
-            if (!existingPaymentIds.has(paymentId)) {
-                payments.push({
-                    id: paymentId,
-                    amount: parseFloat(currentSO.amount),
-                    date: executionDateStr,
-                    description: (currentSO.note || 'Dauerauftrag') + ' (Auto)',
-                    isAuto: true
-                });
-                existingPaymentIds.add(paymentId); // Update Set with new ID
-                modified = true;
-                soModified = true;
-            }
-
-            // Move pointer forward
-            lastAuto = new Date(nextDueDate);
-
-            nextDueDate.setUTCDate(1);
-            nextDueDate.setUTCMonth(nextDueDate.getUTCMonth() + 1);
-            const maxDays = new Date(Date.UTC(nextDueDate.getUTCFullYear(), nextDueDate.getUTCMonth() + 1, 0)).getUTCDate();
-            nextDueDate.setUTCDate(Math.min(dayOfMonth, maxDays));
-            safety++;
-        }
-
-        if (soModified && lastAuto) {
-            currentSO.lastAutoPayment = lastAuto.toISOString().split('T')[0];
-        }
-
-        if (isExpired) {
-            // Remove from list if expired
-            modified = true;
-        } else {
-            updatedStandingOrders.push(currentSO);
-            if (soModified) modified = true;
-        }
-    }
-
-    if (modified) {
-        return { ...person, payments, standingOrders: updatedStandingOrders };
-    }
-    return null;
-}
-
-let requests = [];
-
-function updateInviteCodeDisplay(code) {
-    const canManageCode = canManageRegistrationCode();
-    const safeCode = canManageCode ? (code || '------') : '';
-    const codeInput = document.getElementById('admin-invite-code');
-    if (codeInput) codeInput.value = safeCode;
-    const codeDisplay = document.getElementById('admin-invite-code-display');
-    if (codeDisplay) codeDisplay.textContent = safeCode || '------';
-
-    const userCodeInput = document.getElementById('user-invite-code');
-    if (userCodeInput) userCodeInput.value = safeCode;
-    const userCodeDisplay = document.getElementById('user-invite-code-display');
-    if (userCodeDisplay) userCodeDisplay.textContent = safeCode || '------';
-
-    const inviteCardAdmin = document.getElementById('card-invite');
-    if (inviteCardAdmin) {
-        if (canManageCode) {
-            inviteCardAdmin.style.removeProperty('display');
-            inviteCardAdmin.style.display = '';
-        } else {
-            inviteCardAdmin.style.setProperty('display', 'none', 'important');
-        }
-    }
-    const inviteCardUser = document.getElementById('card-invite-user');
-    if (inviteCardUser) {
-        if (canManageCode) {
-            inviteCardUser.style.removeProperty('display');
-            inviteCardUser.style.display = '';
-        } else {
-            inviteCardUser.style.setProperty('display', 'none', 'important');
-        }
-    }
-}
-window.updateInviteCodeDisplay = updateInviteCodeDisplay;
-
-async function loadData(silent = false) {
-    // Ladebildschirm anzeigen
-    const loader = document.getElementById('loading-overlay');
-    if(loader && !silent) loader.style.display = 'flex';
-
-    const dbRef = ref(db);
-
-    try {
-        if (isAuthenticated) {
-            await refreshCurrentUser();
-        }
-        const hasFinances = canViewFinances();
-        const isSysAdmin = isSystemAdmin();
-        const canManage = canManageFinances();
-
-        if (!hasFinances && !isSysAdmin) {
-            advancedConfigLoaded = false;
-            advancedConfigAppName = null;
-            // 1. Fetch Settings
-            try {
-                const sSnap = await get(child(dbRef, 'settings'));
-                if (sSnap.exists()) {
-                    settings = sSnap.val();
-                    settingsVersion++;
-                }
-            } catch (settingsErr) {
-                console.warn("Could not fetch settings:", settingsErr);
-            }
-
-            // 2. Fetch User's Person Entry (Securely with Fallback)
-            const peopleRef = child(dbRef, 'people');
-            let peopleList = [];
-
-            try {
-                // Try by UID first (Requires Index)
-                let q = query(peopleRef, orderByChild('uid'), equalTo(currentUser.uid));
-                let pSnap = await get(q);
-
-                if (pSnap.exists()) {
-                    peopleList = safeList(pSnap.val());
-                }
-
-                if (peopleList.length === 0) {
-                    // Fallback: Try by Name (Requires Index)
-                    const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || '';
-                    if (fullName) {
-                        q = query(peopleRef, orderByChild('name'), equalTo(fullName));
-                        pSnap = await get(q);
-
-                        if (pSnap.exists()) {
-                            const val = pSnap.val();
-                            // Link the first match to this UID
-                            const key = Object.keys(val)[0];
-                            if (key) {
-                                try {
-                                    await update(child(peopleRef, key), { uid: currentUser.uid });
-                                } catch (linkErr) {
-                                    console.warn("Auto-link update failed:", linkErr);
-                                }
-                                const p = val[key];
-                                p.uid = currentUser.uid;
-                                peopleList = [p];
-                            }
-                        }
-                    }
-                }
-            } catch (queryErr) {
-                console.warn("Index missing, falling back to client-side filtering:", queryErr);
-                try {
-                    const pSnap = await get(peopleRef);
-                    const allPeople = safeList(pSnap.val());
-                    const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() || (currentUser.name || '').toLowerCase();
-
-                    // Find by UID or Name
-                    peopleList = allPeople.filter(p => p.uid === currentUser.uid || (p.name && p.name.toLowerCase() === fullName));
-
-                    // Auto-link if found by name but no UID
-                    if (peopleList.length > 0) {
-                        const p = peopleList[0];
-                        if (!p.uid && p.name && p.name.toLowerCase() === fullName) {
-                            p.uid = currentUser.uid;
-                            if(pSnap.exists()) {
-                                const val = pSnap.val();
-                                const key = Object.keys(val).find(k => val[k].id === p.id || val[k].personKey === p.id);
-                                if(key) {
-                                    try {
-                                        await update(child(peopleRef, key), { uid: currentUser.uid });
-                                    } catch (linkErr) {
-                                        console.warn("Auto-link update failed:", linkErr);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.warn("Could not load people:", err);
-                }
-            }
-            people = peopleList.filter(p => !p.isDeleted);
-
-            // 3. Fetch User's Requests
-            const requestsRef = child(dbRef, 'requests');
-            let rSnap = null;
-            try {
-                const reqQuery = query(requestsRef, orderByChild('userId'), equalTo(currentUser.uid));
-                rSnap = await get(reqQuery);
-            } catch (reqErr) {
-                console.warn("Request index missing, fetching all requests:", reqErr);
-                try {
-                    rSnap = await get(requestsRef);
-                } catch (rErr2) {
-                    console.warn("Could not get requests:", rErr2);
-                    rSnap = null;
-                }
-            }
-
-            const allRequests = rSnap && rSnap.exists() ? safeList(rSnap.val()) : [];
-            requests = allRequests.filter(r => r.userId === currentUser.uid);
-        } else if (!hasFinances && isSysAdmin) {
-            // Pure System Admin (no finance permissions assigned)
-            advancedConfigLoaded = false;
-            advancedConfigAppName = null;
-            const [pData, sData, uData] = await Promise.all([
-                apiGet('people').catch(() => null),
-                apiGet('settings').catch(() => null),
-                apiGet('users').catch(() => null)
-            ]);
-
-            people = safeList(pData).filter(p => !p.isDeleted);
-            donations = [];
-            expenses = [];
-            requests = [];
-
-            if (sData) {
-                settings = sData;
-                settingsVersion++;
-            }
-            users = uData
-                ? Object.entries(uData).map(([uid, data]) => ({ ...data, uid }))
-                : [];
-        } else {
-            advancedConfigLoaded = false;
-            advancedConfigAppName = null;
-            // Admin with finance view
-            const [pData, sData, rData, uData] = await Promise.all([
-                apiGet('people').catch(() => null),
-                apiGet('settings').catch(() => null),
-                apiGet('requests').catch(() => null),
-                apiGet('users').catch(() => null)
-            ]);
-
-            people = safeList(pData).filter(p => !p.isDeleted);
-            donations = [];
-            expenses = [];
-            requests = safeList(rData);
-
-            if (sData) {
-                settings = sData;
-                settingsVersion++;
-            }
-            users = uData
-                ? Object.entries(uData).map(([uid, data]) => {
-                    const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
-                    return {
-                        ...data,
-                        uid,
-                        memberSince: data.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '',
-                        status: data.status || linkedPerson?.status || linkedPerson?.data?.status || ''
-                    };
-                })
-                : [];
-        }
-
-        // Conditionally fetch invite code only for users with manage_registration_code permission
-        if (canManageRegistrationCode()) {
-            try {
-                const cData = await apiGet('system/inviteCode').catch(() => null);
-                if (cData) {
-                    updateInviteCodeDisplay(cData);
-                }
-            } catch (cErr) {
-                console.warn("Could not fetch invite code:", cErr);
-            }
-        } else {
-            updateInviteCodeDisplay('');
-            const inviteCardAdmin = document.getElementById('card-invite');
-            if (inviteCardAdmin) inviteCardAdmin.style.setProperty('display', 'none', 'important');
-            const inviteCardUser = document.getElementById('card-invite-user');
-            if (inviteCardUser) inviteCardUser.style.setProperty('display', 'none', 'important');
-        }
-
-        // Populate User View basic info for all users
-        const userNameDisplay = document.getElementById('user-name-display');
-        if (userNameDisplay) {
-            userNameDisplay.innerText = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || '';
-        }
-        const userEmailDisplay = document.getElementById('user-email-display');
-        if (userEmailDisplay) {
-            userEmailDisplay.innerText = currentUser.email || '';
-        }
-
-        // Fetch AI enabled state for anyone who has AI access
-        if (canAccessAi()) {
-            fetchWithAuth(`${config.apiBaseUrl}/admin/ai-status`).then(r => {
-                if (r.ok) return r.json();
-            }).then(data => {
-                if (data) {
-                    aiEnabled = !!data.enabled;
-                    updateAiNavVisibility();
-                }
-            }).catch(() => {});
-        }
-
-        // Update nav bar visibility based on user privileges
-        updateNavVisibility();
-
-        if (isAuthenticated && typeof window.loadMentoringThreads === 'function' && (canParticipateMentoring() || canManageMentoring())) {
-            window.loadMentoringThreads(false).catch(() => {});
-        }
-
-        if (isAuthenticated && typeof window.loadEventsData === 'function') {
-            window.loadEventsData().catch(() => {});
-        }
-
-        // Respect URL hash if present (e.g. from push notifications /#events or /#calendar)
-        if (window.location.hash) {
-            const rawHash = (window.location.hash || '').replace(/^#\/?/, '').trim();
-            let targetTab = rawHash.split('?')[0].split('/')[0];
-            if (targetTab === 'calendar') targetTab = 'events';
-            if (targetTab === 'requests') targetTab = canViewFinances() ? 'finances' : 'user-finances';
-            const targetEl = document.getElementById(targetTab);
-            if (targetEl && targetEl.classList.contains('tab-content')) {
-                switchTab(targetTab);
-            }
-        } else {
-            // Default to Home page (user-overview) only if no tab is currently active
-            const hasActiveTab = document.querySelector('.tab-content.active');
-            if (!hasActiveTab) {
-                switchTab('user-overview');
-            }
-        }
-
-        // Normalize people data
-        people.forEach(person => preprocessPerson(person));
-
-        // Check standing orders (canManage only to prevent conflicts)
-        if (canManageFinances()) {
-            const updates = [];
-            people.forEach(person => {
-                const result = checkAndExecuteStandingOrders(person);
-                if (result) {
-                    const newTotal = calculateTotalPaidLoop(safeList(result.payments));
-                    updates.push(update(ref(db, 'people/' + person.id), {
-                        payments: result.payments,
-                        standingOrders: result.standingOrders,
-                        totalPaid: newTotal
-                    }));
-                    Object.assign(person, result, { totalPaid: newTotal });
-                }
-            });
-            if (updates.length > 0) await Promise.all(updates);
-        }
-
-        if (!silent) {
-            await renderAll();
-        } else {
-            await updateActiveViews();
-        }
-    } catch (err) {
-        console.error("Ladefehler:", err);
-        alert(t('alert_error_loading_data', 'Fehler beim Laden der Daten. Bitte Seite neu laden.'));
-    } finally {
-        if(loader && !silent) loader.style.display = 'none';
-    }
-}
-
-async function updateActiveViews() {
-    renderUserView();
-    const hasFinances = canViewFinances();
-    const isSysAdmin = isSystemAdmin();
-
-    if (hasFinances) {
-        renderPeople();
-        await renderStats();
-        renderAdminRequests();
-        renderUnlinkedUsers();
-    }
-    if (isSysAdmin) {
-        await loadSystemGroups();
-        renderSuperAdminUserManagement();
-    }
-    updateNavVisibility();
-}
-
-async function renderAll() {
-    renderUserView();
-    const hasFinances = canViewFinances();
-    const isSysAdmin = isSystemAdmin();
-
-    if (hasFinances) {
-        renderPeople();
-        await renderStats();
-        renderAdminRequests();
-        renderUnlinkedUsers();
-    }
-    if (settings) {
-        if (document.getElementById('rate-vollverdiener')) document.getElementById('rate-vollverdiener').value = settings.vollverdiener || 0;
-        if (document.getElementById('rate-geringverdiener')) document.getElementById('rate-geringverdiener').value = settings.geringverdiener || 0;
-        if (document.getElementById('rate-keinverdiener')) document.getElementById('rate-keinverdiener').value = settings.keinverdiener || 0;
-    }
-
-    if (typeof updateNotificationPreferencesUI === 'function') {
-        updateNotificationPreferencesUI();
-    }
-    if (typeof ensurePushNotificationSubscription === 'function') {
-        ensurePushNotificationSubscription();
-    }
-    if (isSysAdmin) {
-        await loadSystemGroups();
-        await renderSuperAdminTools();
-    }
-    updateNavVisibility();
-}
-
-async function renderSuperAdminTools() {
-    const sysSettingsBtn = document.getElementById('profile-sys-settings-btn');
-    const sysNavBtnDesktop = document.getElementById('admin-sys-nav-btn-desktop');
-    const sysNavBtnBottom = document.getElementById('admin-sys-nav-btn');
-    const isAdmin = isSuperAdminUser();
-
-    if (sysNavBtnDesktop) sysNavBtnDesktop.style.display = isAdmin ? 'block' : 'none';
-    if (sysNavBtnBottom) sysNavBtnBottom.style.display = isAdmin ? 'flex' : 'none';
-    if (sysSettingsBtn) sysSettingsBtn.style.display = isAdmin ? '' : 'none';
-
-    if (!isAdmin) {
-        return;
-    }
-
-    renderAccountsTab();
-    await renderSuperAdminPaymentEditor();
-    if (!advancedConfigLoaded) {
-        loadAdvancedSystemConfig();
-    }
-}
-
-function renderAdminRequests() {
-    const pending = requests.filter(r => r.status === 'pending');
-    const target = document.getElementById('admin-requests-inline');
-    if (!target) return;
-
-    if (pending.length === 0) {
-        target.innerHTML = '';
-        return;
-    }
-
-    const statusLabels = getStatusLabels(false);
-
-    const grouped = pending.reduce((acc, req) => {
-        const key = req.personName || 'Unbekannt';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(req);
-        return acc;
-    }, {});
-
-    const renderReq = (req) => {
-        let typeLabel = '';
-        let typeIcon = '';
-        let details = '';
-
-        if (req.type === 'payment') {
-            typeLabel = 'Zahlung';
-            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>';
-            details = `${formatCurrency(req.data.amount)} € am ${formatDateFast(req.data.date)}`;
-            if (req.data.note) details += `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(req.data.note)}<span style="opacity: 0.7;">"</span></small>`;
-        } else if (req.type === 'status') {
-            typeLabel = 'Statusänderung';
-            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-            details = `Neu: <strong>${escapeHtml(statusLabels[req.data.newStatus] || req.data.newStatus)}</strong> ab ${formatDateFast(req.data.date)}`;
-        } else if (req.type === 'expense') {
-            typeLabel = 'Ausgabe';
-            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 14h-8"/><path d="M16 18h-8"/><path d="M16 10h-8"/></svg>';
-            details = `${formatCurrency(req.data.amount)} € für "${escapeHtml(req.data.description)}" am ${formatDateFast(req.data.date)}`;
-            if (req.data.receipt) {
-                const safeReceipt = escapeHtml(req.data.receipt);
-                const safeId = escapeHtml(req.id);
-                details += `<div id="receipt-container-${safeId}" style="margin-top:10px;">
-                    <button class="btn btn-small" style="background: transparent; border: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 6px;" data-receipt="${safeReceipt}" data-id="${safeId}" onclick="viewRequestReceipt(this.dataset.receipt, 'receipt-container-' + this.dataset.id)">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                        Beleg anzeigen
-                    </button>
-                </div>`;
-            }
-        } else if (req.type === 'standing_order') {
-            typeLabel = 'Dauerauftrag';
-            typeIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
-            details = `${formatCurrency(req.data.amount)} € / Monat<br>Start: ${formatDateFast(req.data.date)}`;
-            if (req.data.note) details += `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(req.data.note)}<span style="opacity: 0.7;">"</span></small>`;
-        }
-
-        const canApprove = canManageFinances() || isOwnerUser();
-
-        return `
-            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; align-items:center;">
-                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text);">
-                        ${typeIcon}
-                        <span>${typeLabel}</span>
-                    </div>
-                    <span style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; background: var(--surface-alt); padding: 4px 8px; border-radius: 12px;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
-                </div>
-                <div style="margin-bottom:16px; font-size: 0.95rem; color: var(--text); line-height: 1.5;">${details}</div>
-                ${canApprove ? `
-                <div style="display:flex; gap:10px;">
-                    <button class="btn btn-primary btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; border-radius: 12px; padding: 8px 0;" data-id="${escapeHtml(req.id)}" onclick="approveRequest(this.dataset.id)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                        Genehmigen
-                    </button>
-                    <button class="btn btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; background: transparent; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 8px 0;" data-id="${escapeHtml(req.id)}" onclick="rejectRequest(this.dataset.id)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                        Ablehnen
-                    </button>
-                </div>
-                ` : ''}
-            </div>
-        `;
-    };
-
-    const groupBlocks = Object.entries(grouped)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([personName, items]) => {
-            const sorted = items.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            return `
-                <div style="margin-top: 16px;">
-                    <div style="font-weight: 600; margin-bottom: 10px; color: var(--text); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--secondary);"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                        ${escapeHtml(personName)}
-                    </div>
-                    ${sorted.map(renderReq).join('')}
-                </div>
-            `;
-        })
-        .join('');
-
-    target.innerHTML = `
-        <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header" style="display: flex; align-items: center; gap: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; color: var(--text-secondary);">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                Offene Anfragen (${pending.length})
-            </div>
-            <div class="card-body" style="padding-top: 10px;">${groupBlocks}</div>
-        </div>
-    `;
-}
-
-function renderUnlinkedUsers() {
-    const target = document.getElementById('unlinkedUsers');
-    if (!target) return;
-
-    // ⚡ Bolt: Use a Set for O(1) lookups instead of O(N*M) nested loops
-    const linkedUids = new Set(people.filter(p => p.uid).map(p => p.uid));
-    const unlinked = users.filter(u => !linkedUids.has(u.uid));
-    const availablePeople = people.filter(p => !p.uid);
-
-    if (unlinked.length === 0 || !canManageFinances()) {
-        target.innerHTML = '';
-        return;
-    }
-
-    const options = availablePeople.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-
-    const rows = unlinked.map(u => {
-        return `
-            <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:200px;">
-                    <div style="font-weight:700;">${escapeHtml(u.firstName || '?')} ${escapeHtml(u.lastName || '')}</div>
-                    <div style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(u.email || '')}</div>
-                </div>
-                <select id="link-select-${u.uid}" class="form-select" style="flex:1; min-width:220px;">
-                    <option value="">${t('unlinked_select_person', 'Person auswählen')}</option>
-                    ${options}
-                </select>
-                <button class="btn btn-primary btn-small" style="width:auto;" data-uid="${escapeHtml(u.uid)}" onclick="assignUserToPerson(this.dataset.uid)">${t('unlinked_assign_btn', 'Zuordnen')}</button>
-            </div>
-        `;
-    }).join('');
-
-    const unlinkedTitle = t('unlinked_title', '🧩 Nicht zugeordnete Benutzer ({count})').replace('{count}', unlinked.length);
-    target.innerHTML = `
-        <div class="card" style="margin-bottom:20px;">
-            <div class="card-header">${unlinkedTitle}</div>
-            <div class="card-body">
-                ${rows}
-            </div>
-        </div>
-    `;
-}
-
-window.assignUserToPerson = async (uid) => {
-    const select = document.getElementById(`link-select-${uid}`);
-    if (!select) return;
-    const personId = select.value;
-    if (!personId) { alert(t('unlinked_alert_select_person', 'Bitte eine Person auswählen.')); return; }
-
-    const person = people.find(p => String(p.id) === String(personId));
-    if (!person) { alert(t('toast_person_not_found', 'Person nicht gefunden.')); return; }
-
-    try {
-        await update(ref(db, 'people/' + personId), { uid });
-        person.uid = uid;
-        showToast('Zuordnung gespeichert');
-        renderUnlinkedUsers();
-        renderPeople();
-    } catch (err) {
-        console.error('Fehler beim Zuordnen:', err);
-        alert(t('unlinked_alert_failed', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen.'));
-    }
-};
-
-let currentSysSettingsTab = 'accounts';
-let accountsSearchQuery = '';
-
-window.switchSysSettingsTab = function(tabName) {
-    currentSysSettingsTab = tabName;
-    const tabBtns = {
-        accounts: document.getElementById('sys-subtab-btn-accounts'),
-        config: document.getElementById('sys-subtab-btn-config'),
-        ai: document.getElementById('sys-subtab-btn-ai'),
-        events: document.getElementById('sys-subtab-btn-events')
-    };
-    const panels = {
-        accounts: document.getElementById('sys-panel-accounts'),
-        config: document.getElementById('sys-panel-config'),
-        ai: document.getElementById('sys-panel-ai'),
-        events: document.getElementById('sys-panel-events')
-    };
-
-    Object.keys(tabBtns).forEach(k => {
-        if (tabBtns[k]) tabBtns[k].classList.toggle('active', k === tabName);
-        if (panels[k]) panels[k].style.display = k === tabName ? '' : 'none';
-    });
-
-    if (tabName === 'accounts') {
+// --- System settings tabs & accounts table ---
+const SYS_TAB_LOADERS = {
+    accounts: () => {
         loadSystemGroups();
         renderAccountsTab();
-    } else if (tabName === 'config') {
-        if (!advancedConfigLoaded) loadAdvancedSystemConfig();
-    } else if (tabName === 'ai') {
-        loadAiConfig();
-    } else if (tabName === 'events') {
-        window.loadEventSystemSettings();
-    }
+    },
+    config: () => { if (!advancedConfigLoaded) loadAdvancedSystemConfig(); },
+    ai: () => loadAiConfig(),
+    events: () => loadEventSystemSettings()
 };
 
-window.filterAccountsList = function() {
-    const input = document.getElementById('accounts-search');
-    accountsSearchQuery = (input ? input.value : '').toLowerCase().trim();
-    renderAccountsTab();
-};
+function switchSysSettingsTab(tabName) {
+    currentSysSettingsTab = tabName;
+    Object.keys(SYS_TAB_LOADERS).forEach(key => {
+        $(`sys-subtab-btn-${key}`)?.classList.toggle('active', key === tabName);
+        show(`sys-panel-${key}`, key === tabName);
+    });
+    SYS_TAB_LOADERS[tabName]?.();
+}
+
+function renderAccountRow(u) {
+    const name = fullName(u) || 'Unbekannt';
+    const uid = escapeHtml(u.uid);
+    const isOwner = u.owner === true || u.superAdmin === true;
+    const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
+    const linked = findLinkedPerson(u.uid);
+    const memberSince = u.memberSince || linked?.memberSince || linked?.data?.memberSince || '';
+    const groups = Array.isArray(u.groupObjects) && u.groupObjects.length > 0
+        ? u.groupObjects
+        : (Array.isArray(u.groups) ? u.groups.map(gid => findGroup(gid) || { id: gid, name: gid, permissions: [] }) : []);
+    const groupBadges = groups.length > 0
+        ? groups.map(g => `<span class="nc-badge-group" style="margin: 2px;">${escapeHtml(g.name)}</span>`).join(' ')
+        : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('modal_assign_group_title', 'Zuweisen')}</span>`;
+    const pays = u.pays !== false;
+    return `
+        <tr data-uid="${uid}">
+            <td>
+                <div class="nc-user-cell">
+                    <div class="nc-avatar ${getAvatarRingClass(u)}" style="position: relative; overflow: hidden;">
+                        <span style="user-select: none;">${escapeHtml(initials)}</span>
+                        <img src="${API}/profile/picture/${u.uid}" alt="${escapeHtml(name)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'">
+                    </div>
+                    <div class="nc-user-info">
+                        <div class="nc-user-name">
+                            <span>${escapeHtml(name)}</span>
+                            ${isOwner ? `<span class="nc-badge-owner">👑 ${t('badge_owner', 'Eigentümer')}</span>` : ''}
+                            ${u.isClaimed === false ? `<span class="nc-badge-group" style="background: rgba(245, 158, 11, 0.12); color: #d97706; border-color: rgba(245, 158, 11, 0.3); font-size: 0.72rem; padding: 2px 6px;">⏳ ${t('badge_unclaimed', 'Nicht registriert')}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td style="color: var(--text-secondary); font-size: 0.88rem;">${u.email ? escapeHtml(u.email) : `<span style="opacity: 0.5; font-style: italic;">${t('accounts_no_login', 'Kein Login hinterlegt')}</span>`}</td>
+            <td style="cursor: pointer;" onclick="window.openAssignGroupModal('${uid}')" title="${t('modal_assign_group_title', 'Gruppen zuweisen')}">
+                ${groupBadges}
+            </td>
+            <td>
+                <input type="date" class="form-input" style="padding: 3px 6px; font-size: 0.82rem; height: 30px; border-radius: 8px; width: 130px; margin: 0;" value="${escapeHtml(memberSince)}" onchange="window.updateUserMemberSince('${uid}', this.value)">
+            </td>
+            <td>
+                <select class="nc-select-pays" onchange="window.toggleUserPays('${uid}', this.value === 'yes')">
+                    <option value="yes" ${pays ? 'selected' : ''}>${t('option_yes', 'Ja')}</option>
+                    <option value="no" ${!pays ? 'selected' : ''}>${t('option_no', 'Nein')}</option>
+                </select>
+            </td>
+            <td>
+                <label class="switch" style="margin: 0;">
+                    <input type="checkbox" ${u.admin ? 'checked' : ''} ${isOwner ? 'disabled' : ''} onchange="window.toggleUserSystemAdmin('${uid}', this.checked)">
+                    <span class="slider"></span>
+                </label>
+            </td>
+            <td>
+                <div class="nc-actions-cell">
+                    <button class="nc-icon-btn" title="${t('btn_reset_password', 'Passwort zurücksetzen')}" onclick="window.openResetPasswordModal('${uid}', '${escapeHtml(name)}')">${svgIcon('lock', 15)}</button>
+                    ${!isOwner && u.uid !== currentUser?.uid ? `<button class="nc-icon-btn danger" title="${t('btn_delete', 'Löschen')}" onclick="window.deleteUserAccount('${uid}')">${svgIcon('trash', 15)}</button>` : ''}
+                </div>
+            </td>
+        </tr>`;
+}
 
 function renderAccountsTab() {
     renderSystemGroups();
-    const tbody = document.getElementById('accounts-table-body');
+    const tbody = $('accounts-table-body');
     if (!tbody || !isSuperAdminUser()) return;
-
+    const emptyRow = text => `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">${text}</td></tr>`;
     if (!users || users.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine Benutzer gefunden.</td></tr>`;
+        tbody.innerHTML = emptyRow('Keine Benutzer gefunden.');
         return;
     }
+    const activeGroup = activeGroupFilter ? findGroup(activeGroupFilter) : null;
+    const rawName = u => `${u.firstName || ''} ${u.lastName || ''}`;
+    const filtered = users.filter(u => {
+        const groups = Array.isArray(u.groups) ? u.groups : [];
+        if (activeGroupFilter && !(groups.includes(activeGroupFilter) || (activeGroup && (groups.includes(activeGroup.name) || groups.includes(activeGroup.id))))) return false;
+        return !accountsSearchQuery || rawName(u).toLowerCase().includes(accountsSearchQuery) || (u.email || '').toLowerCase().includes(accountsSearchQuery);
+    }).sort((a, b) => rawName(a).localeCompare(rawName(b)));
 
-    const banner = document.getElementById('nc-active-group-banner');
-    const bannerName = document.getElementById('nc-active-group-name');
-    const bannerCount = document.getElementById('nc-active-group-count');
-
-    let activeGroupObj = null;
-    if (activeGroupFilter) {
-        activeGroupObj = systemGroups.find(g => g.id === activeGroupFilter || g.name === activeGroupFilter);
-    }
-
-    const filtered = users
-        .slice()
-        .filter(u => {
-            if (activeGroupFilter) {
-                const userGroups = Array.isArray(u.groups) ? u.groups : [];
-                const inGroup = userGroups.includes(activeGroupFilter) || (activeGroupObj && userGroups.includes(activeGroupObj.name)) || (activeGroupObj && userGroups.includes(activeGroupObj.id));
-                if (!inGroup) return false;
-            }
-            if (!accountsSearchQuery) return true;
-            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
-            const email = (u.email || '').toLowerCase();
-            return fullName.includes(accountsSearchQuery) || email.includes(accountsSearchQuery);
-        })
-        .sort((a, b) => `${a.firstName || ''} ${a.lastName || ''}`.localeCompare(`${b.firstName || ''} ${b.lastName || ''}`));
-
-    if (banner && bannerName && bannerCount) {
-        if (activeGroupObj) {
-            banner.style.display = 'flex';
-            bannerName.textContent = activeGroupObj.name;
-            bannerCount.textContent = `(${filtered.length} ${filtered.length === 1 ? 'Benutzer' : 'Benutzer'})`;
-        } else {
-            banner.style.display = 'none';
+    const banner = $('nc-active-group-banner');
+    if (banner && $('nc-active-group-name') && $('nc-active-group-count')) {
+        banner.style.display = activeGroup ? 'flex' : 'none';
+        if (activeGroup) {
+            setText('nc-active-group-name', activeGroup.name);
+            setText('nc-active-group-count', `(${filtered.length} Benutzer)`);
         }
     }
-
-    if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">Keine passenden Benutzer gefunden.</td></tr>`;
-        return;
-    }
-
-    const rows = filtered.map(u => {
-        const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt';
-        const isOwner = u.owner === true || u.superAdmin === true;
-        const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
-        const profilePicUrl = `${config.apiBaseUrl}/profile/picture/${u.uid}`;
-        const isPays = u.pays !== false;
-        const isUnclaimed = u.isClaimed === false;
-        const displayEmail = u.email ? escapeHtml(u.email) : `<span style="opacity: 0.5; font-style: italic;">${t('accounts_no_login', 'Kein Login hinterlegt')}</span>`;
-        const linkedPerson = people.find(p => p.uid === u.uid || (p.data && p.data.uid === u.uid));
-        const memberSinceVal = u.memberSince || linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
-
-        const userGroupObjs = Array.isArray(u.groupObjects) && u.groupObjects.length > 0
-            ? u.groupObjects
-            : (Array.isArray(u.groups) ? u.groups.map(gid => {
-                const found = systemGroups.find(g => g.id === gid || g.name === gid);
-                return found || { id: gid, name: gid, permissions: [] };
-              }) : []);
-
-        const groupBadges = userGroupObjs.length > 0
-            ? userGroupObjs.map(g => `<span class="nc-badge-group" style="margin: 2px;">${escapeHtml(g.name)}</span>`).join(' ')
-            : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('modal_assign_group_title', 'Zuweisen')}</span>`;
-
-        return `
-            <tr data-uid="${escapeHtml(u.uid)}">
-                <td>
-                    <div class="nc-user-cell">
-                        <div class="nc-avatar ${getAvatarRingClass(u)}" style="position: relative; overflow: hidden;">
-                            <span style="user-select: none;">${escapeHtml(initials)}</span>
-                            <img src="${profilePicUrl}" alt="${escapeHtml(fullName)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'">
-                        </div>
-                        <div class="nc-user-info">
-                            <div class="nc-user-name">
-                                <span>${escapeHtml(fullName)}</span>
-                                ${isOwner ? `<span class="nc-badge-owner">👑 ${t('badge_owner', 'Eigentümer')}</span>` : ''}
-                                ${isUnclaimed ? `<span class="nc-badge-group" style="background: rgba(245, 158, 11, 0.12); color: #d97706; border-color: rgba(245, 158, 11, 0.3); font-size: 0.72rem; padding: 2px 6px;">⏳ ${t('badge_unclaimed', 'Nicht registriert')}</span>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </td>
-                <td style="color: var(--text-secondary); font-size: 0.88rem;">${displayEmail}</td>
-                <td style="cursor: pointer;" onclick="window.openAssignGroupModal('${escapeHtml(u.uid)}')" title="${t('modal_assign_group_title', 'Gruppen zuweisen')}">
-                    ${groupBadges}
-                </td>
-                <td>
-                    <input type="date" class="form-input" style="padding: 3px 6px; font-size: 0.82rem; height: 30px; border-radius: 8px; width: 130px; margin: 0;" value="${escapeHtml(memberSinceVal)}" onchange="window.updateUserMemberSince('${escapeHtml(u.uid)}', this.value)">
-                </td>
-                <td>
-                    <select class="nc-select-pays" onchange="window.toggleUserPays('${escapeHtml(u.uid)}', this.value === 'yes')">
-                        <option value="yes" ${isPays ? 'selected' : ''}>${t('option_yes', 'Ja')}</option>
-                        <option value="no" ${!isPays ? 'selected' : ''}>${t('option_no', 'Nein')}</option>
-                    </select>
-                </td>
-                <td>
-                    <label class="switch" style="margin: 0;">
-                        <input type="checkbox" ${u.admin ? 'checked' : ''} ${isOwner ? 'disabled' : ''} onchange="window.toggleUserSystemAdmin('${escapeHtml(u.uid)}', this.checked)">
-                        <span class="slider"></span>
-                    </label>
-                </td>
-                <td>
-                    <div class="nc-actions-cell">
-                        <button class="nc-icon-btn" title="${t('btn_reset_password', 'Passwort zurücksetzen')}" onclick="window.openResetPasswordModal('${escapeHtml(u.uid)}', '${escapeHtml(fullName)}')">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        </button>
-                        ${!isOwner && u.uid !== currentUser?.uid ? `
-                            <button class="nc-icon-btn danger" title="${t('btn_delete', 'Löschen')}" onclick="window.deleteUserAccount('${escapeHtml(u.uid)}')">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                        ` : ''}
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    tbody.innerHTML = rows;
+    tbody.innerHTML = filtered.length ? filtered.map(renderAccountRow).join('') : emptyRow('Keine passenden Benutzer gefunden.');
 }
 
-function renderSuperAdminUserManagement() {
-    renderAccountsTab();
-}
-
-async function renderSuperAdminPaymentEditor() {
-    if (document.getElementById('finances')?.classList.contains('active') || document.getElementById('payment-history')?.classList.contains('active')) {
-        renderHistoryTab(true);
+async function saveUserSetting(uid, field, payload, applyLocal, successMsg, errorMsg, logMsg) {
+    if (!isSuperAdminUser()) return;
+    try {
+        const res = await api(`/admin/users/${uid}/${field}`, 'PUT', payload);
+        if (!res.ok) throw new Error((await res.text()) || 'Speichern fehlgeschlagen');
+        applyLocal(users.find(u => u.uid === uid));
+        renderAccountsTab();
+        if (field !== 'admin') renderPeople();
+        showToast(successMsg);
+    } catch (err) {
+        console.error(logMsg, err);
+        showToast(errorMsg, 'error');
+        loadData();
     }
 }
 
-window.updateUserMemberSince = async (uid, memberSince) => {
-    if (!isSuperAdminUser()) return;
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/member-since`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ memberSince })
-        });
-        if (!response.ok) {
-            const msg = await response.text();
-            throw new Error(msg || 'Speichern fehlgeschlagen');
-        }
-        const localUser = users.find(u => u.uid === uid);
-        if (localUser) localUser.memberSince = memberSince;
-        const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
-        if (linkedPerson) {
-            linkedPerson.memberSince = memberSince;
-            linkedPerson.originalMemberSince = memberSince;
-            if (linkedPerson.data) {
-                linkedPerson.data.memberSince = memberSince;
-                linkedPerson.data.originalMemberSince = memberSince;
-            }
-        }
-        renderAccountsTab();
-        renderPeople();
-        showToast(t('toast_member_since_updated', 'Mitgliedsdatum aktualisiert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern des Mitgliedsdatums:', err);
-        showToast('Mitgliedsdatum konnte nicht gespeichert werden', 'error');
-        loadData();
+const updateUserMemberSince = (uid, memberSince) => saveUserSetting(uid, 'member-since', { memberSince }, localUser => {
+    if (localUser) localUser.memberSince = memberSince;
+    const linked = findLinkedPerson(uid);
+    if (linked) {
+        linked.memberSince = linked.originalMemberSince = memberSince;
+        if (linked.data) linked.data.memberSince = linked.data.originalMemberSince = memberSince;
     }
-};
+}, t('toast_member_since_updated', 'Mitgliedsdatum aktualisiert'), 'Mitgliedsdatum konnte nicht gespeichert werden', 'Fehler beim Speichern des Mitgliedsdatums:');
 
-window.toggleUserSystemAdmin = async (uid, isAdmin) => {
-    if (!isSuperAdminUser()) return;
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/admin`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin: !!isAdmin })
-        });
-        if (!response.ok) {
-            const msg = await response.text();
-            throw new Error(msg || 'Speichern fehlgeschlagen');
-        }
-        const localUser = users.find(u => u.uid === uid);
-        if (localUser) localUser.admin = !!isAdmin;
-        renderAccountsTab();
-        showToast(t('toast_admin_updated', 'System-Admin Rechte aktualisiert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der Admin-Rolle:', err);
-        showToast('Benutzerrechte konnten nicht gespeichert werden', 'error');
-        loadData();
+const toggleUserSystemAdmin = (uid, isAdmin) => saveUserSetting(uid, 'admin', { admin: !!isAdmin }, localUser => {
+    if (localUser) localUser.admin = !!isAdmin;
+}, t('toast_admin_updated', 'System-Admin Rechte aktualisiert'), 'Benutzerrechte konnten nicht gespeichert werden', 'Fehler beim Speichern der Admin-Rolle:');
+
+const toggleUserPays = (uid, pays) => saveUserSetting(uid, 'pays', { pays: !!pays }, localUser => {
+    if (localUser) localUser.pays = !!pays;
+    const linked = people.find(p => p.uid === uid);
+    if (linked) {
+        linked.pays = !!pays;
+        if (linked.data) linked.data.pays = !!pays;
     }
-};
+}, t('toast_pays_updated', 'Zahlungsstatus aktualisiert'), 'Beitragsstatus konnte nicht gespeichert werden', 'Fehler beim Speichern des Beitragsstatus:');
 
-window.toggleUserPays = async (uid, pays) => {
-    if (!isSuperAdminUser()) return;
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/pays`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pays: !!pays })
-        });
-        if (!response.ok) {
-            const msg = await response.text();
-            throw new Error(msg || 'Speichern fehlgeschlagen');
-        }
-        const localUser = users.find(u => u.uid === uid);
-        if (localUser) localUser.pays = !!pays;
-        const linkedPerson = people.find(p => p.uid === uid);
-        if (linkedPerson) {
-            linkedPerson.pays = !!pays;
-            if (linkedPerson.data) linkedPerson.data.pays = !!pays;
-        }
-        renderAccountsTab();
-        renderPeople();
-        showToast(t('toast_pays_updated', 'Zahlungsstatus aktualisiert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern des Beitragsstatus:', err);
-        showToast('Beitragsstatus konnte nicht gespeichert werden', 'error');
-        loadData();
-    }
-};
-
-window.openCreateUserModal = () => {
-    document.getElementById('new-user-first-name').value = '';
-    document.getElementById('new-user-last-name').value = '';
-    document.getElementById('new-user-email').value = '';
-    document.getElementById('new-user-password').value = '';
-    document.getElementById('new-user-pays').checked = true;
-    document.getElementById('new-user-admin').checked = false;
-    const dateInput = document.getElementById('new-user-start');
-    if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
-    const memberFields = document.getElementById('new-user-member-fields');
-    if (memberFields) memberFields.style.display = '';
+function openCreateUserModal() {
+    ['new-user-first-name', 'new-user-last-name', 'new-user-email', 'new-user-password'].forEach(id => setValue(id, ''));
+    $('new-user-pays').checked = true;
+    $('new-user-admin').checked = false;
+    setValue('new-user-start', getTodayStr());
+    show('new-user-member-fields', true);
     openModal('create-user-modal');
-};
+}
 
-window.submitCreateUser = async () => {
-    const firstName = document.getElementById('new-user-first-name').value.trim();
-    const lastName = document.getElementById('new-user-last-name').value.trim();
-    const email = document.getElementById('new-user-email').value.trim();
-    const password = document.getElementById('new-user-password').value;
-    const pays = document.getElementById('new-user-pays').checked;
-    const admin = document.getElementById('new-user-admin').checked;
-    const status = document.getElementById('new-user-status')?.value || 'vollverdiener';
-    const memberSince = document.getElementById('new-user-start')?.value || new Date().toISOString().slice(0, 10);
-
-    if (!firstName || !lastName) {
-        alert(t('alert_fill_fields', 'Bitte Vor- und Nachnamen ausfüllen.'));
-        return;
-    }
-
-    if (password && password.length < 6) {
-        alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
-        return;
-    }
-
+async function submitCreateUser() {
+    const [firstName, lastName, email] = ['new-user-first-name', 'new-user-last-name', 'new-user-email'].map(id => inputValue(id).trim());
+    const password = inputValue('new-user-password');
+    if (!firstName || !lastName) return alert(t('alert_fill_fields', 'Bitte Vor- und Nachnamen ausfüllen.'));
+    if (password && password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                firstName,
-                lastName,
-                email,
-                password,
-                pays,
-                admin,
-                status,
-                memberSince,
-                groups: ['Standard']
-            })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || 'Erstellen fehlgeschlagen');
-        }
-
+        await apiJson('/admin/users', 'POST', {
+            firstName, lastName, email, password,
+            pays: isChecked('new-user-pays'),
+            admin: isChecked('new-user-admin'),
+            status: inputValue('new-user-status') || 'vollverdiener',
+            memberSince: inputValue('new-user-start') || getTodayStr(),
+            groups: ['Standard']
+        }, 'Erstellen fehlgeschlagen');
         await loadData();
         closeModal('create-user-modal');
         showToast(t('toast_user_created', 'Benutzer erfolgreich erstellt'));
@@ -3081,57 +1937,32 @@ window.submitCreateUser = async () => {
         console.error('Fehler beim Erstellen des Benutzers:', err);
         alert(err.message || 'Fehler beim Erstellen des Benutzers');
     }
-};
+}
 
-window.openResetPasswordModal = (uid, fullName) => {
-    document.getElementById('reset-password-uid').value = uid;
-    document.getElementById('reset-password-user-display').textContent = fullName;
-    document.getElementById('reset-password-new').value = '';
+function openResetPasswordModal(uid, name) {
+    setValue('reset-password-uid', uid);
+    setText('reset-password-user-display', name);
+    setValue('reset-password-new', '');
     openModal('reset-password-modal');
-};
+}
 
-window.submitResetPassword = async () => {
-    const uid = document.getElementById('reset-password-uid').value;
-    const password = document.getElementById('reset-password-new').value;
-
-    if (!password || password.length < 6) {
-        alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
-        return;
-    }
-
+async function submitResetPassword() {
+    const password = inputValue('reset-password-new');
+    if (password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}/password`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || 'Passwort-Zurücksetzen fehlgeschlagen');
-        }
-
+        await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, 'Passwort-Zurücksetzen fehlgeschlagen');
         closeModal('reset-password-modal');
         showToast(t('toast_password_reset', 'Passwort erfolgreich geändert'));
     } catch (err) {
         console.error('Fehler beim Zurücksetzen des Passworts:', err);
         alert(err.message || 'Fehler beim Zurücksetzen des Passworts');
     }
-};
+}
 
-window.deleteUserAccount = async (uid) => {
-    if (!confirm(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
-
+async function deleteUserAccount(uid) {
+    if (!confirmAction(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users/${uid}`, {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || 'Löschen fehlgeschlagen');
-        }
-
+        await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, 'Löschen fehlgeschlagen');
         users = users.filter(u => u.uid !== uid);
         renderAccountsTab();
         renderUnlinkedUsers();
@@ -3140,385 +1971,603 @@ window.deleteUserAccount = async (uid) => {
         console.error('Fehler beim Löschen des Benutzers:', err);
         alert(err.message || 'Fehler beim Löschen des Benutzers');
     }
+}
+
+// --- System, AI & branding configuration ---
+async function readErrorText(res) {
+    const text = await res.text();
+    try {
+        const data = JSON.parse(text);
+        if (data?.error) return data.error;
+        if (data && Object.keys(data).length > 0) return JSON.stringify(data);
+    } catch { /* not JSON */ }
+    return text;
+}
+
+const SMTP_FIELDS = ['host', 'port', 'user', 'pass'];
+
+async function loadAdvancedSystemConfig() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const res = await api('/admin/system-config');
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        advancedConfigAppName = data.appName || null;
+        setValue('super-admin-app-name', data.appName || '');
+        SMTP_FIELDS.forEach(key => setValue(`super-admin-smtp-${key}`, data.smtp?.[key] || ''));
+        $('super-admin-smtp-secure').checked = !!data.smtp?.secure;
+        advancedConfigLoaded = true;
+        await loadAiConfig();
+    } catch (err) {
+        console.error('Fehler beim Laden der erweiterten Konfiguration:', err);
+        showToast('Erweiterte Konfiguration konnte nicht geladen werden', 'error');
+    }
+}
+
+async function saveAdvancedSystemConfig() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const appName = inputValue('super-admin-app-name').trim() || advancedConfigAppName || config.appName;
+        if (!appName) throw new Error('App-Name konnte nicht ermittelt werden. Dies kann auf fehlende Konfigurationsdaten hinweisen. Bitte Seite neu laden.');
+        const payload = { appName, smtp: null };
+        const host = inputValue('super-admin-smtp-host').trim();
+        if (host) {
+            const port = inputValue('super-admin-smtp-port').trim();
+            payload.smtp = {
+                host,
+                port: port ? parseInt(port, 10) : 465,
+                secure: isChecked('super-admin-smtp-secure'),
+                user: inputValue('super-admin-smtp-user').trim(),
+                pass: inputValue('super-admin-smtp-pass')
+            };
+            if (!payload.smtp.port || Number.isNaN(payload.smtp.port)) throw new Error('SMTP Port ist ungültig.');
+        }
+        const res = await api('/admin/system-config', 'PUT', payload);
+        if (!res.ok) throw new Error(await readErrorText(res));
+        advancedConfigAppName = appName;
+        showToast(t('toast_config_saved', 'System-Konfiguration gespeichert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern der erweiterten Konfiguration:', err);
+        alert(t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
+    }
+}
+
+const AI_FIELDS = { baseUrl: 'super-admin-ai-base-url', apiKey: 'super-admin-ai-api-key', model: 'super-admin-ai-model' };
+
+async function loadAiConfig() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const res = await api('/admin/ai-config');
+        if (!res.ok) return;
+        const data = await res.json();
+        aiEnabled = !!data.enabled;
+        const enabledEl = $('super-admin-ai-enabled');
+        if (enabledEl) enabledEl.checked = data.enabled;
+        for (const [key, id] of Object.entries(AI_FIELDS)) setValue(id, data[key] || '');
+        updateAiNavVisibility();
+    } catch (err) {
+        console.error('KI-Konfiguration konnte nicht geladen werden:', err);
+    }
+}
+
+async function saveAiConfig() {
+    if (!isSuperAdminUser()) return;
+    try {
+        const payload = {
+            enabled: $('super-admin-ai-enabled')?.checked ?? false,
+            baseUrl: inputValue(AI_FIELDS.baseUrl).trim(),
+            apiKey: inputValue(AI_FIELDS.apiKey),
+            model: inputValue(AI_FIELDS.model).trim()
+        };
+        await apiJson('/admin/ai-config', 'PUT', payload);
+        aiEnabled = payload.enabled;
+        updateAiNavVisibility();
+        showToast(t('toast_ai_saved', 'KI-Einstellungen gespeichert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern der KI-Einstellungen:', err);
+        alert(t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
+    }
+}
+
+async function uploadChurchLogo() {
+    if (!isSuperAdminUser()) return;
+    const fileInput = $('super-admin-logo-file');
+    if (!fileInput?.files?.length) return alert(t('alert_please_select_svg', 'Bitte eine SVG-Datei auswählen.'));
+    try {
+        const res = await api('/admin/logo', 'POST', toFormData({ logo: fileInput.files[0] }));
+        if (!res.ok) throw new Error((await readErrorText(res)) || `HTTP ${res.status}`);
+        const cacheBust = `?v=${Date.now()}`;
+        document.querySelectorAll("img[src*='church-logo.svg']").forEach(img => { img.src = `assets/church-logo.svg${cacheBust}`; });
+        fileInput.value = '';
+        showToast(t('toast_logo_updated', 'Logo aktualisiert'));
+    } catch (err) {
+        const errMsg = err.message || err.code || 'Unbekannter Fehler';
+        console.error('Fehler beim Logo-Upload:', errMsg, err);
+        alert(t('alert_logo_update_failed', 'Logo konnte nicht aktualisiert werden: ') + errMsg);
+        showToast(t('toast_logo_update_failed', 'Logo konnte nicht aktualisiert werden'), 'error');
+    }
+}
+
+async function autoSaveRate(fieldId) {
+    const el = $(fieldId);
+    if (!el) return;
+    const val = parseAmount(el.value);
+    if (isNaN(val) || val < 0) return;
+    settings[['vollverdiener', 'geringverdiener'].find(key => fieldId === 'rate-' + key) || 'keinverdiener'] = val;
+    try {
+        await set(ref(db, 'settings'), settings);
+        await renderViews();
+        showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
+    } catch (err) {
+        console.error('Fehler beim Speichern der Rate:', err);
+        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
+    }
+}
+
+Object.assign(window, {
+    filterByGroup, submitQuickAddGroup, submitSaveGroup, deleteCurrentGroup, openAssignGroupModal, submitAssignGroups, switchSysSettingsTab,
+    updateUserMemberSince, toggleUserSystemAdmin, toggleUserPays, openCreateUserModal, submitCreateUser, openResetPasswordModal, submitResetPassword,
+    deleteUserAccount, saveAdvancedSystemConfig, saveAiConfig, uploadChurchLogo, autoSaveRate,
+    clearGroupFilter: () => filterByGroup(null),
+    openManageGroupModal: groupId => {
+        const group = systemGroups.find(g => g.id === groupId);
+        if (group) openGroupModal(group);
+    },
+    openCreateGroupFromAssignModal: () => {
+        closeModal('assign-group-modal');
+        setTimeout(() => openGroupModal(null), 60);
+    },
+    filterAccountsList: () => {
+        accountsSearchQuery = inputValue('accounts-search').toLowerCase().trim();
+        renderAccountsTab();
+    }
+});
+
+// --- Person data & standing orders ---
+const sumAmounts = list => list.reduce((sum, entry) => sum + parseFloat(entry.amount || 0), 0);
+const matchesPaymentId = id => (entry, i) => String(entry.id ?? `idx-${i}`) === String(id);
+
+function preprocessPerson(person) {
+    person.memberSince ||= getTodayStr();
+    person.originalMemberSince ||= person.memberSince;
+    person.payments = safeList(person.payments);
+    person.totalPaid = sumAmounts(person.payments);
+    person.statusHistory = safeList(person.statusHistory).sort((a, b) => a.startDate.localeCompare(b.startDate));
+    return person;
+}
+
+const monthIndex = dateStr => {
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return parseInt(dateStr.slice(0, 4), 10) * 12 + parseInt(dateStr.slice(5, 7), 10) - 1;
+    const d = new Date(dateStr);
+    return d.getFullYear() * 12 + d.getMonth();
 };
 
-window.setSupervisorAdmin = window.toggleUserSystemAdmin;
-window.setSupervisorAdminByIndex = async (index, isAdmin) => {
-    const user = users[index];
-    if (!user || !user.uid) return;
-    await window.toggleUserSystemAdmin(user.uid, isAdmin);
-};
+// Local fallback for "paid until" (the backend normally provides _paidUntil): consumes the paid credit month by
+// month at the rate of the status valid in that month and returns the last day of the last fully paid month.
+function calculatePaidUntil(person) {
+    const start = new Date(person.originalMemberSince || person.memberSince);
+    const history = safeList(person.statusHistory).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const statusAt = month => {
+        const entry = history.find(e => !e.endDate || month < monthIndex(e.endDate));
+        return (entry && month >= monthIndex(entry.startDate) ? entry.status : null) || person.status;
+    };
+    let credit = person.totalPaid || 0;
+    let month = start.getFullYear() * 12 + start.getMonth();
+    for (let i = 0; credit > 0 && i < 1200; i++, month++) {
+        const rate = settings[statusAt(month)] || 0;
+        if (rate > credit) break;
+        credit -= rate;
+    }
+    return new Date(Math.floor(month / 12), month % 12, 0);
+}
 
-window.editRecordedPayment = async (personId, paymentId, paymentIndex, personName = null, type = 'payment', paymentObj = null) => {
-    if (!canManageFinances()) return;
+function parseUtcDate(str) {
+    if (!str) return new Date();
+    if (str instanceof Date) return new Date(str.getTime());
+    const [y, m, d] = String(str).trim().slice(0, 10).split('-').map(Number);
+    return [y, m, d].some(isNaN) || d === undefined ? new Date(str) : new Date(Date.UTC(y, m - 1, d));
+}
 
-    let payment = paymentObj;
-    let targetIndex = paymentIndex;
-
-    if (type === 'payment') {
-        const person = people.find(p => String(p.id) === String(personId));
-        if (person) {
-            const payments = safeList(person.payments);
-            const idx = payments.findIndex((p, i) => String(p.id ?? `idx-${i}`) === String(paymentId));
-            targetIndex = idx >= 0 ? idx : paymentIndex;
-            payment = payments[targetIndex] || paymentObj; // Resilient fallback
+// Books all standing-order payments that fell due up to today (weekend dates move to Monday) and drops expired orders.
+// Returns the updated person or null when nothing changed.
+function checkAndExecuteStandingOrders(person) {
+    if (!Array.isArray(person.standingOrders) || person.standingOrders.length === 0) return null;
+    const payments = safeList(person.payments);
+    const existingIds = new Set(payments.map(p => p.id));
+    const now = new Date();
+    const limit = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+    const isoDay = d => d.toISOString().split('T')[0];
+    const nextMonth = (date, day) => {
+        const next = new Date(date);
+        next.setUTCDate(1);
+        next.setUTCMonth(next.getUTCMonth() + 1);
+        next.setUTCDate(Math.min(day, new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate()));
+        return next;
+    };
+    let modified = false;
+    const remaining = [];
+    for (const so of person.standingOrders) {
+        const order = { ...so };
+        const day = parseUtcDate(order.startDate).getUTCDate();
+        let lastAuto = order.lastAutoPayment ? parseUtcDate(order.lastAutoPayment) : null;
+        const endDate = order.endDate ? parseUtcDate(order.endDate) : null;
+        endDate?.setUTCHours(23, 59, 59, 999);
+        let due = lastAuto ? nextMonth(lastAuto, day) : parseUtcDate(order.startDate);
+        let booked = false;
+        for (let safety = 0; safety < 1200 && !(endDate && due > endDate); safety++) {
+            const execution = new Date(due);
+            const weekday = execution.getUTCDay();
+            if (weekday === 6 || weekday === 0) execution.setUTCDate(execution.getUTCDate() + (weekday === 6 ? 2 : 1));
+            if (execution > limit) break;
+            const id = `auto_${order.id}_${isoDay(due)}`;
+            if (!existingIds.has(id)) {
+                payments.push({ id, amount: parseFloat(order.amount), date: isoDay(execution), description: (order.note || 'Dauerauftrag') + ' (Auto)', isAuto: true });
+                existingIds.add(id);
+                booked = true;
+            }
+            lastAuto = new Date(due);
+            due = nextMonth(due, day);
+        }
+        if (booked) order.lastAutoPayment = isoDay(lastAuto);
+        if (endDate && endDate < limit) {
+            modified = true;
         } else {
-            // Fallback for logically deleted/archived members who are not in the active people list
-            targetIndex = paymentIndex;
-            payment = paymentObj;
+            remaining.push(order);
+            modified ||= booked;
         }
     }
+    return modified ? { ...person, payments, standingOrders: remaining } : null;
+}
 
-    if (!payment) {
-        console.error("editRecordedPayment: No payment structure resolved.", { personId, paymentId, paymentIndex, type, paymentObj });
+function replacePersonInMemory(person) {
+    preprocessPerson(person);
+    const idx = people.findIndex(p => String(p.id) === String(person.id));
+    if (idx >= 0 && person.isDeleted) people.splice(idx, 1);
+    else if (idx >= 0) people[idx] = person;
+    else if (!person.isDeleted) people.push(person);
+}
+
+async function mutatePerson(personId, mutator) {
+    const result = await runTransaction(ref(db, 'people/' + personId), current => current
+        ? mutator({ ...current, payments: safeList(current.payments), statusHistory: safeList(current.statusHistory) })
+        : current);
+    const updated = result.snapshot.val();
+    if (updated) replacePersonInMemory(updated);
+    return updated;
+}
+
+// Donations & expenses are stored as whole lists: read the latest server copy, apply `change`, write it back.
+async function mutateCollection(name, change) {
+    const next = change(safeList(await apiGet(name)));
+    if (next) await set(ref(db, name), next);
+}
+
+function replaceById(list, id, fields) {
+    const idx = list.findIndex(entry => String(entry.id) === String(id));
+    if (idx < 0) return null;
+    list[idx] = { ...list[idx], ...fields };
+    return list;
+}
+
+function refreshFinanceViews() {
+    renderPeople();
+    renderStats();
+    renderSuperAdminPaymentEditor();
+}
+
+function renderSuperAdminPaymentEditor() {
+    if ($('finances')?.classList.contains('active')) renderHistoryTab(true);
+}
+
+// --- Admin: pending requests & unlinked accounts ---
+const REQUEST_TYPES = {
+    payment: { label: 'Zahlung', icon: 'coin' },
+    status: { label: 'Statusänderung', icon: 'history' },
+    expense: { label: 'Ausgabe', icon: 'receipt' },
+    standing_order: { label: 'Dauerauftrag', icon: 'repeat' }
+};
+const quotedNote = note => note ? `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(note)}<span style="opacity: 0.7;">"</span></small>` : '';
+
+function renderRequestDetails(req, statusLabels) {
+    const data = req.data;
+    if (req.type === 'payment') return `${euro(data.amount)} am ${formatDateFast(data.date)}${quotedNote(data.note)}`;
+    if (req.type === 'status') return `Neu: <strong>${escapeHtml(statusLabels[data.newStatus] || data.newStatus)}</strong> ab ${formatDateFast(data.date)}`;
+    if (req.type === 'standing_order') return `${euro(data.amount)} / Monat<br>Start: ${formatDateFast(data.date)}${quotedNote(data.note)}`;
+    if (req.type !== 'expense') return '';
+    const id = escapeHtml(req.id);
+    return `${euro(data.amount)} für "${escapeHtml(data.description)}" am ${formatDateFast(data.date)}` + (data.receipt ? `<div id="receipt-container-${id}" style="margin-top:10px;">
+        <button class="btn btn-small" style="background: transparent; border: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 6px;" data-receipt="${escapeHtml(data.receipt)}" data-id="${id}" onclick="viewRequestReceipt(this.dataset.receipt, 'receipt-container-' + this.dataset.id)">
+            ${svgIcon('image')}
+            Beleg anzeigen
+        </button>
+    </div>` : '');
+}
+
+function renderAdminRequests() {
+    const target = $('admin-requests-inline');
+    if (!target) return;
+    const pending = requests.filter(r => r.status === 'pending');
+    if (pending.length === 0) {
+        target.innerHTML = '';
         return;
     }
+    const statusLabels = getStatusLabels(false);
+    const canApprove = canManageFinances() || isOwnerUser();
+    const actionBtn = (cls, style, handler, icon, label, id) => `
+        <button class="btn ${cls} btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; ${style}border-radius: 12px; padding: 8px 0;" data-id="${escapeHtml(id)}" onclick="${handler}(this.dataset.id)">
+            ${svgIcon(icon, 16)}
+            ${label}
+        </button>`;
+    const renderRequest = req => {
+        const type = REQUEST_TYPES[req.type] || { label: '', icon: null };
+        return `
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; align-items:center;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text);">
+                        ${type.icon ? svgIcon(type.icon, 18) : ''}
+                        <span>${type.label}</span>
+                    </div>
+                    <span style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; background: var(--surface-alt); padding: 4px 8px; border-radius: 12px;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
+                </div>
+                <div style="margin-bottom:16px; font-size: 0.95rem; color: var(--text); line-height: 1.5;">${renderRequestDetails(req, statusLabels)}</div>
+                ${canApprove ? `
+                <div style="display:flex; gap:10px;">
+                    ${actionBtn('btn-primary', '', 'approveRequest', 'check', 'Genehmigen', req.id)}
+                    ${actionBtn('', 'background: transparent; color: var(--text-secondary); border: 1px solid var(--border); ', 'rejectRequest', 'x', 'Ablehnen', req.id)}
+                </div>` : ''}
+            </div>`;
+    };
+    const grouped = groupBy(pending, req => req.personName || 'Unbekannt');
+    const groupBlocks = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([personName, items]) => `
+        <div style="margin-top: 16px;">
+            <div style="font-weight: 600; margin-bottom: 10px; color: var(--text); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                ${svgIcon('person', 16, 2, 'style="color: var(--secondary);"')}
+                ${escapeHtml(personName)}
+            </div>
+            ${items.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).map(renderRequest).join('')}
+        </div>`).join('');
+    target.innerHTML = `
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="display: flex; align-items: center; gap: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; color: var(--text-secondary);">
+                ${svgIcon('download', 18)}
+                Offene Anfragen (${pending.length})
+            </div>
+            <div class="card-body" style="padding-top: 10px;">${groupBlocks}</div>
+        </div>`;
+}
+
+function renderUnlinkedUsers() {
+    const target = $('unlinkedUsers');
+    if (!target) return;
+    const linkedUids = new Set(people.filter(p => p.uid).map(p => p.uid));
+    const unlinked = users.filter(u => !linkedUids.has(u.uid));
+    if (unlinked.length === 0 || !canManageFinances()) {
+        target.innerHTML = '';
+        return;
+    }
+    const options = people.filter(p => !p.uid).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    target.innerHTML = `
+        <div class="card" style="margin-bottom:20px;">
+            <div class="card-header">${t('unlinked_title', '🧩 Nicht zugeordnete Benutzer ({count})', { count: unlinked.length })}</div>
+            <div class="card-body">
+                ${unlinked.map(u => `
+                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:200px;">
+                            <div style="font-weight:700;">${escapeHtml(u.firstName || '?')} ${escapeHtml(u.lastName || '')}</div>
+                            <div style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(u.email || '')}</div>
+                        </div>
+                        <select id="link-select-${u.uid}" class="form-select" style="flex:1; min-width:220px;">
+                            <option value="">${t('unlinked_select_person', 'Person auswählen')}</option>
+                            ${options}
+                        </select>
+                        <button class="btn btn-primary btn-small" style="width:auto;" data-uid="${escapeHtml(u.uid)}" onclick="assignUserToPerson(this.dataset.uid)">${t('unlinked_assign_btn', 'Zuordnen')}</button>
+                    </div>`).join('')}
+            </div>
+        </div>`;
+}
+
+async function assignUserToPerson(uid) {
+    const select = $(`link-select-${uid}`);
+    if (!select) return;
+    const person = select.value && findPerson(select.value);
+    if (!select.value) return alert(t('unlinked_alert_select_person', 'Bitte eine Person auswählen.'));
+    if (!person) return alert(t('toast_person_not_found', 'Person nicht gefunden.'));
+    try {
+        await update(ref(db, 'people/' + select.value), { uid });
+        person.uid = uid;
+        showToast('Zuordnung gespeichert');
+        renderUnlinkedUsers();
+        renderPeople();
+    } catch (err) {
+        console.error('Fehler beim Zuordnen:', err);
+        alert(t('unlinked_alert_failed', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen.'));
+    }
+}
+
+// --- Editing & deleting booked entries ---
+function editRecordedPaymentByIndex(index) {
+    if (!canManageFinances()) return;
+    const tx = cachedTransactions?.[index];
+    if (!tx) return console.error('editRecordedPaymentByIndex: Transaction not found at index', index);
+    const type = { pay: 'payment', don: 'donation', exp: 'expense' }[tx.type] || tx.type;
+    const personId = tx.personId || null;
+    const paymentId = tx.paymentId || null;
+    let targetIndex = tx.paymentIndex !== undefined ? tx.paymentIndex : -1;
+    let payment = tx.payment || null;
+    const person = type === 'payment' && findPerson(personId);
+    if (person) {
+        const idx = safeList(person.payments).findIndex(matchesPaymentId(paymentId));
+        if (idx >= 0) targetIndex = idx;
+        payment = safeList(person.payments)[targetIndex] || payment;
+    }
+    if (!payment) return console.error('editRecordedPayment: No payment structure resolved.', { personId, paymentId, targetIndex, type });
 
     currentEditedPayment = { personId, targetIndex, type, paymentId };
-
-    let titlePrefix = '';
-    if (type === 'donation') titlePrefix = '[Spende] ';
-    else if (type === 'expense') titlePrefix = '[Ausgabe] ';
-
-    document.getElementById('edit-payment-person').textContent = titlePrefix + (personName || 'Unbekannt');
-    document.getElementById('edit-payment-amount').value = String(payment.amount ?? '');
-    document.getElementById('edit-payment-date').value = payment.date || '';
-
-    const descEl = document.getElementById('edit-payment-desc');
-    if (descEl) descEl.value = payment.description || '';
-
-    const issuerGroup = document.getElementById('edit-payment-issuer-group');
-    const issuerEl = document.getElementById('edit-payment-issuer');
-
-    const receiptsGroup = document.getElementById('edit-payment-receipts-group');
-    if (type === 'expense') {
-        if (issuerGroup) issuerGroup.style.display = 'block';
-        if (issuerEl) issuerEl.value = payment.issuer || payment.name || '';
-        
-        if (receiptsGroup) receiptsGroup.style.display = 'block';
-        const newReceiptInput = document.getElementById('edit-payment-new-receipt');
-        if (newReceiptInput) newReceiptInput.value = '';
-        
-        currentEditedReceipts = parseReceipts(payment.receipt);
+    const isExpense = type === 'expense';
+    setText('edit-payment-person', ({ donation: '[Spende] ', expense: '[Ausgabe] ' }[type] || '') + (tx.personName || tx.who || 'Unbekannt'));
+    setValue('edit-payment-amount', String(payment.amount ?? ''));
+    setValue('edit-payment-date', payment.date || '');
+    setValue('edit-payment-desc', payment.description || '');
+    setValue('edit-payment-issuer', isExpense ? (payment.issuer || payment.name || '') : '');
+    show('edit-payment-issuer-group', isExpense, 'block');
+    show('edit-payment-receipts-group', isExpense, 'block');
+    currentEditedReceipts = isExpense ? parseReceipts(payment.receipt) : [];
+    if (isExpense) {
+        setValue('edit-payment-new-receipt', '');
         renderEditReceiptsList();
-    } else {
-        if (issuerGroup) issuerGroup.style.display = 'none';
-        if (issuerEl) issuerEl.value = '';
-        
-        if (receiptsGroup) receiptsGroup.style.display = 'none';
-        currentEditedReceipts = [];
     }
-
     openModal('edit-payment-modal');
-};
+}
 
-window.editRecordedPaymentByIndex = function(index) {
-    if (!canManageFinances()) return;
-    if (!cachedTransactions || !cachedTransactions[index]) {
-        console.error("editRecordedPaymentByIndex: Transaction not found at index", index);
-        return;
-    }
-    const t = cachedTransactions[index];
-    let mappedType = t.type;
-    if (t.type === 'pay') mappedType = 'payment';
-    else if (t.type === 'don') mappedType = 'donation';
-    else if (t.type === 'exp') mappedType = 'expense';
-
-    window.editRecordedPayment(
-        t.personId || null,
-        t.paymentId || null,
-        t.paymentIndex !== undefined ? t.paymentIndex : -1,
-        t.personName || t.who || null,
-        mappedType,
-        t.payment || null
-    );
-};
-
-window.saveEditedPayment = async () => {
+async function saveEditedPayment() {
     if (!canManageFinances() || !currentEditedPayment) return;
-
-    const amount = parseFloat(String(document.getElementById('edit-payment-amount').value || '').replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    const date = document.getElementById('edit-payment-date').value;
-    const description = document.getElementById('edit-payment-desc').value.trim();
-
-    const issuerEl = document.getElementById('edit-payment-issuer');
-    const issuer = issuerEl ? issuerEl.value.trim() : '';
-
-    if (Number.isNaN(amount)) {
-        alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
-        return;
-    }
-    if (!date) {
-        alert(t('alert_please_enter_date', 'Bitte ein Datum angeben.'));
-        return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        alert(t('alert_invalid_date', 'Ungültiges Datum.'));
-        return;
-    }
+    const amount = parseAmount(inputValue('edit-payment-amount'));
+    const date = inputValue('edit-payment-date');
+    const description = inputValue('edit-payment-desc').trim();
+    const issuer = inputValue('edit-payment-issuer').trim();
+    if (Number.isNaN(amount)) return alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
+    if (!date) return alert(t('alert_please_enter_date', 'Bitte ein Datum angeben.'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert(t('alert_invalid_date', 'Ungültiges Datum.'));
 
     const saveBtn = document.querySelector('#edit-payment-modal button.btn-primary');
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.innerText = "Speichert...";
+        saveBtn.innerText = 'Speichert...';
     }
-
+    const { type, personId, paymentId, targetIndex } = currentEditedPayment;
     try {
-        if (currentEditedPayment.type === 'payment') {
-            await mutatePerson(currentEditedPayment.personId, (draft) => {
-                const nextPayments = safeList(draft.payments);
-                let targetIdx = currentEditedPayment.targetIndex;
-                if (targetIdx < 0 || targetIdx >= nextPayments.length) {
-                    targetIdx = nextPayments.findIndex((entry, i) => String(entry.id ?? `idx-${i}`) === String(currentEditedPayment.paymentId));
-                }
-                if (targetIdx >= 0 && targetIdx < nextPayments.length) {
-                    nextPayments[targetIdx] = { ...nextPayments[targetIdx], amount, date, description };
-                } else {
-                    console.warn("saveEditedPayment: fallback payment match not found, mapping all", currentEditedPayment);
-                }
-                const totalPaid = calculateTotalPaidLoop(nextPayments);
-                return { ...draft, payments: nextPayments, totalPaid };
+        if (type === 'payment') {
+            await mutatePerson(personId, draft => {
+                const payments = draft.payments;
+                const idx = targetIndex >= 0 && targetIndex < payments.length ? targetIndex : payments.findIndex(matchesPaymentId(paymentId));
+                if (idx >= 0) payments[idx] = { ...payments[idx], amount, date, description };
+                else console.warn('saveEditedPayment: fallback payment match not found, mapping all', currentEditedPayment);
+                return { ...draft, payments, totalPaid: sumAmounts(payments) };
             });
             showToast('Zahlung aktualisiert');
-        } else if (currentEditedPayment.type === 'donation') {
-            const remoteDonations = safeList(await apiGet('donations').catch(() => []));
-            const targetDonationId = currentEditedPayment.paymentId;
-            const idx = remoteDonations.findIndex(d => String(d.id) === String(targetDonationId));
-
-            if (idx >= 0) {
-                remoteDonations[idx] = { ...remoteDonations[idx], amount, date, description };
-                await set(ref(db, 'donations'), { ...remoteDonations });
-                donations = remoteDonations;
-            }
-            showToast('Spende aktualisiert');
-        } else if (currentEditedPayment.type === 'expense') {
-            // Upload new files first
-            const fileInput = document.getElementById('edit-payment-new-receipt');
-            if (fileInput && fileInput.files.length > 0) {
-                const files = fileInput.files;
-                for (let i = 0; i < files.length; i++) {
-                    try {
-                        const fn = await uploadReceipt(files[i], issuer || 'Beleg', date);
-                        currentEditedReceipts.push(fn);
-                    } catch (uploadErr) {
-                        console.error("Error uploading new receipt in edit:", uploadErr);
-                        alert(t('alert_upload_error_for', 'Fehler beim Hochladen von: ') + files[i].name + " - " + uploadErr.message);
-                        throw uploadErr;
-                    }
+        } else if (type === 'expense') {
+            for (const file of $('edit-payment-new-receipt')?.files || []) {
+                try {
+                    currentEditedReceipts.push(await uploadReceipt(file, issuer || 'Beleg', date));
+                } catch (uploadErr) {
+                    console.error('Error uploading new receipt in edit:', uploadErr);
+                    alert(t('alert_upload_error_for', 'Fehler beim Hochladen von: ') + file.name + ' - ' + uploadErr.message);
+                    throw uploadErr;
                 }
             }
-
-            const remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
-            const targetExpenseId = currentEditedPayment.paymentId;
-            const idx = remoteExpenses.findIndex(e => String(e.id) === String(targetExpenseId));
-
-            if (idx >= 0) {
-                const updatedReceiptField = currentEditedReceipts.length > 0 ? JSON.stringify(currentEditedReceipts) : '';
-                remoteExpenses[idx] = { ...remoteExpenses[idx], amount, date, description, issuer, receipt: updatedReceiptField };
-                await set(ref(db, 'expenses'), { ...remoteExpenses });
-                expenses = remoteExpenses;
-            }
+            const receipt = currentEditedReceipts.length > 0 ? JSON.stringify(currentEditedReceipts) : '';
+            await mutateCollection('expenses', list => replaceById(list, paymentId, { amount, date, description, issuer, receipt }));
             showToast('Ausgabe aktualisiert');
+        } else {
+            await mutateCollection('donations', list => replaceById(list, paymentId, { amount, date, description }));
+            showToast('Spende aktualisiert');
         }
-
         closeModal('edit-payment-modal');
         currentEditedPayment = null;
         currentEditedReceipts = [];
-        renderPeople();
-        renderStats();
-        renderSuperAdminPaymentEditor();
+        refreshFinanceViews();
     } catch (err) {
         console.error('Fehler beim Bearbeiten:', err);
         showToast('Eintrag konnte nicht aktualisiert werden', 'error');
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.innerText = "Speichern";
+            saveBtn.innerText = 'Speichern';
         }
     }
-};
+}
 
-window.renderEditReceiptsList = async function() {
-    const listEl = document.getElementById('edit-payment-receipts-list');
+const fileRowInner = (preview, name, actions, nameStyle = 'color:var(--text); font-weight:600;') => `
+    <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+        ${preview}
+        <span style="${STYLE.fileName} ${nameStyle}">${escapeHtml(name)}</span>
+    </div>
+    ${actions ? `<div style="display:flex; gap:6px;">${actions}</div>` : ''}`;
+
+async function renderEditReceiptsList() {
+    const listEl = $('edit-payment-receipts-list');
     if (!listEl) return;
-    
-    listEl.innerHTML = '';
-    
     if (currentEditedReceipts.length === 0) {
         listEl.innerHTML = '<div style="color:var(--text-secondary); font-size:0.85rem;">Keine Belege vorhanden.</div>';
         return;
     }
-    
-    // Create a local copy to preserve order
-    const listCopy = [...currentEditedReceipts];
-    
-    for (const filename of listCopy) {
-        const itemDiv = document.createElement('div');
-        itemDiv.style = "display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-alt); border:1px solid var(--border); border-radius:12px; padding:8px 12px; transition: transform 0.2s;";
-        
-        // Show loading state
-        itemDiv.innerHTML = `
-            <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
-                <div class="spinner" style="width:16px; height:16px; border-width:2px; margin:0;"></div>
-                <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-secondary);">${escapeHtml(filename)}</span>
-            </div>
-        `;
-        listEl.appendChild(itemDiv);
-        
+    listEl.innerHTML = '';
+    for (const filename of [...currentEditedReceipts]) {
+        const item = document.createElement('div');
+        item.style.cssText = STYLE.fileRow;
+        item.innerHTML = fileRowInner('<div class="spinner" style="width:16px; height:16px; border-width:2px; margin:0;"></div>', filename, '', 'color:var(--text-secondary);');
+        listEl.appendChild(item);
+        const deleteBtn = iconButton(`deleteEditReceipt('${escapeHtml(filename)}')`, 'Löschen');
         try {
             const imgUrl = await fetchReceiptImage(filename);
-            itemDiv.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-                    <img src="${imgUrl}" style="width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" alt="Beleg">
-                    <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text); font-weight:600;">${escapeHtml(filename)}</span>
-                </div>
-                <div style="display:flex; gap:6px;">
-                    <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none; padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" title="Herunterladen">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    </a>
-                    <button type="button" class="btn btn-danger btn-small" style="padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" onclick="deleteEditReceipt('${escapeHtml(filename)}')" title="Löschen">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    </button>
-                </div>
-            `;
-        } catch (e) {
-            itemDiv.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-                    <span style="font-size:1.25rem;">⚠️</span>
-                    <span style="font-size:0.85rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text);">${escapeHtml(filename)}</span>
-                </div>
-                <div style="display:flex; gap:6px;">
-                    <button type="button" class="btn btn-danger btn-small" style="padding:6px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;" onclick="deleteEditReceipt('${escapeHtml(filename)}')" title="Löschen">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    </button>
-                </div>
-            `;
+            item.innerHTML = fileRowInner(`<img src="${imgUrl}" style="${STYLE.thumb}" alt="Beleg">`, filename,
+                `<a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="Herunterladen">${svgIcon('download')}</a>${deleteBtn}`);
+        } catch {
+            item.innerHTML = fileRowInner('<span style="font-size:1.25rem;">⚠️</span>', filename, deleteBtn, 'color:var(--text);');
         }
     }
-};
+}
 
-window.deleteEditReceipt = function(filename) {
-    if (confirm(t('confirm_delete_receipt', 'Möchtest du diesen Beleg wirklich löschen?'))) {
-        currentEditedReceipts = currentEditedReceipts.filter(fn => fn !== filename);
-        renderEditReceiptsList();
-    }
-};
+function deleteEditReceipt(filename) {
+    if (!confirmAction(t('confirm_delete_receipt', 'Möchtest du diesen Beleg wirklich löschen?'))) return;
+    currentEditedReceipts = currentEditedReceipts.filter(fn => fn !== filename);
+    renderEditReceiptsList();
+}
 
-window.deleteRecordedPaymentClick = () => {
+async function confirmDeleteRecordedPayment() {
     if (!canManageFinances() || !currentEditedPayment) return;
-    openModal('confirm-delete-modal');
-};
-
-window.confirmDeleteRecordedPayment = async () => {
-    if (!canManageFinances() || !currentEditedPayment) return;
-
+    const { type, personId, paymentId, targetIndex } = currentEditedPayment;
     closeMultipleModals(['confirm-delete-modal', 'edit-payment-modal']);
-
     try {
-        if (currentEditedPayment.type === 'payment') {
-            await mutatePerson(currentEditedPayment.personId, (draft) => {
-                const nextPayments = safeList(draft.payments).filter((entry, i) => {
-                    if (i === currentEditedPayment.targetIndex) return false;
-                    if (String(entry.id ?? `idx-${i}`) === String(currentEditedPayment.paymentId)) return false;
-                    return true;
-                });
-                const totalPaid = calculateTotalPaidLoop(nextPayments);
-                return { ...draft, payments: nextPayments, totalPaid };
+        if (type === 'payment') {
+            await mutatePerson(personId, draft => {
+                const payments = draft.payments.filter((entry, i) => i !== targetIndex && !matchesPaymentId(paymentId)(entry, i));
+                return { ...draft, payments, totalPaid: sumAmounts(payments) };
             });
-            showToast('Zahlung gelöscht');
-        } else if (currentEditedPayment.type === 'donation') {
-            const remoteDonations = safeList(await apiGet('donations').catch(() => []));
-            const targetDonationId = currentEditedPayment.paymentId;
-            const nextDonations = remoteDonations.filter(d => String(d.id) !== String(targetDonationId));
-            await set(ref(db, 'donations'), nextDonations);
-            donations = nextDonations;
-            showToast('Spende gelöscht');
-        } else if (currentEditedPayment.type === 'expense') {
-            const remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
-            const targetExpenseId = currentEditedPayment.paymentId;
-            const nextExpenses = remoteExpenses.filter(e => String(e.id) !== String(targetExpenseId));
-            await set(ref(db, 'expenses'), nextExpenses);
-            expenses = nextExpenses;
-            showToast('Ausgabe gelöscht');
+        } else {
+            await mutateCollection(type === 'donation' ? 'donations' : 'expenses', list => list.filter(entry => String(entry.id) !== String(paymentId)));
         }
-
+        showToast({ payment: 'Zahlung gelöscht', donation: 'Spende gelöscht', expense: 'Ausgabe gelöscht' }[type]);
         currentEditedPayment = null;
-        renderPeople();
-        renderStats();
-        renderSuperAdminPaymentEditor();
+        refreshFinanceViews();
     } catch (err) {
         console.error('Fehler beim Löschen:', err);
         showToast('Eintrag konnte nicht gelöscht werden', 'error');
     }
+}
+
+// --- Request approval ---
+const newId = () => Date.now().toString();
+const REQUEST_APPLIERS = {
+    payment: (person, data) => ({
+        ...person,
+        payments: [...person.payments, { id: newId(), amount: parseFloat(data.amount), date: data.date, description: data.note || 'Zahlung (Genehmigt)' }],
+        totalPaid: (person.totalPaid || 0) + parseFloat(data.amount)
+    }),
+    status: (person, { date, newStatus }) => {
+        const changeDate = new Date(date);
+        const latest = person.statusHistory.slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
+        const currentStart = latest?.endDate || person.originalMemberSince || person.memberSince;
+        const statusHistory = person.statusHistory.filter(entry => new Date(entry.startDate) < changeDate);
+        if (new Date(currentStart) < changeDate) statusHistory.push({ status: person.status, startDate: currentStart, endDate: date });
+        return { ...person, status: newStatus, statusHistory };
+    },
+    standing_order: (person, data) => ({
+        ...person,
+        standingOrders: [...safeList(person.standingOrders), { id: newId(), amount: parseFloat(data.amount), startDate: data.date, note: data.note || 'Dauerauftrag (Genehmigt)', lastAutoPayment: null }]
+    })
 };
 
-window.approveRequest = async (reqId) => {
+async function approveRequest(reqId) {
     const req = requests.find(r => r.id === reqId);
-    if(!req) return;
-
+    if (!req) return;
     try {
-        if(req.type === 'payment') {
-            await mutatePerson(req.personId, (person) => {
-                const payments = safeList(person.payments);
-                payments.push({
-                    id: Date.now().toString(),
-                    amount: parseFloat(req.data.amount),
-                    date: req.data.date,
-                    description: req.data.note || 'Zahlung (Genehmigt)'
-                });
-                const totalPaid = (person.totalPaid || 0) + parseFloat(req.data.amount);
-                return { ...person, payments, totalPaid };
-            });
-        } else if(req.type === 'status') {
-            await mutatePerson(req.personId, (person) => {
-                const changeDate = req.data.date;
-                const newStatus = req.data.newStatus;
-                const changeDateObj = new Date(changeDate);
-
-                let currentStatusStartDate = person.originalMemberSince || person.memberSince;
-                const sortedHistory = safeList(person.statusHistory).slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-                if (sortedHistory.length > 0 && sortedHistory[0].endDate) {
-                    currentStatusStartDate = sortedHistory[0].endDate;
-                }
-
-                const updatedHistory = safeList(person.statusHistory).filter(entry => new Date(entry.startDate) < changeDateObj);
-                if (new Date(currentStatusStartDate) < changeDateObj) {
-                    updatedHistory.push({
-                        status: person.status,
-                        startDate: currentStatusStartDate,
-                        endDate: changeDate
-                    });
-                }
-
-                return { ...person, status: newStatus, statusHistory: updatedHistory };
-            });
-        } else if(req.type === 'expense') {
-            const newExpense = {
-                id: Date.now().toString(),
-                amount: parseFloat(req.data.amount),
-                description: req.data.description + ` (Von: ${req.personName})`,
-                date: req.data.date,
-                receipt: req.data.receipt
-            };
-            const currentData = await apiGet('expenses');
-            const nextExpenses = [...safeList(currentData), newExpense];
-            await set(ref(db, 'expenses'), nextExpenses);
-            expenses = nextExpenses;
-        } else if(req.type === 'standing_order') {
-            await mutatePerson(req.personId, (person) => {
-                const standingOrders = safeList(person.standingOrders);
-                const newSO = {
-                    id: Date.now().toString(),
-                    amount: parseFloat(req.data.amount),
-                    startDate: req.data.date,
-                    note: req.data.note || 'Dauerauftrag (Genehmigt)',
-                    lastAutoPayment: null
-                };
-                standingOrders.push(newSO);
-                return { ...person, standingOrders };
-            });
+        if (req.type === 'expense') {
+            const { amount, description, date, receipt } = req.data;
+            await mutateCollection('expenses', list => [...list, { id: newId(), amount: parseFloat(amount), description: description + ` (Von: ${req.personName})`, date, receipt }]);
+        } else if (REQUEST_APPLIERS[req.type]) {
+            await mutatePerson(req.personId, person => REQUEST_APPLIERS[req.type](person, req.data));
         }
-
         await update(ref(db, 'requests/' + reqId), { status: 'approved' });
         await loadData();
         showToast(t('toast_request_approved', 'Anfrage genehmigt'));
@@ -3526,40 +2575,43 @@ window.approveRequest = async (reqId) => {
         console.error('Fehler beim Genehmigen der Anfrage:', err);
         alert(t('alert_approve_failed', 'Anfrage konnte nicht genehmigt werden. Bitte erneut versuchen.'));
     }
-};
+}
 
-window.rejectRequest = async (reqId) => {
-    const reason = prompt(t('status_btn', 'Grund für Ablehnung') + ":");
-    if(reason === null) return; // Cancelled
-
+async function rejectRequest(reqId) {
+    const reason = prompt(t('status_btn', 'Grund für Ablehnung') + ':');
+    if (reason === null) return;
     try {
-        await update(ref(db, 'requests/' + reqId), {
-            status: 'rejected',
-            rejectionReason: reason || 'Kein Grund angegeben'
-        });
+        await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
         await loadData();
         showToast(t('toast_request_rejected', 'Anfrage abgelehnt'));
     } catch (err) {
         console.error('Fehler beim Ablehnen der Anfrage:', err);
         alert(t('alert_reject_failed', 'Anfrage konnte nicht abgelehnt werden. Bitte erneut versuchen.'));
     }
-};
+}
+
+// --- Member views ---
+const paidUntilText = paidUntil => (paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie'));
+const personPaidUntil = p => (p._paidUntil ? new Date(p._paidUntil) : null);
+const standingOrderCovers = meta => meta.isActiveStandingOrder && !meta.isOverdue;
 
 function renderUserView() {
-    if (typeof renderHomeMentoringCard === 'function') {
-        renderHomeMentoringCard();
-    }
-    if (typeof window.renderHomeDutiesCard === 'function') {
-        window.renderHomeDutiesCard();
-    }
-    const statusCard = document.getElementById('user-status-card');
-    const financeStatusCard = document.getElementById('user-finances-status-card');
-    const paymentHistory = document.getElementById('user-payment-history');
-    const reqList = document.getElementById('user-requests-list');
-    const statusLabels = getStatusLabels(false);
+    renderHomeMentoringCard();
+    renderHomeDutiesCard();
+    const statusCard = $('user-status-card');
+    const financeCard = $('user-finances-status-card');
+    const historyEl = $('user-payment-history');
+    const setCards = html => {
+        if (statusCard) statusCard.innerHTML = html;
+        if (financeCard) financeCard.innerHTML = html;
+    };
+    const noMemberHtml = `
+        <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 16px; border: 1px solid var(--border);">
+            ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
+        </div>`;
 
     if (currentUser && currentUser.pays === false) {
-        const nonPayingHtml = `
+        setCards(`
             <div class="user-hero-status user-status-ok" style="border-color: var(--border);">
                 <div style="font-size: 2rem; margin-bottom: 8px;">👤</div>
                 <h2 style="color: var(--text); font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
@@ -3568,650 +2620,354 @@ function renderUserView() {
                 <div style="font-size: 0.95rem; color: var(--text-secondary);">
                     ${t('user_account_non_paying_desc', 'Aktives Benutzerkonto (Keine Beitragspflicht)')}
                 </div>
-            </div>
-        `;
-        if (statusCard) statusCard.innerHTML = nonPayingHtml;
-        if (financeStatusCard) financeStatusCard.innerHTML = nonPayingHtml;
-        if (paymentHistory) paymentHistory.innerHTML = '';
+            </div>`);
+        if (historyEl) historyEl.innerHTML = '';
     } else if (people.length === 0) {
-        const noMemberHtml = `
-            <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 16px; border: 1px solid var(--border);">
-                ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
-            </div>
-        `;
-        if (statusCard) statusCard.innerHTML = noMemberHtml;
-        if (financeStatusCard) financeStatusCard.innerHTML = noMemberHtml;
-        if (paymentHistory) {
-            paymentHistory.innerHTML = `
-                <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
-                    ${t('user_no_history', 'Keine Einträge vorhanden')}
-                </div>
-            `;
-        }
+        setCards(noMemberHtml);
+        if (historyEl) historyEl.innerHTML = `
+            <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+                ${t('user_no_history', 'Keine Einträge vorhanden')}
+            </div>`;
     } else {
-        const p = people.find(person => person.uid === currentUser?.uid || (person.data && person.data.uid === currentUser?.uid));
-
-        if (!p) {
-            const noMemberHtml = `
-                <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 16px; border: 1px solid var(--border);">
-                    ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
-                </div>
-            `;
-            if (statusCard) statusCard.innerHTML = noMemberHtml;
-            if (financeStatusCard) financeStatusCard.innerHTML = noMemberHtml;
-            return;
-        }
-
-        const paidUntil = p._paidUntil ? new Date(p._paidUntil) : null;
-        const statusMeta = p._statusMeta || { text: t('status_unknown', 'Unbekannt'), isOverdue: false, isSoonDue: false };
-        const overdueAmount = p._overdueAmount || 0;
+        const p = findLinkedPerson(currentUser?.uid);
+        if (!p) return setCards(noMemberHtml);
+        const meta = p._statusMeta || { text: t('status_unknown', 'Unbekannt'), isOverdue: false, isSoonDue: false };
         const currentStatus = p._currentStatus || p.status;
+        const [statusClass, accent, rgb] = meta.isOverdue ? ['user-status-overdue', 'var(--danger)', '239,68,68']
+            : meta.isSoonDue ? ['user-status-soon', 'var(--warning)', '245,158,11'] : ['user-status-ok', 'var(--success)', '16,185,129'];
+        const tint = `background:rgba(${rgb},0.08); border-color:rgba(${rgb},0.25);`;
+        const statusText = escapeHtml(translateStatusText(meta.text));
+        const subline = style => `<div class="user-finance-hero-sub"${style}>${standingOrderCovers(meta) ? t('user_standing_order_active', 'Dauerauftrag aktiv') : `${t('user_paid_until', 'Bezahlt bis')} <strong>${paidUntilText(personPaidUntil(p))}</strong>`}</div>`;
+        const overdueBox = style => meta.isOverdue ? `
+            <div class="user-finance-overdue-box"${style}>
+                <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
+                <div class="user-finance-overdue-amount">${euro(p._overdueAmount || 0)}</div>
+            </div>` : '';
+        const requestStatus = t('user_req_status_tooltip', 'Statuswechsel beantragen');
 
-        // Format date to show only month and year
-        let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
-
-        let statusClass = 'user-status-ok';
-        let statusColor = 'var(--success)';
-        let statusIcon = '✅';
-
-        if (statusMeta.isOverdue) {
-            statusClass = 'user-status-overdue';
-            statusColor = 'var(--danger)';
-            statusIcon = '⚠️';
-        } else if (statusMeta.isSoonDue) {
-            statusClass = 'user-status-soon';
-            statusColor = 'var(--warning)';
-            statusIcon = '⏳';
-        }
-
-        const monthlyRate = settings[currentStatus] || 0;
-
-        const translatedStatusMetaText = translateStatusText(statusMeta.text);
-
-        const accentColor = statusMeta.isOverdue ? 'var(--danger)' : statusMeta.isSoonDue ? 'var(--warning)' : 'var(--success)';
-        const accentBg   = statusMeta.isOverdue ? 'rgba(239,68,68,0.08)' : statusMeta.isSoonDue ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)';
-        const accentBorder = statusMeta.isOverdue ? 'rgba(239,68,68,0.25)' : statusMeta.isSoonDue ? 'rgba(245,158,11,0.25)' : 'rgba(16,185,129,0.25)';
-
-        const statusHtml = `
-            <div class="user-hero-status ${statusClass}" style="background:${accentBg}; border-color:${accentBorder};">
-                <div class="user-finance-hero-title" style="color: ${accentColor}; font-size: 1.35rem; font-weight: 800; margin-bottom: 5px;">
-                    ${escapeHtml(translatedStatusMetaText)}
-                </div>
-                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_standing_order_active', 'Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub" style="font-size: 0.95rem;">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
-                ${statusMeta.isOverdue ? `
-                    <div class="user-finance-overdue-box" style="margin-top: 14px; margin-bottom: 0;">
-                        <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
-                        <div class="user-finance-overdue-amount">${formatCurrency(overdueAmount)} €</div>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-
-        // On Homepage (statusCard): Only show the main hero status banner for all users (including admins).
-        // Current Status and Monthly Rate info boxes are NEVER shown on the Homepage!
         if (statusCard) {
             statusCard.style.display = 'block';
-            statusCard.innerHTML = statusHtml;
+            statusCard.innerHTML = `
+                <div class="user-hero-status ${statusClass}" style="${tint}">
+                    <div class="user-finance-hero-title" style="color: ${accent}; font-size: 1.35rem; font-weight: 800; margin-bottom: 5px;">${statusText}</div>
+                    ${subline(' style="font-size: 0.95rem;"')}
+                    ${overdueBox(' style="margin-top: 14px; margin-bottom: 0;"')}
+                </div>`;
         }
-
-        // On Finance page (financeStatusCard):
-        // Display the unified hero card with status + info pills integrated for everyone viewing their personal finance tab.
-        if (financeStatusCard) {
-            financeStatusCard.innerHTML = `
-                <div class="user-finance-hero-card" style="background:${accentBg}; border-color:${accentBorder};">
+        if (financeCard) {
+            financeCard.innerHTML = `
+                <div class="user-finance-hero-card" style="${tint}">
                     <div class="user-finance-hero-top">
                         <div class="user-finance-hero-info">
-                            <div class="user-finance-hero-title" style="color:${accentColor};">${escapeHtml(translatedStatusMetaText)}</div>
-                            ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `<div class="user-finance-hero-sub">${t('user_standing_order_active', 'Dauerauftrag aktiv')}</div>` : `<div class="user-finance-hero-sub">${t('user_paid_until', 'Bezahlt bis')} <strong>${dateText}</strong></div>`}
+                            <div class="user-finance-hero-title" style="color:${accent};">${statusText}</div>
+                            ${subline('')}
                         </div>
                     </div>
-                    ${statusMeta.isOverdue ? `
-                        <div class="user-finance-overdue-box">
-                            <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
-                            <div class="user-finance-overdue-amount">${formatCurrency(overdueAmount)} €</div>
-                        </div>
-                    ` : ''}
+                    ${overdueBox('')}
                     <div class="user-finance-stat-row">
                         <div class="user-finance-stat">
                             <div class="user-finance-stat-label">${t('user_monthly_rate', 'Monatsbeitrag')}</div>
-                            <div class="user-finance-stat-value">${formatCurrency(monthlyRate)} €</div>
+                            <div class="user-finance-stat-value">${euro(settings[currentStatus] || 0)}</div>
                         </div>
                         <div class="user-finance-stat-divider"></div>
-                        <div class="user-finance-stat user-finance-stat-clickable" role="button" tabindex="0" onclick="openUserRequestModal('status')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openUserRequestModal('status');}" title="${t('user_req_status_tooltip', 'Statuswechsel beantragen')}" aria-label="${t('user_req_status_tooltip', 'Statuswechsel beantragen')}">
+                        <div class="user-finance-stat user-finance-stat-clickable" role="button" tabindex="0" onclick="openUserRequestModal('status')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openUserRequestModal('status');}" title="${requestStatus}" aria-label="${requestStatus}">
                             <div class="user-finance-stat-label">${t('user_current_status', 'Status')}</div>
-                            <div class="user-finance-stat-value">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</div>
+                            <div class="user-finance-stat-value">${escapeHtml(getStatusLabels(false)[currentStatus] || currentStatus)}</div>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         }
-
-        if (paymentHistory) {
-            const timeline = generateTimelineHTML(p);
-            paymentHistory.innerHTML = timeline;
-        }
+        if (historyEl) historyEl.innerHTML = generateTimelineHTML(p);
     }
+    renderUserRequests();
+}
 
-    // Combined History (Timeline) and User Requests List
-    const myRequests = (currentUser && requests) ? requests.filter(r => r.userId === currentUser.uid).sort((a,b) => b.timestamp - a.timestamp) : [];
+const USER_REQUEST_STATES = {
+    rejected: ['❌', '#ef444415', 'req_status_rejected', 'Abgelehnt'],
+    approved: ['✅', '#10b98115', 'req_status_approved', 'Genehmigt'],
+    pending: ['⏳', '#f59e0b15', 'req_status_pending', 'In Prüfung']
+};
+
+function renderUserRequests() {
+    const reqList = $('user-requests-list');
     if (!reqList) return;
-
-    if(myRequests.length > 0) {
-        reqList.innerHTML = myRequests.map(req => {
-            let statusBadge, statusBg, statusText;
-            if(req.status === 'rejected') {
-                statusBadge = '❌';
-                statusBg = '#ef444415';
-                statusText = t('req_status_rejected', 'Abgelehnt');
-            } else if(req.status === 'approved') {
-                statusBadge = '✅';
-                statusBg = '#10b98115'; // A soft green background
-                statusText = t('req_status_approved', 'Genehmigt');
-            } else {
-                statusBadge = '⏳';
-                statusBg = '#f59e0b15';
-                statusText = t('req_status_pending', 'In Prüfung');
-            }
-
-            const typeIcons = { payment: '💰', status: '🔄', expense: '💸', standing_order: '🔁' };
-            const typeLabels = { payment: t('action_payment', 'Zahlung'), status: t('action_status', 'Status'), expense: t('action_expense', 'Ausgabe'), standing_order: t('modal_standing_order', 'Dauerauftrag') };
-
-            const reqData = req.data || {};
-            const metaItems = [];
-            if (reqData.amount) metaItems.push(`<span>💶 <strong>${formatCurrency(reqData.amount)} €</strong></span>`);
-            if (reqData.date) metaItems.push(`<span>📅 ${formatDateFast(reqData.date)}</span>`);
-            if (reqData.newStatus) metaItems.push(`<span>💼 ${escapeHtml(statusLabels[reqData.newStatus] || reqData.newStatus)}</span>`);
-            if (reqData.note) metaItems.push(`<span>📝 ${escapeHtml(reqData.note)}</span>`);
-            if (reqData.description) metaItems.push(`<span>ℹ️ ${escapeHtml(reqData.description)}</span>`);
-            if (reqData.receipt) {
-                try {
-                    const receipts = JSON.parse(reqData.receipt);
-                    if (Array.isArray(receipts) && receipts.length > 0) {
-                        metaItems.push(`<span>📎 ${receipts.length} ${receipts.length === 1 ? 'Beleg' : 'Belege'}</span>`);
-                    }
-                } catch { /* ignore */ }
-            }
-
-            const metaHtml = metaItems.length > 0
-                ? `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.85rem; color:var(--text-secondary); background:var(--surface-alt); padding:8px 12px; border-radius:8px;">${metaItems.join('')}</div>`
-                : '';
-
-            let details = '';
-            if(req.status === 'rejected') {
-                details = `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:rgba(239, 68, 68, 0.1); border-radius:8px; border:1px solid rgba(239, 68, 68, 0.2);">⚠️ ${escapeHtml(req.rejectionReason) || t('user_no_reason', 'Keine Begründung')}</div>`;
-            }
-
-            return `
-                <div class="user-request-item">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div>
-                            <div style="font-size: 1.05rem; font-weight: 700; margin-bottom: 3px;">${typeIcons[req.type] || '📋'} ${typeLabels[req.type] || req.type}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-secondary);">${formatDateFast(req.timestamp)}</div>
-                        </div>
-                        <div style="background: ${statusBg}; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; white-space: nowrap;">
-                            ${statusBadge} ${statusText}
-                        </div>
-                    </div>
-                    ${metaHtml}
-                    ${details}
-                </div>
-            `;
-        }).join('');
-    } else {
+    const mine = currentUser ? requests.filter(r => r.userId === currentUser.uid).sort((a, b) => b.timestamp - a.timestamp) : [];
+    if (mine.length === 0) {
         reqList.innerHTML = `
             <div class="user-requests-empty">
                 <div class="user-requests-empty-title">${t('user_no_requests_title', 'Keine Anfragen vorhanden')}</div>
                 <div class="user-requests-empty-desc">${t('user_no_requests_desc', 'Hier erscheinen deine eingereichten Anfragen.')}</div>
-            </div>
-        `;
+            </div>`;
+        return;
     }
+    const statusLabels = getStatusLabels(false);
+    const typeIcons = { payment: '💰', status: '🔄', expense: '💸', standing_order: '🔁' };
+    const typeLabels = { payment: t('action_payment', 'Zahlung'), status: t('action_status', 'Status'), expense: t('action_expense', 'Ausgabe'), standing_order: t('modal_standing_order', 'Dauerauftrag') };
+    reqList.innerHTML = mine.map(req => {
+        const [badge, bg, key, fallback] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
+        const data = req.data || {};
+        let receiptCount = 0;
+        try {
+            const receipts = JSON.parse(data.receipt);
+            if (Array.isArray(receipts)) receiptCount = receipts.length;
+        } catch { /* no receipts */ }
+        const meta = [
+            data.amount && `<span>💶 <strong>${euro(data.amount)}</strong></span>`,
+            data.date && `<span>📅 ${formatDateFast(data.date)}</span>`,
+            data.newStatus && `<span>💼 ${escapeHtml(statusLabels[data.newStatus] || data.newStatus)}</span>`,
+            data.note && `<span>📝 ${escapeHtml(data.note)}</span>`,
+            data.description && `<span>ℹ️ ${escapeHtml(data.description)}</span>`,
+            receiptCount > 0 && `<span>📎 ${receiptCount} ${receiptCount === 1 ? 'Beleg' : 'Belege'}</span>`
+        ].filter(Boolean);
+        return `
+            <div class="user-request-item">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div>
+                        <div style="font-size: 1.05rem; font-weight: 700; margin-bottom: 3px;">${typeIcons[req.type] || '📋'} ${typeLabels[req.type] || req.type}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">${formatDateFast(req.timestamp)}</div>
+                    </div>
+                    <div style="background: ${bg}; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; white-space: nowrap;">
+                        ${badge} ${t(key, fallback)}
+                    </div>
+                </div>
+                ${meta.length ? `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.85rem; color:var(--text-secondary); background:var(--surface-alt); padding:8px 12px; border-radius:8px;">${meta.join('')}</div>` : ''}
+                ${req.status === 'rejected' ? `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:rgba(239, 68, 68, 0.1); border-radius:8px; border:1px solid rgba(239, 68, 68, 0.2);">⚠️ ${escapeHtml(req.rejectionReason) || t('user_no_reason', 'Keine Begründung')}</div>` : ''}
+            </div>`;
+    }).join('');
 }
 
 function renderPeople() {
-    const list = document.getElementById('peopleList');
-    const empty = document.getElementById('emptyState');
-
-    const payingPeople = people.filter(p => {
-        if (p.isDeleted || (p.data && p.data.isDeleted)) return false;
-        if (p.pays === false || (p.data && p.data.pays === false)) return false;
-        return true;
-    });
-
-    if(payingPeople.length === 0) {
+    const list = $('peopleList');
+    const payingPeople = people.filter(p => !(p.isDeleted || p.data?.isDeleted || p.pays === false || p.data?.pays === false));
+    $('emptyState').style.display = payingPeople.length ? 'none' : 'block';
+    if (payingPeople.length === 0) {
         list.innerHTML = '';
-        empty.style.display = 'block';
         return;
     }
-    empty.style.display = 'none';
-
-    // Data is pre-calculated by backend now
-    const processed = payingPeople.map(p => {
-        return {
-            p,
-            paidUntil: p._paidUntil ? new Date(p._paidUntil) : null,
-            statusMeta: p._statusMeta || { text: '', isOverdue: false, isSoonDue: false },
-            overdueAmount: p._overdueAmount || 0
-        };
-    });
-
-    const overdueItems = processed.filter(x => x.statusMeta.isOverdue);
-    const currentItems = processed.filter(x => !x.statusMeta.isOverdue);
-
-    overdueItems.sort((a,b) => a.p.name.localeCompare(b.p.name));
-    currentItems.sort((a,b) => a.p.name.localeCompare(b.p.name));
-
-    let overdueHtml = '';
-    if(overdueItems.length > 0) {
-        overdueHtml += `<h3 class="list-section-title" style="color:var(--danger)">${t('overdue_header', 'Überfällig')} (${overdueItems.length})</h3>`;
-        overdueHtml += overdueItems.map(item => generatePersonHTML(item.p, item)).join('');
-    }
-
-    let validHtml = '';
-    if(currentItems.length > 0) {
-        validHtml += `<h3 class="list-section-title" style="color:var(--success)">${t('current_members_header', 'Aktuelle Mitglieder')} (${currentItems.length})</h3>`;
-        validHtml += currentItems.map(item => generatePersonHTML(item.p, item)).join('');
-    }
-
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const overdue = payingPeople.filter(p => p._statusMeta?.isOverdue).sort(byName);
+    const current = payingPeople.filter(p => !p._statusMeta?.isOverdue).sort(byName);
+    const section = (items, color, key, fallback) => items.length
+        ? `<h3 class="list-section-title" style="color:var(${color})">${t(key, fallback)} (${items.length})</h3>` + items.map(generatePersonHTML).join('')
+        : '';
     list.innerHTML = `
         <div class="people-grid-container">
-            <div class="people-column overdue-column">${overdueHtml}</div>
-            <div class="people-column valid-column">${validHtml}</div>
-        </div>
-    `;
-
-    // Apply search filters if something is typed in the search bar
-    if (typeof window.filterPeopleSync === 'function') {
-        window.filterPeopleSync();
-    }
+            <div class="people-column overdue-column">${section(overdue, '--danger', 'overdue_header', 'Überfällig')}</div>
+            <div class="people-column valid-column">${section(current, '--success', 'current_members_header', 'Aktuelle Mitglieder')}</div>
+        </div>`;
+    filterPeopleSync();
 }
 
 function generateTimelineHTML(person) {
-    const historyList = safeList(person.statusHistory);
-    // ⚡ Bolt: Store ISO strings for faster sorting
-    const history = historyList.map(h => ({
-        type: 'status',
-        dateStr: h.startDate,
-        status: h.status,
-        endDate: h.endDate
-    }));
-
-    // Find start date of current status
-    let currentStatusStart;
-    if (historyList.length > 0) {
-        currentStatusStart = historyList[historyList.length - 1].endDate;
-    } else {
-        currentStatusStart = person.originalMemberSince || person.memberSince;
-    }
-
-    if (currentStatusStart) {
-        history.push({
-            type: 'status',
-            dateStr: currentStatusStart,
-            status: person.status,
-            endDate: null
-        });
-    }
-
-    const payments = safeList(person.payments).map(p => ({
-        type: 'payment',
-        dateStr: p.date,
-        amount: p.amount,
-        description: p.description
-    }));
-
-    // ⚡ Bolt: Use localeCompare for faster sorting without Date objects
-    const allEvents = [...history, ...payments].sort((a, b) => b.dateStr.localeCompare(a.dateStr));
-
-    if (allEvents.length === 0) {
-        return `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">${t('timeline_no_entries', 'Keine Einträge vorhanden.')}</div>`;
-    }
+    const history = safeList(person.statusHistory);
+    const events = history.map(h => ({ type: 'status', dateStr: h.startDate, status: h.status }));
+    const currentStart = history.length > 0 ? history[history.length - 1].endDate : (person.originalMemberSince || person.memberSince);
+    if (currentStart) events.push({ type: 'status', dateStr: currentStart, status: person.status });
+    safeList(person.payments).forEach(p => events.push({ type: 'payment', dateStr: p.date, amount: p.amount, description: p.description }));
+    if (events.length === 0) return `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">${t('timeline_no_entries', 'Keine Einträge vorhanden.')}</div>`;
 
     const statusLabels = getStatusLabels(true);
-
-    const timelineItems = allEvents.map(event => {
-        const dateStr = formatDateFast(event.dateStr);
-        let content = '';
-        let dotClass = 'timeline-dot';
-
-        if (event.type === 'status') {
-            const label = statusLabels[event.status] || event.status;
-            content = `
-                <div style="font-weight: 600;">${t('timeline_status_change', 'Statusänderung')}: ${escapeHtml(label)}</div>
-                <div style="font-size: 0.85rem; color: var(--text-secondary);">${t('timeline_valid_from', 'Gültig ab')} ${dateStr}</div>
-            `;
-        } else {
-            content = `
-                <div style="font-weight: 600;">${t('timeline_payment', 'Zahlung')}: ${formatCurrency(event.amount)}€</div>
-                <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(event.description) || t('timeline_no_note', 'Keine Notiz')} • ${dateStr}</div>
-            `;
-        }
-
-        return `
-            <div class="timeline-item">
-                <div class="${dotClass}"></div>
-                <div class="timeline-content">${content}</div>
+    const line = (title, meta) => `
+        <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+                <div style="font-weight: 600;">${title}</div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary);">${meta}</div>
             </div>
-        `;
-    }).join('');
-
-    return `<div class="timeline">${timelineItems}</div>`;
+        </div>`;
+    return `<div class="timeline">${events.sort((a, b) => b.dateStr.localeCompare(a.dateStr)).map(ev => {
+        const date = formatDateFast(ev.dateStr);
+        return ev.type === 'status'
+            ? line(`${t('timeline_status_change', 'Statusänderung')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Gültig ab')} ${date}`)
+            : line(`${t('timeline_payment', 'Zahlung')}: ${formatCurrency(ev.amount)}€`, `${escapeHtml(ev.description) || t('timeline_no_note', 'Keine Notiz')} • ${date}`);
+    }).join('')}</div>`;
 }
 
-function generatePersonHTML(p, preCalcData = null) {
-    const paidUntil = preCalcData ? preCalcData.paidUntil : (p._paidUntil ? new Date(p._paidUntil) : null);
-    const statusMeta = preCalcData ? preCalcData.statusMeta : (p._statusMeta || { text: '', isOverdue: false, isSoonDue: false });
-    const overdueAmount = preCalcData ? preCalcData.overdueAmount : (p._overdueAmount || 0);
-
-    const currentStatus = p._currentStatus || p.status;
-
-    let dateText = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
-    let pillClass = 'status-ok';
-    let cardClass = 'success';
-
-    if(statusMeta.isOverdue) {
-        pillClass = 'status-err';
-        cardClass = 'danger';
-    } else if(statusMeta.isSoonDue) {
-        pillClass = 'status-warn';
-    }
-
-    const paymentsList = safeList(p.payments);
-    const standingOrders = safeList(p.standingOrders);
-    const hasStandingOrder = standingOrders.length > 0;
-    const soListHtml = hasStandingOrder ? `
+function renderStandingOrders(p) {
+    const orders = safeList(p.standingOrders);
+    if (orders.length === 0) return '';
+    const chip = (icon, text, extraClass = '') => `
+        <div class="so-chip${extraClass}">
+            ${svgIcon(icon, 11)}
+            <span>${text}</span>
+        </div>`;
+    return `
         <div class="standing-order-section">
             <div class="so-section-header">
                 <div class="so-header-title">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    ${svgIcon('rotate', 13, 2.5)}
                     <span>${t('modal_standing_order', 'Dauerauftrag')}</span>
                 </div>
             </div>
             <div class="so-items-list">
-                ${standingOrders.map(so => {
+                ${orders.map(so => {
                     const isEnded = so.endDate && new Date(so.endDate) < new Date();
+                    const note = so.note?.trim();
                     return `
                     <div class="so-card-item ${isEnded ? 'is-ended' : ''}">
                         <div class="so-card-top">
                             <div class="so-card-amount-wrapper">
-                                <span class="so-amount-val">${formatCurrency(so.amount)} €</span>
+                                <span class="so-amount-val">${euro(so.amount)}</span>
                                 <span class="so-period-label">/ ${t('month', 'Monat')}</span>
                                 <span class="so-status-pill ${isEnded ? 'ended' : 'active'}">${isEnded ? t('status_ended', 'Beendet') : t('status_active', 'Aktiv')}</span>
                             </div>
                             ${canManageFinances() ? `
                             <button type="button" class="btn-so-action" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Bearbeiten/Beenden'))}">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                ${svgIcon('edit', 12)}
                                 <span>${t('btn_manage', 'Verwalten')}</span>
-                            </button>
-                            ` : ''}
+                            </button>` : ''}
                         </div>
                         <div class="so-card-meta-chips">
-                            <div class="so-chip">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                <span>Start: ${formatDateFast(so.startDate)}</span>
-                            </div>
-                            ${so.endDate ? `
-                            <div class="so-chip ${isEnded ? 'ended' : ''}">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-                                <span>Ende: ${formatDateFast(so.endDate)}</span>
-                            </div>
-                            ` : ''}
-                            ${so.note && so.note.trim() && so.note.trim() !== 'Ohne Notiz' && so.note.trim() !== 'No note' ? `
-                            <div class="so-chip so-note-chip">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                                <span>${escapeHtml(so.note)}</span>
-                            </div>
-                            ` : ''}
+                            ${chip('calendar', `Start: ${formatDateFast(so.startDate)}`)}
+                            ${so.endDate ? chip('clock', `Ende: ${formatDateFast(so.endDate)}`, isEnded ? ' ended' : ' ') : ''}
+                            ${note && note !== 'Ohne Notiz' && note !== 'No note' ? chip('fileText', escapeHtml(so.note), ' so-note-chip') : ''}
                         </div>
-                    </div>
-                    `;
+                    </div>`;
                 }).join('')}
             </div>
-        </div>
-    ` : '';
+        </div>`;
+}
 
-    const translatedStatus = getStatusLabels(false)[currentStatus] || currentStatus;
-    const translatedPStatus = getStatusLabels(false)[p.status] || p.status;
-    const translatedStatusMetaText = translateStatusText(statusMeta.text);
-
+function generatePersonHTML(p) {
+    const meta = p._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
+    const dateText = paidUntilText(personPaidUntil(p));
+    const pillClass = meta.isOverdue ? 'status-err' : meta.isSoonDue ? 'status-warn' : 'status-ok';
+    const statusLabels = getStatusLabels(false);
+    const currentStatus = p._currentStatus || p.status;
+    const id = escapeHtml(p.id);
+    const memberButton = (cls, handler, icon, size, strokeWidth, label) => `
+        <button type="button" class="${cls}" data-id="${id}" onclick="${handler}(this.dataset.id)">
+            ${svgIcon(icon, size, strokeWidth)}
+            <span>${label}</span>
+        </button>`;
+    const tileLabel = (icon, label) => `
+        <span class="summary-tile-label">
+            ${svgIcon(icon, 12)}
+            ${label}
+        </span>`;
     return `
         <div class="person-wrapper">
-            <div id="person-item-${p.id}" class="person-item" role="button" tabindex="0" aria-expanded="false" data-id="${escapeHtml(p.id)}" onclick="toggleDetails(this.dataset.id)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); toggleDetails(this.dataset.id);}">
+            <div id="person-item-${p.id}" class="person-item" role="button" tabindex="0" aria-expanded="false" data-id="${id}" onclick="toggleDetails(this.dataset.id)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); toggleDetails(this.dataset.id);}">
                 <div class="person-pill">
                     <div class="person-left">
                         <div class="person-name">
                             ${escapeHtml(p.name)}
                             <span class="chevron">›</span>
                         </div>
-                        <span class="person-status">${escapeHtml(translatedStatus)}</span>
+                        <span class="person-status">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</span>
                     </div>
                     <div class="person-right">
-                        ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? '' : `<span class="payment-pill ${pillClass}">${dateText}</span>`}
-                        <span class="time-remaining">${escapeHtml(translatedStatusMetaText)}</span>
+                        ${standingOrderCovers(meta) ? '' : `<span class="payment-pill ${pillClass}">${dateText}</span>`}
+                        <span class="time-remaining">${escapeHtml(translateStatusText(meta.text))}</span>
                     </div>
                 </div>
             </div>
             <div id="drawer-${p.id}" class="person-details">
                 <div class="details-content">
-
-                    <div class="member-summary-card ${cardClass}">
+                    <div class="member-summary-card ${meta.isOverdue ? 'danger' : 'success'}">
                         <div class="summary-grid">
                             <div class="summary-tile">
-                                <span class="summary-tile-label">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                                    ${t('status_label', 'Status')}
-                                </span>
-                                <span class="summary-status-badge">${escapeHtml(translatedPStatus)}</span>
+                                ${tileLabel('user', t('status_label', 'Status'))}
+                                <span class="summary-status-badge">${escapeHtml(statusLabels[p.status] || p.status)}</span>
                             </div>
                             <div class="summary-tile">
-                                <span class="summary-tile-label">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                    ${t('paid_until', 'Bezahlt bis')}
-                                </span>
-                                ${(statusMeta.isActiveStandingOrder && !statusMeta.isOverdue) ? `
+                                ${tileLabel('calendar', t('paid_until', 'Bezahlt bis'))}
+                                ${standingOrderCovers(meta) ? `
                                     <span class="summary-so-badge">
-                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                                        ${svgIcon('rotate', 11, 2.5)}
                                         ${t('status_standing_order_active', 'Dauerauftrag läuft')}
-                                    </span>
-                                ` : `
-                                    <span class="summary-paid-badge ${pillClass}">${dateText}</span>
-                                `}
+                                    </span>` : `<span class="summary-paid-badge ${pillClass}">${dateText}</span>`}
                             </div>
                         </div>
-                        ${statusMeta.isOverdue ? `
+                        ${meta.isOverdue ? `
                         <div class="summary-overdue-alert">
                             <div class="overdue-alert-label">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                ${svgIcon('alert', 14, 2.5)}
                                 <span>${t('overdue_amount_label', 'Offener Betrag')}</span>
                             </div>
-                            <span class="overdue-alert-val">${formatCurrency(overdueAmount)} €</span>
-                        </div>
-                        ` : ''}
+                            <span class="overdue-alert-val">${euro(p._overdueAmount || 0)}</span>
+                        </div>` : ''}
                     </div>
-
-                    ${soListHtml}
-
+                    ${renderStandingOrders(p)}
                     ${canManageFinances() ? `
                     <div class="member-actions-group">
-                        <button type="button" class="btn-member-primary" data-id="${escapeHtml(p.id)}" onclick="openPaymentModal(this.dataset.id)">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><path d="M12 18V6"></path></svg>
-                            <span>${t('record_payment_btn', 'Zahlung erfassen')}</span>
-                        </button>
+                        ${memberButton('btn-member-primary', 'openPaymentModal', 'coin', 15, 2.2, t('record_payment_btn', 'Zahlung erfassen'))}
                         <div class="member-secondary-actions">
-                            <button type="button" class="btn-member-secondary" data-id="${escapeHtml(p.id)}" onclick="openChangeStatusModal(this.dataset.id)">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                                <span>${t('status_btn', 'Status')}</span>
-                            </button>
-                            <button type="button" class="btn-member-secondary" data-id="${escapeHtml(p.id)}" onclick="sendStatusEmail(this.dataset.id)">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                                <span>${t('email_btn', 'E-Mail')}</span>
-                            </button>
+                            ${memberButton('btn-member-secondary', 'openChangeStatusModal', 'refresh', 14, 2, t('status_btn', 'Status'))}
+                            ${memberButton('btn-member-secondary', 'sendStatusEmail', 'mail', 14, 2, t('email_btn', 'E-Mail'))}
                         </div>
-                    </div>
-                    ` : ''}
-
+                    </div>` : ''}
                     <div class="history-header">${t('history_label', 'Verlauf')}</div>
                     <div id="timeline-${p.id}">
                         <div style="padding:10px; color:var(--text-secondary); font-size:0.8rem; font-style:italic;">${t('loading_history', 'Lade Verlauf...')}</div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
+}
+
+function toggleDetails(id) {
+    const drawer = $(`drawer-${id}`);
+    const header = $(`person-item-${id}`);
+    const isOpen = drawer.style.maxHeight;
+    document.querySelectorAll('.person-details, .person-item, .person-wrapper').forEach(el => {
+        el.classList.remove('active');
+        if (el.classList.contains('person-details')) el.style.maxHeight = null;
+        if (el.classList.contains('person-item')) el.setAttribute('aria-expanded', 'false');
+    });
+    if (isOpen) return;
+    // Timelines are rendered lazily on first open
+    const placeholder = $(`timeline-${id}`);
+    const person = findPerson(id);
+    if (placeholder && !placeholder.dataset.loaded && person) {
+        placeholder.innerHTML = generateTimelineHTML(person);
+        placeholder.dataset.loaded = 'true';
+    }
+    header.classList.add('active');
+    header.setAttribute('aria-expanded', 'true');
+    drawer.classList.add('active');
+    drawer.style.maxHeight = drawer.scrollHeight + 'px';
+    header.closest('.person-wrapper')?.classList.add('active');
+}
+
+function filterPeopleSync() {
+    const term = $('people-search')?.value.toLowerCase() || '';
+    document.querySelectorAll('.person-wrapper').forEach(item => {
+        item.style.display = item.querySelector('.person-name')?.textContent.toLowerCase().includes(term) ? 'block' : 'none';
+    });
 }
 
 async function renderStats() {
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/stats`);
-        if (!response.ok) throw new Error('Stats fetch failed');
-        const data = await response.json();
-
-        const heroEl = document.getElementById('heroAmount');
-        if (heroEl) heroEl.textContent = currencyFormatter.format(data.totalBalance || 0);
-
-        const incEl = document.getElementById('totalIncome');
-        if (incEl) incEl.textContent = currencyFormatter.format(data.totalIncome || 0);
-
-        const expEl = document.getElementById('totalExpenses');
-        if (expEl) expEl.textContent = currencyFormatter.format(data.totalExpenses || 0);
-
-        const totalMembers = people.length;
-        let totalOverdue = 0;
-        people.forEach(p => {
-            totalOverdue += (p._overdueAmount || 0);
-        });
-
-        const memEl = document.getElementById('totalMembers');
-        if (memEl) memEl.textContent = totalMembers;
-
-        const dueEl = document.getElementById('totalOverdue');
-        if (dueEl) dueEl.textContent = currencyFormatter.format(totalOverdue);
-
-        if (data.chartData && Array.isArray(data.chartData.dataPoints)) {
-            chartDataCache = {
-                dataPoints: data.chartData.dataPoints.map(dp => ({ ...dp, date: new Date(dp.date) })),
-                minVal: data.chartData.minVal,
-                maxVal: data.chartData.maxVal
-            };
-        } else {
-            chartDataCache = null;
-        }
-        renderBalanceChart();
+        const res = await api('/stats');
+        if (!res.ok) throw new Error('Stats fetch failed');
+        setText('heroAmount', currencyFormatter.format((await res.json()).totalBalance || 0));
     } catch (err) {
         console.error('Fehler beim Laden der Statistiken:', err);
     }
 }
 
-function renderBalanceChart() {
-    const canvas = document.getElementById('balanceChart');
-    if (!canvas || canvas.offsetParent === null) return; // Don't render if hidden
+// --- Transaction history ---
+let transactionPage = 1;
+let cachedTransactions = null;
+let transactionTotalItems = 0;
+let transactionSearchQuery = '';
+const TRANSACTIONS_PER_PAGE = 150;
+const TX_ICONS = { pay: 'person', don: 'heart', exp: 'dollar' };
+const txSign = tx => (tx.type === 'exp' ? '-' : '+');
+const txColor = tx => (tx.type === 'exp' ? 'text-danger' : 'text-success');
 
-    // Responsive Canvas
-    const container = canvas.parentElement;
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-
-    ctx.clearRect(0, 0, width, height);
-
-    if (!chartDataCache || !chartDataCache.dataPoints || chartDataCache.dataPoints.length === 0) return;
-
-    const { dataPoints, minVal, maxVal } = chartDataCache;
-
-    // Palette: Accessible Chart Description
-    if (dataPoints && dataPoints.length > 0) {
-        const startBalance = formatCurrency(dataPoints[0].y);
-        const endBalance = formatCurrency(dataPoints[dataPoints.length - 1].y);
-        canvas.setAttribute('aria-label', `Kontostandsverlauf über 90 Tage. Start: ${startBalance} Euro. Aktuell: ${endBalance} Euro.`);
-    }
-
-    // 3. Drawing
-    // Margins
-    const padTop = 20;
-    const padBottom = 20;
-    const padLeft = 10;
-    const padRight = 10;
-
-    const plotWidth = width - padLeft - padRight;
-    const plotHeight = height - padTop - padBottom;
-
-    // Scale
-    const range = maxVal - minVal;
-    // Avoid division by zero
-    const safeRange = range === 0 ? 1 : range;
-
-    const getX = (i) => padLeft + (i / 90) * plotWidth;
-    const getY = (val) => padTop + plotHeight - ((val - minVal) / safeRange) * plotHeight;
-
-    // Draw Gradient Area
-    const grad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
-    grad.addColorStop(0, "rgba(6, 182, 212, 0.2)");
-    grad.addColorStop(1, "rgba(6, 182, 212, 0.0)");
-
-    ctx.beginPath();
-    ctx.moveTo(getX(0), getY(dataPoints[0].y));
-
-    for (let i = 1; i < dataPoints.length; i++) {
-        ctx.lineTo(getX(i), getY(dataPoints[i].y));
-    }
-
-    ctx.lineTo(getX(90), height - padBottom);
-    ctx.lineTo(getX(0), height - padBottom);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Draw Line
-    ctx.beginPath();
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#06b6d4';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.moveTo(getX(0), getY(dataPoints[0].y));
-    for (let i = 1; i < dataPoints.length; i++) {
-        ctx.lineTo(getX(i), getY(dataPoints[i].y));
-    }
-    ctx.stroke();
-
-    // Draw Start/End labels (Dates)
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#64748b';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(shortDateFormatter.format(dataPoints[0].date), padLeft, height - 5);
-
-    ctx.textAlign = 'right';
-    ctx.fillText(shortDateFormatter.format(dataPoints[90].date), width - padRight, height - 5);
-}
-
-// Re-render chart on resize
-let resizeTimeout;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        requestAnimationFrame(renderBalanceChart);
-    }, 100);
-});
-
-window.renderHistoryTab = async function(resetLimit = true) {
+async function renderHistoryTab(resetLimit = true) {
     if (resetLimit) {
         transactionPage = 1;
         cachedTransactions = null;
     }
-
-    const container = document.getElementById('history-page-list');
+    const container = $('history-page-list');
     if (!container) return;
-
-    // Ensure search query is always synchronized with the current input value
-    const searchInput = document.getElementById('history-search');
-    if (searchInput) {
-        transactionSearchQuery = searchInput.value.trim();
-    }
-
+    transactionSearchQuery = inputValue('history-search').trim();
+    const search = transactionSearchQuery;
     if (resetLimit) {
-        const skeletonHtml = Array(15).fill(`
+        container.innerHTML = `
             <div class="trans-item" style="pointer-events: none;">
                 <div style="display: flex; align-items: center; flex: 1;">
                     <div class="skeleton" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 16px; flex-shrink: 0;"></div>
@@ -4221,357 +2977,324 @@ window.renderHistoryTab = async function(resetLimit = true) {
                     </div>
                 </div>
                 <div class="skeleton" style="width: 70px; height: 18px;"></div>
-            </div>
-        `).join('');
-        container.innerHTML = skeletonHtml;
+            </div>`.repeat(15);
     }
-
     try {
-        const queryParam = transactionSearchQuery ? `&search=${encodeURIComponent(transactionSearchQuery)}` : '';
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/transactions?page=${transactionPage}&perPage=${transactionPerPage}${queryParam}`);
-        if (!response.ok) throw new Error('Failed to fetch transactions');
-        const data = await response.json();
-
-        if (resetLimit) {
-            cachedTransactions = data.items;
-        } else {
-            cachedTransactions = [...(cachedTransactions || []), ...data.items];
-        }
+        const res = await api(`/transactions?page=${transactionPage}&perPage=${TRANSACTIONS_PER_PAGE}${search ? `&search=${encodeURIComponent(search)}` : ''}`);
+        if (!res.ok) throw new Error('Failed to fetch transactions');
+        const data = await res.json();
+        cachedTransactions = resetLimit ? data.items : [...(cachedTransactions || []), ...data.items];
         transactionTotalItems = data.totalItems;
-
         if (!cachedTransactions || cachedTransactions.length === 0) {
-            container.innerHTML = `<div style="text-align:center; padding:30px 20px; color:var(--text-secondary);">${t('no_transactions', 'Keine Buchungen vorhanden.')}</div>`;
+            container.innerHTML = emptyNotice(t('no_transactions', 'Keine Buchungen vorhanden.'), 'text-align:center; padding:30px 20px; color:var(--text-secondary);');
             return;
         }
-
-        const isSuperAdmin = !!(currentUser && currentUser.admin);
-
-        let lastDateFormatted = null;
-        let html = '';
-
-        cachedTransactions.forEach((tData, index) => {
-            const tDateFormatted = tData.date ? formatDateFast(tData.date) : t('no_date', 'Kein Datum');
-
-            if (tDateFormatted !== lastDateFormatted) {
-                html += `<div style="margin: ${index === 0 ? '0' : '20px'} 0 8px 10px; font-weight: bold; font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${tDateFormatted}</div>`;
-                lastDateFormatted = tDateFormatted;
-            }
-
-            const isExp = tData.type === 'exp';
-            const color = isExp ? 'text-danger' : 'text-success';
-            const sign = isExp ? '-' : '+';
-
-            let iconSvg = '';
-            let iconClass = '';
-            if (tData.type === 'pay') {
-                iconClass = 'pay';
-                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
-            } else if (tData.type === 'don') {
-                iconClass = 'don';
-                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>';
-            } else {
-                iconClass = 'exp';
-                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>';
-            }
-
-            const hasReceipt = tData.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></span>` : '';
-
-            const uidAttr = (tData.type === 'pay' && tData.personUid) ? ` data-uid="${tData.personUid}"` : '';
-
-            const hasDesc = !!(tData.description && tData.description.trim());
-            const descHtml = hasDesc ? `<span class="trans-desc">${escapeHtml(tData.description)}</span>` : '';
-            const metaHtml = (hasDesc || hasReceipt) ? `<div class="trans-meta">${descHtml}${hasReceipt}</div>` : '';
-            html += `
-                <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(tData.id)}" data-type="${escapeHtml(tData.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
+        let lastDate = null;
+        let html = cachedTransactions.map((tx, index) => {
+            const date = tx.date ? formatDateFast(tx.date) : t('no_date', 'Kein Datum');
+            const header = date !== lastDate ? `<div style="margin: ${index === 0 ? '0' : '20px'} 0 8px 10px; font-weight: bold; font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${date}</div>` : '';
+            lastDate = date;
+            const receiptBadge = tx.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;">${svgIcon('paperclip', 14, 2.2)}</span>` : '';
+            const desc = tx.description?.trim() ? `<span class="trans-desc">${escapeHtml(tx.description)}</span>` : '';
+            const iconClass = TX_ICONS[tx.type] ? tx.type : 'exp';
+            return `${header}
+                <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(tx.id)}" data-type="${escapeHtml(tx.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
                     <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
-                        <div class="trans-icon-wrapper ${iconClass}"${uidAttr}>
-                            ${iconSvg}
+                        <div class="trans-icon-wrapper ${iconClass}"${tx.type === 'pay' && tx.personUid ? ` data-uid="${tx.personUid}"` : ''}>
+                            ${svgIcon(TX_ICONS[iconClass], 20)}
                         </div>
                         <div class="trans-left" style="flex: 1; min-width: 0;">
-                            <span style="font-weight:600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(tData.who)}</span>
-                            ${metaHtml}
+                            <span style="font-weight:600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(tx.who)}</span>
+                            ${desc || receiptBadge ? `<div class="trans-meta">${desc}${receiptBadge}</div>` : ''}
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; margin-left: 12px; flex-shrink: 0;">
-                        <div class="trans-amount ${color}" style="font-size: 1.1rem;">${sign}${formatCurrency(tData.amount)}€</div>
+                        <div class="trans-amount ${txColor(tx)}" style="font-size: 1.1rem;">${txSign(tx)}${formatCurrency(tx.amount)}€</div>
                     </div>
-                </div>
-            `;
-        });
-
+                </div>`;
+        }).join('');
         if (cachedTransactions.length < transactionTotalItems) {
-            const showingText = t('showing_transactions_count', 'Es werden {count} von {total} Buchungen angezeigt.')
-                .replace('{count}', cachedTransactions.length)
-                .replace('{total}', transactionTotalItems);
             html += `
                 <div style="text-align:center; padding:20px;">
-                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 12px;">${showingText}</div>
+                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 12px;">${t('showing_transactions_count', 'Es werden {count} von {total} Buchungen angezeigt.', { count: cachedTransactions.length, total: transactionTotalItems })}</div>
                     <button class="btn btn-secondary" onclick="loadMoreHistory()">${t('load_more_btn', 'Mehr laden...')}</button>
-                </div>
-            `;
+                </div>`;
         }
-
         const scrollContainer = container.parentElement;
         const previousScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
-
         container.innerHTML = html;
-
-        // Lazy load profile pictures for payments
-        const iconWrappers = container.querySelectorAll('.trans-icon-wrapper[data-uid]');
-        for (const wrapper of iconWrappers) {
-            const uid = wrapper.getAttribute('data-uid');
-            getProfilePicUrl(uid).then(url => {
-                if (url) {
-                    wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profil'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`;
-                    wrapper.style.background = 'transparent'; // Remove soft background color
-                    wrapper.style.color = 'inherit'; // Reset color
-                }
+        container.querySelectorAll('.trans-icon-wrapper[data-uid]').forEach(wrapper => {
+            getProfilePicUrl(wrapper.dataset.uid).then(url => {
+                if (!url) return;
+                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profil'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`;
+                wrapper.style.background = 'transparent';
+                wrapper.style.color = 'inherit';
             });
-        }
-
-        if (!resetLimit && scrollContainer) {
-            scrollContainer.scrollTop = previousScrollTop;
-        }
+        });
+        if (!resetLimit && scrollContainer) scrollContainer.scrollTop = previousScrollTop;
     } catch (err) {
         console.error('Fehler beim Laden der Transaktionen:', err);
-        container.innerHTML = `<div style="text-align:center; padding:30px 20px; color:var(--danger);">${t('error_loading_transactions', 'Fehler beim Laden der Buchungen.')}</div>`;
+        container.innerHTML = emptyNotice(t('error_loading_transactions', 'Fehler beim Laden der Buchungen.'), 'text-align:center; padding:30px 20px; color:var(--danger);');
     }
+}
+
+const detailRow = (label, value) => `
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
+        <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">${label}</span>
+        <span style="font-weight:600; color:var(--text);">${value}</span>
+    </div>`;
+const TX_DETAIL_BADGES = {
+    pay: ['badge-person', 'color:var(--text); background:var(--surface); border:1px solid var(--border);', '💳'],
+    don: ['badge-donation', '', '💚'],
+    exp: ['badge-expense', '', '🧾']
 };
 
-window.loadMoreHistory = function() {
-    transactionPage += 1;
-    window.renderHistoryTab(false);
-};
+async function showTransactionDetails(id, type) {
+    const tx = cachedTransactions?.find(x => String(x.id) === String(id));
+    const typeName = { exp: t('action_expense', 'Ausgabe'), don: t('btn_add_donation', 'Spende'), pay: t('action_payment', 'Zahlung') }[type];
+    if (!tx || !typeName) return;
+    const who = type === 'don' ? tx.name || tx.who : tx.who;
+    openModal('transaction-details-modal');
 
-/* --- REPORT GENERATION & PDF EXPORT LOGIC --- */
+    const editBtn = $('details-edit-btn');
+    if (editBtn) {
+        editBtn.style.display = canManageFinances() ? 'inline-flex' : 'none';
+        if (canManageFinances()) {
+            const index = cachedTransactions.findIndex(x => String(x.id) === String(tx.id));
+            editBtn.onclick = () => {
+                closeModal('transaction-details-modal');
+                setTimeout(() => index >= 0 ? editRecordedPaymentByIndex(index) : console.error('detailsEditBtn: Transaction index not found in cache for ID', tx.id), 50);
+            };
+        }
+    }
+
+    const content = $('transaction-details-content');
+    const [badgeClass, badgeStyle, badgeIcon] = TX_DETAIL_BADGES[tx.type] || TX_DETAIL_BADGES.pay;
+    const description = tx.description || tx.note;
+    content.innerHTML = `
+        <div style="background:var(--surface-alt); border:1px solid var(--border-light); border-radius:14px; padding:12px 14px; text-align:center; margin-bottom:10px; display:flex; flex-direction:column; align-items:center; gap:5px;">
+            <div style="display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:18px; font-size:0.75rem; font-weight:700; ${badgeStyle}" class="${badgeClass}">
+                <span>${badgeIcon}</span> ${escapeHtml(typeName)}
+            </div>
+            <div style="font-size:1.55rem; font-weight:800; color:var(--text); letter-spacing:-0.02em;">${euro(tx.amount)}</div>
+        </div>
+        <div class="modal-section-card" style="gap:8px;">
+            <div class="modal-section-header">
+                <span>ℹ️</span> <span>${escapeHtml(t('modal_section_info', 'Transaktionsdetails'))}</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.86rem;">
+                ${detailRow(`📅 ${escapeHtml(t('modal_date', 'Datum'))}`, tx.date ? formatDateFast(tx.date) : '-')}
+                ${who ? detailRow(`👤 ${escapeHtml(t('modal_person_name', 'Person'))}`, escapeHtml(who)) : ''}
+                ${tx.issuer ? detailRow(`🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}`, escapeHtml(tx.issuer)) : ''}
+                ${description ? `
+                <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
+                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
+                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); word-break:break-word; white-space:pre-wrap; font-size:0.84rem;">${escapeHtml(description)}</span>
+                </div>` : ''}
+            </div>
+        </div>
+        <div id="receipt-container" style="margin-top:10px;"></div>`;
+
+    const noReceipts = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'Kein Beleg vorhanden.')}</div>`;
+    if (!tx.receipt) {
+        $('receipt-container').innerHTML = noReceipts;
+        return;
+    }
+    await renderReceiptsInto($('receipt-container'), tx.receipt, {
+        holder: content,
+        loading: `<div class="spinner" style="margin:20px auto;"></div><div style="text-align:center">${t('loading_receipts', 'Lade Belege...')}</div>`,
+        header: `<div style="font-weight:600; margin-bottom:10px;">${t('details_receipts', 'Belege')}</div>`,
+        listStyle: 'display:flex; flex-direction:column; gap:15px;',
+        empty: noReceipts,
+        error: `<div style="color:var(--danger); text-align:center;">${t('error_loading_receipts', 'Belege konnten nicht geladen werden.')}</div>`
+    });
+}
+
+function viewRequestReceipt(receiptField, containerId) {
+    const container = $(containerId);
+    if (!container) return;
+    renderReceiptsInto(container, receiptField, {
+        loading: '<div class="spinner" style="margin:10px auto;"></div><div style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">Lade Beleg(e)...</div>',
+        listStyle: 'display:flex; flex-direction:column; gap:15px; margin-top:10px;',
+        empty: '<div style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">Kein Beleg vorhanden.</div>',
+        error: '<div style="color:var(--danger); font-size:0.8rem; margin-top:10px;">Fehler beim Laden des Belegs.</div>'
+    });
+}
+
+// --- Financial report & PDF export ---
 let allReportTransactions = [];
 const selectedManualTransactionIds = new Set();
+const reportKey = (tx, idx) => String(tx.id || tx.paymentId || `tx_${idx}`);
+const reportPlaceholder = (icon, text, style = '') => `
+    <div class="report-placeholder-container"${style}>
+        ${icon}
+        <p style="font-weight: 600; margin: 0;">${text}</p>
+    </div>`;
 
-window.openExportReportModal = async function() {
-    const previewContainer = document.getElementById('report-print-preview');
-    if (previewContainer) {
-        previewContainer.innerHTML = `
-            <div class="report-placeholder-container">
-                <div class="spinner" style="margin: 0 auto 15px;"></div>
-                <p style="font-weight: 600; margin: 0;">${t('loading', 'Lade Daten...')}</p>
-            </div>
-        `;
-    }
-    
-    // Open the modal immediately so user sees loading state
+async function openExportReportModal() {
+    const preview = $('report-print-preview');
+    if (preview) preview.innerHTML = reportPlaceholder('<div class="spinner" style="margin: 0 auto 15px;"></div>', t('loading', 'Lade Daten...'));
     openModal('export-report-modal');
-    
     try {
-        let pageNum = 1;
-        let totalPages = 1;
         allReportTransactions = [];
-        do {
-            const response = await fetchWithAuth(`${config.apiBaseUrl}/transactions?page=${pageNum}&perPage=500`);
-            if (!response.ok) throw new Error('Failed to fetch transactions');
-            const data = await response.json();
+        for (let page = 1, totalPages = 1; page <= totalPages; page++) {
+            const res = await api(`/transactions?page=${page}&perPage=500`);
+            if (!res.ok) throw new Error('Failed to fetch transactions');
+            const data = await res.json();
             allReportTransactions = allReportTransactions.concat(data.items || []);
             totalPages = data.totalPages || 1;
-            pageNum++;
-        } while (pageNum <= totalPages);
-        
-        // Find unique years of transactions
-        const years = new Set();
-        allReportTransactions.forEach(tData => {
-            if (tData.date) {
-                const y = tData.date.substring(0, 4);
-                if (y && !isNaN(y)) years.add(parseInt(y, 10));
-            }
-        });
-        
-        if (years.size === 0) {
-            years.add(new Date().getFullYear());
         }
-        
-        const sortedYears = Array.from(years).sort((a, b) => b - a);
-        const yearSelect = document.getElementById('report-year-select');
-        if (yearSelect) {
-            yearSelect.innerHTML = sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
-        }
-        
-        // Set default custom date range
-        const today = getTodayStr();
-        const thisYear = new Date().getFullYear();
-        document.getElementById('report-date-from').value = `${thisYear}-01-01`;
-        document.getElementById('report-date-to').value = today;
-        
-        // Populate single person selector
-        const personSelect = document.getElementById('report-person-select');
-        if (personSelect) {
-            const sortedPeople = [...people].sort((a, b) => a.name.localeCompare(b.name));
-            personSelect.innerHTML = sortedPeople.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-        }
-        document.getElementById('report-person-date-from').value = `${thisYear}-01-01`;
-        document.getElementById('report-person-date-to').value = today;
-        
-        // Reset manual transaction checklist
+        const years = new Set(allReportTransactions.map(tx => parseInt((tx.date || '').slice(0, 4), 10)).filter(y => !isNaN(y)));
+        if (years.size === 0) years.add(new Date().getFullYear());
+        const yearSelect = $('report-year-select');
+        if (yearSelect) yearSelect.innerHTML = [...years].sort((a, b) => b - a).map(y => `<option value="${y}">${y}</option>`).join('');
+
+        const yearStart = `${new Date().getFullYear()}-01-01`;
+        ['report-date-from', 'report-person-date-from'].forEach(id => setValue(id, yearStart));
+        ['report-date-to', 'report-person-date-to'].forEach(id => setValue(id, getTodayStr()));
+        const personSelect = $('report-person-select');
+        if (personSelect) personSelect.innerHTML = [...people].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+
         selectedManualTransactionIds.clear();
-        const checklistContainer = document.getElementById('report-manual-checklist');
-        if (checklistContainer) {
-            if (allReportTransactions.length === 0) {
-                checklistContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">${t('no_transactions', 'Keine Buchungen vorhanden.')}</div>`;
-            } else {
-                checklistContainer.innerHTML = allReportTransactions.map((tData, idx) => {
-                    const tDateFormatted = tData.date ? formatDateFast(tData.date) : '';
-                    const isExp = tData.type === 'exp';
-                    const color = isExp ? 'text-danger' : 'text-success';
-                    const sign = isExp ? '-' : '+';
-                    const key = String(tData.id || tData.paymentId || `tx_${idx}`);
+        const checklist = $('report-manual-checklist');
+        if (checklist) {
+            checklist.innerHTML = allReportTransactions.length === 0
+                ? emptyNotice(t('no_transactions', 'Keine Buchungen vorhanden.'))
+                : allReportTransactions.map((tx, idx) => {
+                    const key = reportKey(tx, idx);
                     return `
                         <div class="report-checklist-item" onclick="window.toggleManualTransactionSelection('${key}')">
                             <input type="checkbox" id="chk-report-${key}" value="${key}" onclick="event.stopPropagation(); window.toggleManualTransactionSelection('${key}')">
                             <div class="report-checklist-info">
-                                <span style="font-weight: 600;">${escapeHtml(tData.who)}</span>
-                                <span class="report-checklist-meta">${tDateFormatted} &bull; <span class="${color}">${sign}${formatCurrency(tData.amount)}€</span></span>
+                                <span style="font-weight: 600;">${escapeHtml(tx.who)}</span>
+                                <span class="report-checklist-meta">${tx.date ? formatDateFast(tx.date) : ''} &bull; <span class="${txColor(tx)}">${txSign(tx)}${formatCurrency(tx.amount)}€</span></span>
                             </div>
-                        </div>
-                    `;
+                        </div>`;
                 }).join('');
-            }
         }
-        
-        // Initialize state to Annual Summary
-        document.getElementById('report-type-select').value = 'annual';
-        window.onReportTypeChange();
-        
+        $('report-type-select').value = 'annual';
+        onReportTypeChange();
     } catch (err) {
         console.error('Fehler beim Laden der Berichtstransaktionen:', err);
-        if (previewContainer) {
-            previewContainer.innerHTML = `
-                <div class="report-placeholder-container" style="color: var(--danger);">
-                    <div class="report-placeholder-icon">⚠️</div>
-                    <p style="font-weight: 600; margin: 0;">${t('alert_error_loading_data', 'Fehler beim Laden der Daten.')}</p>
-                </div>
-            `;
-        }
+        if (preview) preview.innerHTML = reportPlaceholder('<div class="report-placeholder-icon">⚠️</div>', t('alert_error_loading_data', 'Fehler beim Laden der Daten.'), ' style="color: var(--danger);"');
     }
-};
+}
 
-window.toggleManualTransactionSelection = function(id) {
+function toggleManualTransactionSelection(id) {
     const key = String(id);
-    const chk = document.getElementById(`chk-report-${key}`);
-    if (selectedManualTransactionIds.has(key)) {
-        selectedManualTransactionIds.delete(key);
-        if (chk) chk.checked = false;
-    } else {
-        selectedManualTransactionIds.add(key);
-        if (chk) chk.checked = true;
-    }
-    window.updateReportPreview();
+    const selected = !selectedManualTransactionIds.delete(key);
+    if (selected) selectedManualTransactionIds.add(key);
+    const chk = $(`chk-report-${key}`);
+    if (chk) chk.checked = selected;
+    updateReportPreview();
+}
+
+function onReportTypeChange() {
+    const type = inputValue('report-type-select');
+    const containers = { annual: 'report-year-picker-container', custom: 'report-date-range-container', manual: 'report-manual-checklist-container', person: 'report-person-selector-container' };
+    for (const [key, id] of Object.entries(containers)) show(id, type === key, 'block');
+    updateReportPreview();
+}
+
+const inDateRange = (tx, from, to) => {
+    const d = (tx.date || '').slice(0, 10);
+    return !(from && d < from) && !(to && d > to);
 };
 
-window.onReportTypeChange = function() {
-    const type = document.getElementById('report-type-select').value;
-    
-    document.getElementById('report-year-picker-container').style.display = (type === 'annual') ? 'block' : 'none';
-    document.getElementById('report-date-range-container').style.display = (type === 'custom') ? 'block' : 'none';
-    document.getElementById('report-manual-checklist-container').style.display = (type === 'manual') ? 'block' : 'none';
-    document.getElementById('report-person-selector-container').style.display = (type === 'person') ? 'block' : 'none';
-    
-    window.updateReportPreview();
-};
-
-window.updateReportPreview = function() {
-    const type = document.getElementById('report-type-select').value;
-    const tier = document.getElementById('report-tier-select').value;
-    const previewContainer = document.getElementById('report-print-preview');
-    if (!previewContainer) return;
-    
-    let filtered = [];
-    let filterDesc = '';
-    let selectedPerson = null;
-    
+// Returns { filtered, description, person } for the selected report type.
+function selectReportTransactions(type) {
     if (type === 'annual') {
-        const year = String(document.getElementById('report-year-select').value);
-        filtered = allReportTransactions.filter(tData => (tData.date || '').slice(0, 4) === year);
-        filterDesc = `${t('report_year_filter', 'Year:')} ${year}`;
-    } else if (type === 'custom') {
-        const from = document.getElementById('report-date-from').value;
-        const to = document.getElementById('report-date-to').value;
-        filtered = allReportTransactions.filter(tData => {
-            const d = (tData.date || '').slice(0, 10);
-            if (from && d < from) return false;
-            if (to && d > to) return false;
-            return true;
-        });
-        const fromFormatted = from ? formatDateFast(from) : '';
-        const toFormatted = to ? formatDateFast(to) : '';
-        filterDesc = (fromFormatted && toFormatted) ? `${fromFormatted} - ${toFormatted}` : (fromFormatted ? `Ab ${fromFormatted}` : (toFormatted ? `Bis ${toFormatted}` : 'Alle Buchungen'));
-    } else if (type === 'manual') {
-        filtered = allReportTransactions.filter((tData, idx) => {
-            const key = String(tData.id || tData.paymentId || `tx_${idx}`);
-            return selectedManualTransactionIds.has(key);
-        });
-        filterDesc = t('report_manual_selection', 'Manual Selection');
-    } else if (type === 'person') {
-        const selectedPersonId = document.getElementById('report-person-select').value;
-        selectedPerson = people.find(p => String(p.id) === String(selectedPersonId));
-        const personName = selectedPerson ? selectedPerson.name : '';
-        
-        const from = document.getElementById('report-person-date-from').value;
-        const to = document.getElementById('report-person-date-to').value;
-        
-        filtered = allReportTransactions.filter(tData => {
-            const matchesPersonId = String(tData.personId) === String(selectedPersonId) ||
-                                    (tData.personUid && selectedPerson && tData.personUid === selectedPerson.uid);
-            const matchesPersonFallback = !matchesPersonId && (tData.who && personName && tData.who.trim().toLowerCase() === personName.trim().toLowerCase());
-
-            if (!matchesPersonId && !matchesPersonFallback) return false;
-            
-            const d = (tData.date || '').slice(0, 10);
-            if (from && d < from) return false;
-            if (to && d > to) return false;
-            return true;
-        });
-        
-        const fromFormatted = from ? formatDateFast(from) : '';
-        const toFormatted = to ? formatDateFast(to) : '';
-        const rangeText = (from || to) ? `: ${fromFormatted} - ${toFormatted}` : '';
-        filterDesc = `${personName}${rangeText}`;
+        const year = String(inputValue('report-year-select'));
+        return { filtered: allReportTransactions.filter(tx => (tx.date || '').slice(0, 4) === year), description: `${t('report_year_filter', 'Year:')} ${year}` };
     }
-    
-    // Sort transactions chronologically (oldest first)
+    if (type === 'custom') {
+        const from = inputValue('report-date-from');
+        const to = inputValue('report-date-to');
+        const [fromText, toText] = [from, to].map(d => (d ? formatDateFast(d) : ''));
+        return {
+            filtered: allReportTransactions.filter(tx => inDateRange(tx, from, to)),
+            description: fromText && toText ? `${fromText} - ${toText}` : fromText ? `Ab ${fromText}` : toText ? `Bis ${toText}` : 'Alle Buchungen'
+        };
+    }
+    if (type === 'manual') {
+        return { filtered: allReportTransactions.filter((tx, idx) => selectedManualTransactionIds.has(reportKey(tx, idx))), description: t('report_manual_selection', 'Manual Selection') };
+    }
+    const personId = inputValue('report-person-select');
+    const person = findPerson(personId);
+    const name = person ? person.name : '';
+    const from = inputValue('report-person-date-from');
+    const to = inputValue('report-person-date-to');
+    const filtered = allReportTransactions.filter(tx => {
+        const matchesId = String(tx.personId) === String(personId) || (tx.personUid && person && tx.personUid === person.uid);
+        const matchesName = tx.who && name && tx.who.trim().toLowerCase() === name.trim().toLowerCase();
+        return (matchesId || matchesName) && inDateRange(tx, from, to);
+    });
+    return { filtered, person, description: `${name}${from || to ? `: ${from ? formatDateFast(from) : ''} - ${to ? formatDateFast(to) : ''}` : ''}` };
+}
+
+const REPORT_TYPE_LABELS = { pay: ['report_type_membership', 'Membership'], don: ['report_type_donation', 'Donation'], exp: ['report_type_expense', 'Expense'] };
+
+function renderReportRows(filtered, tier) {
+    return filtered.map(tx => {
+        const isExp = tx.type === 'exp';
+        const [key, fallback] = REPORT_TYPE_LABELS[tx.type] || REPORT_TYPE_LABELS.exp;
+        const partner = tx.type === 'pay' ? tx.who : tx.type === 'don' ? tx.who || t(key, fallback) : tx.description || tx.who || t(key, fallback);
+        let rows = `
+            <tr>
+                <td>${tx.date ? formatDateFast(tx.date) : ''}</td>
+                <td><strong>${t(key, fallback)}</strong></td>
+                <td>${escapeHtml(partner)}</td>
+                <td class="amount-cell ${isExp ? 'amount-expense' : 'amount-income'}">${txSign(tx)}${euro(tx.amount)}</td>
+            </tr>`;
+        const notes = !isExp ? (tx.description || tx.note || '') : '';
+        const tags = tx.tags ? (Array.isArray(tx.tags) ? tx.tags : [tx.tags]) : [];
+        if (tier === 'detailed' && (notes || tx.receipt || tags.length > 0)) {
+            rows += `
+                <tr class="preview-detail-row">
+                    <td></td>
+                    <td colspan="3">${notes ? `<div class="preview-notes">"${escapeHtml(notes)}"</div>` : ''}${tags.length ? `<div>${tags.map(tag => `<span class="preview-tags-badge">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}${tx.receipt ? `
+                        <div class="preview-attachment-indicator">
+                            ${svgIcon('upload', 12, 2.5, 'style="margin-right: 2px;"')}
+                            <span>${t('report_receipt_attached', 'Receipt attached')}</span>
+                        </div>` : ''}</td>
+                </tr>`;
+        }
+        return rows;
+    }).join('');
+}
+
+function updateReportPreview() {
+    const type = inputValue('report-type-select');
+    const tier = inputValue('report-tier-select');
+    const preview = $('report-print-preview');
+    if (!preview) return;
+    const { filtered, description, person } = selectReportTransactions(type);
     filtered.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    
     if (filtered.length === 0) {
-        previewContainer.innerHTML = `
-            <div class="report-placeholder-container">
-                <div class="report-placeholder-icon">📄</div>
-                <p style="font-weight: 600; margin: 0;">${t('report_no_data', 'Keine Daten im gewählten Zeitraum')}</p>
-            </div>
-        `;
+        preview.innerHTML = reportPlaceholder('<div class="report-placeholder-icon">📄</div>', t('report_no_data', 'Keine Daten im gewählten Zeitraum'));
         return;
     }
-    
-    // Calculate stats
-    let totalIncome = 0;
-    let totalExpenses = 0;
-    filtered.forEach(tData => {
-        const amt = parseFloat(tData.amount || 0);
-        if (tData.type === 'exp') {
-            totalExpenses += amt;
-        } else {
-            totalIncome += amt;
-        }
-    });
-    const netBalance = totalIncome - totalExpenses;
-    
-    const appName = config.appName || "Agora";
-    
-    // Header HTML
-    const headerHtml = `
+    const income = sumAmounts(filtered.filter(tx => tx.type !== 'exp'));
+    const expenses = sumAmounts(filtered.filter(tx => tx.type === 'exp'));
+    const net = income - expenses;
+    const statCard = (label, cls, value) => `
+        <div class="preview-stat-card">
+            <div class="preview-stat-label">${label}</div>
+            <div class="preview-stat-value ${cls}">${value}</div>
+        </div>`;
+    const overdue = person?._overdueAmount || 0;
+    const thirdCard = type !== 'person' ? statCard(t('report_balance', 'Balance'), `balance ${net >= 0 ? 'income' : 'expense'}`, `${net >= 0 ? '+' : ''}${euro(net)}`)
+        : overdue > 0 ? statCard(t('report_outstanding_till_today', 'Ausstehend (bis heute)'), 'expense', euro(overdue))
+        : statCard(t('status_label', 'Status'), 'income', t('report_status_good', 'Kein Rückstand'));
+    preview.innerHTML = `
         <div class="preview-header">
             <div class="preview-logo">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #1e3a8a;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                <span>${escapeHtml(appName)}</span>
+                ${svgIcon('shield', 28, 2.5, 'style="color: #1e3a8a;"')}
+                <span>${escapeHtml(APP_NAME)}</span>
             </div>
             <div class="preview-meta">
                 <div>${t('report_created_on', 'Created on:')} ${formatDateFast(getTodayStr())}</div>
-                <div style="font-weight: 600; margin-top: 2px;">${filterDesc}</div>
+                <div style="font-weight: 600; margin-top: 2px;">${description}</div>
             </div>
         </div>
         <div class="preview-title-block">
@@ -4580,321 +3303,86 @@ window.updateReportPreview = function() {
                 ${t('report_summary', 'Summary of income and expenses')}
             </div>
         </div>
-    `;
-    
-    let thirdCardHtml = '';
-    if (type === 'person') {
-        const overdueAmount = selectedPerson ? (selectedPerson._overdueAmount || 0) : 0;
-        if (overdueAmount > 0) {
-            thirdCardHtml = `
-                <div class="preview-stat-card">
-                    <div class="preview-stat-label">${t('report_outstanding_till_today', 'Ausstehend (bis heute)')}</div>
-                    <div class="preview-stat-value expense">${formatCurrency(overdueAmount)} €</div>
-                </div>
-            `;
-        } else {
-            thirdCardHtml = `
-                <div class="preview-stat-card">
-                    <div class="preview-stat-label">${t('status_label', 'Status')}</div>
-                    <div class="preview-stat-value income">${t('report_status_good', 'Kein Rückstand')}</div>
-                </div>
-            `;
-        }
-    } else {
-        thirdCardHtml = `
-            <div class="preview-stat-card">
-                <div class="preview-stat-label">${t('report_balance', 'Balance')}</div>
-                <div class="preview-stat-value balance ${netBalance >= 0 ? 'income' : 'expense'}">${netBalance >= 0 ? '+' : ''}${formatCurrency(netBalance)} €</div>
-            </div>
-        `;
-    }
-    
-    // Stats HTML
-    const statsHtml = `
         <div class="preview-stats-grid">
-            <div class="preview-stat-card">
-                <div class="preview-stat-label">${t('nav_income', 'Einnahmen')}</div>
-                <div class="preview-stat-value income">+${formatCurrency(totalIncome)} €</div>
-            </div>
-            <div class="preview-stat-card">
-                <div class="preview-stat-label">${t('nav_expenses', 'Ausgaben')}</div>
-                <div class="preview-stat-value expense">-${formatCurrency(totalExpenses)} €</div>
-            </div>
-            ${thirdCardHtml}
+            ${statCard(t('nav_income', 'Einnahmen'), 'income', `+${euro(income)}`)}
+            ${statCard(t('nav_expenses', 'Ausgaben'), 'expense', `-${euro(expenses)}`)}
+            ${thirdCard}
         </div>
-    `;
-    
-    // Table HTML
-    let tableHtml = '';
-    if (tier !== 'compact') {
-        const headers = `<tr><th>${t('report_table_date', 'Date')}</th><th>${t('report_table_type', 'Type')}</th><th>${t('report_table_desc', 'Description / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Amount')}</th></tr>`;
-            
-        let rowsHtml = '';
-        filtered.forEach(tData => {
-            const dateFormatted = tData.date ? formatDateFast(tData.date) : '';
-            const isExp = tData.type === 'exp';
-            const sign = isExp ? '-' : '+';
-            const amountClass = isExp ? 'amount-expense' : 'amount-income';
-            
-            let typeStr = '';
-            if (tData.type === 'pay') {
-                typeStr = t('report_type_membership', 'Membership');
-            } else if (tData.type === 'don') {
-                typeStr = t('report_type_donation', 'Donation');
-            } else {
-                typeStr = t('report_type_expense', 'Expense');
-            }
-            
-            let partnerDesc = '';
-            if (tData.type === 'pay') {
-                partnerDesc = tData.who;
-            } else if (tData.type === 'don') {
-                partnerDesc = tData.who || t('report_type_donation', 'Donation');
-            } else {
-                partnerDesc = tData.description || tData.who || t('report_type_expense', 'Expense');
-            }
-            
-            rowsHtml += `
-                <tr>
-                    <td>${dateFormatted}</td>
-                    <td><strong>${typeStr}</strong></td>
-                    <td>${escapeHtml(partnerDesc)}</td>
-                    <td class="amount-cell ${amountClass}">${sign}${formatCurrency(tData.amount)} €</td>
-                </tr>
-            `;
-            
-            if (tier === 'detailed') {
-                const notes = tData.type !== 'exp' ? (tData.description || tData.note || '') : '';
-                const hasReceipt = !!tData.receipt;
-                const tagsList = tData.tags ? (Array.isArray(tData.tags) ? tData.tags : [tData.tags]) : [];
-                const hasTags = tagsList.length > 0;
-                
-                if (notes || hasReceipt || hasTags) {
-                    let detailContent = '';
-                    if (notes) {
-                        detailContent += `<div class="preview-notes">"${escapeHtml(notes)}"</div>`;
-                    }
-                    if (hasTags) {
-                        detailContent += `<div>${tagsList.map(tag => `<span class="preview-tags-badge">${escapeHtml(tag)}</span>`).join('')}</div>`;
-                    }
-                    if (hasReceipt) {
-                        detailContent += `
-                            <div class="preview-attachment-indicator">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                <span>${t('report_receipt_attached', 'Receipt attached')}</span>
-                            </div>
-                        `;
-                    }
-                    
-                    rowsHtml += `
-                        <tr class="preview-detail-row">
-                            <td></td>
-                            <td colspan="3">${detailContent}</td>
-                        </tr>
-                    `;
-                }
-            }
-        });
-        
-        tableHtml = `
-            <table class="preview-table">
-                <thead>${headers}</thead>
-                <tbody>${rowsHtml}</tbody>
-            </table>
-        `;
-    }
-    
-    previewContainer.innerHTML = `
-        ${headerHtml}
-        ${statsHtml}
-        ${tableHtml}
-    `;
-    
-    // Scale preview to fit screen reactively
-    requestAnimationFrame(() => {
-        window.resizeReportPreview();
-    });
-};
+        ${tier === 'compact' ? '' : `
+        <table class="preview-table">
+            <thead><tr><th>${t('report_table_date', 'Date')}</th><th>${t('report_table_type', 'Type')}</th><th>${t('report_table_desc', 'Description / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Amount')}</th></tr></thead>
+            <tbody>${renderReportRows(filtered, tier)}</tbody>
+        </table>`}`;
+    requestAnimationFrame(resizeReportPreview);
+}
 
-window.downloadReportPdf = function() {
-    const element = document.getElementById('report-print-preview');
+function downloadReportPdf() {
+    const element = $('report-print-preview');
     if (!element) return;
-    
-    if (typeof html2pdf === 'undefined') {
-        alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
-        return;
-    }
-
+    if (typeof html2pdf === 'undefined') return alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
     setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generating...'));
-    
-    const appName = config.appName || "Agora";
-    const safeAppName = appName.replace(/[^a-zA-Z0-9]/g, '_');
-    
-    // Create an unscaled off-screen clone with normalized dimensions to prevent blank 1st page
+    // Render an unscaled off-screen A4-width clone to avoid a blank first page
     const printContainer = document.createElement('div');
-    printContainer.style.position = 'absolute';
-    printContainer.style.left = '0';
-    printContainer.style.top = '0';
-    printContainer.style.width = '794px';
-    printContainer.style.pointerEvents = 'none';
-    printContainer.style.zIndex = '-9999';
-    printContainer.style.background = '#ffffff';
-
+    printContainer.style.cssText = 'position: absolute; left: 0; top: 0; width: 794px; pointer-events: none; z-index: -9999; background: #ffffff;';
     const clone = element.cloneNode(true);
-    clone.style.transform = 'none';
-    clone.style.minHeight = 'auto';
-    clone.style.width = '794px';
-    clone.style.setProperty('padding', '30px 35px', 'important');
-    clone.style.margin = '0';
-    clone.style.boxSizing = 'border-box';
-    clone.style.background = '#ffffff';
-
+    clone.style.cssText += 'transform: none; min-height: auto; width: 794px; padding: 30px 35px !important; margin: 0; box-sizing: border-box; background: #ffffff;';
     printContainer.appendChild(clone);
     document.body.appendChild(printContainer);
-
-    const opt = {
+    const done = () => {
+        setButtonLoading('btn-download-pdf', false);
+        printContainer.remove();
+    };
+    html2pdf().set({
         margin: 0,
-        filename: `${safeAppName}_Finanzbericht_${getTodayStr()}.pdf`,
+        filename: `${APP_NAME.replace(/[^a-zA-Z0-9]/g, '_')}_Finanzbericht_${getTodayStr()}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'], avoid: ['.preview-stat-card', '.preview-header', '.preview-title-block', 'tr'] }
-    };
-    
-    html2pdf().set(opt).from(clone).save().then(() => {
-        setButtonLoading('btn-download-pdf', false);
-        if (printContainer.parentNode) printContainer.parentNode.removeChild(printContainer);
-    }).catch(err => {
+    }).from(clone).save().then(done).catch(err => {
         console.error('PDF generation failed:', err);
-        setButtonLoading('btn-download-pdf', false);
-        if (printContainer.parentNode) printContainer.parentNode.removeChild(printContainer);
+        done();
         alert(t('report_pdf_error', 'Failed to generate PDF.'));
     });
-};
+}
 
-window.resizeReportPreview = function() {
+function resizeReportPreview() {
     const viewport = document.querySelector('.report-preview-viewport');
-    const container = document.querySelector('.report-preview-scale-container');
-    const canvas = document.getElementById('report-print-preview');
-    if (!viewport || !container || !canvas) return;
-    
-    const padding = 40; // 20px padding left + 20px right
-    const viewportWidth = viewport.clientWidth - padding;
-    const a4Width = 794;
-    
-    const scale = Math.min(1, viewportWidth / a4Width);
-    viewport.style.setProperty('--preview-scale', scale);
-    
-    const canvasHeight = canvas.offsetHeight || 1120;
-    viewport.style.setProperty('--preview-height', `${canvasHeight}px`);
-};
+    const canvas = $('report-print-preview');
+    if (!viewport || !document.querySelector('.report-preview-scale-container') || !canvas) return;
+    viewport.style.setProperty('--preview-scale', Math.min(1, (viewport.clientWidth - 40) / 794));
+    viewport.style.setProperty('--preview-height', `${canvas.offsetHeight || 1120}px`);
+}
 
-let reportResizeTimeout;
-window.addEventListener('resize', () => {
-    clearTimeout(reportResizeTimeout);
-    reportResizeTimeout = setTimeout(() => {
-        const modal = document.getElementById('export-report-modal');
-        if (modal && modal.classList.contains('show')) {
-            window.resizeReportPreview();
-        }
-    }, 100);
-});
+window.addEventListener('resize', debounce(() => {
+    if ($('export-report-modal')?.classList.contains('show')) resizeReportPreview();
+}, 100));
 
-window.addPerson = async () => {
-    if (!validateRequired(['new-person-name', 'new-person-start'])) return;
+// --- Booking payments, donations & expenses ---
+function openPaymentModal(id) {
+    if (!canManageFinances()) return;
+    currentPersonId = id;
+    openModal('add-payment-modal');
+}
 
-    setButtonLoading('btn-add-person', true, "Speichert...");
-    const name = document.getElementById('new-person-name').value.trim();
-    const status = document.getElementById('new-person-status').value;
-    const start = document.getElementById('new-person-start').value;
-
-    const nameParts = name.split(/\s+/);
-    const firstName = nameParts[0] || name;
-    const lastName = nameParts.slice(1).join(' ') || '';
-
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/users`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                firstName,
-                lastName,
-                pays: true,
-                status,
-                memberSince: start,
-                admin: false
-            })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || 'Speichern fehlgeschlagen');
-        }
-
-        await loadData();
-        closeModal('add-person-modal');
-        document.getElementById('new-person-name').value = '';
-        showToast(t('toast_person_added', 'Person hinzugefügt'));
-    } catch (err) {
-        console.error('Fehler beim Anlegen der Person:', err);
-        alert(err.message || t('alert_save_failed', 'Speichern fehlgeschlagen. Bitte erneut versuchen.'));
-    } finally {
-        setButtonLoading('btn-add-person', false);
-    }
-};
-
-window.addPayment = async () => {
+async function addPayment() {
     if (!validateRequired(['payment-amount', 'payment-date'])) return;
-
-    setButtonLoading('btn-add-payment', true, "Buche...");
-
-    const amt = parseFloat(document.getElementById('payment-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    const date = document.getElementById('payment-date').value;
-    const desc = document.getElementById('payment-desc').value;
-    const isStandingOrder = document.getElementById('payment-is-standing-order').checked;
-
-    if(!currentPersonId || isNaN(amt)) {
-        setButtonLoading('btn-add-payment', false);
-        return;
-    }
-
+    setButtonLoading('btn-add-payment', true, 'Buche...');
+    const amount = parseAmount(inputValue('payment-amount'));
+    const date = inputValue('payment-date');
+    const note = inputValue('payment-desc');
+    const isStandingOrder = isChecked('payment-is-standing-order');
     try {
-        const updated = await mutatePerson(currentPersonId, (person) => {
-            if (isStandingOrder) {
-                const standingOrders = safeList(person.standingOrders);
-                const newSO = {
-                    id: Date.now().toString(),
-                    amount: amt,
-                    startDate: date,
-                    note: desc,
-                    lastAutoPayment: null
-                };
-                standingOrders.push(newSO);
-                return { ...person, standingOrders };
-            } else {
-                const payments = safeList(person.payments);
-                payments.push({ amount: amt, date, description: desc, id: Date.now() });
-                const totalPaid = (person.totalPaid || 0) + amt;
-                return { ...person, payments, totalPaid };
-            }
-        });
-
-        if (!updated) {
-            alert(t('alert_person_not_found', 'Person nicht gefunden.'));
-            return;
-        }
-
+        if (!currentPersonId || isNaN(amount)) return;
+        const updated = await mutatePerson(currentPersonId, person => isStandingOrder
+            ? { ...person, standingOrders: [...safeList(person.standingOrders), { id: newId(), amount, startDate: date, note, lastAutoPayment: null }] }
+            : { ...person, payments: [...person.payments, { amount, date, description: note, id: Date.now() }], totalPaid: (person.totalPaid || 0) + amount });
+        if (!updated) return alert(t('alert_person_not_found', 'Person nicht gefunden.'));
         closeModal('add-payment-modal');
-        if (currentUser && !currentUser.admin) {
-            renderUserView();
-        } else {
-            renderPeople();
-            renderStats();
-            renderSuperAdminPaymentEditor();
-        }
-        document.getElementById('payment-is-standing-order').checked = false;
-        const lbl = document.getElementById('payment-date-label');
-        if(lbl) lbl.innerText = 'Datum';
+        if (currentUser && !currentUser.admin) renderUserView();
+        else refreshFinanceViews();
+        $('payment-is-standing-order').checked = false;
+        setText('payment-date-label', 'Datum');
         showToast(t('toast_payment_booked', 'Zahlung gebucht'));
     } catch (err) {
         console.error('Fehler beim Speichern der Zahlung:', err);
@@ -4902,32 +3390,20 @@ window.addPayment = async () => {
     } finally {
         setButtonLoading('btn-add-payment', false);
     }
-};
+}
 
-window.addDonation = async () => {
+async function addDonation() {
     if (!validateRequired(['donation-amount', 'donation-date', 'donation-name'])) return;
-
-    setButtonLoading('btn-add-donation', true, "Speichert...");
-
-    const amt = parseFloat(document.getElementById('donation-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    if(isNaN(amt)) {
-        setButtonLoading('btn-add-donation', false);
-        return;
-    }
-    const desc = document.getElementById('donation-desc') ? document.getElementById('donation-desc').value.trim() : '';
-    const newDonation = { amount: amt, name: document.getElementById('donation-name').value, date: document.getElementById('donation-date').value, description: desc, id: Date.now() };
+    const amount = parseAmount(inputValue('donation-amount'));
+    if (isNaN(amount)) return;
+    setButtonLoading('btn-add-donation', true, 'Speichert...');
     try {
-        const currentData = await apiGet('donations');
-        const nextDonations = [...safeList(currentData), newDonation];
-        await set(ref(db, 'donations'), { ...nextDonations });
-        donations = nextDonations;
+        const donation = { amount, name: inputValue('donation-name'), date: inputValue('donation-date'), description: inputValue('donation-desc').trim(), id: Date.now() };
+        await mutateCollection('donations', list => [...list, donation]);
         closeModal('add-donation-modal');
         renderStats();
         renderSuperAdminPaymentEditor();
-        document.getElementById('donation-amount').value = '';
-        document.getElementById('donation-name').value = '';
-        document.getElementById('donation-date').value = '';
-        if (document.getElementById('donation-desc')) document.getElementById('donation-desc').value = '';
+        ['donation-amount', 'donation-name', 'donation-date', 'donation-desc'].forEach(id => setValue(id, ''));
         showToast(t('toast_donation_saved', 'Spende gespeichert'));
     } catch (err) {
         console.error('Fehler beim Speichern der Spende:', err);
@@ -4935,65 +3411,31 @@ window.addDonation = async () => {
     } finally {
         setButtonLoading('btn-add-donation', false);
     }
-};
+}
 
-window.addExpense = async () => {
+async function addExpense() {
     if (!validateRequired(['expense-amount', 'expense-date', 'expense-issuer', 'expense-desc'])) return;
-
-    setButtonLoading('btn-add-expense', true, "Speichert...");
-
-    const amt = parseFloat(document.getElementById('expense-amount').value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    if(isNaN(amt)) {
-        setButtonLoading('btn-add-expense', false);
-        return;
-    }
-
-    const issuer = document.getElementById('expense-issuer').value;
-    const date = document.getElementById('expense-date').value;
-    const desc = document.getElementById('expense-desc').value;
-
-    let receiptFilename = null;
-    if (window.pendingExpenseFiles && window.pendingExpenseFiles.length > 0) {
-        try {
-            setButtonLoading('btn-add-expense', true, "Lade hoch...");
-            const filenames = [];
-            for (let i = 0; i < window.pendingExpenseFiles.length; i++) {
-                const fn = await uploadReceipt(window.pendingExpenseFiles[i], issuer, date);
-                filenames.push(fn);
-            }
-            receiptFilename = JSON.stringify(filenames);
-        } catch (err) {
-            console.error(err);
-            alert(t('alert_receipt_upload_error', 'Fehler beim Hochladen des Belegs: ') + err.message);
-            setButtonLoading('btn-add-expense', false);
-            return;
-        }
-    }
-
-    const newExpense = {
-        amount: amt,
-        issuer: issuer,
-        description: desc,
-        date: date,
-        id: Date.now(),
-        receipt: receiptFilename
-    };
+    const amount = parseAmount(inputValue('expense-amount'));
+    if (isNaN(amount)) return;
+    const [issuer, date, description] = ['expense-issuer', 'expense-date', 'expense-desc'].map(inputValue);
+    setButtonLoading('btn-add-expense', true, 'Speichert...');
     try {
-        const currentData = await apiGet('expenses');
-        const nextExpenses = [...safeList(currentData), newExpense];
-        await set(ref(db, 'expenses'), { ...nextExpenses });
-        expenses = nextExpenses;
+        let receipt = null;
+        if (pendingUploads.expense.files.length > 0) {
+            setButtonLoading('btn-add-expense', true, 'Lade hoch...');
+            try {
+                receipt = await uploadAll(pendingUploads.expense.files, issuer, date);
+            } catch (err) {
+                console.error(err);
+                return alert(t('alert_receipt_upload_error', 'Fehler beim Hochladen des Belegs: ') + err.message);
+            }
+        }
+        await mutateCollection('expenses', list => [...list, { amount, issuer, description, date, id: Date.now(), receipt }]);
         closeModal('add-expense-modal');
         renderStats();
         renderSuperAdminPaymentEditor();
-        document.getElementById('expense-amount').value = '';
-        document.getElementById('expense-issuer').value = '';
-        document.getElementById('expense-desc').value = '';
-        const fileInput = document.getElementById('expense-receipt');
-        if(fileInput) fileInput.value = '';
-        if(window.pendingExpenseFiles) { window.pendingExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); }
-window.pendingExpenseFiles = [];
-        window.renderExpenseReceiptPreview();
+        ['expense-amount', 'expense-issuer', 'expense-desc', 'expense-receipt'].forEach(id => setValue(id, ''));
+        resetPendingFiles('expense');
         showToast(t('toast_expense_saved', 'Ausgabe gespeichert'));
     } catch (err) {
         console.error('Fehler beim Speichern der Ausgabe:', err);
@@ -5001,507 +3443,464 @@ window.pendingExpenseFiles = [];
     } finally {
         setButtonLoading('btn-add-expense', false);
     }
-};
+}
 
+// --- Standing orders ---
 let editingSoId = null;
 let editingPersonId = null;
 
-window.openEndStandingOrderModal = (personId, soId) => {
+function openEndStandingOrderModal(personId, soId) {
     if (!canManageFinances()) return;
     editingPersonId = personId;
     editingSoId = soId;
-
-    // Find SO to set default date?
-    const person = people.find(p => String(p.id) === String(personId));
-    if (person) {
-        const so = safeList(person.standingOrders).find(s => String(s.id) === String(soId));
-        if (so && so.endDate) {
-            document.getElementById('end-so-date').value = so.endDate;
-        } else {
-            document.getElementById('end-so-date').value = new Date().toISOString().split('T')[0];
-        }
-    }
-
+    const person = findPerson(personId);
+    if (person) setValue('end-so-date', safeList(person.standingOrders).find(s => String(s.id) === String(soId))?.endDate || getTodayStr());
     openModal('end-standing-order-modal');
-};
+}
 
-window.saveStandingOrderEnd = async () => {
+async function saveStandingOrderEnd() {
     if (!editingPersonId || !editingSoId) return;
-
-    const endDate = document.getElementById('end-so-date').value;
-    if (!endDate) { alert(t('alert_please_choose_date', 'Bitte Datum wählen.')); return; }
-
+    const endDate = inputValue('end-so-date');
+    if (!endDate) return alert(t('alert_please_choose_date', 'Bitte Datum wählen.'));
+    const isThisOrder = so => String(so.id) === String(editingSoId);
     try {
-        const updated = await mutatePerson(editingPersonId, (person) => {
-            const endDateObj = new Date(endDate);
-            endDateObj.setHours(23, 59, 59, 999);
-            const today = new Date();
-
-            // 1. Update SO end date
-            let standingOrders = safeList(person.standingOrders).map(so => {
-                if (String(so.id) === String(editingSoId)) {
-                    return { ...so, endDate };
-                }
-                return so;
-            });
-
-            // 2. Remove future auto-payments related to this SO
-            const payments = safeList(person.payments).filter(p => {
-                if (p.isAuto && p.id.startsWith(`auto_${editingSoId}_`)) {
-                    const pDate = new Date(p.date);
-                    if (pDate > endDateObj) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-
-            // 3. Remove SO if expired (delete itself after end date)
-            if (endDateObj < today) {
-                 standingOrders = standingOrders.filter(so => String(so.id) !== String(editingSoId));
-            }
-
-            const totalPaid = calculateTotalPaidLoop(payments);
-            return { ...person, standingOrders, payments, totalPaid };
+        await mutatePerson(editingPersonId, person => {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            // Drop auto-payments booked after the new end date; remove the order entirely once it has ended
+            const payments = person.payments.filter(p => !(p.isAuto && p.id.startsWith(`auto_${editingSoId}_`) && new Date(p.date) > end));
+            const standingOrders = safeList(person.standingOrders)
+                .map(so => (isThisOrder(so) ? { ...so, endDate } : so))
+                .filter(so => !(end < new Date() && isThisOrder(so)));
+            return { ...person, standingOrders, payments, totalPaid: sumAmounts(payments) };
         });
-
-        await renderAll();
+        await renderViews();
         closeModal('end-standing-order-modal');
         showToast(t('toast_so_updated', 'Dauerauftrag aktualisiert'));
     } catch (err) {
         console.error('Fehler beim Beenden:', err);
         alert(t('alert_save_error', 'Fehler beim Speichern.'));
     }
-};
+}
 
-window.deleteStandingOrderCompletely = async () => {
-    if (!confirm(t('confirm_delete_so', 'Dauerauftrag wirklich komplett entfernen? Historie geht verloren.'))) return;
-
+async function deleteStandingOrderCompletely() {
+    if (!confirmAction(t('confirm_delete_so', 'Dauerauftrag wirklich komplett entfernen? Historie geht verloren.'))) return;
     try {
-        await mutatePerson(editingPersonId, (person) => {
-            const standingOrders = safeList(person.standingOrders).filter(so => String(so.id) !== String(editingSoId));
-            return { ...person, standingOrders };
-        });
-        await renderAll();
+        await mutatePerson(editingPersonId, person => ({ ...person, standingOrders: safeList(person.standingOrders).filter(so => String(so.id) !== String(editingSoId)) }));
+        await renderViews();
         closeModal('end-standing-order-modal');
         showToast(t('toast_so_deleted', 'Dauerauftrag gelöscht'));
     } catch (err) {
         console.error('Fehler beim Löschen:', err);
         alert(t('alert_delete_error', 'Fehler beim Löschen.'));
     }
-};
-
-window.deleteEditedPayment = async () => {
-    if (!isSuperAdminUser() || !currentEditedPayment) return;
-
-    if (!confirm(t('confirm_delete_payment', 'Achtung: Soll dieser Eintrag wirklich gelöscht werden? Dies kann nicht rückgängig gemacht werden.'))) {
-        return;
-    }
-
-    try {
-        if (currentEditedPayment.type === 'payment') {
-            await mutatePerson(currentEditedPayment.personId, (draft) => {
-                const nextPayments = safeList(draft.payments).filter((_, i) => i !== currentEditedPayment.targetIndex);
-                const totalPaid = calculateTotalPaidLoop(nextPayments);
-                return { ...draft, payments: nextPayments, totalPaid };
-            });
-            showToast('Zahlung gelöscht');
-        } else if (currentEditedPayment.type === 'donation') {
-            const remoteDonations = safeList(await apiGet('donations').catch(() => []));
-            const targetDonationId = currentEditedPayment.paymentId;
-            const updatedDonations = remoteDonations.filter(d => String(d.id) !== String(targetDonationId));
-
-            await set(ref(db, 'donations'), updatedDonations.length > 0 ? { ...updatedDonations } : null);
-            donations = updatedDonations;
-            showToast('Spende gelöscht');
-        } else if (currentEditedPayment.type === 'expense') {
-            const remoteExpenses = safeList(await apiGet('expenses').catch(() => []));
-            const targetExpenseId = currentEditedPayment.paymentId;
-            const updatedExpenses = remoteExpenses.filter(e => String(e.id) !== String(targetExpenseId));
-
-            await set(ref(db, 'expenses'), updatedExpenses.length > 0 ? { ...updatedExpenses } : null);
-            expenses = updatedExpenses;
-            showToast('Ausgabe gelöscht');
-        }
-
-        closeModal('edit-payment-modal');
-        if (typeof loadData === 'function') loadData();
-    } catch (e) {
-        console.error("Error deleting payment:", e);
-        alert(t('alert_delete_entry_error', 'Fehler beim Löschen des Eintrags.'));
-    }
-};
-
-window.deleteStandingOrder = async (personId, soId) => {
-    // Legacy mapping or just redirect
-    openEndStandingOrderModal(personId, soId);
-};
-
-// --- STATUS CHANGE HANDLERS ---
-
-window.openPaymentModal = (id) => {
-    if (!canManageFinances()) return;
-    currentPersonId = id;
-    openModal('add-payment-modal');
-};
-
-function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
-    const memberSinceStr = person.originalMemberSince || person.memberSince || changeDateStr;
-    const changeDateObj = new Date(changeDateStr);
-    const memberSinceObj = new Date(memberSinceStr);
-
-    if (changeDateObj < memberSinceObj) {
-        throw new Error('Änderungsdatum liegt vor Beginn der Mitgliedschaft.');
-    }
-
-    const oldHistory = safeList(person.statusHistory);
-    const newHistory = [];
-
-    if (changeDateStr <= memberSinceStr) {
-        newHistory.push({
-            status: newStatus,
-            startDate: memberSinceStr
-        });
-    } else {
-        for (const entry of oldHistory) {
-            const entryStart = entry.startDate ? new Date(entry.startDate) : memberSinceObj;
-            if (entryStart < changeDateObj) {
-                if (entry.endDate && new Date(entry.endDate) <= changeDateObj) {
-                    newHistory.push({ ...entry });
-                } else {
-                    newHistory.push({
-                        ...entry,
-                        endDate: changeDateStr
-                    });
-                }
-            }
-        }
-
-        if (newHistory.length === 0 || (newHistory[newHistory.length - 1].endDate && newHistory[newHistory.length - 1].endDate < changeDateStr)) {
-            const priorStart = newHistory.length > 0 && newHistory[newHistory.length - 1].endDate
-                ? newHistory[newHistory.length - 1].endDate
-                : memberSinceStr;
-            if (priorStart < changeDateStr) {
-                newHistory.push({
-                    status: person.status || 'vollverdiener',
-                    startDate: priorStart,
-                    endDate: changeDateStr
-                });
-            }
-        }
-
-        newHistory.push({
-            status: newStatus,
-            startDate: changeDateStr
-        });
-    }
-
-    return {
-        ...person,
-        status: newStatus,
-        statusHistory: newHistory
-    };
 }
 
-window.openChangeStatusModal = (id) => {
+// --- Member status changes & status e-mail ---
+// Rewrites the status history so `newStatus` applies from `changeDateStr` (retroactive or future changes).
+function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
+    const memberSince = person.originalMemberSince || person.memberSince || changeDateStr;
+    const changeDate = new Date(changeDateStr);
+    if (changeDate < new Date(memberSince)) throw new Error('Änderungsdatum liegt vor Beginn der Mitgliedschaft.');
+    if (changeDateStr <= memberSince) return { ...person, status: newStatus, statusHistory: [{ status: newStatus, startDate: memberSince }] };
+
+    const history = safeList(person.statusHistory)
+        .filter(entry => (entry.startDate ? new Date(entry.startDate) : new Date(memberSince)) < changeDate)
+        .map(entry => (entry.endDate && new Date(entry.endDate) <= changeDate ? { ...entry } : { ...entry, endDate: changeDateStr }));
+    const lastEnd = history[history.length - 1]?.endDate;
+    if (history.length === 0 || (lastEnd && lastEnd < changeDateStr)) {
+        const priorStart = lastEnd || memberSince;
+        if (priorStart < changeDateStr) history.push({ status: person.status || 'vollverdiener', startDate: priorStart, endDate: changeDateStr });
+    }
+    history.push({ status: newStatus, startDate: changeDateStr });
+    return { ...person, status: newStatus, statusHistory: history };
+}
+
+function openChangeStatusModal(id) {
     if (!canManageFinances()) return;
     currentPersonId = id;
-    const person = people.find(p => String(p.id) === String(id));
-    if (person) {
-        const select = document.getElementById('change-status-select');
-        if (select) select.value = person.status || 'vollverdiener';
-    }
-    const dateInput = document.getElementById('change-status-date');
-    if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+    const person = findPerson(id);
+    if (person) setValue('change-status-select', person.status || 'vollverdiener');
+    setValue('change-status-date', getTodayStr());
     openModal('change-status-modal');
-};
+}
 
-window.sendStatusEmail = async (personId) => {
-    if (!canManageFinances()) return;
-
-    const person = people.find(p => String(p.id) === String(personId));
-    if (!person) {
-        showToast('Person nicht gefunden', 'error');
-        return;
-    }
-
-    let email = null;
-    if (person.uid) {
-        const linkedUser = users.find(u => u.uid === person.uid);
-        if (linkedUser && linkedUser.email) {
-            email = linkedUser.email;
-        }
-    }
-
-    if (!email) {
-        showToast('Keine E-Mail-Adresse für diese Person hinterlegt', 'error');
-        return;
-    }
-
-    const statusMeta = person._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
-    const overdueAmount = person._overdueAmount || 0;
-    const currentStatus = person._currentStatus || person.status;
-
-    const statusLabels = getStatusLabels(false);
-    const readableStatus = statusLabels[currentStatus] || currentStatus;
-    const appName = config.appName || "Agora";
-
-    const paidUntilDate = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
-    const paidUntilText = paidUntilDate ? monthYearFormatter.format(paidUntilDate) : 'Nie';
-
-    let overdueMonths = 0;
-    if (paidUntilDate) {
-        const today = new Date();
-        const currentTotal = today.getFullYear() * 12 + today.getMonth();
-        const paidTotal = paidUntilDate.getFullYear() * 12 + paidUntilDate.getMonth();
-        const diff = paidTotal - currentTotal;
-        if (diff < 0) {
-            overdueMonths = Math.abs(diff);
-        }
-    }
-
-    const hasStandingOrder = statusMeta.isActiveStandingOrder;
-
-    let customMessage = '';
-    let customHtmlMessage = '';
-
-    if (hasStandingOrder) {
-        customMessage = `Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!`;
-        customHtmlMessage = `<div style="background-color: #F0FDF4; border-left: 4px solid #22C55E; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!</p></div>`;
-    } else if (statusMeta.isOverdue) {
-        let monthStr = overdueMonths === 1 ? 'einen Monat' : `${overdueMonths} Monate`;
-        customMessage = `Das bedeutet, dass dein Beitrag aktuell für ${monthStr} überfällig ist.\nInsgesamt beläuft sich der offene Betrag auf ${formatCurrency(overdueAmount)} €.`;
-        customHtmlMessage = `<div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0 0 5px 0; color: #B91C1C; font-size: 16px;">Das bedeutet, dass dein Beitrag aktuell für <strong>${monthStr}</strong> überfällig ist.</p><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">Insgesamt beläuft sich der offene Betrag auf ${formatCurrency(overdueAmount)} €.</p></div>`;
-    } else {
-        customMessage = `Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!`;
-        customHtmlMessage = `<div style="background-color: #F0FDF4; border-left: 4px solid #22C55E; padding: 15px; border-radius: 8px; margin-bottom: 25px;"><p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!</p></div>`;
-    }
-
-    const subject = `Dein Kassenstatus - ${appName}`;
-
-    const text = `Hallo ${person.name},\n\nwir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.\n\nDein Beitragstarif ist derzeit auf '${readableStatus}' eingestellt.\nNach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich ${paidUntilText} bezahlt.\n\n${customMessage}\n\nBei Fragen kannst du dich jederzeit gerne melden.\n\nLiebe Grüße,\ndein ${appName} Team`;
-
-    const html = `
-        <div style="font-family: sans-serif; color: #2D3748; background-color: #F8FAFC; padding: 40px 20px;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                <div style="padding: 30px; text-align: center; border-bottom: 1px solid #E2E8F0;">
-                    <h1 style="margin: 0; color: #14B8A6; font-size: 24px; font-weight: 600;">${escapeHtml(appName)}</h1>
-                </div>
-                <div style="padding: 40px 30px;">
-                    <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 20px; font-weight: 600; color: #1A202C;">Hallo ${escapeHtml(person.name)},</h2>
-                    <p style="margin: 0 0 15px 0; font-size: 16px; line-height: 1.5;">wir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.</p>
-                    <p style="margin: 0 0 15px 0; font-size: 16px; line-height: 1.5;">Dein Beitragstarif ist derzeit auf <strong style="color: #14B8A6;">${escapeHtml(readableStatus)}</strong> eingestellt.</p>
-                    <p style="margin: 0 0 25px 0; font-size: 16px; line-height: 1.5;">Nach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich <strong style="color: #4A5568;">${escapeHtml(paidUntilText)}</strong> bezahlt.</p>
-                    ${customHtmlMessage}
-                    <p style="margin: 0 0 5px 0; font-size: 16px; color: #4A5568;">Bei Fragen kannst du dich jederzeit gerne melden.</p>
-                    <br>
-                    <p style="margin: 0 0 5px 0; font-size: 16px; color: #4A5568;">Liebe Grüße,</p>
-                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: #2D3748;">dein ${escapeHtml(appName)} Team</p>
-                </div>
-            </div>
-        </div>
-    `;
-
+async function saveStatusChange() {
+    if (!currentPersonId) return;
+    const changeDate = inputValue('change-status-date');
+    if (!changeDate) return alert(t('alert_please_enter_date', 'Bitte ein Datum angeben.'));
     try {
-        const token = await auth.currentUser.getIdToken();
-        const response = await fetch(`${config.apiBaseUrl}/send-email`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ to: email, subject, text, html })
-        });
-
-        if (response.ok) {
-            showToast('Status-E-Mail gesendet');
-        } else {
-            showToast('Fehler beim Senden der E-Mail', 'error');
-            console.error('Email API response not ok:', await response.text());
-        }
-    } catch (err) {
-        console.error('Fehler beim Senden der Status-E-Mail:', err);
-        showToast('Fehler beim Senden der E-Mail', 'error');
-    }
-};
-
-window.saveStatusChange = async () => {
-    if(!currentPersonId) return;
-
-    const newStatus = document.getElementById('change-status-select').value;
-    const changeDate = document.getElementById('change-status-date').value;
-
-    if (!changeDate) {
-        alert(t('alert_please_enter_date', 'Bitte ein Datum angeben.'));
-        return;
-    }
-
-    try {
-        const updated = await mutatePerson(currentPersonId, (person) => {
-            return applyStatusChangeToHistory(person, newStatus, changeDate);
-        });
-
-        if (!updated) {
-            alert(t('alert_person_not_found', 'Person nicht gefunden.'));
-            return;
-        }
-
-        await renderAll();
+        const updated = await mutatePerson(currentPersonId, person => applyStatusChangeToHistory(person, inputValue('change-status-select'), changeDate));
+        if (!updated) return alert(t('alert_person_not_found', 'Person nicht gefunden.'));
+        await renderViews();
         closeModal('change-status-modal');
         showToast(t('toast_status_changed', 'Status geändert'));
     } catch (err) {
         console.error('Fehler bei der Statusänderung:', err);
         alert(t('alert_status_change_failed', 'Statusänderung fehlgeschlagen: ') + err.message);
     }
-};
+}
 
-async function loadAdvancedSystemConfig() {
-    if (!isSuperAdminUser()) return;
+async function sendStatusEmail(personId) {
+    if (!canManageFinances()) return;
+    const person = findPerson(personId);
+    if (!person) return showToast('Person nicht gefunden', 'error');
+    const email = person.uid && users.find(u => u.uid === person.uid)?.email;
+    if (!email) return showToast('Keine E-Mail-Adresse für diese Person hinterlegt', 'error');
+
+    const meta = person._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
+    const readableStatus = getStatusLabels(false)[person._currentStatus || person.status] || person._currentStatus || person.status;
+    const paidUntil = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
+    const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : 'Nie';
+    const today = new Date();
+    const overdueMonths = paidUntil ? Math.max(0, (today.getFullYear() * 12 + today.getMonth()) - (paidUntil.getFullYear() * 12 + paidUntil.getMonth())) : 0;
+    const monthStr = overdueMonths === 1 ? 'einen Monat' : `${overdueMonths} Monate`;
+    const openAmount = euro(person._overdueAmount || 0);
+    const box = (color, border, inner) => `<div style="background-color: ${color}; border-left: 4px solid ${border}; padding: 15px; border-radius: 8px; margin-bottom: 25px;">${inner}</div>`;
+    const okParagraph = text => `<p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">${text}</p>`;
+    let customMessage;
+    let customHtml;
+    if (meta.isActiveStandingOrder) {
+        customMessage = 'Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!';
+        customHtml = box('#F0FDF4', '#22C55E', okParagraph(customMessage));
+    } else if (meta.isOverdue) {
+        customMessage = `Das bedeutet, dass dein Beitrag aktuell für ${monthStr} überfällig ist.\nInsgesamt beläuft sich der offene Betrag auf ${openAmount}.`;
+        customHtml = box('#FEF2F2', '#EF4444', `<p style="margin: 0 0 5px 0; color: #B91C1C; font-size: 16px;">Das bedeutet, dass dein Beitrag aktuell für <strong>${monthStr}</strong> überfällig ist.</p><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">Insgesamt beläuft sich der offene Betrag auf ${openAmount}.</p>`);
+    } else {
+        customMessage = 'Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!';
+        customHtml = box('#F0FDF4', '#22C55E', okParagraph(customMessage));
+    }
+    const paragraph = (margin, content, extra = ' line-height: 1.5;') => `<p style="margin: ${margin}; font-size: 16px;${extra}">${content}</p>`;
+    const text = `Hallo ${person.name},\n\nwir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.\n\nDein Beitragstarif ist derzeit auf '${readableStatus}' eingestellt.\nNach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich ${paidUntilLabel} bezahlt.\n\n${customMessage}\n\nBei Fragen kannst du dich jederzeit gerne melden.\n\nLiebe Grüße,\ndein ${APP_NAME} Team`;
+    const html = `
+        <div style="font-family: sans-serif; color: #2D3748; background-color: #F8FAFC; padding: 40px 20px;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="padding: 30px; text-align: center; border-bottom: 1px solid #E2E8F0;">
+                    <h1 style="margin: 0; color: #14B8A6; font-size: 24px; font-weight: 600;">${escapeHtml(APP_NAME)}</h1>
+                </div>
+                <div style="padding: 40px 30px;">
+                    <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 20px; font-weight: 600; color: #1A202C;">Hallo ${escapeHtml(person.name)},</h2>
+                    ${paragraph('0 0 15px 0', 'wir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.')}
+                    ${paragraph('0 0 15px 0', `Dein Beitragstarif ist derzeit auf <strong style="color: #14B8A6;">${escapeHtml(readableStatus)}</strong> eingestellt.`)}
+                    ${paragraph('0 0 25px 0', `Nach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich <strong style="color: #4A5568;">${escapeHtml(paidUntilLabel)}</strong> bezahlt.`)}
+                    ${customHtml}
+                    ${paragraph('0 0 5px 0', 'Bei Fragen kannst du dich jederzeit gerne melden.', ' color: #4A5568;')}
+                    <br>
+                    ${paragraph('0 0 5px 0', 'Liebe Grüße,', ' color: #4A5568;')}
+                    ${paragraph('0', `dein ${escapeHtml(APP_NAME)} Team`, ' font-weight: 600; color: #2D3748;')}
+                </div>
+            </div>
+        </div>`;
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/system-config`);
-        if (!response.ok) {
-            throw new Error(await response.text());
+        const res = await api('/send-email', 'POST', { to: email, subject: `Dein Kassenstatus - ${APP_NAME}`, text, html });
+        if (res.ok) {
+            showToast('Status-E-Mail gesendet');
+        } else {
+            showToast('Fehler beim Senden der E-Mail', 'error');
+            console.error('Email API response not ok:', await res.text());
         }
-        const data = await response.json();
-        advancedConfigAppName = data.appName || null;
-        document.getElementById('super-admin-app-name').value = data.appName || '';
-        document.getElementById('super-admin-smtp-host').value = data.smtp?.host || '';
-        document.getElementById('super-admin-smtp-port').value = data.smtp?.port || '';
-        document.getElementById('super-admin-smtp-secure').checked = !!data.smtp?.secure;
-        document.getElementById('super-admin-smtp-user').value = data.smtp?.user || '';
-        document.getElementById('super-admin-smtp-pass').value = data.smtp?.pass || '';
-        advancedConfigLoaded = true;
-        await loadAiConfig();
     } catch (err) {
-        console.error('Fehler beim Laden der erweiterten Konfiguration:', err);
-        showToast('Erweiterte Konfiguration konnte nicht geladen werden', 'error');
+        console.error('Fehler beim Senden der Status-E-Mail:', err);
+        showToast('Fehler beim Senden der E-Mail', 'error');
     }
 }
 
-window.saveAdvancedSystemConfig = async () => {
-    if (!isSuperAdminUser()) return;
-    try {
-        const appName = document.getElementById('super-admin-app-name').value.trim() || advancedConfigAppName || config.appName;
-        if (!appName) {
-            throw new Error('App-Name konnte nicht ermittelt werden. Dies kann auf fehlende Konfigurationsdaten hinweisen. Bitte Seite neu laden.');
+// --- Member requests (payment, status change, expense) ---
+let currentRequestType = null;
+const modalSection = (icon, title, body) => `
+    <div class="modal-section-card">
+        <div class="modal-section-header">
+            <span>${icon}</span> <span>${title}</span>
+        </div>
+        ${body}
+    </div>`;
+const amountField = () => `
+    <div class="form-group">
+        <div class="hero-amount-wrapper">
+            <span class="hero-amount-prefix">€</span>
+            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+        </div>
+    </div>`;
+const requestDateInput = () => `<input type="date" id="req-date" class="form-input" value="${getTodayStr()}">`;
+
+const REQUEST_FORMS = {
+    payment: {
+        badge: ['badge-donation', '💳'],
+        title: () => [t('user_req_payment_title', 'Zahlung melden'), t('user_req_payment_subtitle', 'Beitrag & Einzahlung an Admin melden')],
+        body: () => modalSection('💶', t('modal_section_amount', 'Zahlungsbetrag'), amountField())
+            + modalSection('⚙️', t('modal_section_payment_type', 'Zahlungsart & Datum'), `
+                <div class="modal-switch-row">
+                    <label class="switch">
+                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? '${escapeHtml(t('modal_date_start', 'Startdatum'))}' : '${escapeHtml(t('modal_date', 'Datum'))}'">
+                        <span class="slider"></span>
+                    </label>
+                    <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Dauerauftrag')}</label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Datum')}</label>
+                    ${requestDateInput()}
+                </div>`)
+            + modalSection('📝', t('modal_note', 'Notiz / Verwendungszweck'), `
+                <div class="form-group">
+                    <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
+                </div>`)
+    },
+    status: {
+        badge: ['badge-person', '⚡'],
+        title: () => [t('user_req_status_title', 'Statusänderung beantragen'), t('user_req_status_subtitle', 'Neuen Mitgliedsstatus anfragen')],
+        body: () => {
+            const myPerson = people.length > 0 ? findLinkedPerson(currentUser?.uid) : null;
+            const current = myPerson?._currentStatus || myPerson?.status;
+            const labels = getStatusLabels(true);
+            return modalSection('💼', t('modal_new_status', 'Neuer Status'), `
+                <div class="form-group">
+                    <select id="req-status" class="form-select">
+                        ${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`).join('')}
+                    </select>
+                </div>`)
+                + modalSection('📅', t('modal_valid_from', 'Gültigkeitsdatum'), `
+                <div class="form-group">
+                    ${requestDateInput()}
+                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px; line-height:1.35;">
+                        ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
+                    </div>
+                </div>`);
         }
+    },
+    expense: {
+        badge: ['badge-expense', '🧾'],
+        title: () => [t('user_req_expense_title', 'Ausgabe melden'), t('user_req_expense_subtitle', 'Ausgabe zur Erstattung einreichen')],
+        body: () => modalSection('💶', t('modal_section_amount', 'Ausgabenbetrag'), amountField())
+            + modalSection('ℹ️', t('modal_section_info', 'Angaben zur Ausgabe'), `
+                <div class="form-group">
+                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
+                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                    ${requestDateInput()}
+                </div>`)
+            + modalSection('📎', t('modal_expense_receipt', 'Beleg anhängen'), `
+                <div class="file-upload-dropzone">
+                    <div class="file-upload-icon">📁</div>
+                    <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
+                    <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
+                    <input type="file" id="req-receipt" accept="image/*,.heic,.heif,.pdf" multiple onchange="window.handleReqReceiptFiles(this.files)">
+                </div>
+                <div id="req-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>`)
+    }
+};
+const REQUEST_CHOICES = [
+    ['payment', 'rgba(6, 182, 212, 0.12)', 'var(--primary)', '💳', 'user_req_type_payment', 'Einzahlung / Zahlung', 'user_req_type_payment_desc', 'Beitrag oder Einzahlung melden.'],
+    ['status', 'rgba(245, 158, 11, 0.12)', '#f59e0b', '⚡', 'user_req_type_status', 'Statuswechsel', 'user_req_type_status_desc', 'Änderung des Mitgliedsstatus beantragen.'],
+    ['expense', 'rgba(239, 68, 68, 0.12)', 'var(--danger)', '🧾', 'user_req_type_expense', 'Ausgabe', 'user_req_type_expense_desc', 'Ausgabe zur Erstattung einreichen (mit Beleg).']
+];
 
-        const payload = {
-            appName,
-            smtp: null
-        };
+function openUserRequestModal(type) {
+    currentRequestType = type || null;
+    resetPendingFiles('req');
+    const form = REQUEST_FORMS[type];
+    const badge = $('req-modal-badge');
+    const [badgeClass, badgeIcon] = form ? form.badge : ['badge-donation', '📝'];
+    if (badge) {
+        badge.className = `modal-icon-badge ${badgeClass}`;
+        badge.textContent = badgeIcon;
+    }
+    const [title, subtitle] = form ? form.title() : [t('user_request_modal_title', 'Anfrage'), t('user_req_select_subtitle', 'Wähle die Art der Anfrage')];
+    if ($('req-modal-title')) $('req-modal-title').innerText = title;
+    if ($('req-modal-subtitle')) $('req-modal-subtitle').innerText = subtitle;
+    show('req-modal-back-btn', !!form, 'inline-flex');
+    show('btn-submit-request', !!form, 'block');
+    $('req-form-content').innerHTML = form ? form.body() : `
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 2px;">
+            ${REQUEST_CHOICES.map(([key, bg, color, icon, titleKey, titleFallback, descKey, descFallback]) => `
+                <button type="button" onclick="openUserRequestModal('${key}')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
+                    <div style="width: 34px; height: 34px; border-radius: 9px; background: ${bg}; color: ${color}; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
+                        ${icon}
+                    </div>
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t(titleKey, titleFallback)}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t(descKey, descFallback)}</div>
+                    </div>
+                </button>`).join('')}
+        </div>`;
+    openModal('user-request-modal');
+}
 
-        const smtpHost = document.getElementById('super-admin-smtp-host').value.trim();
-        if (smtpHost) {
-            const smtpPortRaw = document.getElementById('super-admin-smtp-port').value.trim();
-            payload.smtp = {
-                host: smtpHost,
-                port: smtpPortRaw ? parseInt(smtpPortRaw, 10) : 465,
-                secure: document.getElementById('super-admin-smtp-secure').checked,
-                user: document.getElementById('super-admin-smtp-user').value.trim(),
-                pass: document.getElementById('super-admin-smtp-pass').value
-            };
-            if (!payload.smtp.port || Number.isNaN(payload.smtp.port)) {
-                throw new Error('SMTP Port ist ungültig.');
-            }
-        }
+// Validates the open request form; returns { type, data } or null after alerting the user.
+function collectRequestData(date) {
+    const fillFields = () => alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.'));
+    const invalidAmount = amount => isNaN(parseFloat(amount)) || parseFloat(amount) <= 0;
+    if (currentRequestType === 'status') {
+        const newStatus = $('req-status') ? inputValue('req-status') : 'vollverdiener';
+        return newStatus ? { type: 'status', data: { newStatus, date } } : fillFields();
+    }
+    const amount = normalizeAmount(inputValue('req-amount'));
+    if (currentRequestType === 'expense') {
+        const description = inputValue('req-desc').trim();
+        if (!amount || !description) return fillFields();
+        if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
+        return { type: 'expense', data: { amount, description, date } };
+    }
+    if (currentRequestType !== 'payment') return { type: 'payment', data: {} };
+    if (!amount) return fillFields();
+    if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
+    return { type: isChecked('req-is-standing-order') ? 'standing_order' : 'payment', data: { amount, date, note: inputValue('req-note').trim() } };
+}
 
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/system-config`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-            let errMsg;
-            const responseClone = response.clone();
+async function submitUserRequest() {
+    if (!currentUser) return;
+    const person = people.find(p => p.uid === currentUser.uid) || people[0] || null;
+    const personId = person ? person.id : (currentUser.uid || currentUser.id || 'unknown');
+    const personName = person ? person.name : (fullName(currentUser) || currentUser.name || currentUser.email || 'Benutzer');
+    const date = $('req-date') ? inputValue('req-date') : getTodayStr();
+    if (!date) return alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.'));
+    const request = collectRequestData(date);
+    if (!request) return;
+
+    if (request.type === 'expense') {
+        const files = pendingUploads.req.files.length > 0 ? pendingUploads.req.files : Array.from($('req-receipt')?.files || []);
+        if (files.length > 0) {
+            setButtonLoading('btn-submit-request', true, 'Lade hoch...');
             try {
-                const errData = await response.json();
-                errMsg = errData.error || JSON.stringify(errData);
-            } catch {
-                errMsg = await responseClone.text();
+                request.data.receipt = await uploadAll(files, personName, date);
+            } catch (err) {
+                alert(t('alert_upload_error', 'Fehler beim Hochladen: ') + err.message);
+                return setButtonLoading('btn-submit-request', false);
             }
-            throw new Error(errMsg);
         }
-        advancedConfigAppName = appName;
-        showToast(t('toast_config_saved', 'System-Konfiguration gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der erweiterten Konfiguration:', err);
-        alert(t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
     }
-};
-
-async function loadAiConfig() {
-    if (!isSuperAdminUser()) return;
+    const newReq = { id: newId(), type: request.type, userId: currentUser.uid || currentUser.id, personId, personName, data: request.data, status: 'pending', timestamp: Date.now() };
+    setButtonLoading('btn-submit-request', true, 'Sende...');
     try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/ai-config`);
-        if (!response.ok) return;
-        const data = await response.json();
-        aiEnabled = !!data.enabled;
-        const enabledEl = document.getElementById('super-admin-ai-enabled');
-        if (enabledEl) enabledEl.checked = data.enabled;
-        const baseUrlEl = document.getElementById('super-admin-ai-base-url');
-        if (baseUrlEl) baseUrlEl.value = data.baseUrl || '';
-        const apiKeyEl = document.getElementById('super-admin-ai-api-key');
-        if (apiKeyEl) apiKeyEl.value = data.apiKey || '';
-        const modelEl = document.getElementById('super-admin-ai-model');
-        if (modelEl) modelEl.value = data.model || '';
-        updateAiNavVisibility();
+        await set(ref(db, 'requests/' + newReq.id), newReq);
+        closeModal('user-request-modal');
+        showToast(t('toast_request_sent', 'Anfrage erfolgreich gesendet'));
+        // Show the request immediately, then sync with the server
+        if (!requests.some(r => r.id === newReq.id)) {
+            requests.unshift(newReq);
+            renderUserView();
+        }
+        await loadData(true);
+        api('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Fehler beim Senden der Admin-Info über Backend', e));
     } catch (err) {
-        console.error('KI-Konfiguration konnte nicht geladen werden:', err);
+        console.error('Fehler beim Senden der Anfrage:', err);
+        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen: ') + (err.message || ''));
+    } finally {
+        setButtonLoading('btn-submit-request', false);
     }
 }
 
-window.saveAiConfig = async () => {
-    if (!isSuperAdminUser()) return;
+// --- Receipt upload & download ---
+async function fetchWithTimeout(resource, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
     try {
-        const payload = {
-            enabled: document.getElementById('super-admin-ai-enabled')?.checked ?? false,
-            baseUrl: document.getElementById('super-admin-ai-base-url')?.value.trim() || '',
-            apiKey: document.getElementById('super-admin-ai-api-key')?.value || '',
-            model: document.getElementById('super-admin-ai-model')?.value.trim() || ''
-        };
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/ai-config`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+        return await fetch(resource, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+const loadImage = src => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+});
+
+async function compressImage(file, quality) {
+    const img = await loadImage(await readAsDataUrl(file));
+    const canvas = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height });
+    canvas.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob) throw new Error('Canvas to Blob failed');
+    return new File([blob], /\.jpe?g$/i.test(file.name) ? file.name : file.name.replace(/\.[^/.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
+
+// Uploads a receipt (HEIC converted, large images recompressed) and resolves to the stored filename.
+async function uploadReceipt(file, transactionName, transactionDate) {
+    if (!auth.currentUser) throw new Error('Not authenticated');
+    const token = await auth.currentUser.getIdToken();
+    let uploadFile = await convertHeic(file, 0.8);
+    const compressible = uploadFile.type.startsWith('image/') && uploadFile.type !== 'image/gif' && uploadFile.type !== 'image/svg+xml';
+    if (compressible && uploadFile.size >= 500 * 1024) {
+        try {
+            uploadFile = await compressImage(uploadFile, uploadFile.size > 2 * 1024 * 1024 ? 0.65 : 0.75);
+        } catch (e) {
+            console.error('Compression failed:', e);
+        }
+    }
+    try {
+        const res = await fetchWithTimeout(`${API}/upload`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: toFormData({ name: transactionName, date: transactionDate, receipt: uploadFile })
         });
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `HTTP ${response.status}`);
-        }
-        aiEnabled = payload.enabled;
-        updateAiNavVisibility();
-        showToast(t('toast_ai_saved', 'KI-Einstellungen gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der KI-Einstellungen:', err);
-        alert(t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
+        if (!res.ok) throw new Error('Upload failed: ' + res.statusText);
+        return (await res.json()).filename;
+    } catch (error) {
+        console.error('Upload error:', error);
+        throw error;
     }
-};
-
-function updateAiNavVisibility() {
-    const show = aiEnabled && canAccessAi();
-    const bottomBtn = document.getElementById('admin-ai-nav-btn-bottom') || document.getElementById('admin-ai-nav-btn');
-    const desktopBtn = document.getElementById('admin-ai-nav-btn-desktop');
-    const spacer = document.getElementById('admin-nav-spacer');
-    if (bottomBtn) bottomBtn.style.display = show ? '' : 'none';
-    if (desktopBtn) desktopBtn.style.display = show ? '' : 'none';
-    if (spacer) spacer.style.display = !show ? '' : 'none';
 }
 
-window.clearAiChat = () => {
+async function fetchReceiptImage(filename) {
+    if (!auth.currentUser) throw new Error('Not authenticated');
+    const token = await auth.currentUser.getIdToken();
+    try {
+        const res = await fetchWithTimeout(`${API}/receipts/${encodeURIComponent(filename)}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Fetch failed: ' + res.statusText);
+        return URL.createObjectURL(await convertHeic(await res.blob(), 0.8, filename));
+    } catch (error) {
+        console.error('Fetch image error:', error);
+        throw error;
+    }
+}
+
+Object.assign(window, {
+    assignUserToPerson, saveEditedPayment, deleteEditReceipt, confirmDeleteRecordedPayment, approveRequest, rejectRequest, toggleDetails,
+    showTransactionDetails, viewRequestReceipt, openExportReportModal, toggleManualTransactionSelection, onReportTypeChange, updateReportPreview,
+    downloadReportPdf, openPaymentModal, addPayment, addDonation, addExpense, openEndStandingOrderModal, saveStandingOrderEnd,
+    deleteStandingOrderCompletely, openChangeStatusModal, saveStatusChange, sendStatusEmail, openUserRequestModal, submitUserRequest,
+    loadMoreHistory: () => {
+        transactionPage += 1;
+        renderHistoryTab(false);
+    },
+    deleteRecordedPaymentClick: () => {
+        if (canManageFinances() && currentEditedPayment) openModal('confirm-delete-modal');
+    },
+    filterPeople: debounce(filterPeopleSync, 300),
+    filterHistory: debounce(() => {
+        if (inputValue('history-search').trim() !== transactionSearchQuery) renderHistoryTab(true);
+    }, 300)
+});
+
+// --- AI assistant chat ---
+let aiMessages = [];
+let aiStreaming = false;
+const MAX_AI_CHAT_INPUT_HEIGHT = 120;
+
+function createEl(tag, className, text) {
+    const created = document.createElement(tag);
+    if (className) created.className = className;
+    if (text !== undefined) created.textContent = text;
+    return created;
+}
+
+function clearAiChat() {
     aiMessages = [];
-    const messagesEl = document.getElementById('ai-chat-messages');
+    const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return;
-    const canFinances = canViewFinances();
     messagesEl.innerHTML = `
         <div class="ai-chat-welcome">
             <div class="ai-chat-welcome-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                ${svgIcon('chat', 32)}
             </div>
             <div class="ai-chat-welcome-text">KI-Assistent bereit</div>
-            <div class="ai-chat-welcome-sub">${canFinances ? 'Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.' : 'Stelle Fragen zur Gemeinde, Mitgliedern oder zur App-Nutzung.'}</div>
+            <div class="ai-chat-welcome-sub">${canViewFinances() ? 'Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.' : 'Stelle Fragen zur Gemeinde, Mitgliedern oder zur App-Nutzung.'}</div>
         </div>`;
-};
+}
 
 function adjustAiInputHeight(inputEl) {
     if (!inputEl) return;
@@ -5509,618 +3908,306 @@ function adjustAiInputHeight(inputEl) {
     inputEl.style.height = `${Math.max(24, Math.min(inputEl.scrollHeight, MAX_AI_CHAT_INPUT_HEIGHT))}px`;
 }
 
-window.handleAiChatInput = (event) => {
-    if (!event || !event.target) return;
-    adjustAiInputHeight(event.target);
-};
-
-window.handleAiChatKey = (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        sendAiMessage();
-    } else if (event.key === 'Enter') {
-        setTimeout(() => adjustAiInputHeight(event.target), 0);
+// Ctrl/Cmd+Enter sends; plain Enter inserts a newline and grows the textarea.
+const chatKeyHandler = (send, resize) => e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        send();
+    } else if (e.key === 'Enter') {
+        setTimeout(() => resize(e.target), 0);
     }
 };
 
 function appendAiMessage(role, content) {
-    const messagesEl = document.getElementById('ai-chat-messages');
+    const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return null;
-
-    // Remove welcome screen on first message
-    const welcome = messagesEl.querySelector('.ai-chat-welcome');
-    if (welcome) welcome.remove();
-
-    const bubble = document.createElement('div');
-    bubble.className = `ai-chat-bubble ai-chat-bubble-${role}`;
-    if (role === 'assistant') {
-        bubble.appendChild(renderMarkdown(content));
-    } else {
-        bubble.textContent = content;
-    }
+    messagesEl.querySelector('.ai-chat-welcome')?.remove();
+    const bubble = createEl('div', `ai-chat-bubble ai-chat-bubble-${role}`);
+    if (role === 'assistant') bubble.appendChild(renderMarkdown(content));
+    else bubble.textContent = content;
     messagesEl.appendChild(bubble);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
 }
 
-/**
- * Builds a collapsed <details> element for thinking/reasoning content.
- * All text is set via textContent to prevent XSS.
- */
-function buildThinkingElement(thinkingText) {
-    const details = document.createElement('details');
-    details.className = 'ai-thinking';
-    const summary = document.createElement('summary');
-    summary.className = 'ai-thinking-summary';
-    summary.textContent = 'Denkprozess anzeigen';
-    const pre = document.createElement('pre');
-    pre.className = 'ai-thinking-content';
-    pre.textContent = thinkingText.trim();
-    details.appendChild(summary);
-    details.appendChild(pre);
-    return details;
-}
-
-/**
- * Finalises an assistant bubble after streaming is complete.
- * Extracts <think>…</think> or <thought>…</thought> blocks, renders thinking dropdown + markdown body.
- */
+// Renders streamed assistant content; <think>/<thought> blocks and reasoning go into a collapsed <details>.
 function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
     if (!bubble) return;
-
-    const existingDetails = bubble.querySelector('details.ai-thinking');
-    const wasOpen = existingDetails ? existingDetails.open : false;
-
-    // Extract <think>…</think> or <thought>…</thought> blocks from content (some models embed thinking inline)
-    let thinkingFromContent = '';
+    const wasOpen = bubble.querySelector('details.ai-thinking')?.open || false;
+    let inlineThinking = '';
     const mainContent = rawContent.replace(/<(?:think|thought)>([\s\S]*?)(?:<\/?(?:think|thought)>|$)/gi, (_, inner) => {
-        thinkingFromContent += inner;
+        inlineThinking += inner;
         return '';
     }).trim();
-
-    const combinedThinking = (reasoningContent + thinkingFromContent).trim();
-
+    const thinking = (reasoningContent + inlineThinking).trim();
     bubble.replaceChildren();
-    if (combinedThinking) {
-        const thinkingEl = buildThinkingElement(combinedThinking);
-        if (wasOpen) thinkingEl.open = true;
-        bubble.appendChild(thinkingEl);
+    if (thinking) {
+        const details = createEl('details', 'ai-thinking');
+        details.append(createEl('summary', 'ai-thinking-summary', 'Denkprozess anzeigen'), createEl('pre', 'ai-thinking-content', thinking));
+        details.open = wasOpen;
+        bubble.appendChild(details);
     }
     bubble.appendChild(renderMarkdown(mainContent));
 }
 
-/**
- * Sanitizes and normalizes user input text before sending to AI providers.
- * - Normalizes Unicode (NFC)
- * - Removes lone/unpaired UTF-16 surrogates to prevent UTF-8 encoding/JSON errors
- * - Strips null bytes and unprintable control characters (preserving \n, \r, \t)
- * - Normalizes CRLF to LF
- */
+// Normalizes text for AI providers: NFC, no control characters or lone surrogates, LF line endings.
 function sanitizeAiText(input) {
-    if (typeof input !== 'string') {
-        input = String(input || '');
-    }
-    try {
-        input = input.normalize('NFC');
-    } catch { /* ignore */ }
-
-    input = input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
-
-    if (typeof input.toWellFormed === 'function') {
-        input = input.toWellFormed();
-    } else {
-        input = input.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
-    }
-
-    return input.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let text = typeof input === 'string' ? input : String(input || '');
+    try { text = text.normalize('NFC'); } catch { /* ignore */ }
+    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+    text = typeof text.toWellFormed === 'function' ? text.toWellFormed() : text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+    return text.replace(/\r\n?/g, '\n');
 }
 
-/**
- * Validates, sanitizes and trims chat history payload for AI providers.
- */
 function sanitizeAiMessages(rawMessages, maxMessages = 50, maxCharPerMsg = 12000) {
-    if (!Array.isArray(rawMessages)) return [];
-
-    const sanitized = [];
-    for (const msg of rawMessages) {
-        if (!msg || typeof msg !== 'object') continue;
-        const role = msg.role === 'assistant' ? 'assistant' : (msg.role === 'user' ? 'user' : null);
-        if (!role) continue;
-
-        let content = sanitizeAiText(msg.content).trim();
-        if (!content) continue;
-
-        if (content.length > maxCharPerMsg) {
-            content = content.slice(0, maxCharPerMsg);
-        }
-
-        sanitized.push({ role, content });
-    }
-
-    return sanitized.slice(-maxMessages);
+    return rawMessages
+        .filter(msg => msg && (msg.role === 'assistant' || msg.role === 'user'))
+        .map(msg => ({ role: msg.role, content: sanitizeAiText(msg.content).trim().slice(0, maxCharPerMsg) }))
+        .filter(msg => msg.content)
+        .slice(-maxMessages);
 }
 
-function extractBalancedBraces(str, startIndex) {
-    if (!str || startIndex >= str.length || str[startIndex] !== '{') return null;
-    let depth = 0;
-    for (let i = startIndex; i < str.length; i++) {
+// --- Minimal LaTeX math rendering (DOM only, no innerHTML) ---
+function extractBalancedBraces(str, start) {
+    if (str[start] !== '{') return null;
+    for (let i = start, depth = 0; i < str.length; i++) {
         if (str[i] === '{') depth++;
-        else if (str[i] === '}') {
-            depth--;
-            if (depth === 0) {
-                return {
-                    content: str.slice(startIndex + 1, i),
-                    endIndex: i
-                };
-            }
-        }
+        else if (str[i] === '}' && --depth === 0) return { content: str.slice(start + 1, i), endIndex: i };
     }
     return null;
 }
 
 function buildMathNodes(str) {
     const frag = document.createDocumentFragment();
-    if (!str) return frag;
-
+    const skipSpace = pos => {
+        while (pos < str.length && /\s/.test(str[pos])) pos++;
+        return pos;
+    };
+    const wrap = (tag, className, content) => {
+        const wrapper = createEl(tag, className);
+        wrapper.appendChild(buildMathNodes(content));
+        return wrapper;
+    };
     let i = 0;
-    while (i < str.length) {
-        // Fractions \frac{num}{den} or \dfrac or \tfrac
-        const fracMatch = str.slice(i).match(/^\\(?:frac|dfrac|tfrac)/);
-        if (fracMatch) {
-            const fracStart = i + fracMatch[0].length;
-            let firstBrace = fracStart;
-            while (firstBrace < str.length && /\s/.test(str[firstBrace])) firstBrace++;
-            const num = extractBalancedBraces(str, firstBrace);
-            if (num) {
-                let secondBrace = num.endIndex + 1;
-                while (secondBrace < str.length && /\s/.test(str[secondBrace])) secondBrace++;
-                const den = extractBalancedBraces(str, secondBrace);
-                if (den) {
-                    const fracSpan = document.createElement('span');
-                    fracSpan.className = 'ai-math-frac';
-                    const numSpan = document.createElement('span');
-                    numSpan.className = 'ai-math-num';
-                    numSpan.appendChild(buildMathNodes(num.content));
-                    const denSpan = document.createElement('span');
-                    denSpan.className = 'ai-math-den';
-                    denSpan.appendChild(buildMathNodes(den.content));
-                    fracSpan.appendChild(numSpan);
-                    fracSpan.appendChild(denSpan);
-                    frag.appendChild(fracSpan);
-                    i = den.endIndex + 1;
-                    continue;
-                }
-            }
-        }
-
-        // Square roots \sqrt{...} or \sqrt[n]{...}
-        const sqrtMatch = str.slice(i).match(/^\\sqrt(?:\[([^\]]+)\])?/);
-        if (sqrtMatch) {
-            const sqrtStart = i + sqrtMatch[0].length;
-            let bracePos = sqrtStart;
-            while (bracePos < str.length && /\s/.test(str[bracePos])) bracePos++;
-            const rad = extractBalancedBraces(str, bracePos);
-            if (rad) {
-                const sqrtSpan = document.createElement('span');
-                sqrtSpan.className = 'ai-math-sqrt';
-                if (sqrtMatch[1]) {
-                    const rootDeg = document.createElement('sup');
-                    rootDeg.className = 'ai-math-root-deg';
-                    rootDeg.textContent = sqrtMatch[1];
-                    sqrtSpan.appendChild(rootDeg);
-                }
-                const radSymbol = document.createElement('span');
-                radSymbol.className = 'ai-math-sqrt-rad';
-                radSymbol.textContent = '√';
-                const stem = document.createElement('span');
-                stem.className = 'ai-math-sqrt-stem';
-                stem.appendChild(buildMathNodes(rad.content));
-                sqrtSpan.appendChild(radSymbol);
-                sqrtSpan.appendChild(stem);
-                frag.appendChild(sqrtSpan);
-                i = rad.endIndex + 1;
+    while (i < (str || '').length) {
+        const rest = str.slice(i);
+        let m;
+        if ((m = rest.match(/^\\(?:frac|dfrac|tfrac)/))) {
+            const num = extractBalancedBraces(str, skipSpace(i + m[0].length));
+            const den = num && extractBalancedBraces(str, skipSpace(num.endIndex + 1));
+            if (den) {
+                const frac = createEl('span', 'ai-math-frac');
+                frac.append(wrap('span', 'ai-math-num', num.content), wrap('span', 'ai-math-den', den.content));
+                frag.appendChild(frac);
+                i = den.endIndex + 1;
                 continue;
             }
         }
-
-        // Text blocks \text{...} or \mathrm{...}
-        const textMatch = str.slice(i).match(/^\\(?:text|mathrm|mathbf|mathit|operatorname)/);
-        if (textMatch) {
-            const textStart = i + textMatch[0].length;
-            let bracePos = textStart;
-            while (bracePos < str.length && /\s/.test(str[bracePos])) bracePos++;
-            const textBlock = extractBalancedBraces(str, bracePos);
-            if (textBlock) {
-                const textSpan = document.createElement('span');
-                textSpan.className = 'ai-math-text';
-                textSpan.textContent = textBlock.content;
-                frag.appendChild(textSpan);
-                i = textBlock.endIndex + 1;
+        if ((m = rest.match(/^\\sqrt(?:\[([^\]]+)\])?/))) {
+            const radicand = extractBalancedBraces(str, skipSpace(i + m[0].length));
+            if (radicand) {
+                const sqrt = createEl('span', 'ai-math-sqrt');
+                if (m[1]) sqrt.appendChild(createEl('sup', 'ai-math-root-deg', m[1]));
+                sqrt.append(createEl('span', 'ai-math-sqrt-rad', '√'), wrap('span', 'ai-math-sqrt-stem', radicand.content));
+                frag.appendChild(sqrt);
+                i = radicand.endIndex + 1;
                 continue;
             }
         }
-
-        // Superscripts & Subscripts (^ and _)
+        if ((m = rest.match(/^\\(?:text|mathrm|mathbf|mathit|operatorname)/))) {
+            const block = extractBalancedBraces(str, skipSpace(i + m[0].length));
+            if (block) {
+                frag.appendChild(createEl('span', 'ai-math-text', block.content));
+                i = block.endIndex + 1;
+                continue;
+            }
+        }
         if (str[i] === '^' || str[i] === '_') {
-            const isSup = str[i] === '^';
-            i++;
-            let scriptContent = '';
-            if (i < str.length && str[i] === '{') {
-                const scriptBlock = extractBalancedBraces(str, i);
-                if (scriptBlock) {
-                    scriptContent = scriptBlock.content;
-                    i = scriptBlock.endIndex + 1;
-                } else {
-                    scriptContent = str[i];
-                    i++;
-                }
-            } else if (i < str.length) {
-                scriptContent = str[i];
-                i++;
-            }
-            const scriptEl = document.createElement(isSup ? 'sup' : 'sub');
-            scriptEl.className = isSup ? 'ai-math-sup' : 'ai-math-sub';
-            scriptEl.appendChild(buildMathNodes(scriptContent));
-            frag.appendChild(scriptEl);
+            const isSup = str[i++] === '^';
+            const block = str[i] === '{' ? extractBalancedBraces(str, i) : null;
+            const content = block ? block.content : (str[i] ?? '');
+            i = block ? block.endIndex + 1 : Math.min(i + 1, str.length);
+            frag.appendChild(wrap(isSup ? 'sup' : 'sub', isSup ? 'ai-math-sup' : 'ai-math-sub', content));
             continue;
         }
-
-        // Standard characters
-        frag.appendChild(document.createTextNode(str[i]));
-        i++;
+        frag.appendChild(document.createTextNode(str[i++]));
     }
-
     return frag;
 }
 
+const MATH_SYMBOLS = {
+    '\\pm': '±', '\\mp': '∓', '\\times': '×', '\\cdot': '·', '\\div': '÷',
+    '\\le': '≤', '\\leq': '≤', '\\ge': '≥', '\\geq': '≥', '\\neq': '≠', '\\ne': '≠',
+    '\\approx': '≈', '\\equiv': '≡', '\\sim': '∼', '\\propto': '∝',
+    '\\sum': '∑', '\\prod': '∏', '\\int': '∫', '\\iint': '∬', '\\iiint': '∭', '\\oint': '∮',
+    '\\partial': '∂', '\\nabla': '∇', '\\infty': '∞',
+    '\\in': '∈', '\\notin': '∉', '\\subset': '⊂', '\\subseteq': '⊆', '\\cup': '∪', '\\cap': '∩', '\\emptyset': '∅',
+    '\\forall': '∀', '\\exists': '∃', '\\nexists': '∄',
+    '\\to': '→', '\\rightarrow': '→', '\\leftarrow': '←', '\\Rightarrow': '⇒', '\\Leftarrow': '⇐', '\\leftrightarrow': '↔', '\\Leftrightarrow': '⇔',
+    '\\dots': '…', '\\ldots': '…', '\\cdots': '⋯', '\\vdots': '⋮', '\\ddots': '⋱',
+    '\\circ': '∘', '\\degree': '°', '\\deg': '°',
+    '\\quad': ' ', '\\qquad': '  ', '\\,': ' ', '\\;': ' ', '\\:': ' ', '\\ ': ' ',
+    '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ', '\\epsilon': 'ε', '\\varepsilon': 'ε',
+    '\\zeta': 'ζ', '\\eta': 'η', '\\theta': 'θ', '\\vartheta': 'ϑ', '\\iota': 'ι', '\\kappa': 'κ',
+    '\\lambda': 'λ', '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ', '\\pi': 'π', '\\varpi': 'ϖ',
+    '\\rho': 'ρ', '\\varrho': 'ϱ', '\\sigma': 'σ', '\\varsigma': 'ς', '\\tau': 'τ', '\\upsilon': 'υ',
+    '\\phi': 'φ', '\\varphi': 'ϕ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
+    '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ', '\\Xi': 'Ξ', '\\Pi': 'Π',
+    '\\Sigma': 'Σ', '\\Upsilon': 'Υ', '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω'
+};
+
 function parseMathToFragment(mathStr) {
-    const frag = document.createDocumentFragment();
-    if (!mathStr) return frag;
-
-    // Clean up \left and \right
-    let s = mathStr.replace(/\\left([(\[{|.\\])/g, '$1').replace(/\\right([)\]}|.\\])/g, '$1');
-
-    const symbolMap = {
-        '\\pm': '±', '\\mp': '∓', '\\times': '×', '\\cdot': '·', '\\div': '÷',
-        '\\le': '≤', '\\leq': '≤', '\\ge': '≥', '\\geq': '≥', '\\neq': '≠', '\\ne': '≠',
-        '\\approx': '≈', '\\equiv': '≡', '\\sim': '∼', '\\propto': '∝',
-        '\\sum': '∑', '\\prod': '∏', '\\int': '∫', '\\iint': '∬', '\\iiint': '∭', '\\oint': '∮',
-        '\\partial': '∂', '\\nabla': '∇', '\\infty': '∞',
-        '\\in': '∈', '\\notin': '∉', '\\subset': '⊂', '\\subseteq': '⊆', '\\cup': '∪', '\\cap': '∩', '\\emptyset': '∅',
-        '\\forall': '∀', '\\exists': '∃', '\\nexists': '∄',
-        '\\to': '→', '\\rightarrow': '→', '\\leftarrow': '←', '\\Rightarrow': '⇒', '\\Leftarrow': '⇐', '\\leftrightarrow': '↔', '\\Leftrightarrow': '⇔',
-        '\\dots': '…', '\\ldots': '…', '\\cdots': '⋯', '\\vdots': '⋮', '\\ddots': '⋱',
-        '\\circ': '∘', '\\degree': '°', '\\deg': '°',
-        '\\quad': '\u2003', '\\qquad': '\u2003\u2003', '\\,': '\u2009', '\\;': '\u2004', '\\:': '\u2005', '\\ ': ' ',
-        // Greek letters
-        '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ', '\\epsilon': 'ε', '\\varepsilon': 'ε',
-        '\\zeta': 'ζ', '\\eta': 'η', '\\theta': 'θ', '\\vartheta': 'ϑ', '\\iota': 'ι', '\\kappa': 'κ',
-        '\\lambda': 'λ', '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ', '\\pi': 'π', '\\varpi': 'ϖ',
-        '\\rho': 'ρ', '\\varrho': 'ϱ', '\\sigma': 'σ', '\\varsigma': 'ς', '\\tau': 'τ', '\\upsilon': 'υ',
-        '\\phi': 'φ', '\\varphi': 'ϕ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
-        '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ', '\\Xi': 'Ξ', '\\Pi': 'Π',
-        '\\Sigma': 'Σ', '\\Upsilon': 'Υ', '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω'
-    };
-
-    s = s.replace(/\\(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|ln|log|exp|lim|min|max|sup|inf|det|gcd|deg)\b/g, '$1');
-
-    for (const [cmd, sym] of Object.entries(symbolMap)) {
-        const pattern = new RegExp(cmd.replace(/\\/g, '\\\\') + '(?![a-zA-Z])', 'g');
-        s = s.replace(pattern, sym);
-    }
-
+    if (!mathStr) return document.createDocumentFragment();
+    let s = mathStr.replace(/\\left([(\[{|.\\])/g, '$1').replace(/\\right([)\]}|.\\])/g, '$1')
+        .replace(/\\(sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|ln|log|exp|lim|min|max|sup|inf|det|gcd|deg)\b/g, '$1');
+    for (const [cmd, sym] of Object.entries(MATH_SYMBOLS)) s = s.replace(new RegExp(cmd.replace(/\\/g, '\\\\') + '(?![a-zA-Z])', 'g'), sym);
     return buildMathNodes(s);
 }
 
-/**
- * Lightweight Markdown → DOM fragment renderer for AI chat messages.
- * Uses DOM APIs exclusively (no innerHTML) to prevent XSS.
- * Handles: fenced code blocks, display math, inline math, blockquotes, lists, bold, italic, headers, tables, line breaks.
- */
+// --- Lightweight Markdown → DOM renderer (DOM APIs only, no innerHTML) ---
 function renderMarkdown(text) {
     const frag = document.createDocumentFragment();
     if (!text) return frag;
-
-    // 1. Extract fenced code blocks
     const codeBlocks = [];
-    let processed = text.replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (_, lang, code) => {
-        const idx = codeBlocks.length;
-        codeBlocks.push({ lang: lang || '', code: code.replace(/\n$/, '') });
-        return `\x00CODE${idx}\x00`;
-    });
-
-    // 2. Extract display math blocks ($$...$$ and \[...\])
     const mathBlocks = [];
-    processed = processed.replace(/\$\$([\s\S]*?)(?:\$\$|$)/g, (_, math) => {
-        const idx = mathBlocks.length;
-        mathBlocks.push(math.trim());
-        return `\x00MATH${idx}\x00`;
-    });
-    processed = processed.replace(/\\\[([\s\S]*?)(?:\\\]|$)/g, (_, math) => {
-        const idx = mathBlocks.length;
-        mathBlocks.push(math.trim());
-        return `\x00MATH${idx}\x00`;
-    });
+    const stashMath = (_, math) => `\x00MATH${mathBlocks.push(math.trim()) - 1}\x00`;
+    const lines = text
+        .replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (_, lang, code) => `\x00CODE${codeBlocks.push({ lang, code: code.replace(/\n$/, '') }) - 1}\x00`)
+        .replace(/\$\$([\s\S]*?)(?:\$\$|$)/g, stashMath)
+        .replace(/\\\[([\s\S]*?)(?:\\\]|$)/g, stashMath)
+        .split('\n');
 
-    // 3. Process lines for block-level elements
-    const lines = processed.split('\n');
     let i = 0;
-
+    // Consumes consecutive lines matching `pattern`, returning them with `strip` removed
+    const takeWhile = (pattern, strip) => {
+        const taken = [];
+        while (i < lines.length && pattern.test(lines[i])) taken.push(strip ? lines[i++].replace(strip, '') : lines[i++]);
+        return taken;
+    };
+    const list = (tag, items) => {
+        const listEl = createEl(tag);
+        items.forEach(item => appendInlineNodes(listEl.appendChild(createEl('li')), item));
+        return listEl;
+    };
     while (i < lines.length) {
         const line = lines[i];
-
-        // Display math placeholder
-        const mathMatch = line.match(/^\x00MATH(\d+)\x00$/);
-        if (mathMatch) {
-            const mathCode = mathBlocks[parseInt(mathMatch[1], 10)];
-            const div = document.createElement('div');
-            div.className = 'ai-math-display';
-            div.appendChild(parseMathToFragment(mathCode));
-            frag.appendChild(div);
+        let m;
+        if ((m = line.match(/^\x00MATH(\d+)\x00$/))) {
+            frag.appendChild(createEl('div', 'ai-math-display')).appendChild(parseMathToFragment(mathBlocks[m[1]]));
             i++;
-            continue;
-        }
-
-        // Fenced code block placeholder
-        const codeMatch = line.match(/^\x00CODE(\d+)\x00$/);
-        if (codeMatch) {
-            const { lang, code } = codeBlocks[parseInt(codeMatch[1], 10)];
-            const pre = document.createElement('pre');
-            pre.className = 'ai-code-block';
-            const codeEl = document.createElement('code');
-            if (lang) codeEl.className = `language-${lang}`;
-            codeEl.textContent = code;
-            pre.appendChild(codeEl);
-            frag.appendChild(pre);
+        } else if ((m = line.match(/^\x00CODE(\d+)\x00$/))) {
+            const { lang, code } = codeBlocks[m[1]];
+            frag.appendChild(createEl('pre', 'ai-code-block')).appendChild(createEl('code', lang ? `language-${lang}` : '', code));
             i++;
-            continue;
-        }
-
-        // Blockquotes (> ...)
-        if (/^[ \t]*>/.test(line)) {
-            const blockquote = document.createElement('blockquote');
-            const quoteLines = [];
-            while (i < lines.length && /^[ \t]*>/.test(lines[i])) {
-                quoteLines.push(lines[i].replace(/^[ \t]*>[ \t]?/, ''));
-                i++;
-            }
-            blockquote.appendChild(renderMarkdown(quoteLines.join('\n')));
-            frag.appendChild(blockquote);
-            continue;
-        }
-
-        // Unordered list (- or * or +)
-        if (/^[ \t]*[-*+] /.test(line)) {
-            const ul = document.createElement('ul');
-            while (i < lines.length && /^[ \t]*[-*+] /.test(lines[i])) {
-                const li = document.createElement('li');
-                appendInlineNodes(li, lines[i].replace(/^[ \t]*[-*+] /, ''));
-                ul.appendChild(li);
-                i++;
-            }
-            frag.appendChild(ul);
-            continue;
-        }
-
-        // Ordered list (1. 2. etc.)
-        if (/^[ \t]*\d+\. /.test(line)) {
-            const ol = document.createElement('ol');
-            while (i < lines.length && /^[ \t]*\d+\. /.test(lines[i])) {
-                const li = document.createElement('li');
-                appendInlineNodes(li, lines[i].replace(/^[ \t]*\d+\. /, ''));
-                ol.appendChild(li);
-                i++;
-            }
-            frag.appendChild(ol);
-            continue;
-        }
-
-        // Headers (# to ######)
-        const headingMatch = line.match(/^(#{1,6}) (.+)/);
-        if (headingMatch) {
-            const level = headingMatch[1].length;
-            const el = document.createElement(`h${level}`);
-            appendInlineNodes(el, headingMatch[2]);
-            frag.appendChild(el);
+        } else if (/^[ \t]*>/.test(line)) {
+            frag.appendChild(createEl('blockquote')).appendChild(renderMarkdown(takeWhile(/^[ \t]*>/, /^[ \t]*>[ \t]?/).join('\n')));
+        } else if (/^[ \t]*[-*+] /.test(line)) {
+            frag.appendChild(list('ul', takeWhile(/^[ \t]*[-*+] /, /^[ \t]*[-*+] /)));
+        } else if (/^[ \t]*\d+\. /.test(line)) {
+            frag.appendChild(list('ol', takeWhile(/^[ \t]*\d+\. /, /^[ \t]*\d+\. /)));
+        } else if ((m = line.match(/^(#{1,6}) (.+)/))) {
+            appendInlineNodes(frag.appendChild(createEl(`h${m[1].length}`)), m[2]);
             i++;
-            continue;
-        }
-
-        // Tables
-        if (/^[ \t]*\|/.test(line)) {
-            const tableWrap = document.createElement('div');
-            tableWrap.className = 'ai-table-wrapper';
-            const table = document.createElement('table');
-            const thead = document.createElement('thead');
-            const tbody = document.createElement('tbody');
-            let isFirstRow = true;
-
-            while (i < lines.length && /^[ \t]*\|/.test(lines[i])) {
-                const rowLine = lines[i].trim();
-
-                // Skip separator rows like |:---|:---|
-                if (/^[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*$/.test(rowLine)) {
-                    i++;
-                    isFirstRow = false;
-                    continue;
-                }
-
-                const tr = document.createElement('tr');
-                const cells = rowLine.split('|');
-
-                if (cells.length > 0 && cells[0].trim() === '') cells.shift();
-                if (cells.length > 0 && cells[cells.length - 1].trim() === '') cells.pop();
-
-                for (const cell of cells) {
-                    const cellEl = document.createElement(isFirstRow ? 'th' : 'td');
-                    appendInlineNodes(cellEl, cell.trim());
-                    tr.appendChild(cellEl);
-                }
-
-                if (isFirstRow) {
-                    thead.appendChild(tr);
-                    isFirstRow = false;
-                } else {
-                    tbody.appendChild(tr);
-                }
-                i++;
-            }
-            if (thead.childNodes.length > 0) table.appendChild(thead);
-            if (tbody.childNodes.length > 0) table.appendChild(tbody);
-            tableWrap.appendChild(table);
-            frag.appendChild(tableWrap);
-            continue;
-        }
-
-        // Horizontal rule
-        if (/^(?:---+|\*\*\*+|___+)$/.test(line.trim())) {
-            frag.appendChild(document.createElement('hr'));
+        } else if (/^[ \t]*\|/.test(line)) {
+            frag.appendChild(renderMarkdownTable(takeWhile(/^[ \t]*\|/).map(row => row.trim())));
+        } else {
+            if (/^(?:---+|\*\*\*+|___+)$/.test(line.trim())) frag.appendChild(createEl('hr'));
+            else if (line.trim() === '') frag.appendChild(createEl('br'));
+            else appendInlineNodes(frag.appendChild(createEl('p')), line);
             i++;
-            continue;
         }
-
-        // Empty line → visual break
-        if (line.trim() === '') {
-            frag.appendChild(document.createElement('br'));
-            i++;
-            continue;
-        }
-
-        // Paragraph
-        const p = document.createElement('p');
-        appendInlineNodes(p, line);
-        frag.appendChild(p);
-        i++;
     }
-
     return frag;
 }
 
-/**
- * Parses inline markdown (math, inline code, bold, italic, strikethrough, links) and appends DOM nodes.
- * Text nodes are created with createTextNode — no innerHTML, no XSS risk.
- */
-function appendInlineNodes(parent, text) {
-    if (!text) return;
-
-    // Pattern to match markdown and math inline tokens
-    const regex = /(\\\([\s\S]+?\\\)|(?<!\\)\$(?!\s)(?!\d+(?:[.,]\d+)?(?:\s|[.,;!?]|$))([^\$\n]+?)(?<!\s)\$|`[^`]+`|\*\*\*(?:.+?)\*\*\*|\*\*(?:.+?)\*\*|__(?:.+?)__|\*(?:[^*]+)\*|_(?:[^_]+)_|~~(?:.+?)~~|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
-
-    let lastIndex = 0;
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-        if (match.index > lastIndex) {
-            parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+function renderMarkdownTable(rows) {
+    const wrapper = createEl('div', 'ai-table-wrapper');
+    const table = wrapper.appendChild(createEl('table'));
+    const thead = createEl('thead');
+    const tbody = createEl('tbody');
+    let isHeader = true;
+    for (const row of rows) {
+        // Separator rows like |:---|:---| end the header
+        if (/^[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*$/.test(row)) {
+            isHeader = false;
+            continue;
         }
-
-        const fullMatch = match[0];
-
-        // 1. Explicit inline math \( ... \)
-        if (fullMatch.startsWith('\\(') && fullMatch.endsWith('\\)')) {
-            const mathContent = fullMatch.slice(2, -2);
-            const mathSpan = document.createElement('span');
-            mathSpan.className = 'ai-math-inline';
-            mathSpan.appendChild(parseMathToFragment(mathContent));
-            parent.appendChild(mathSpan);
-        }
-        // 2. Dollar inline math $ ... $
-        else if (fullMatch.startsWith('$') && fullMatch.endsWith('$') && fullMatch.length > 2) {
-            const mathContent = fullMatch.slice(1, -1);
-            const mathSpan = document.createElement('span');
-            mathSpan.className = 'ai-math-inline';
-            mathSpan.appendChild(parseMathToFragment(mathContent));
-            parent.appendChild(mathSpan);
-        }
-        // 3. Inline code `...`
-        else if (fullMatch.startsWith('`') && fullMatch.endsWith('`') && fullMatch.length > 2) {
-            const code = document.createElement('code');
-            code.className = 'ai-inline-code';
-            code.textContent = fullMatch.slice(1, -1);
-            parent.appendChild(code);
-        }
-        // 4. Bold + Italic ***...***
-        else if (fullMatch.startsWith('***') && fullMatch.endsWith('***') && fullMatch.length > 6) {
-            const strong = document.createElement('strong');
-            const em = document.createElement('em');
-            em.textContent = fullMatch.slice(3, -3);
-            strong.appendChild(em);
-            parent.appendChild(strong);
-        }
-        // 5. Bold **...** or __...__
-        else if ((fullMatch.startsWith('**') && fullMatch.endsWith('**') && fullMatch.length > 4) ||
-                 (fullMatch.startsWith('__') && fullMatch.endsWith('__') && fullMatch.length > 4)) {
-            const strong = document.createElement('strong');
-            strong.textContent = fullMatch.slice(2, -2);
-            parent.appendChild(strong);
-        }
-        // 6. Italic *...* or _..._
-        else if ((fullMatch.startsWith('*') && fullMatch.endsWith('*') && fullMatch.length > 2) ||
-                 (fullMatch.startsWith('_') && fullMatch.endsWith('_') && fullMatch.length > 2)) {
-            const em = document.createElement('em');
-            em.textContent = fullMatch.slice(1, -1);
-            parent.appendChild(em);
-        }
-        // 7. Strikethrough ~~...~~
-        else if (fullMatch.startsWith('~~') && fullMatch.endsWith('~~') && fullMatch.length > 4) {
-            const del = document.createElement('del');
-            del.textContent = fullMatch.slice(2, -2);
-            parent.appendChild(del);
-        }
-        // 8. Markdown link [text](url)
-        else if (match[3] && match[4]) {
-            const a = document.createElement('a');
-            a.href = match[4];
-            a.target = '_blank';
-            a.rel = 'noopener noreferrer';
-            a.textContent = match[3];
-            parent.appendChild(a);
-        }
-        else {
-            parent.appendChild(document.createTextNode(fullMatch));
-        }
-
-        lastIndex = regex.lastIndex;
+        const cells = row.split('|');
+        if (cells.length > 0 && cells[0].trim() === '') cells.shift();
+        if (cells.length > 0 && cells[cells.length - 1].trim() === '') cells.pop();
+        const tr = (isHeader ? thead : tbody).appendChild(createEl('tr'));
+        cells.forEach(cell => appendInlineNodes(tr.appendChild(createEl(isHeader ? 'th' : 'td')), cell.trim()));
+        isHeader = false;
     }
-
-    if (lastIndex < text.length) {
-        parent.appendChild(document.createTextNode(text.slice(lastIndex)));
-    }
+    if (thead.childNodes.length > 0) table.appendChild(thead);
+    if (tbody.childNodes.length > 0) table.appendChild(tbody);
+    return wrapper;
 }
 
-window.sendAiMessage = async () => {
-    if (aiStreaming) return;
-    const inputEl = document.getElementById('ai-chat-input');
-    const sendBtn = document.getElementById('ai-chat-send-btn');
-    if (!inputEl) return;
+// Inline markdown: math, code, bold/italic, strikethrough and links — text is only ever set via textContent.
+const INLINE_MARKDOWN = /(\\\([\s\S]+?\\\)|(?<!\\)\$(?!\s)(?!\d+(?:[.,]\d+)?(?:\s|[.,;!?]|$))([^\$\n]+?)(?<!\s)\$|`[^`]+`|\*\*\*(?:.+?)\*\*\*|\*\*(?:.+?)\*\*|__(?:.+?)__|\*(?:[^*]+)\*|_(?:[^_]+)_|~~(?:.+?)~~|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
 
-    const rawText = inputEl.value;
-    const text = sanitizeAiText(rawText).trim();
+function inlineNode(token, match) {
+    const wrapped = (open, close = open) => token.startsWith(open) && token.endsWith(close) && token.length > open.length + close.length;
+    const math = content => {
+        const span = createEl('span', 'ai-math-inline');
+        span.appendChild(parseMathToFragment(content));
+        return span;
+    };
+    if (token.startsWith('\\(') && token.endsWith('\\)')) return math(token.slice(2, -2));
+    if (wrapped('$')) return math(token.slice(1, -1));
+    if (wrapped('`')) return createEl('code', 'ai-inline-code', token.slice(1, -1));
+    if (wrapped('***')) {
+        const strong = createEl('strong');
+        strong.appendChild(createEl('em', '', token.slice(3, -3)));
+        return strong;
+    }
+    if (wrapped('**') || wrapped('__')) return createEl('strong', '', token.slice(2, -2));
+    if (wrapped('*') || wrapped('_')) return createEl('em', '', token.slice(1, -1));
+    if (wrapped('~~')) return createEl('del', '', token.slice(2, -2));
+    if (match[3] && match[4]) {
+        const link = createEl('a', '', match[3]);
+        Object.assign(link, { href: match[4], target: '_blank', rel: 'noopener noreferrer' });
+        return link;
+    }
+    return document.createTextNode(token);
+}
+
+function appendInlineNodes(parent, text) {
     if (!text) return;
+    let lastIndex = 0;
+    for (const match of text.matchAll(INLINE_MARKDOWN)) {
+        if (match.index > lastIndex) parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        parent.appendChild(inlineNode(match[0], match));
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+}
 
+async function sendAiMessage() {
+    if (aiStreaming) return;
+    const inputEl = $('ai-chat-input');
+    const sendBtn = $('ai-chat-send-btn');
+    if (!inputEl) return;
+    const text = sanitizeAiText(inputEl.value).trim();
+    if (!text) return;
     inputEl.value = '';
     adjustAiInputHeight(inputEl);
-
     aiMessages.push({ role: 'user', content: text });
     appendAiMessage('user', text);
-
     aiStreaming = true;
     if (sendBtn) sendBtn.disabled = true;
 
-    // Show typing indicator
-    const messagesEl = document.getElementById('ai-chat-messages');
-    const typingEl = document.createElement('div');
-    typingEl.className = 'ai-chat-typing';
+    const messagesEl = $('ai-chat-messages');
+    const scrollToEnd = () => { if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight; };
+    const typingEl = createEl('div', 'ai-chat-typing');
     typingEl.innerHTML = '<span></span><span></span><span></span>';
-    if (messagesEl) {
-        messagesEl.appendChild(typingEl);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
+    messagesEl?.appendChild(typingEl);
+    scrollToEnd();
 
-    let assistantBubble = null;
-    let assistantContent = '';
-    let reasoningContent = '';
-
+    let bubble = null;
+    let content = '';
+    let reasoning = '';
     try {
         let token;
         try {
@@ -6128,2252 +4215,351 @@ window.sendAiMessage = async () => {
         } catch {
             throw new Error('Authentifizierung fehlgeschlagen');
         }
-
-        const validMessages = sanitizeAiMessages(aiMessages);
-        if (validMessages.length === 0) {
-            throw new Error('Keine gültige Nachricht vorhanden');
-        }
-
-        const response = await fetch(`${config.apiBaseUrl}/ai/chat`, {
+        const messages = sanitizeAiMessages(aiMessages);
+        if (messages.length === 0) throw new Error('Keine gültige Nachricht vorhanden');
+        const res = await fetch(`${API}/ai/chat`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ messages: validMessages })
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ messages })
         });
-
-        if (typingEl.parentNode) typingEl.remove();
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            const errMsg = errData.detail || errData.error || `HTTP ${response.status}`;
-            throw new Error(errMsg);
+        typingEl.remove();
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || errData.error || `HTTP ${res.status}`);
         }
-
-        assistantBubble = appendAiMessage('assistant', '');
-        const reader = response.body.getReader();
+        // Server-sent events: "data: {content, reasoning}" lines, terminated by "data: [DONE]"
+        bubble = appendAiMessage('assistant', '');
+        const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+        for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+            buffer += decoder.decode(chunk.value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop();
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed.startsWith('data:')) continue;
-                const data = trimmed.slice(5).trim();
+            for (const line of lines.map(l => l.trim()).filter(l => l.startsWith('data:'))) {
+                const data = line.slice(5).trim();
                 if (data === '[DONE]') break;
                 try {
                     const parsed = JSON.parse(data);
-                    if (parsed.content) {
-                        assistantContent += parsed.content;
-                    }
-                    if (parsed.reasoning) {
-                        reasoningContent += parsed.reasoning;
-                    }
-                    if (assistantBubble) {
-                        finalizeAssistantBubble(assistantBubble, assistantContent, reasoningContent);
-                        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-                    }
-                } catch { /* skip */ }
+                    content += parsed.content || '';
+                    reasoning += parsed.reasoning || '';
+                    finalizeAssistantBubble(bubble, content, reasoning);
+                    scrollToEnd();
+                } catch { /* skip malformed chunk */ }
             }
         }
-
-        // Re-render with markdown + optional thinking dropdown
-        finalizeAssistantBubble(assistantBubble, assistantContent, reasoningContent);
-        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-
-        const cleanAssistantContent = sanitizeAiText(assistantContent).trim();
-        if (cleanAssistantContent) {
-            aiMessages.push({ role: 'assistant', content: cleanAssistantContent });
-        }
+        finalizeAssistantBubble(bubble, content, reasoning);
+        scrollToEnd();
+        const clean = sanitizeAiText(content).trim();
+        if (clean) aiMessages.push({ role: 'assistant', content: clean });
     } catch (err) {
-        if (typingEl.parentNode) typingEl.remove();
+        typingEl.remove();
         console.error('KI-Chat Fehler:', err);
-        if (assistantBubble) {
-            assistantBubble.textContent = `Fehler: ${err.message || 'Unbekannter Fehler'}`;
-            assistantBubble.classList.add('ai-chat-bubble-error');
-        } else {
-            const errBubble = appendAiMessage('assistant', `Fehler: ${err.message || 'Unbekannter Fehler'}`);
-            if (errBubble) errBubble.classList.add('ai-chat-bubble-error');
-        }
-        // Remove the failed user message from history so the user can retry
-        if (aiMessages.length > 0 && aiMessages[aiMessages.length - 1].role === 'user') {
-            aiMessages.pop();
-        }
+        const message = `Fehler: ${err.message || 'Unbekannter Fehler'}`;
+        if (bubble) bubble.textContent = message;
+        else bubble = appendAiMessage('assistant', message);
+        bubble?.classList.add('ai-chat-bubble-error');
+        // Drop the failed user message so it can be retried
+        if (aiMessages[aiMessages.length - 1]?.role === 'user') aiMessages.pop();
     } finally {
         aiStreaming = false;
         if (sendBtn) sendBtn.disabled = false;
     }
-};
+}
 
-document.addEventListener('DOMContentLoaded', () => {
-    const inputEl = document.getElementById('ai-chat-input');
-    if (inputEl) adjustAiInputHeight(inputEl);
+Object.assign(window, {
+    clearAiChat, sendAiMessage,
+    handleAiChatInput: event => event?.target && adjustAiInputHeight(event.target),
+    handleAiChatKey: chatKeyHandler(sendAiMessage, adjustAiInputHeight)
 });
 
-window.uploadChurchLogo = async () => {
-    if (!isSuperAdminUser()) return;
-    const fileInput = document.getElementById('super-admin-logo-file');
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        alert(t('alert_please_select_svg', 'Bitte eine SVG-Datei auswählen.'));
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('logo', fileInput.files[0]);
-
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/logo`, {
-            method: 'POST',
-            body: formData
-        });
-
-        let errorText = null;
-        if (!response.ok) {
-            // Clone the response before reading it, so we can fall back to text if json fails
-            const responseClone = response.clone();
-            try {
-                const data = await response.json();
-                if (data && data.error) {
-                    errorText = data.error;
-                } else if (data && Object.keys(data).length > 0) {
-                    errorText = JSON.stringify(data);
-                } else {
-                    throw new Error("Empty JSON");
-                }
-            } catch (e) {
-                errorText = await responseClone.text();
-            }
-            throw new Error(errorText || `HTTP ${response.status}`);
-        }
-
-        const cacheBust = `?v=${Date.now()}`;
-        document.querySelectorAll("img[src*='church-logo.svg']").forEach((img) => {
-            img.src = `assets/church-logo.svg${cacheBust}`;
-        });
-        fileInput.value = '';
-        showToast(t('toast_logo_updated', 'Logo aktualisiert'));
-    } catch (err) {
-        const errMsg = err.message || err.code || 'Unbekannter Fehler';
-        console.error('Fehler beim Logo-Upload:', errMsg, err);
-        alert(t('alert_logo_update_failed', 'Logo konnte nicht aktualisiert werden: ') + errMsg);
-        showToast(t('toast_logo_update_failed', 'Logo konnte nicht aktualisiert werden'), 'error');
-    }
-};
-
-// Keep saveSettings as a no-op fallback (called by nothing now)
-window.saveSettings = async () => {};
-
-// Auto-save a single rate field
-window.autoSaveRate = async function(fieldId) {
-    const el = document.getElementById(fieldId);
-    if (!el) return;
-    const val = parseFloat(el.value.replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    if (isNaN(val) || val < 0) return;
-
-    const key = fieldId === 'rate-vollverdiener' ? 'vollverdiener'
-              : fieldId === 'rate-geringverdiener' ? 'geringverdiener'
-              : 'keinverdiener';
-    settings[key] = val;
-    settingsVersion++;
-
-    try {
-        await set(ref(db, 'settings'), settings);
-        await renderAll();
-        showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der Rate:', err);
-        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
-    }
-};
-
-// Auto-save notification preferences
-window.autoSaveNotificationPreferences = async function() {
-    if (!currentUser || !currentUser.uid) return;
-
-    const isUserTab = (typeof currentActiveTab !== 'undefined' && currentActiveTab === 'user-settings');
-    const prefix = isUserTab ? 'user-notif-pref-' : 'notif-pref-';
-
-    const getPrefVal = (key) => {
-        const elTab = document.getElementById(prefix + key);
-        if (elTab) return elTab.checked;
-        const elOther = document.getElementById((isUserTab ? 'notif-pref-' : 'user-notif-pref-') + key);
-        if (elOther) return elOther.checked;
-        return true;
-    };
-
-    const notificationSettings = {
-        duties: getPrefVal('duties'),
-        events: getPrefVal('events'),
-        messages: getPrefVal('messages'),
-        finances: getPrefVal('finances')
-    };
-
-    // Keep emailNotifications in sync for backwards compatibility
-    const emailNotifications = Object.values(notificationSettings).some(Boolean);
-
-    try {
-        await update(ref(db, 'users/' + currentUser.uid), {
-            notificationSettings,
-            emailNotifications
-        });
-        currentUser.notificationSettings = notificationSettings;
-        currentUser.emailNotifications = emailNotifications;
-
-        // Synchronize all checkboxes across both tabs
-        ['duties', 'events', 'messages', 'finances'].forEach(key => {
-            const el1 = document.getElementById('notif-pref-' + key);
-            const el2 = document.getElementById('user-notif-pref-' + key);
-            if (el1) el1.checked = notificationSettings[key];
-            if (el2) el2.checked = notificationSettings[key];
-        });
-
-        showToast(t('notification_settings_saved', 'Benachrichtigungseinstellungen gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der Benachrichtigungseinstellungen:', err);
-        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
-    }
-};
-
-window.updateNotificationPreferencesUI = function() {
-    if (!currentUser) return;
-
-    const canManageFin = typeof canManageFinances === 'function' ? canManageFinances() : false;
-    const canViewFin = typeof canViewFinances === 'function' ? canViewFinances() : false;
-    const isFinAllowed = canManageFin || canViewFin || currentUser.admin === true || currentUser.owner === true || currentUser.superAdmin === true;
-
-    // Show/hide finances notification option based on permission
-    const finWrap = document.getElementById('notif-pref-finances-wrap');
-    const userFinWrap = document.getElementById('user-notif-pref-finances-wrap');
-    if (finWrap) finWrap.style.display = isFinAllowed ? 'flex' : 'none';
-    if (userFinWrap) userFinWrap.style.display = isFinAllowed ? 'flex' : 'none';
-
-    const defaultSettings = { duties: true, events: true, messages: true, finances: true };
-    let settings = Object.assign({}, defaultSettings, currentUser.notificationSettings || {});
-    if (currentUser.emailNotifications === false && !currentUser.notificationSettings) {
-        settings = { duties: false, events: false, messages: false, finances: false };
-    }
-
-    ['duties', 'events', 'messages', 'finances'].forEach(key => {
-        const el1 = document.getElementById('notif-pref-' + key);
-        const el2 = document.getElementById('user-notif-pref-' + key);
-        if (el1) el1.checked = settings[key] !== false;
-        if (el2) el2.checked = settings[key] !== false;
-    });
-};
-
-window.autoSaveEmailNotifications = window.autoSaveNotificationPreferences;
-
-function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-        .replace(/\-/g, '+')
-        .replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-}
-
-window.updatePushNotificationUI = async function() {
-    const hints = [
-        document.getElementById('push-status-hint'),
-        document.getElementById('user-push-status-hint')
-    ].filter(Boolean);
-
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        hints.forEach(h => { h.textContent = 'Push wird von diesem Browser nicht unterstützt'; });
-        return;
-    }
-
-    try {
-        if (Notification.permission === 'denied') {
-            hints.forEach(h => { 
-                h.textContent = 'Im Browser blockiert (bitte in den Website-Berechtigungen erlauben)'; 
-                h.style.color = '#ef4444'; 
-            });
-        } else if (Notification.permission === 'granted') {
-            hints.forEach(h => { 
-                h.textContent = 'Immer aktiv (automatisch synchronisiert)'; 
-                h.style.color = '#10b981'; 
-            });
-        } else {
-            hints.forEach(h => { 
-                h.textContent = 'Wird beim Anmelden automatisch eingerichtet'; 
-                h.style.color = 'var(--text-muted, #64748b)'; 
-            });
-        }
-    } catch (err) {
-        console.warn('Push status check error:', err);
-    }
-};
-
-window.setupPwaPushAutoPrompt = function() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        return;
-    }
-    if (Notification.permission !== 'default') {
-        return;
-    }
-    if (window._pushAutoPromptRegistered) {
-        return;
-    }
-    window._pushAutoPromptRegistered = true;
-
-    const onUserInteraction = async () => {
-        window.removeEventListener('click', onUserInteraction, true);
-        window.removeEventListener('touchend', onUserInteraction, true);
-
-        try {
-            if (Notification.permission === 'default') {
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') {
-                    await window.ensurePushNotificationSubscription(true);
-                }
-            }
-        } catch (err) {
-            console.warn('Auto-request push permission error:', err);
-        }
-    };
-
-    window.addEventListener('click', onUserInteraction, { capture: true, once: true });
-    window.addEventListener('touchend', onUserInteraction, { capture: true, once: true });
-};
-
-window.ensurePushNotificationSubscription = async function(interactive = false) {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
-        return;
-    }
-
-    try {
-        const token = (typeof auth !== 'undefined' && auth.currentUser) 
-            ? (await auth.currentUser.getIdToken()) 
-            : (localStorage.getItem('token') || '');
-
-        if (!token) return;
-
-        let permission = Notification.permission;
-        if (permission === 'default') {
-            if (interactive) {
-                permission = await Notification.requestPermission();
-            } else {
-                // Background/startup call: iOS Safari and Android require a direct user gesture to show the OS dialog.
-                // Schedule the request on the user's first tap/click so the system prompt appears with zero friction.
-                window.setupPwaPushAutoPrompt();
-                if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
-                return;
-            }
-        }
-
-        if (permission !== 'granted') {
-            if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
-            return;
-        }
-
-        const registration = await navigator.serviceWorker.ready;
-        let subscription = await registration.pushManager.getSubscription();
-
-        if (!subscription) {
-            const keyRes = await fetch(`${config.apiBaseUrl}/push/vapid-public-key`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (keyRes.ok) {
-                const keyData = await keyRes.json();
-                const convertedKey = urlBase64ToUint8Array(keyData.publicKey);
-                subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: convertedKey
-                });
-            }
-        }
-
-        if (subscription) {
-            await fetch(`${config.apiBaseUrl}/push/subscribe`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    subscription: subscription.toJSON(),
-                    userAgent: navigator.userAgent
-                })
-            }).catch(e => console.warn('Push sync error:', e));
-        }
-
-        if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
-    } catch (err) {
-        console.warn('Auto-subscribe push notification error:', err);
-        if (typeof updatePushNotificationUI === 'function') updatePushNotificationUI();
-    }
-};
-
-window.sendTestPushNotification = async function() {
-    try {
-        await ensurePushNotificationSubscription(true);
-        const token = (typeof auth !== 'undefined' && auth.currentUser) 
-            ? (await auth.currentUser.getIdToken()) 
-            : (localStorage.getItem('token') || '');
-
-        const res = await fetch(`${config.apiBaseUrl}/push/test`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (res.ok) {
-            showToast('Test-Benachrichtigung gesendet!');
-        } else {
-            showToast('Fehler beim Senden der Test-Benachrichtigung', 'error');
-        }
-    } catch (err) {
-        console.error('Test push error:', err);
-        showToast('Fehler beim Senden der Test-Benachrichtigung', 'error');
-    }
-};
-
-window.changePassword = async (isUser = false) => {
-    const inputId = isUser ? 'user-new-password' : 'new-password';
-    const oldInputId = isUser ? 'user-old-password' : 'old-password';
-    const pw = document.getElementById(inputId).value;
-    const oldPw = document.getElementById(oldInputId).value;
-
-    if(!oldPw) {
-        alert(t('alert_enter_old_password', 'Bitte geben Sie Ihr altes Passwort ein.'));
-        return;
-    }
-
-    if(!pw || pw.length < 6) {
-        alert(t('alert_new_password_length', 'Neues Passwort muss mindestens 6 Zeichen lang sein.'));
-        return;
-    }
-
-    try {
-        const user = auth.currentUser;
-        if(user) {
-            await updatePassword(user, oldPw, pw);
-            showToast(t('toast_password_changed', 'Passwort erfolgreich geändert'));
-            document.getElementById(inputId).value = '';
-            document.getElementById(oldInputId).value = '';
-        } else {
-            alert(t('alert_no_user_logged_in', 'Kein Benutzer angemeldet.'));
-        }
-    } catch (error) {
-        console.error(error);
-        alert(t('alert_password_change_failed', 'Fehler beim Ändern des Passworts: ') + error.message);
-    }
-};
-
-function replacePersonInMemory(person) {
-    // ⚡ Bolt: Ensure data is optimized before storing
-    preprocessPerson(person);
-    const idx = people.findIndex(p => String(p.id) === String(person.id));
-    if (idx >= 0) {
-        if (person.isDeleted) {
-            people.splice(idx, 1);
-        } else {
-            people[idx] = person;
-        }
-    } else {
-        if (!person.isDeleted) {
-            people.push(person);
-        }
-    }
-}
-
-async function mutatePerson(personId, mutator) {
-    const personRef = ref(db, 'people/' + personId);
-    const result = await runTransaction(personRef, (current) => {
-        if (!current) return current;
-        const draft = { ...current };
-        draft.payments = safeList(draft.payments);
-        draft.statusHistory = safeList(draft.statusHistory);
-        return mutator(draft);
-    });
-    const updated = result.snapshot.val();
-    if (updated) replacePersonInMemory(updated);
-    return updated;
-}
-
-async function saveNewPerson(person) {
-    if (!person || !person.id) throw new Error('Person ohne ID kann nicht gespeichert werden');
-    await set(ref(db, 'people/' + person.id), person);
-    replacePersonInMemory(person);
-}
-
-function initTheme() {
-    const t = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
-    window.setTheme(t);
-
-    // Listen for OS theme changes if 'system' is active
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-        const activeT = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
-        if (activeT === 'system') {
-            applyActualTheme('system');
-        }
-    });
-}
-
-function applyActualTheme(t) {
-    let actualTheme = t;
-    if (t === 'system') {
-        actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    document.documentElement.setAttribute('data-theme', actualTheme);
-    const themeColor = actualTheme === 'dark' ? '#0f172a' : '#e6f2fa';
-    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
-        meta.content = themeColor;
-    });
-}
-
-window.setTheme = (t) => {
-    localStorage.setItem('agora-theme', t);
-    applyActualTheme(t);
-
-    // Sync theme selection dropdowns
-    const themeSelect = document.getElementById('settings-theme');
-    if (themeSelect) themeSelect.value = t;
-    const userThemeSelect = document.getElementById('user-settings-theme');
-    if (userThemeSelect) userThemeSelect.value = t;
-
-    // Update active button state (fallback if buttons exist)
-    document.querySelectorAll("button[onclick^='setTheme']").forEach(btn => {
-        if (btn.getAttribute('onclick') === `setTheme('${t}')`) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-};
-
-function setLoadingMessage(msg) {
-    const el = document.getElementById('loading-message');
-    if (el) el.textContent = msg;
-}
-
-async function fetchUserProfile(uid, retries = 2) {
-    const snap = await get(ref(db, 'users/' + uid));
-    if (snap.exists()) return { ...snap.val(), uid };
-    if (retries > 0) {
-        await new Promise(res => setTimeout(res, 400));
-        return fetchUserProfile(uid, retries - 1);
-    }
-    return null;
-}
-
-async function bootstrapSuperAdmin(user) {
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/admin/bootstrap-super-admin`, {
-            method: 'POST'
-        });
-        if (!response.ok) return;
-        const result = await response.json();
-        if (result.isSuperAdmin || result.isOwner) {
-            currentUser = {
-                ...(currentUser || {}),
-                admin: true,
-                owner: true,
-                superAdmin: true
-            };
-            const freshProfile = await fetchUserProfile(user.uid, 2);
-            if (freshProfile) currentUser = freshProfile;
-        }
-    } catch (error) {
-        console.warn('Super admin bootstrap skipped:', error);
-    }
-}
-
-// Auth Listener
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        // Ensure modal is closed immediately and spinner is visible
-        document.getElementById('login-modal').classList.remove('show');
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'flex';
-        setLoadingMessage('Profil wird geladen...');
-
-        localStorage.setItem('agora-is-logged-in', 'true');
-        const profile = await fetchUserProfile(user.uid, 2);
-        if(profile) {
-            currentUser = profile;
-        } else {
-            setLoadingMessage('Profil nicht gefunden, bitte Admin kontaktieren.');
-            currentUser = { role: 'user', email: user.email, uid: user.uid };
-        }
-        await bootstrapSuperAdmin(user);
-
-        document.getElementById('login-modal').classList.remove('show');
-        isAuthenticated = true;
-        connectSSE();
-        loadData();
-        loadCurrentProfilePicture();
-        if (typeof ensurePushNotificationSubscription === 'function') {
-            ensurePushNotificationSubscription();
-        }
-    } else {
-        localStorage.removeItem('agora-is-logged-in');
-        localStorage.removeItem('nova-is-logged-in');
-        isAuthenticated = false;
-        advancedConfigLoaded = false;
-        advancedConfigAppName = null;
-        currentUser = null;
-
-        const loginModal = document.getElementById('login-modal');
-        if (loginModal) loginModal.classList.add('show');
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'none';
-
-        showLogin();
-    }
-});
-
-function checkAuth() {
-    // Initial check handled by onAuthStateChanged
-}
-
-window.logout = async () => {
-    try {
-        if (sseConnection) {
-            sseConnection.close();
-            sseConnection = null;
-        }
-        _applyProfilePicture(null);
-        await signOut(auth);
-    } catch (error) {
-        console.error("Logout Error:", error);
-    }
-};
-
-window.attemptLogin = async () => {
-    const email = document.getElementById('login-email').value;
-    const pass = document.getElementById('login-password').value;
-    const errDiv = document.getElementById('auth-error');
-
-    setButtonLoading('btn-login', true, "Anmelden...");
-
-    if(!email || !pass) {
-        errDiv.innerText = "Bitte E-Mail und Passwort eingeben.";
-        errDiv.style.display = 'block';
-        setButtonLoading('btn-login', false);
-        return;
-    }
-
-    try {
-        errDiv.style.display = 'none';
-        await signInWithEmailAndPassword(auth, email, pass);
-        document.getElementById('login-modal').classList.remove('show');
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'flex';
-        setLoadingMessage('Profil wird geladen...');
-        setButtonLoading('btn-login', false);
-    } catch (error) {
-        console.error(error);
-        errDiv.innerText = "Login fehlgeschlagen: " + error.message;
-        errDiv.style.display = 'block';
-        setButtonLoading('btn-login', false);
-    }
-};
-
-window.attemptRegister = async () => {
-    const code = document.getElementById('reg-code').value;
-    const email = document.getElementById('reg-email').value;
-    const first = document.getElementById('reg-firstname').value;
-    const last = document.getElementById('reg-lastname').value;
-    const p1 = document.getElementById('reg-pass1').value;
-    const p2 = document.getElementById('reg-pass2').value;
-    const errDiv = document.getElementById('auth-error');
-
-    if(!code || !email || !first || !last || !p1 || !p2) {
-        errDiv.innerText = "Bitte alle Felder ausfüllen.";
-        errDiv.style.display = 'block';
-        return;
-    }
-    if(p1.length < 6) {
-        errDiv.innerText = "Passwort muss mindestens 6 Zeichen lang sein.";
-        errDiv.style.display = 'block';
-        return;
-    }
-    if(p1 !== p2) {
-        errDiv.innerText = "Passwörter stimmen nicht überein.";
-        errDiv.style.display = 'block';
-        return;
-    }
-
-    try {
-        errDiv.style.display = 'none';
-        document.getElementById('login-modal').classList.remove('show');
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'flex';
-        setLoadingMessage('Profil wird initialisiert...');
-
-        await createUserWithEmailAndPassword(auth, email, p1, {
-            inviteCode: code,
-            firstName: first,
-            lastName: last,
-            name: `${first} ${last}`.trim()
-        });
-    } catch (error) {
-        console.error(error);
-        if (error.message && error.message.includes('Ungültiger Registrierungscode')) {
-            errDiv.innerText = "Ungültiger Registrierungscode.";
-        } else {
-            errDiv.innerText = "Registrierung fehlgeschlagen: " + error.message;
-        }
-        errDiv.style.display = 'block';
-        const loader = document.getElementById('loading-overlay');
-        if(loader) loader.style.display = 'none';
-        document.getElementById('login-modal').classList.add('show');
-    }
-};
-
-let currentRequestType = null;
-
-window.openUserRequestModal = (type) => {
-    currentRequestType = type || null;
-    const container = document.getElementById('req-form-content');
-    const title = document.getElementById('req-modal-title');
-    const subtitle = document.getElementById('req-modal-subtitle');
-    const badge = document.getElementById('req-modal-badge');
-    const submitBtn = document.getElementById('btn-submit-request');
-    const backBtn = document.getElementById('req-modal-back-btn');
-
-    if(window.pendingReqExpenseFiles) {
-        window.pendingReqExpenseFiles.forEach(f => { if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
-    }
-    window.pendingReqExpenseFiles = [];
-
-    if (!type) {
-        if (backBtn) backBtn.style.display = 'none';
-        if (submitBtn) submitBtn.style.display = 'none';
-        if (badge) {
-            badge.className = 'modal-icon-badge badge-donation';
-            badge.textContent = '📝';
-        }
-        if (title) title.innerText = t('user_request_modal_title', "Anfrage");
-        if (subtitle) subtitle.innerText = t('user_req_select_subtitle', "Wähle die Art der Anfrage");
-
-        container.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 2px;">
-                <button type="button" onclick="openUserRequestModal('payment')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
-                    <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(6, 182, 212, 0.12); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
-                        💳
-                    </div>
-                    <div style="min-width: 0; flex: 1;">
-                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t('user_req_type_payment', 'Einzahlung / Zahlung')}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t('user_req_type_payment_desc', 'Beitrag oder Einzahlung melden.')}</div>
-                    </div>
-                </button>
-
-                <button type="button" onclick="openUserRequestModal('status')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
-                    <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(245, 158, 11, 0.12); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
-                        ⚡
-                    </div>
-                    <div style="min-width: 0; flex: 1;">
-                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t('user_req_type_status', 'Statuswechsel')}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t('user_req_type_status_desc', 'Änderung des Mitgliedsstatus beantragen.')}</div>
-                    </div>
-                </button>
-
-                <button type="button" onclick="openUserRequestModal('expense')" style="display: flex; align-items: center; text-align: left; width: 100%; background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
-                    <div style="width: 34px; height: 34px; border-radius: 9px; background: rgba(239, 68, 68, 0.12); color: var(--danger); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; margin-right: 11px;">
-                        🧾
-                    </div>
-                    <div style="min-width: 0; flex: 1;">
-                        <div style="color: var(--text); font-weight: 700; font-size: 0.88rem;">${t('user_req_type_expense', 'Ausgabe')}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.76rem; margin-top: 1px;">${t('user_req_type_expense_desc', 'Ausgabe zur Erstattung einreichen (mit Beleg).')}</div>
-                    </div>
-                </button>
-            </div>
-        `;
-    } else {
-        if (backBtn) backBtn.style.display = 'inline-flex';
-        if (submitBtn) submitBtn.style.display = 'block';
-
-        if(type === 'payment') {
-            if (badge) {
-                badge.className = 'modal-icon-badge badge-donation';
-                badge.textContent = '💳';
-            }
-            if (title) title.innerText = t('user_req_payment_title', "Zahlung melden");
-            if (subtitle) subtitle.innerText = t('user_req_payment_subtitle', "Beitrag & Einzahlung an Admin melden");
-
-            container.innerHTML = `
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>💶</span> <span>${t('modal_section_amount', 'Zahlungsbetrag')}</span>
-                    </div>
-                    <div class="form-group">
-                        <div class="hero-amount-wrapper">
-                            <span class="hero-amount-prefix">€</span>
-                            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>⚙️</span> <span>${t('modal_section_payment_type', 'Zahlungsart & Datum')}</span>
-                    </div>
-                    <div class="modal-switch-row">
-                        <label class="switch">
-                            <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum')">
-                            <span class="slider"></span>
-                        </label>
-                        <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Dauerauftrag')}</label>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Datum')}</label>
-                        <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                </div>
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>📝</span> <span>${t('modal_note', 'Notiz / Verwendungszweck')}</span>
-                    </div>
-                    <div class="form-group">
-                        <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
-                    </div>
-                </div>
-            `;
-        } else if(type === 'status') {
-            if (badge) {
-                badge.className = 'modal-icon-badge badge-person';
-                badge.textContent = '⚡';
-            }
-            if (title) title.innerText = t('user_req_status_title', "Statusänderung beantragen");
-            if (subtitle) subtitle.innerText = t('user_req_status_subtitle', "Neuen Mitgliedsstatus anfragen");
-
-            const myPerson = (people && people.length > 0)
-                ? people.find(p => p.uid === currentUser?.uid || (p.data && p.data.uid === currentUser?.uid))
-                : null;
-            const currentStatusVal = myPerson?._currentStatus || myPerson?.status;
-
-            container.innerHTML = `
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>💼</span> <span>${t('modal_new_status', 'Neuer Status')}</span>
-                    </div>
-                    <div class="form-group">
-                        <select id="req-status" class="form-select">
-                            <option value="vollverdiener" ${currentStatusVal === 'vollverdiener' ? 'selected' : ''}>${t('member_status_full', '💼 Vollverdiener')}</option>
-                            <option value="geringverdiener" ${currentStatusVal === 'geringverdiener' ? 'selected' : ''}>${t('member_status_low', '📉 Geringverdiener')}</option>
-                            <option value="keinverdiener" ${currentStatusVal === 'keinverdiener' ? 'selected' : ''}>${t('member_status_none', '🎓 Keinverdiener')}</option>
-                            <option value="pausiert" ${currentStatusVal === 'pausiert' ? 'selected' : ''}>${t('member_status_paused', '⏸️ Pausiert')}</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>📅</span> <span>${t('modal_valid_from', 'Gültigkeitsdatum')}</span>
-                    </div>
-                    <div class="form-group">
-                        <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px; line-height:1.35;">
-                            ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        } else if(type === 'expense') {
-            if (badge) {
-                badge.className = 'modal-icon-badge badge-expense';
-                badge.textContent = '🧾';
-            }
-            if (title) title.innerText = t('user_req_expense_title', "Ausgabe melden");
-            if (subtitle) subtitle.innerText = t('user_req_expense_subtitle', "Ausgabe zur Erstattung einreichen");
-
-            container.innerHTML = `
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>💶</span> <span>${t('modal_section_amount', 'Ausgabenbetrag')}</span>
-                    </div>
-                    <div class="form-group">
-                        <div class="hero-amount-wrapper">
-                            <span class="hero-amount-prefix">€</span>
-                            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>ℹ️</span> <span>${t('modal_section_info', 'Angaben zur Ausgabe')}</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
-                        <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
-                        <input type="date" id="req-date" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                </div>
-                <div class="modal-section-card">
-                    <div class="modal-section-header">
-                        <span>📎</span> <span>${t('modal_expense_receipt', 'Beleg anhängen')}</span>
-                    </div>
-                    <div class="file-upload-dropzone">
-                        <div class="file-upload-icon">📁</div>
-                        <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
-                        <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
-                        <input type="file" id="req-receipt" accept="image/*,.heic,.heif,.pdf" multiple onchange="window.handleReqReceiptFiles(this.files)">
-                    </div>
-                    <div id="req-receipt-preview-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
-                </div>
-            `;
-        }
-    }
-
-    openModal('user-request-modal');
-};
-
-window.submitUserRequest = async () => {
-    if(!currentUser) return;
-
-    // Find person linked to current user with fallbacks
-    let person = (people && people.length > 0)
-        ? (people.find(p => p.uid === currentUser.uid) || people[0])
-        : null;
-
-    if (!person && people && people.length > 0) {
-        const userFullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() || (currentUser.name || '').toLowerCase();
-        person = people.find(p => p.name && p.name.toLowerCase() === userFullName);
-    }
-
-    const personId = person ? person.id : (currentUser.uid || currentUser.id || 'unknown');
-    const personName = person ? person.name : (`${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || currentUser.email || 'Benutzer');
-
-    const reqData = {};
-    const dateEl = document.getElementById('req-date');
-    const date = dateEl ? dateEl.value : new Date().toISOString().split('T')[0];
-    if (!date) {
-        alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.'));
-        return;
-    }
-
-    let finalType = currentRequestType || 'payment';
-
-    if(currentRequestType === 'payment') {
-        const amountEl = document.getElementById('req-amount');
-        const rawAmount = amountEl ? amountEl.value : '';
-        const amount = rawAmount.replace(/\.(?=.*,)/g, '').replace(',', '.').trim();
-        const noteEl = document.getElementById('req-note');
-        const note = noteEl ? noteEl.value.trim() : '';
-        const isStandingOrder = document.getElementById('req-is-standing-order') && document.getElementById('req-is-standing-order').checked;
-
-        if(!amount) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
-        if(isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { alert(t('alert_invalid_amount', 'Ungültiger Betrag.')); return; }
-
-        reqData.amount = amount;
-        reqData.date = date;
-        reqData.note = note;
-
-        if (isStandingOrder) {
-            finalType = 'standing_order';
-        }
-    } else if(currentRequestType === 'status') {
-        const statusEl = document.getElementById('req-status');
-        const status = statusEl ? statusEl.value : 'vollverdiener';
-        if(!status) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
-        reqData.newStatus = status;
-        reqData.date = date;
-        finalType = 'status';
-    } else if(currentRequestType === 'expense') {
-        const amountEl = document.getElementById('req-amount');
-        const rawAmount = amountEl ? amountEl.value : '';
-        const amount = rawAmount.replace(/\.(?=.*,)/g, '').replace(',', '.').trim();
-        const descEl = document.getElementById('req-desc');
-        const desc = descEl ? descEl.value.trim() : '';
-        if(!amount || !desc) { alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')); return; }
-        if(isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { alert(t('alert_invalid_amount', 'Ungültiger Betrag.')); return; }
-
-        reqData.amount = amount;
-        reqData.description = desc;
-        reqData.date = date;
-        finalType = 'expense';
-
-        const filesToUpload = (window.pendingReqExpenseFiles && window.pendingReqExpenseFiles.length > 0)
-            ? window.pendingReqExpenseFiles
-            : (document.getElementById('req-receipt') && document.getElementById('req-receipt').files.length > 0 ? Array.from(document.getElementById('req-receipt').files) : []);
-
-        if (filesToUpload.length > 0) {
-            setButtonLoading('btn-submit-request', true, "Lade hoch...");
-            try {
-                const filenames = [];
-                for (let i = 0; i < filesToUpload.length; i++) {
-                    const fn = await uploadReceipt(filesToUpload[i], personName, date);
-                    filenames.push(fn);
-                }
-                reqData.receipt = JSON.stringify(filenames);
-            } catch(err) {
-                alert(t('alert_upload_error', 'Fehler beim Hochladen: ') + err.message);
-                setButtonLoading('btn-submit-request', false);
-                return;
-            }
-        }
-    }
-
-    const newReq = {
-        id: Date.now().toString(),
-        type: finalType,
-        userId: currentUser.uid || currentUser.id,
-        personId: personId,
-        personName: personName,
-        data: reqData,
-        status: 'pending',
-        timestamp: Date.now()
-    };
-
-    setButtonLoading('btn-submit-request', true, "Sende...");
-
-    try {
-        await set(ref(db, 'requests/' + newReq.id), newReq);
-        closeModal('user-request-modal');
-        showToast(t('toast_request_sent', 'Anfrage erfolgreich gesendet'));
-        
-        // Optimistically add to local requests array so it shows immediately
-        if (!requests.some(r => r.id === newReq.id)) {
-            requests.unshift(newReq);
-            renderUserView();
-        }
-
-        await loadData(true);
-
-        // Notify opted-in admins using the backend endpoint
-        try {
-            const token = await auth.currentUser.getIdToken();
-            await fetch(`${config.apiBaseUrl}/notify-admins`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ reqType: finalType, personName: personName })
-            }).catch(e => console.warn("Fehler beim Senden der Admin-Info über Backend", e));
-        } catch (e) {
-            console.warn("Konnte Admins nicht benachrichtigen:", e);
-        }
-
-    } catch (err) {
-        console.error('Fehler beim Senden der Anfrage:', err);
-        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen: ') + (err.message || ''));
-    } finally {
-        setButtonLoading('btn-submit-request', false);
-    }
-};
-
-window.generateNewCode = async () => {
-    if (!canManageRegistrationCode()) {
-        alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
-        return;
-    }
-    const array = new Uint32Array(1);
-    window.crypto.getRandomValues(array);
-    const newCode = String(100000 + (array[0] % 900000));
-    try {
-        await set(ref(db, 'system/inviteCode'), newCode);
-        updateInviteCodeDisplay(newCode);
-    } catch (err) {
-        console.error('Fehler beim Generieren des Codes:', err);
-        alert(t('alert_save_code_failed', 'Neuer Code konnte nicht gespeichert werden.'));
-    }
-};
-
-// --- Node.js Backend Receipt Handling ---
-
-async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 10000 } = options;
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-        const response = await fetch(resource, {
-            ...options,
-            signal: controller.signal
-        });
-        clearTimeout(id);
-        return response;
-    } catch (error) {
-        clearTimeout(id);
-        throw error;
-    }
-}
-
-// Profile picture: crop state
-let _profileCropDataUrl = null;
-let _profileCropContext = null; // { imgEl, naturalW, naturalH, cropSize, offsetX, offsetY, isDragging, dragStartX, dragStartY, source }
-
-function _profileCropClamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
-
-window.openProfileCrop = async function(input, source) {
-    const file = input.files && input.files[0];
-    input.value = '';
-    if (!file) return;
-
-    // HEIC/HEIF conversion using existing heic2any
-    let imageFile = file;
-    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
-    if (isHeic) {
-        try {
-            const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
-            const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
-            imageFile = new File([convertedBlob], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg' });
-        } catch (e) {
-            console.error('HEIC conversion failed:', e);
-        }
-    }
-
-    // Use FileReader to produce a data: URL (guaranteed safe scheme, no XSS risk)
-    const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(imageFile);
-    });
-    _profileCropDataUrl = dataUrl;
-
-    const viewport = document.getElementById('profileCropViewport');
-    const imgEl = document.getElementById('profileCropImage');
-    const overlay = document.getElementById('profileCropOverlay');
-
-    imgEl.src = _profileCropDataUrl;
-    await new Promise(resolve => { imgEl.onload = resolve; });
-
-    const vw = viewport.clientWidth || 360;
-    const vh = Math.round(vw * 0.75);
-    viewport.style.height = vh + 'px';
-
-    const nw = imgEl.naturalWidth;
-    const nh = imgEl.naturalHeight;
-
-    // Scale image to fit inside viewport
-    const scale = Math.min(vw / nw, vh / nh);
-    let currentZoom = 1;
-
-    function applyZoom() {
-        const dispW = Math.round(nw * scale * currentZoom);
-        const dispH = Math.round(nh * scale * currentZoom);
-        imgEl.style.width = dispW + 'px';
-        imgEl.style.height = dispH + 'px';
-        imgEl.style.position = 'absolute';
-
-        // Keep image centered
-        imgEl.style.left = Math.round((vw - dispW) / 2) + 'px';
-        imgEl.style.top = Math.round((vh - dispH) / 2) + 'px';
-
-        // Constrain overlay within new image bounds
-        const imgL = parseInt(imgEl.style.left);
-        const imgT = parseInt(imgEl.style.top);
-        offsetX = _profileCropClamp(offsetX, imgL, imgL + dispW - cropSize);
-        offsetY = _profileCropClamp(offsetY, imgT, imgT + dispH - cropSize);
-        overlay.style.left = offsetX + 'px';
-        overlay.style.top = offsetY + 'px';
-    }
-
-    const cropSize = Math.min(Math.round(nw * scale), Math.round(nh * scale), Math.min(vw, vh) - 20);
-    overlay.style.width = cropSize + 'px';
-    overlay.style.height = cropSize + 'px';
-
-    let offsetX = Math.round((vw - cropSize) / 2);
-    let offsetY = Math.round((vh - cropSize) / 2);
-
-    applyZoom();
-
-    let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartOX = 0, dragStartOY = 0;
-
-    function onPointerDown(e) {
-        e.preventDefault();
-        isDragging = true;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        dragStartX = clientX; dragStartY = clientY;
-        dragStartOX = offsetX; dragStartOY = offsetY;
-    }
-    function onPointerMove(e) {
-        if (!isDragging) return;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        const imgL = parseInt(imgEl.style.left);
-        const imgT = parseInt(imgEl.style.top);
-        const dispW = Math.round(nw * scale * currentZoom);
-        const dispH = Math.round(nh * scale * currentZoom);
-        offsetX = _profileCropClamp(dragStartOX + (clientX - dragStartX), imgL, imgL + dispW - cropSize);
-        offsetY = _profileCropClamp(dragStartOY + (clientY - dragStartY), imgT, imgT + dispH - cropSize);
-        overlay.style.left = offsetX + 'px';
-        overlay.style.top = offsetY + 'px';
-    }
-    function onPointerUp() { isDragging = false; }
-
-    overlay.removeEventListener('mousedown', overlay._md);
-    overlay.removeEventListener('touchstart', overlay._td);
-    overlay._md = onPointerDown; overlay._td = onPointerDown;
-    overlay.addEventListener('mousedown', overlay._md);
-    overlay.addEventListener('touchstart', overlay._td, { passive: false });
-    document.removeEventListener('mousemove', overlay._mm);
-    document.removeEventListener('mouseup', overlay._mu);
-    document.removeEventListener('touchmove', overlay._tm);
-    document.removeEventListener('touchend', overlay._tu);
-    overlay._mm = onPointerMove; overlay._mu = onPointerUp;
-    overlay._tm = onPointerMove; overlay._tu = onPointerUp;
-    document.addEventListener('mousemove', overlay._mm);
-    document.addEventListener('mouseup', overlay._mu);
-    document.addEventListener('touchmove', overlay._tm, { passive: false });
-    document.addEventListener('touchend', overlay._tu);
-
-    // Zoom slider logic
-    const zoomSlider = document.getElementById('profileCropZoom');
-    if (zoomSlider) {
-        zoomSlider.value = 1;
-
-        zoomSlider.removeEventListener('input', zoomSlider._zl);
-        zoomSlider._zl = function(e) {
-            currentZoom = parseFloat(e.target.value);
-            applyZoom();
-        };
-        zoomSlider.addEventListener('input', zoomSlider._zl);
-    }
-
-    // Mouse wheel zoom logic
-    viewport.removeEventListener('wheel', viewport._wl);
-    viewport._wl = function(e) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        currentZoom = _profileCropClamp(currentZoom + delta, 1, 3);
-        if (zoomSlider) zoomSlider.value = currentZoom;
-        applyZoom();
-    };
-    viewport.addEventListener('wheel', viewport._wl, { passive: false });
-
-    _profileCropContext = {
-        imgEl, nw, nh,
-        get dispW() { return Math.round(nw * scale * currentZoom); },
-        get dispH() { return Math.round(nh * scale * currentZoom); },
-        get imgLeft() { return parseInt(imgEl.style.left); },
-        get imgTop() { return parseInt(imgEl.style.top); },
-        cropSize, vw, vh,
-        getOffset: () => ({ x: offsetX, y: offsetY }),
-        source
-    };
-
-    openModal('profile-crop-modal');
-};
-
-window.cancelProfileCrop = function() {
-    _profileCropDataUrl = null;
-    _profileCropContext = null;
-    closeModal('profile-crop-modal');
-};
-
-window.confirmProfileCrop = async function() {
-    const ctx = _profileCropContext;
-    if (!ctx) return;
-
-    const { imgEl, nw, nh, dispW, dispH, imgLeft, imgTop, cropSize, getOffset, source } = ctx;
-    const { x: offsetX, y: offsetY } = getOffset();
-
-    // Crop relative to displayed image
-    const relX = offsetX - imgLeft;
-    const relY = offsetY - imgTop;
-    const scaleX = nw / dispW;
-    const scaleY = nh / dispH;
-    const srcX = Math.round(relX * scaleX);
-    const srcY = Math.round(relY * scaleY);
-    const srcSize = Math.round(cropSize * Math.min(scaleX, scaleY));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const c = canvas.getContext('2d');
-    c.drawImage(imgEl, srcX, srcY, srcSize, srcSize, 0, 0, 256, 256);
-
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-    if (!blob) { showToast('Fehler beim Verarbeiten des Bildes.', 'error'); return; }
-
-    const jpegFile = new File([blob], 'profile.jpg', { type: 'image/jpeg' });
-
-    setButtonLoading('btn-confirm-crop', true, 'Speichern...');
-    try {
-        await uploadProfilePicture(jpegFile);
-        closeModal('profile-crop-modal');
-        _profileCropDataUrl = null;
-        showToast('Profilbild gespeichert!', 'success');
-        await loadCurrentProfilePicture();
-    } catch (e) {
-        console.error('Profile upload error:', e);
-        showToast('Fehler beim Hochladen: ' + e.message, 'error');
-    } finally {
-        setButtonLoading('btn-confirm-crop', false, null);
-    }
-};
-
-async function uploadProfilePicture(jpegFile) {
-    const formData = new FormData();
-    formData.append('picture', jpegFile);
-    const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture`, {
-        method: 'POST',
-        body: formData
-    });
-    if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Upload fehlgeschlagen');
-    }
-}
-
-async function loadCurrentProfilePicture() {
-    if (!currentUser) return;
-    const uid = currentUser.uid || currentUser.id;
-    if (!uid) return;
-    try {
-        const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture/${encodeURIComponent(uid)}`);
-        if (response.ok && response.status === 200) {
-            const blob = await response.blob();
-            if (blob && blob.size > 0) {
-                const url = URL.createObjectURL(blob);
-                _applyProfilePicture(url);
-                return;
-            }
-        }
-        _applyProfilePicture(null);
-    } catch {
-        _applyProfilePicture(null);
-    }
-}
-
-let _profilePicCache = new Map();
-let _profilePicFetches = new Map();
-
-async function getProfilePicUrl(uid) {
-    if (!uid) return null;
-
-    // Check if already fetched and cached
-    if (_profilePicCache.has(uid)) {
-        return _profilePicCache.get(uid);
-    }
-
-    // If currently fetching, wait for that fetch to complete
-    if (_profilePicFetches.has(uid)) {
-        return await _profilePicFetches.get(uid);
-    }
-
-    // Start a new fetch
-    const fetchPromise = (async () => {
-        try {
-            const response = await fetchWithAuth(`${config.apiBaseUrl}/profile/picture/${encodeURIComponent(uid)}`);
-            if (response.ok && response.status === 200) {
-                const blob = await response.blob();
-                if (blob && blob.size > 0) {
-                    const url = URL.createObjectURL(blob);
-                    _profilePicCache.set(uid, url);
-                    return url;
-                }
-            }
-        } catch (err) {
-            // ignore
-        }
-        _profilePicCache.set(uid, null);
-        return null;
-    })();
-
-    _profilePicFetches.set(uid, fetchPromise);
-    const result = await fetchPromise;
-    _profilePicFetches.delete(uid);
-    return result;
-}
-
-let _profilePictureObjectUrl = null;
-
-function _applyProfilePicture(url) {
-    if (_profilePictureObjectUrl) {
-        URL.revokeObjectURL(_profilePictureObjectUrl);
-        _profilePictureObjectUrl = null;
-    }
-    if (url) _profilePictureObjectUrl = url;
-
-    const adminPreview = document.getElementById('admin-profile-pic-preview');
-    const adminPlaceholder = document.getElementById('admin-profile-pic-placeholder');
-    const userPreview = document.getElementById('user-profile-pic-preview');
-    const userPlaceholder = document.getElementById('user-profile-pic-placeholder');
-    const headerPic = document.getElementById('header-profile-pic');
-    const headerIcon = document.getElementById('header-profile-icon');
-
-    if (url) {
-        if (adminPreview) { adminPreview.src = url; adminPreview.style.display = ''; }
-        if (adminPlaceholder) adminPlaceholder.style.display = 'none';
-        if (userPreview) { userPreview.src = url; userPreview.style.display = ''; }
-        if (userPlaceholder) userPlaceholder.style.display = 'none';
-        if (headerPic) { headerPic.src = url; headerPic.style.display = ''; }
-        if (headerIcon) headerIcon.style.display = 'none';
-    } else {
-        if (adminPreview) adminPreview.style.display = 'none';
-        if (adminPlaceholder) adminPlaceholder.style.display = '';
-        if (userPreview) userPreview.style.display = 'none';
-        if (userPlaceholder) userPlaceholder.style.display = '';
-        if (headerPic) headerPic.style.display = 'none';
-        if (headerIcon) headerIcon.style.display = '';
-    }
-}
-
-async function compressImage(file, quality) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = event => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                let newName = file.name;
-                if (!newName.toLowerCase().endsWith('.jpg') && !newName.toLowerCase().endsWith('.jpeg')) {
-                    newName = newName.replace(/\.[^/.]+$/, "") + ".jpg";
-                }
-
-                canvas.toBlob(blob => {
-                    if (blob) {
-                        resolve(new File([blob], newName, { type: 'image/jpeg' }));
-                    } else {
-                        reject(new Error('Canvas to Blob failed'));
-                    }
-                }, 'image/jpeg', quality);
-            };
-            img.onerror = error => reject(error);
-        };
-        reader.onerror = error => reject(error);
-    });
-}
-
-window.uploadReceipt = async function(file, transactionName, transactionDate) {
-    const user = auth.currentUser;
-    if (!user) throw new Error('Not authenticated');
-    
-    // Grab the active user's auth token to prove their identity
-    const token = await user.getIdToken();
-    const formData = new FormData();
-
-    // 1. Append text fields FIRST
-    if (transactionName) formData.append('name', transactionName);
-    if (transactionDate) formData.append('date', transactionDate);
-
-    // Check if it's HEIC/HEIF and convert
-    let uploadFile = file;
-    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
-    if (isHeic) {
-        try {
-            const blob = await heic2any({
-                blob: file,
-                toType: "image/jpeg",
-                quality: 0.8
-            });
-            // heic2any can return an array of blobs or a single blob
-            const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
-            const newName = file.name.replace(/\.hei[cf]$/i, '.jpg');
-            uploadFile = new File([convertedBlob], newName, { type: "image/jpeg" });
-        } catch (e) {
-            console.error("HEIC conversion failed:", e);
-            // fallback to uploading original if conversion fails
-        }
-    }
-
-    // 1.5. Apply image compression based on size
-    if (uploadFile.type.startsWith('image/') && uploadFile.type !== 'image/gif' && uploadFile.type !== 'image/svg+xml') {
-        const sizeBytes = uploadFile.size;
-        if (sizeBytes > 2 * 1024 * 1024) {
-            try { uploadFile = await compressImage(uploadFile, 0.65); } catch (e) { console.error("Compression failed:", e); }
-        } else if (sizeBytes >= 500 * 1024) {
-            try { uploadFile = await compressImage(uploadFile, 0.75); } catch (e) { console.error("Compression failed:", e); }
-        }
-    }
-
-    // 2. Append the file LAST
-    formData.append('receipt', uploadFile);
-
-    const url = `${config.apiBaseUrl}/upload`;
-
-    try {
-        const response = await fetchWithTimeout(url, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
-        });
-
-        if (!response.ok) {
-            throw new Error('Upload failed: ' + response.statusText);
-        }
-
-        const data = await response.json();
-        return data.filename;
-    } catch (error) {
-        console.error('Upload error:', error);
-        throw error;
-    }
-};
-
-
-window.fetchReceiptImage = async function(filename) {
-    const user = auth.currentUser;
-    if (!user) throw new Error('Not authenticated');
-    
-    const token = await user.getIdToken();
-    const url = `${config.apiBaseUrl}/receipts/${encodeURIComponent(filename)}`;
-
-    try {
-        const response = await fetchWithTimeout(url, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-            throw new Error('Fetch failed: ' + response.statusText);
-        }
-
-        // Convert the returned file into an object URL for the <img> tag
-        let blob = await response.blob();
-
-        // If the filename indicates it's a HEIC file, try to convert it for display
-        const isHeic = filename.toLowerCase().endsWith('.heic') || filename.toLowerCase().endsWith('.heif') || blob.type === 'image/heic' || blob.type === 'image/heif';
-        if (isHeic) {
-            try {
-                const converted = await heic2any({
-                    blob: blob,
-                    toType: "image/jpeg",
-                    quality: 0.8
-                });
-                blob = Array.isArray(converted) ? converted[0] : converted;
-            } catch (e) {
-                console.error("HEIC fetch conversion failed:", e);
-                // Just use the original blob if it fails, though it might not display
-            }
-        }
-
-        return URL.createObjectURL(blob);
-    } catch (error) {
-        console.error('Fetch image error:', error);
-        throw error;
-    }
-};
-
-window.viewRequestReceipt = async function(receiptField, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    // Revoke previous URLs if any
-    if (container.dataset.blobUrls) {
-        try {
-            const urls = JSON.parse(container.dataset.blobUrls);
-            urls.forEach(url => URL.revokeObjectURL(url));
-        } catch(e) {}
-        delete container.dataset.blobUrls;
-    }
-
-    container.innerHTML = '<div class="spinner" style="margin:10px auto;"></div><div style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">Lade Beleg(e)...</div>';
-
-    try {
-        const filenames = parseReceipts(receiptField);
-        if (filenames.length === 0) {
-            container.innerHTML = `<div style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">Kein Beleg vorhanden.</div>`;
-            return;
-        }
-
-        const imgUrls = [];
-        let html = '<div style="display:flex; flex-direction:column; gap:15px; margin-top:10px;">';
-        
-        for (const filename of filenames) {
-            const imgUrl = await fetchReceiptImage(filename);
-            imgUrls.push(imgUrl);
-            html += `
-                <div style="position:relative; border:1px solid var(--border); border-radius:8px; padding:8px; background:var(--surface-alt);">
-                    <img src="${imgUrl}" style="width:100%; max-width:100%; border-radius:6px; opacity:0; transition:opacity 0.3s ease-in;" onload="this.style.opacity=1" alt="Beleg">
-                    <div style="margin-top:8px; display:flex; gap:10px; justify-content:flex-end;">
-                        <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:0.8rem;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Herunterladen
-                        </a>
-                    </div>
-                </div>
-            `;
-        }
-        html += '</div>';
-
-        container.dataset.blobUrls = JSON.stringify(imgUrls);
-        container.innerHTML = html;
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<div style="color:var(--danger); font-size:0.8rem; margin-top:10px;">Fehler beim Laden des Belegs.</div>`;
-    }
-};
-
-window.findTransaction = function(id, type) {
-    if (!cachedTransactions || cachedTransactions.length === 0) return null;
-
-    const item = cachedTransactions.find(x => String(x.id) === String(id));
-    if (!item) return null;
-
-    if (type === 'exp') {
-        return { ...item, typeName: t('action_expense', 'Ausgabe') };
-    } else if (type === 'don') {
-        return { ...item, typeName: t('btn_add_donation', 'Spende'), who: item.name || item.who };
-    } else if (type === 'pay') {
-        return { ...item, typeName: t('action_payment', 'Zahlung') };
-    }
-    return null;
-};
-
-window.showTransactionDetails = async function(id, type) {
-    const item = window.findTransaction(id, type);
-    if (!item) return;
-
-    // Hide the list visually without modifying the stack
-    const listModal = document.getElementById('transaction-modal');
-    if (listModal) listModal.classList.remove('show');
-
-    openModal('transaction-details-modal');
-
-    // Configure details edit button for admins with finance management rights
-    const canManage = canManageFinances();
-    const detailsEditBtn = document.getElementById('details-edit-btn');
-    if (detailsEditBtn) {
-        if (canManage) {
-            detailsEditBtn.style.display = 'inline-flex';
-            const index = cachedTransactions ? cachedTransactions.findIndex(x => String(x.id) === String(item.id)) : -1;
-            detailsEditBtn.onclick = () => {
-                closeModal('transaction-details-modal');
-                setTimeout(() => {
-                    if (index >= 0) {
-                        editRecordedPaymentByIndex(index);
-                    } else {
-                        console.error("detailsEditBtn: Transaction index not found in cache for ID", item.id);
-                    }
-                }, 50);
-            };
-        } else {
-            detailsEditBtn.style.display = 'none';
-        }
-    }
-
-    const content = document.getElementById('transaction-details-content');
-
-    // Revoke previous URL if any
-    if (content.dataset.blobUrl) {
-         URL.revokeObjectURL(content.dataset.blobUrl);
-         delete content.dataset.blobUrl;
-    }
-
-    let typeBadgeClass = 'badge-person';
-    let typeBadgeStyle = 'color:var(--text); background:var(--surface); border:1px solid var(--border);';
-    let typeIcon = '💳';
-    if (item.type === 'don') {
-        typeBadgeClass = 'badge-donation';
-        typeBadgeStyle = '';
-        typeIcon = '💚';
-    } else if (item.type === 'exp') {
-        typeBadgeClass = 'badge-expense';
-        typeBadgeStyle = '';
-        typeIcon = '🧾';
-    }
-
-    let html = `
-        <div style="background:var(--surface-alt); border:1px solid var(--border-light); border-radius:14px; padding:12px 14px; text-align:center; margin-bottom:10px; display:flex; flex-direction:column; align-items:center; gap:5px;">
-            <div style="display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:18px; font-size:0.75rem; font-weight:700; ${typeBadgeStyle}" class="${typeBadgeClass}">
-                <span>${typeIcon}</span> ${escapeHtml(item.typeName || '')}
-            </div>
-            <div style="font-size:1.55rem; font-weight:800; color:var(--text); letter-spacing:-0.02em;">${formatCurrency(item.amount)} €</div>
-        </div>
-
-        <div class="modal-section-card" style="gap:8px;">
-            <div class="modal-section-header">
-                <span>ℹ️</span> <span>${escapeHtml(t('modal_section_info', 'Transaktionsdetails'))}</span>
-            </div>
-            
-            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.86rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
-                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📅 ${escapeHtml(t('modal_date', 'Datum'))}</span>
-                    <span style="font-weight:600; color:var(--text);">${item.date ? formatDateFast(item.date) : '-'}</span>
-                </div>
-
-                ${item.who ? `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
-                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">👤 ${escapeHtml(t('modal_person_name', 'Person'))}</span>
-                    <span style="font-weight:600; color:var(--text);">${escapeHtml(item.who)}</span>
-                </div>` : ''}
-
-                ${item.issuer ? `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:6px;">
-                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}</span>
-                    <span style="font-weight:600; color:var(--text);">${escapeHtml(item.issuer)}</span>
-                </div>` : ''}
-
-                ${(item.description || item.note) ? `
-                <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
-                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
-                    <span style="font-weight:500; color:var(--text); background:var(--surface); padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); word-break:break-word; white-space:pre-wrap; font-size:0.84rem;">${escapeHtml(item.description || item.note)}</span>
-                </div>` : ''}
-            </div>
-        </div>
-
-        <div id="receipt-container" style="margin-top:10px;"></div>
-    `;
-
-    content.innerHTML = html;
-
-    if (item.receipt) {
-        const receiptContainer = document.getElementById('receipt-container');
-        receiptContainer.innerHTML = `<div class="spinner" style="margin:20px auto;"></div><div style="text-align:center">${t('loading_receipts', 'Lade Belege...')}</div>`;
-
-        // Revoke previous URLs if any
-        if (content.dataset.blobUrls) {
-            try {
-                const urls = JSON.parse(content.dataset.blobUrls);
-                urls.forEach(url => URL.revokeObjectURL(url));
-            } catch(e) {}
-            delete content.dataset.blobUrls;
-        }
-
-        try {
-            const filenames = parseReceipts(item.receipt);
-            if (filenames.length === 0) {
-                receiptContainer.innerHTML = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'Kein Beleg vorhanden.')}</div>`;
-                return;
-            }
-
-            const imgUrls = [];
-            let html = `<div style="font-weight:600; margin-bottom:10px;">${t('details_receipts', 'Belege')}</div><div style="display:flex; flex-direction:column; gap:15px;">`;
-            
-            for (const filename of filenames) {
-                const imgUrl = await fetchReceiptImage(filename);
-                imgUrls.push(imgUrl);
-                html += `
-                    <div style="position:relative; border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-alt);">
-                        <img src="${imgUrl}" style="width:100%; border-radius:8px; opacity:0; transition:opacity 0.3s ease-in;" onload="this.style.opacity=1" alt="${t('receipt', 'Beleg')}">
-                        <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
-                            <a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="background:var(--surface); border:1px solid var(--border); color:var(--text); text-decoration:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                ${t('download_btn', 'Herunterladen')}
-                            </a>
-                        </div>
-                    </div>
-                `;
-            }
-            html += '</div>';
-
-            content.dataset.blobUrls = JSON.stringify(imgUrls);
-            receiptContainer.innerHTML = html;
-        } catch (err) {
-            receiptContainer.innerHTML = `<div style="color:var(--danger); text-align:center;">${t('error_loading_receipts', 'Belege konnten nicht geladen werden.')}</div>`;
-        }
-    } else {
-        document.getElementById('receipt-container').innerHTML = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'Kein Beleg vorhanden.')}</div>`;
-    }
-};
-
-// --- PWA Install Logic ---
-let deferredPrompt;
-const installBtn = document.getElementById('install-pwa-btn');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent the mini-infobar from appearing on mobile
-    e.preventDefault();
-    // Stash the event so it can be triggered later.
-    deferredPrompt = e;
-    // Update UI notify the user they can install the PWA
-    if (installBtn) {
-        installBtn.style.display = 'inline-flex';
-    }
-});
-
-if (installBtn) {
-    installBtn.addEventListener('click', async () => {
-        // Hide the app provided install promotion
-        installBtn.style.display = 'none';
-        // Show the install prompt
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            // Wait for the user to respond to the prompt
-            const { outcome } = await deferredPrompt.userChoice;
-            console.log(`User response to the install prompt: ${outcome}`);
-            // We've used the prompt, and can't use it again, throw it away
-            deferredPrompt = null;
-        }
-    });
-}
-
-window.addEventListener('appinstalled', () => {
-    // Hide the app-provided install promotion
-    if (installBtn) installBtn.style.display = 'none';
-    // Clear the deferredPrompt so it can be garbage collected
-    deferredPrompt = null;
-    console.log('PWA was installed');
-    if (typeof window.setupPwaPushAutoPrompt === 'function') {
-        window.setupPwaPushAutoPrompt();
-    }
-});
-
-let toastTimeout;
-window.showToast = (msg, type='success') => {
-    let t = document.getElementById('toast');
-    if(!t) {
-        t = document.createElement('div');
-        t.id = 'toast';
-        t.setAttribute('role', 'status');
-        t.setAttribute('aria-live', 'polite');
-        document.body.appendChild(t);
-    }
-    t.className = `toast toast-${type} show`;
-    t.innerHTML = `${type==='success'?'✅':'⚠️'} ${msg}`;
-
-    if (toastTimeout) clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
-};
-
-window.copyInviteCode = async () => {
-    if (!canManageRegistrationCode()) {
-        alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
-        return;
-    }
-    const adminInput = document.getElementById('admin-invite-code');
-    const userInput = document.getElementById('user-invite-code');
-    const val = (adminInput && adminInput.value) || (userInput && userInput.value) || '';
-    if (!val || val === '------') return;
-
-    try {
-        await navigator.clipboard.writeText(val);
-        if (typeof showToast === 'function') {
-            showToast(t('toast_code_copied', 'Code kopiert!'));
-        } else {
-            alert(t('toast_code_copied', 'Code kopiert!'));
-        }
-    } catch (err) {
-        console.error('Kopieren fehlgeschlagen:', err);
-        alert(t('toast_copy_failed', 'Kopieren fehlgeschlagen'));
-    }
-};
-
-// Password Toggle
-window.togglePassword = function(inputId, btn) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    const isPassword = input.type === 'password';
-    input.type = isPassword ? 'text' : 'password';
-    const eyeOff = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-    const eye = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
-    btn.innerHTML = isPassword ? eyeOff : eye;
-    btn.setAttribute('aria-label', isPassword ? 'Passwort verbergen' : 'Passwort anzeigen');
-};
-
-// Overwrite default Alert and Toast to automatically translate messages
-const originalAlert = window.alert;
-window.alert = function(msg) {
-    if (!msg) return;
-    const cleanMsg = String(msg).trim().replace(/\.$/, '');
-    const keyMap = {
-        "Bitte alle Felder ausfüllen": "alert_fill_fields",
-        "Ungültiger Betrag": "alert_invalid_amount",
-        "Ungültiges Datum": "alert_invalid_date",
-        "Bitte ein Datum angeben": "alert_invalid_date",
-        "Fehler beim Laden der Daten. Bitte Seite neu laden": "toast_error",
-        "Bitte eine Person auswählen": "modal_person_name",
-        "Person nicht gefunden": "toast_error",
-        "Zuordnung fehlgeschlagen. Bitte erneut versuchen": "toast_error",
-        "Kein Personenprofil gefunden": "toast_error",
-        "Anfrage konnte nicht gesendet werden. Bitte erneut versuchen": "toast_error",
-        "Neuer Code konnte nicht gespeichert werden": "toast_error",
-        "Bitte Datum wählen": "alert_invalid_date",
-        "Fehler beim Speichern": "toast_error",
-        "Fehler beim Löschen": "toast_error",
-        "Fehler beim Löschen des Eintrags": "toast_error",
-        "Bitte geben Sie Ihr altes Passwort ein": "old_password",
-        "Neues Passwort muss mindestens 6 Zeichen lang sein": "toast_error",
-        "Kein Benutzer angemeldet": "toast_error"
-    };
-    const key = keyMap[cleanMsg] || cleanMsg;
-    if (translations[key]) {
-        originalAlert(translations[key]);
-    } else {
-        originalAlert(msg);
-    }
-};
-
-const originalShowToast = window.showToast;
-window.showToast = (msg, type='success') => {
-    if (!originalShowToast) return;
-    const keyMap = {
-        "Zahlung aktualisiert": "toast_updated",
-        "Spende aktualisiert": "toast_updated",
-        "Ausgabe aktualisiert": "toast_updated",
-        "Zahlung erfolgreich gesendet": "toast_saved",
-        "Anfrage erfolgreich gesendet": "toast_saved",
-        "Code kopiert!": "toast_saved",
-        "Profilbild gespeichert!": "toast_saved",
-        "Toast erfolgreich": "toast_saved",
-        "Code kopiert": "toast_saved",
-        "Zahlung gebucht": "toast_saved",
-        "Spende gebucht": "toast_saved",
-        "Ausgabe gebucht": "toast_saved",
-        "Person hinzugefügt": "toast_saved",
-        "Status geändert": "toast_updated"
-    };
-    const cleanMsg = String(msg).trim().replace(/[!.]/g, '');
-    const key = keyMap[cleanMsg] || msg;
-    const translatedMsg = translations[key] || msg;
-    originalShowToast(translatedMsg, type);
-};
-
-/* ==========================================================================
-   MENTORING - Anonymes Mentoring & Vertrauliche 1-on-1 Begleitung
-   ========================================================================== */
-
+// --- Mentoring: anonymous, confidential 1:1 support ---
 let mentoringMentors = [];
 let mentoringThreads = [];
 let activeMentoringThreadId = null;
 let currentMentoringSubTab = 'chats';
 let mentoringChatPollTimer = null;
 let myMentorProfile = null;
+let openingDirectChat = false;
+let mentoringChatHistoryPushed = false;
 
-window.switchMentoringSubTab = function(subTab) {
-    currentMentoringSubTab = subTab;
-    const findTabBtn = document.getElementById('mentoring-tab-find');
-    const chatsTabBtn = document.getElementById('mentoring-tab-chats');
-    const reviewTabBtn = document.getElementById('mentoring-tab-review');
+const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+const findThread = id => (Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === id) : null);
+const threadElement = id => document.querySelector(`.mentoring-thread-item[data-thread-id="${id}"]`);
 
-    const findView = document.getElementById('mentoring-subview-find');
-    const chatsView = document.getElementById('mentoring-subview-chats');
-    const reviewView = document.getElementById('mentoring-subview-review');
+function setCountBadge(id, count, display) {
+    const badge = $(id);
+    if (!badge) return;
+    badge.innerText = String(count);
+    badge.style.display = count > 0 ? display : 'none';
+}
 
-    if (findTabBtn) findTabBtn.classList.toggle('active', subTab === 'find');
-    if (chatsTabBtn) chatsTabBtn.classList.toggle('active', subTab === 'chats');
-    if (reviewTabBtn) reviewTabBtn.classList.toggle('active', subTab === 'review');
+// Mentors see the anonymous alias of the seeker, seekers see their mentor's name.
+function threadPartner(thread) {
+    const isMentor = !!thread && isCurrentUser(thread.mentor);
+    return {
+        isMentor,
+        name: isMentor ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender')) : (thread?.mentor_name || t('mentoring_partner_mentor', 'Mentor')),
+        role: isMentor ? t('mentoring_role_seeker', 'Suchender (anonym)') : t('mentoring_role_mentor', 'Dein Mentor')
+    };
+}
 
-    if (findTabBtn) findTabBtn.setAttribute('aria-selected', subTab === 'find' ? 'true' : 'false');
-    if (chatsTabBtn) chatsTabBtn.setAttribute('aria-selected', subTab === 'chats' ? 'true' : 'false');
-    if (reviewTabBtn) reviewTabBtn.setAttribute('aria-selected', subTab === 'review' ? 'true' : 'false');
+function updateMentoringUnreadBadge() {
+    setCountBadge('mentoring-unread-badge', mentoringThreads.reduce((sum, th) => sum + (th.unread_count > 0 ? th.unread_count : 0), 0), 'inline-block');
+    renderHomeMentoringCard();
+}
 
-    if (findView) findView.style.display = subTab === 'find' ? '' : 'none';
-    if (chatsView) chatsView.style.display = subTab === 'chats' ? '' : 'none';
-    if (reviewView) reviewView.style.display = subTab === 'review' ? '' : 'none';
+function markThreadElementRead(item) {
+    item.classList.remove('unread');
+    item.classList.add('read');
+    item.querySelector('.mentoring-badge-count')?.remove();
+}
 
-    if (subTab === 'find') {
-        window.loadMentorsList();
-    } else if (subTab === 'chats') {
-        if (!window._openingDirectChat && !activeMentoringThreadId && window.matchMedia('(max-width: 768px)').matches) {
-            const layout = document.getElementById('mentoring-threads-layout');
-            if (layout) layout.classList.remove('in-chat');
-            const chatPane = document.getElementById('mentoring-chat-pane');
-            if (chatPane) chatPane.classList.remove('mobile-open');
-            document.body.classList.remove('mentoring-mobile-chat-open');
-        }
-        window.loadMentoringThreads(false, activeMentoringThreadId);
-    } else if (subTab === 'review') {
-        window.loadMentoringReviewList();
-    }
+function closeMobileChatPane() {
+    $('mentoring-threads-layout')?.classList.remove('in-chat');
+    $('mentoring-chat-pane')?.classList.remove('mobile-open');
+    document.body.classList.remove('mentoring-mobile-chat-open');
+}
+
+const MENTORING_SUBTABS = {
+    find: () => loadMentorsList(),
+    chats: () => {
+        if (!openingDirectChat && !activeMentoringThreadId && isMobile()) closeMobileChatPane();
+        loadMentoringThreads(false, activeMentoringThreadId);
+    },
+    review: () => loadMentoringReviewList()
 };
 
-window.loadMentoringData = async function() {
-    if (!canParticipateMentoring() && !canManageMentoring()) return;
+function switchMentoringSubTab(subTab) {
+    currentMentoringSubTab = subTab;
+    for (const key of Object.keys(MENTORING_SUBTABS)) {
+        const btn = $(`mentoring-tab-${key}`);
+        btn?.classList.toggle('active', key === subTab);
+        btn?.setAttribute('aria-selected', key === subTab ? 'true' : 'false');
+        show(`mentoring-subview-${key}`, key === subTab);
+    }
+    MENTORING_SUBTABS[subTab]?.();
+}
 
-    // Check manager status to show/hide review pill
-    const reviewTabBtn = document.getElementById('mentoring-tab-review');
-    const navBar = document.querySelector('.mentoring-nav-bar');
+async function loadMentoringData() {
+    if (!canUseMentoring()) return;
     const isManager = canManageMentoring();
-    if (reviewTabBtn) {
-        reviewTabBtn.style.display = isManager ? 'inline-flex' : 'none';
-    }
-    if (navBar) {
-        navBar.style.display = 'block';
-    }
-
-    // Load user's own mentor profile
+    show('mentoring-tab-review', isManager, 'inline-flex');
+    show(document.querySelector('.mentoring-nav-bar'), true, 'block');
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/my-profile`);
+        const res = await api('/mentoring/my-profile');
         if (res.ok) {
-            const data = await res.json();
-            myMentorProfile = data.mentor || null;
-            const applyBtn = document.getElementById('mentor-apply-btn');
+            myMentorProfile = (await res.json()).mentor || null;
+            const applyBtn = $('mentor-apply-btn');
             if (applyBtn) {
-                if (myMentorProfile) {
-                    if (myMentorProfile.status === 'approved') {
-                        applyBtn.innerHTML = t('mentoring_my_profile_btn', 'Mein Mentoren-Profil');
-                    } else if (myMentorProfile.status === 'pending') {
-                        applyBtn.innerHTML = t('mentoring_pending_profile_btn', '⏳ Bewerbung in Prüfung');
-                    } else {
-                        applyBtn.innerHTML = t('mentoring_apply_btn', 'Als Mentor bewerben');
-                    }
-                } else {
-                    applyBtn.innerHTML = t('mentoring_apply_btn', 'Als Mentor bewerben');
-                }
+                applyBtn.innerHTML = myMentorProfile?.status === 'approved' ? t('mentoring_my_profile_btn', 'Mein Mentoren-Profil')
+                    : myMentorProfile?.status === 'pending' ? t('mentoring_pending_profile_btn', '⏳ Bewerbung in Prüfung')
+                    : t('mentoring_apply_btn', 'Als Mentor bewerben');
             }
         }
     } catch (err) {
         console.warn('Failed to load my mentor profile:', err);
     }
-
-    // If manager, check pending applications count for red badge
     if (isManager) {
         try {
-            const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/mentors?status=pending`);
+            const res = await api('/mentoring/mentors?status=pending');
             if (res.ok) {
                 const list = await res.json();
-                const count = Array.isArray(list) ? list.length : 0;
-                const badge = document.getElementById('mentoring-pending-badge');
-                if (badge) {
-                    badge.innerText = String(count);
-                    badge.style.display = count > 0 ? 'inline-block' : 'none';
-                }
+                setCountBadge('mentoring-pending-badge', Array.isArray(list) ? list.length : 0, 'inline-block');
             }
         } catch (err) {
             console.warn('Failed to load pending mentors count:', err);
         }
     }
+    switchMentoringSubTab(currentMentoringSubTab);
+}
 
-    // Render current active subtab (loads threads when subTab === 'chats')
-    window.switchMentoringSubTab(currentMentoringSubTab);
-};
-
-window.loadMentorsList = async function() {
-    const grid = document.getElementById('mentors-grid');
+async function loadMentorsList() {
+    const grid = $('mentors-grid');
     if (!grid) return;
+    const gridMessage = (color, text) => `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(${color});">${text}</div>`;
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/mentors?status=approved`);
+        const res = await api('/mentoring/mentors?status=approved');
         if (res.ok) {
             mentoringMentors = await res.json();
-            window.renderMentorsGrid();
+            renderMentorsGrid();
         } else {
-            grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">${t('mentoring_load_error', 'Mentoren konnten nicht geladen werden.')}</div>`;
+            grid.innerHTML = gridMessage('--text-secondary', t('mentoring_load_error', 'Mentoren konnten nicht geladen werden.'));
         }
     } catch (err) {
         console.warn('Failed to load mentors:', err);
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--danger);">${t('mentoring_network_error', 'Netzwerkfehler beim Laden der Mentoren.')}</div>`;
+        grid.innerHTML = gridMessage('--danger', t('mentoring_network_error', 'Netzwerkfehler beim Laden der Mentoren.'));
     }
-};
+}
 
-window.renderMentorsGrid = function() {
-    const grid = document.getElementById('mentors-grid');
+function mentorCapacity(m) {
+    const max = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
+    const active = typeof m.active_mentees === 'number' ? m.active_mentees : (typeof m.activeMentees === 'number' ? m.activeMentees : 0);
+    return { max, active, isFull: m.isFull === true || (typeof m.active_mentees === 'number' && active >= max) || m.isAccepting === false };
+}
+
+function mentorCardAction(m, name, isSelf, isFull) {
+    if (isSelf) return `<button type="button" class="btn btn-secondary btn-small" onclick="window.openMentorApplicationModal()">${t('mentoring_btn_edit_profile', 'Profil bearbeiten')}</button>`;
+    const mentorUserId = m.user || m.user_id || m.id;
+    const existing = mentoringThreads.find(th => (th.mentor === mentorUserId || th.mentor === m.user || th.mentor === m.id) && th.mentee === currentUid());
+    if (existing) {
+        const closed = existing.status === 'closed';
+        return `
+            <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect('${escapeHtml(existing.id)}', 'find')" title="${closed ? t('mentoring_btn_open_closed_chat', 'Abgeschlossenes Gespräch anzeigen') : t('mentoring_btn_open_chat', 'Laufendes Gespräch öffnen')}">
+                ${closed ? t('mentoring_btn_open_closed_chat', '📁 Zum Gespräch') : t('mentoring_btn_open_chat', '💬 Zum Gespräch')}
+            </button>`;
+    }
+    return `
+        <button type="button" class="btn btn-mentor-primary btn-small" ${isFull ? 'disabled' : ''} onclick="window.openMentorContactModal('${escapeHtml(mentorUserId)}', '${escapeHtml(name)}')">
+            ${isFull ? t('mentoring_btn_full', 'Voll belegt') : t('mentoring_btn_contact', 'Anonym kontaktieren')}
+        </button>`;
+}
+
+function renderMentorsGrid() {
+    const grid = $('mentors-grid');
     if (!grid) return;
-
-    const isManager = typeof canManageMentoring === 'function' && canManageMentoring();
-    const currentUid = currentUser?.uid || currentUser?.id;
-
-    // For regular users: filter out mentors who are fully booked (isFull === true), but keep user's own mentor card if applicable
-    const visibleMentors = Array.isArray(mentoringMentors) ? mentoringMentors.filter(m => {
-        if (isManager) return true;
-        const isSelf = currentUid && (m.user_id === currentUid || m.user === currentUid);
-        if (isSelf) return true;
-        const maxMentees = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
-        const activeMentees = typeof m.active_mentees === 'number' ? m.active_mentees : (typeof m.activeMentees === 'number' ? m.activeMentees : 0);
-        const isFull = m.isFull === true || (typeof m.active_mentees === 'number' && activeMentees >= maxMentees) || m.isAccepting === false;
-        return !isFull;
-    }) : [];
-
-    if (visibleMentors.length === 0) {
+    const isManager = canManageMentoring();
+    const uid = currentUid();
+    const isSelfCard = m => uid && (m.user_id === uid || m.user === uid);
+    // Regular members don't see fully booked mentors (except their own card)
+    const visible = (Array.isArray(mentoringMentors) ? mentoringMentors : []).filter(m => isManager || isSelfCard(m) || !mentorCapacity(m).isFull);
+    if (visible.length === 0) {
         grid.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-secondary);">
                 <div style="font-size: 2.5rem; margin-bottom: 10px;">👥</div>
                 <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 6px;">${t('mentoring_no_mentors_title', 'Derzeit keine Mentoren verfügbar')}</div>
                 <div style="font-size: 0.9rem;">${isManager ? t('mentoring_no_mentors_desc_manager', 'Sobald Bewerbungen freigegeben wurden, erscheinen die Mentoren hier.') : t('mentoring_no_mentors_desc_user', 'Aktuell sind alle Mentoren vollständig ausgelastet oder es liegen keine freigegebenen Profile vor.')}</div>
-            </div>
-        `;
+            </div>`;
         return;
     }
-
-    grid.innerHTML = visibleMentors.map(m => {
-        const name = escapeHtml(m.name || m.mentorName || t('mentoring_partner_mentor', 'Mentor'));
-        const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-        const avatarUrl = m.avatar_url || (m.user_id ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(m.user_id)}` : '');
-        const isSelf = currentUid && (m.user_id === currentUid || m.user === currentUid);
-
-        const bioHtml = escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Beschreibung vorhanden.'));
-        const maxMentees = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
-        const activeMentees = typeof m.active_mentees === 'number' ? m.active_mentees : (typeof m.activeMentees === 'number' ? m.activeMentees : 0);
-        const isFull = m.isFull === true || (typeof m.active_mentees === 'number' && activeMentees >= maxMentees) || m.isAccepting === false;
-
-        // Capacity indicator: rendered for managers and for mentors looking at their own card
-        const capacityHtml = (isManager || isSelf) ? `
-            <div class="mentor-capacity" title="${t('mentoring_capacity_title', 'Auslastung: Begleitungen')}">
-                <span>${t('mentoring_capacity_active', '👥 {active} / {max} aktiv', { active: activeMentees, max: maxMentees })}</span>
-                ${isFull ? `<span class="mentor-badge-full">${t('mentoring_badge_full', 'Ausgelastet')}</span>` : ''}
-            </div>
-        ` : '';
-
+    grid.innerHTML = visible.map(m => {
+        const name = m.name || m.mentorName || t('mentoring_partner_mentor', 'Mentor');
+        const avatarUrl = m.avatar_url || (m.user_id ? `${API}/profile/picture/${encodeURIComponent(m.user_id)}` : '');
+        const isSelf = isSelfCard(m);
+        const { max, active, isFull } = mentorCapacity(m);
         return `
             <div class="mentor-card">
                 <div class="mentor-card-header">
                     <div class="mentor-card-avatar avatar-ring-mentor">
                         <div class="mentor-card-avatar-inner">
-                            <span style="user-select: none;">${escapeHtml(initials)}</span>
+                            <span style="user-select: none;">${escapeHtml(name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase())}</span>
                             ${avatarUrl ? `<img src="${avatarUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'">` : ''}
                         </div>
                     </div>
                     <div class="mentor-card-title">
-                        <h3>${name}</h3>
+                        <h3>${escapeHtml(name)}</h3>
                         <span class="mentor-role-badge">${t('mentoring_verified_badge', 'Geprüfter Mentor')}</span>
                     </div>
                 </div>
-
-                <div class="mentor-card-bio">${bioHtml}</div>
-
+                <div class="mentor-card-bio">${escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Beschreibung vorhanden.'))}</div>
                 <div class="mentor-card-footer">
-                    ${capacityHtml}
-                    ${(() => {
-                        const mentorUserId = m.user || m.user_id || m.id;
-                        const existingThread = Array.isArray(mentoringThreads)
-                            ? mentoringThreads.find(th => (th.mentor === mentorUserId || th.mentor === m.user || th.mentor === m.id) && th.mentee === currentUid)
-                            : null;
-
-                        if (isSelf) {
-                            return `<button type="button" class="btn btn-secondary btn-small" onclick="window.openMentorApplicationModal()">${t('mentoring_btn_edit_profile', 'Profil bearbeiten')}</button>`;
-                        } else if (existingThread) {
-                            return `
-                                <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect('${escapeHtml(existingThread.id)}', 'find')" title="${existingThread.status === 'closed' ? t('mentoring_btn_open_closed_chat', 'Abgeschlossenes Gespräch anzeigen') : t('mentoring_btn_open_chat', 'Laufendes Gespräch öffnen')}">
-                                    ${existingThread.status === 'closed' ? t('mentoring_btn_open_closed_chat', '📁 Zum Gespräch') : t('mentoring_btn_open_chat', '💬 Zum Gespräch')}
-                                </button>
-                            `;
-                        } else {
-                            return `
-                                <button type="button" class="btn btn-mentor-primary btn-small" ${isFull ? 'disabled' : ''} onclick="window.openMentorContactModal('${escapeHtml(mentorUserId)}', '${escapeHtml(name)}')">
-                                    ${isFull ? t('mentoring_btn_full', 'Voll belegt') : t('mentoring_btn_contact', 'Anonym kontaktieren')}
-                                </button>
-                            `;
-                        }
-                    })()}
+                    ${isManager || isSelf ? `
+                    <div class="mentor-capacity" title="${t('mentoring_capacity_title', 'Auslastung: Begleitungen')}">
+                        <span>${t('mentoring_capacity_active', '👥 {active} / {max} aktiv', { active, max })}</span>
+                        ${isFull ? `<span class="mentor-badge-full">${t('mentoring_badge_full', 'Ausgelastet')}</span>` : ''}
+                    </div>` : ''}
+                    ${mentorCardAction(m, name, isSelf, isFull)}
                 </div>
-            </div>
-        `;
+            </div>`;
     }).join('');
-};
+}
 
-window.openMentorContactModal = function(userId, mentorName) {
-    const currentUid = currentUser?.uid || currentUser?.id;
-    const existingThread = Array.isArray(mentoringThreads)
-        ? mentoringThreads.find(th => (th.mentor === userId) && th.mentee === currentUid)
-        : null;
-
-    if (existingThread) {
-        if (typeof showToast === 'function') {
-            showToast(existingThread.status === 'closed'
-                ? t('mentoring_toast_existing_closed', 'Du hast bereits ein früheres Gespräch mit diesem Mentor.')
-                : t('mentoring_toast_existing_active', 'Du hast bereits eine aktive Begleitung mit diesem Mentor.'), 'info');
-        } else {
-            alert(existingThread.status === 'closed'
-                ? t('mentoring_toast_existing_closed', 'Du hast bereits ein früheres Gespräch mit diesem Mentor.')
-                : t('mentoring_toast_existing_active', 'Du hast bereits eine aktive Begleitung mit diesem Mentor.'));
-        }
-        window.openMentoringChatDirect(existingThread.id, 'find');
+function openMentorContactModal(userId, mentorName) {
+    const existing = mentoringThreads.find(th => th.mentor === userId && th.mentee === currentUid());
+    if (existing) {
+        showToast(existing.status === 'closed'
+            ? t('mentoring_toast_existing_closed', 'Du hast bereits ein früheres Gespräch mit diesem Mentor.')
+            : t('mentoring_toast_existing_active', 'Du hast bereits eine aktive Begleitung mit diesem Mentor.'), 'info');
+        openMentoringChatDirect(existing.id);
         return;
     }
-
-    const uidInput = document.getElementById('mentor-contact-user-id');
-    const targetTitle = document.getElementById('mentor-contact-target-name');
-    const msgInput = document.getElementById('mentor-contact-message');
-
-    if (uidInput) uidInput.value = userId;
-    if (targetTitle) targetTitle.innerText = t('mentor_contact_modal_subtitle', 'Anfrage an {name}', { name: mentorName });
-    if (msgInput) msgInput.value = '';
-
+    setValue('mentor-contact-user-id', userId);
+    const target = $('mentor-contact-target-name');
+    if (target) target.innerText = t('mentor_contact_modal_subtitle', 'Anfrage an {name}', { name: mentorName });
+    setValue('mentor-contact-message', '');
     openModal('mentor-contact-modal');
-    setTimeout(() => { if (msgInput) msgInput.focus(); }, 150);
-};
+    setTimeout(() => $('mentor-contact-message')?.focus(), 150);
+}
 
-window.submitMentorContact = async function() {
-    const uidInput = document.getElementById('mentor-contact-user-id');
-    const msgInput = document.getElementById('mentor-contact-message');
-    const mentorId = uidInput ? uidInput.value : '';
-    const message = msgInput ? msgInput.value.trim() : '';
-
-    if (!mentorId) {
-        alert(t('mentor_contact_error_no_mentor', 'Kein Mentor ausgewählt.'));
-        return;
-    }
-    if (!message) {
-        alert(t('mentor_contact_error_no_msg', 'Bitte gib eine Erstnachricht für den Mentor ein.'));
-        return;
-    }
-
+async function submitMentorContact(e) {
+    e?.preventDefault?.();
+    const mentorId = inputValue('mentor-contact-user-id');
+    const message = inputValue('mentor-contact-message').trim();
+    if (!mentorId) return alert(t('mentor_contact_error_no_mentor', 'Kein Mentor ausgewählt.'));
+    if (!message) return alert(t('mentor_contact_error_no_msg', 'Bitte gib eine Erstnachricht für den Mentor ein.'));
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mentor: mentorId, mentorId: mentorId, message, initialMessage: message })
-        });
-
+        const res = await api('/mentoring/threads', 'POST', { mentor: mentorId, mentorId, message, initialMessage: message });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            if (err.threadId) {
+            if (data.threadId) {
                 closeModal('mentor-contact-modal');
-                if (typeof showToast === 'function') {
-                    showToast(err.error || t('mentoring_toast_existing_active', 'Bestehendes Gespräch geöffnet.'), 'info');
-                }
-                window.openMentoringChatDirect(err.threadId, 'find');
+                showToast(data.error || t('mentoring_toast_existing_active', 'Bestehendes Gespräch geöffnet.'), 'info');
+                openMentoringChatDirect(data.threadId);
                 return;
             }
-            throw new Error(err.error || err.message || t('mentoring_req_error', 'Fehler beim Erstellen der Anfrage.'));
+            throw new Error(data.error || data.message || t('mentoring_req_error', 'Fehler beim Erstellen der Anfrage.'));
         }
-
-        const data = await res.json();
         closeModal('mentor-contact-modal');
-        if (typeof showToast === 'function') {
-            showToast(t('mentoring_toast_req_sent', 'Vertrauliche Anfrage erfolgreich gesendet!'), 'success');
-        }
-
-        const newThreadId = data.threadId || (data.thread && data.thread.id);
-        if (newThreadId) {
-            await window.loadMentoringThreads(true, newThreadId);
-            window.openMentoringChatDirect(newThreadId, 'find');
+        showToast(t('mentoring_toast_req_sent', 'Vertrauliche Anfrage erfolgreich gesendet!'), 'success');
+        const threadId = data.threadId || data.thread?.id;
+        if (threadId) {
+            await loadMentoringThreads(true, threadId);
+            openMentoringChatDirect(threadId);
         } else {
-            window.loadMentoringThreads(true);
+            loadMentoringThreads(true);
         }
     } catch (err) {
         alert(err.message || t('mentoring_req_error', 'Fehler beim Senden der Anfrage.'));
     }
-};
+}
 
-window.loadMentoringThreads = async function(shouldSelect = false, selectThreadId = null) {
-    const listEl = document.getElementById('mentoring-threads-list');
+function renderThreadItem(thread) {
+    const { isMentor, name, role } = threadPartner(thread);
+    const isClosed = thread.status === 'closed';
+    const unread = thread.unread_count || 0;
+    const closedLabel = t('mentoring_sub_closed', 'Gespräch beendet');
+    const lastMsg = thread.last_message || (isClosed ? closedLabel : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
+    const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    const avatar = isMentor
+        ? `<div class="mentoring-thread-avatar mentee-avatar" title="${escapeHtml(name)}">${svgIcon('shield', 20)}</div>`
+        : `<div class="mentoring-thread-avatar mentor-avatar" title="${escapeHtml(name)}">
+                <span class="mentoring-avatar-initials">${escapeHtml(name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'M')}</span>
+                ${thread.mentor ? `<img src="${API}/profile/picture/${encodeURIComponent(thread.mentor)}" alt="${escapeHtml(name)}" class="mentoring-avatar-img" onerror="this.style.display='none'">` : ''}
+            </div>`;
+    return `
+        <div class="mentoring-thread-item ${activeMentoringThreadId === thread.id ? 'active' : ''} ${unread > 0 ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread('${escapeHtml(thread.id)}')">
+            <div class="mentoring-thread-avatar-wrap">
+                ${avatar}
+                <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? closedLabel : 'Aktiv'}"></span>
+            </div>
+            <div class="mentoring-thread-info">
+                <div class="mentoring-thread-top">
+                    <div class="mentoring-thread-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                    <div class="mentoring-thread-time">${escapeHtml(dateStr)}</div>
+                </div>
+                <div class="mentoring-thread-meta">
+                    <span class="mentoring-role-pill ${isMentor ? 'seeker' : 'mentor'} ${isClosed ? 'closed' : ''}">
+                        ${escapeHtml(isClosed ? closedLabel : role)}
+                    </span>
+                </div>
+                <div class="mentoring-thread-bottom">
+                    <div class="mentoring-thread-snippet" title="${escapeHtml(lastMsg)}">${escapeHtml(lastMsg)}</div>
+                    ${unread > 0 ? `<span class="mentoring-badge-count">${unread}</span>` : ''}
+                </div>
+            </div>
+        </div>`;
+}
+
+async function loadMentoringThreads(shouldSelect = false, selectThreadId = null) {
+    const listEl = $('mentoring-threads-list');
     if (!listEl) return;
-
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads`);
-        if (!res.ok) {
-            console.warn('Failed to fetch mentoring threads, status:', res.status);
-            return;
-        }
-
-        mentoringThreads = await res.json();
-        if (!Array.isArray(mentoringThreads)) {
-            mentoringThreads = [];
-        }
-
-        // Calculate unread
-        let totalUnread = 0;
-        mentoringThreads.forEach(thread => {
-            if ((thread.unread_count || 0) > 0) totalUnread += thread.unread_count;
-        });
-        const unreadBadge = document.getElementById('mentoring-unread-badge');
-        if (unreadBadge) {
-            unreadBadge.innerText = String(totalUnread);
-            unreadBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
-        }
-
-        // Keep Home Mentoring Card in sync
-        if (typeof renderHomeMentoringCard === 'function') {
-            renderHomeMentoringCard();
-        }
-
-        // Update sidebar count badge
-        const sidebarCountBadge = document.getElementById('mentoring-threads-count-badge');
-        if (sidebarCountBadge) {
-            sidebarCountBadge.innerText = String(mentoringThreads.length);
-            sidebarCountBadge.style.display = mentoringThreads.length > 0 ? 'inline-flex' : 'none';
-        }
-
+        const res = await api('/mentoring/threads');
+        if (!res.ok) return console.warn('Failed to fetch mentoring threads, status:', res.status);
+        const data = await res.json();
+        mentoringThreads = Array.isArray(data) ? data : [];
+        updateMentoringUnreadBadge();
+        setCountBadge('mentoring-threads-count-badge', mentoringThreads.length, 'inline-flex');
         if (mentoringThreads.length === 0) {
             listEl.innerHTML = `
                 <div class="mentoring-threads-empty">
@@ -8381,4027 +4567,1605 @@ window.loadMentoringThreads = async function(shouldSelect = false, selectThreadI
                     <div class="mentoring-empty-title">${t('mentoring_no_threads_title', 'Keine aktiven Begleitungen')}</div>
                     <div class="mentoring-empty-desc">${t('mentoring_no_threads_desc', 'Kontaktiere einen Mentor, um ein vertrauliches Gespräch zu beginnen.')}</div>
                     <button class="btn btn-secondary btn-small" onclick="window.switchMentoringSubTab('find')">${t('mentoring_tab_find', 'Mentoren finden')}</button>
-                </div>
-            `;
+                </div>`;
             return;
         }
-
-        listEl.innerHTML = mentoringThreads.map(thread => {
-            const isActive = activeMentoringThreadId === thread.id;
-            const isMentor = currentUser && (thread.mentor === currentUser.uid || thread.mentor === currentUser.id);
-            const isClosed = thread.status === 'closed';
-
-            // Anonymity / Pseudonym display
-            const partnerName = isMentor
-                ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender'))
-                : (thread.mentor_name || t('mentoring_partner_mentor', 'Mentor'));
-
-            const partnerRole = isMentor ? t('mentoring_role_seeker', 'Suchender (anonym)') : t('mentoring_role_mentor', 'Dein Mentor');
-            const unreadCount = thread.unread_count || 0;
-            const isUnread = unreadCount > 0;
-            const lastMsg = thread.last_message || (isClosed ? t('mentoring_sub_closed', 'Gespräch beendet') : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
-            const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
-
-            // Modern avatar
-            let avatarHtml = '';
-            if (isMentor) {
-                avatarHtml = `
-                    <div class="mentoring-thread-avatar mentee-avatar" title="${escapeHtml(partnerName)}">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                        </svg>
-                    </div>
-                `;
-            } else {
-                const initials = partnerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'M';
-                const avatarUrl = thread.mentor ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(thread.mentor)}` : '';
-                avatarHtml = `
-                    <div class="mentoring-thread-avatar mentor-avatar" title="${escapeHtml(partnerName)}">
-                        <span class="mentoring-avatar-initials">${escapeHtml(initials)}</span>
-                        ${avatarUrl ? `<img src="${avatarUrl}" alt="${escapeHtml(partnerName)}" class="mentoring-avatar-img" onerror="this.style.display='none'">` : ''}
-                    </div>
-                `;
-            }
-
-            return `
-                <div class="mentoring-thread-item ${isActive ? 'active' : ''} ${isUnread ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread('${escapeHtml(thread.id)}')">
-                    <div class="mentoring-thread-avatar-wrap">
-                        ${avatarHtml}
-                        <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? t('mentoring_sub_closed', 'Gespräch beendet') : 'Aktiv'}"></span>
-                    </div>
-                    <div class="mentoring-thread-info">
-                        <div class="mentoring-thread-top">
-                            <div class="mentoring-thread-name" title="${escapeHtml(partnerName)}">${escapeHtml(partnerName)}</div>
-                            <div class="mentoring-thread-time">${escapeHtml(dateStr)}</div>
-                        </div>
-                        <div class="mentoring-thread-meta">
-                            <span class="mentoring-role-pill ${isMentor ? 'seeker' : 'mentor'} ${isClosed ? 'closed' : ''}">
-                                ${isClosed ? escapeHtml(t('mentoring_sub_closed', 'Gespräch beendet')) : escapeHtml(partnerRole)}
-                            </span>
-                        </div>
-                        <div class="mentoring-thread-bottom">
-                            <div class="mentoring-thread-snippet" title="${escapeHtml(lastMsg)}">${escapeHtml(lastMsg)}</div>
-                            ${unreadCount > 0 ? `<span class="mentoring-badge-count">${unreadCount}</span>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        // Apply active search filter if any
-        const searchInput = document.getElementById('mentoring-threads-search-input');
-        if (searchInput && searchInput.value) {
-            window.filterMentoringThreads(searchInput.value);
-        }
-
-        const isDesktop = !window.matchMedia('(max-width: 768px)').matches;
+        listEl.innerHTML = mentoringThreads.map(renderThreadItem).join('');
+        const search = inputValue('mentoring-threads-search-input');
+        if (search) filterMentoringThreads(search);
         if (selectThreadId) {
-            await window.openMentoringThread(selectThreadId);
-        } else if (shouldSelect || (isDesktop && !activeMentoringThreadId && mentoringThreads.length > 0)) {
-            const idToOpen = mentoringThreads[0] ? mentoringThreads[0].id : null;
-            if (idToOpen) await window.openMentoringThread(idToOpen);
+            await openMentoringThread(selectThreadId);
+        } else if (shouldSelect || (!isMobile() && !activeMentoringThreadId)) {
+            await openMentoringThread(mentoringThreads[0].id);
         }
     } catch (err) {
         console.warn('Failed to load mentoring threads:', err);
     }
-};
+}
 
-window.filterMentoringThreads = function(query) {
-    const q = (query || '').toLowerCase().trim();
-    const items = document.querySelectorAll('.mentoring-thread-item');
-    items.forEach(el => {
-        const name = (el.querySelector('.mentoring-thread-name')?.innerText || '').toLowerCase();
-        const snippet = (el.querySelector('.mentoring-thread-snippet')?.innerText || '').toLowerCase();
-        const role = (el.querySelector('.mentoring-role-pill')?.innerText || '').toLowerCase();
-        const match = !q || name.includes(q) || snippet.includes(q) || role.includes(q);
-        el.style.display = match ? 'flex' : 'none';
+function filterMentoringThreads(text) {
+    const q = (text || '').toLowerCase().trim();
+    document.querySelectorAll('.mentoring-thread-item').forEach(item => {
+        const haystack = ['.mentoring-thread-name', '.mentoring-thread-snippet', '.mentoring-role-pill'].map(sel => (item.querySelector(sel)?.innerText || '').toLowerCase());
+        item.style.display = !q || haystack.some(value => value.includes(q)) ? 'flex' : 'none';
     });
-};
+}
 
-window.autoResizeMentoringInput = function(el) {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.max(24, Math.min(el.scrollHeight, 110)) + 'px';
-};
+function autoResizeMentoringInput(input) {
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = Math.max(24, Math.min(input.scrollHeight, 110)) + 'px';
+}
 
-window.openMentoringThread = async function(threadId) {
+async function openMentoringThread(threadId) {
     if (!threadId) return;
     activeMentoringThreadId = threadId;
-
-    const layout = document.getElementById('mentoring-threads-layout');
-    if (layout) layout.classList.add('in-chat');
-
-    const chatPane = document.getElementById('mentoring-chat-pane');
-    if (chatPane) chatPane.classList.add('mobile-open');
-
-    if (window.matchMedia('(max-width: 768px)').matches) {
+    $('mentoring-threads-layout')?.classList.add('in-chat');
+    $('mentoring-chat-pane')?.classList.add('mobile-open');
+    if (isMobile()) {
         document.body.classList.add('mentoring-mobile-chat-open');
-        if (!window._mentoringChatHistoryPushed) {
+        if (!mentoringChatHistoryPushed) {
             history.pushState({ view: 'mentoring-chat' }, '');
-            window._mentoringChatHistoryPushed = true;
+            mentoringChatHistoryPushed = true;
         }
     }
-
-    const items = document.querySelectorAll('.mentoring-thread-item');
-    items.forEach(el => el.classList.remove('active'));
-
-    const activeEl = document.querySelector(`.mentoring-thread-item[data-thread-id="${threadId}"]`);
+    document.querySelectorAll('.mentoring-thread-item').forEach(item => item.classList.remove('active'));
+    const activeEl = threadElement(threadId);
     if (activeEl) {
         activeEl.classList.add('active');
-        activeEl.classList.remove('unread');
-        activeEl.classList.add('read');
-        const badge = activeEl.querySelector('.mentoring-badge-count');
-        if (badge) badge.remove();
+        markThreadElementRead(activeEl);
     }
 
-    let thread = Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === threadId) : null;
+    let thread = findThread(threadId);
     if (!thread) {
         try {
-            const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads`);
+            const res = await api('/mentoring/threads');
             if (res.ok) {
-                mentoringThreads = await res.json();
-                thread = Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === threadId) : null;
+                const data = await res.json();
+                mentoringThreads = Array.isArray(data) ? data : [];
+                thread = findThread(threadId);
             }
         } catch (err) {
             console.warn('Failed to reload threads in openMentoringThread:', err);
         }
     }
-
-    const isMentor = currentUser && thread && (thread.mentor === currentUser.uid || thread.mentor === currentUser.id);
-    const partnerName = thread
-        ? (isMentor
-            ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender'))
-            : (thread.mentor_name || t('mentoring_partner_mentor', 'Mentor')))
-        : t('mentoring_partner_mentor', 'Mentor');
-
-    const titleEl = document.getElementById('mentoring-chat-title');
-    const subEl = document.getElementById('mentoring-chat-subtitle');
-    if (titleEl) titleEl.innerText = partnerName;
+    const { isMentor, name } = threadPartner(thread);
+    const isClosed = thread?.status === 'closed';
+    const titleEl = $('mentoring-chat-title');
+    if (titleEl) titleEl.innerText = name;
+    const subEl = $('mentoring-chat-subtitle');
     if (subEl) {
-        const isClosed = thread ? thread.status === 'closed' : false;
-        subEl.innerText = isClosed
-            ? t('mentoring_sub_closed', 'Gespräch beendet')
-            : (isMentor ? t('mentoring_sub_active_seeker', 'Vertraulich & Anonym') : t('mentoring_sub_active_mentee', 'Dein vertraulicher Mentor'));
+        subEl.innerText = isClosed ? t('mentoring_sub_closed', 'Gespräch beendet')
+            : isMentor ? t('mentoring_sub_active_seeker', 'Vertraulich & Anonym') : t('mentoring_sub_active_mentee', 'Dein vertraulicher Mentor');
     }
-
-    const actionsEl = document.getElementById('mentoring-chat-actions');
-    const inputContainer = document.getElementById('mentoring-chat-input-container');
-    const closedBar = document.getElementById('mentoring-chat-closed-bar');
-    const menuDropdown = document.getElementById('mentoring-chat-menu-dropdown');
-    if (menuDropdown) menuDropdown.style.display = 'none';
-
-    const isClosed = thread ? thread.status === 'closed' : false;
-
-    if (actionsEl) {
-        actionsEl.style.display = 'flex';
-        const menuBtn = document.getElementById('mentoring-chat-menu-btn');
-        if (menuBtn) {
-            menuBtn.style.display = isClosed ? 'none' : 'inline-flex';
-        }
+    show('mentoring-chat-menu-dropdown', false);
+    if ($('mentoring-chat-actions')) {
+        show('mentoring-chat-actions', true, 'flex');
+        show('mentoring-chat-menu-btn', !isClosed, 'inline-flex');
     }
+    show('mentoring-chat-input-container', !isClosed, 'block');
+    show('mentoring-chat-closed-bar', isClosed, 'flex');
 
-    if (inputContainer) {
-        inputContainer.style.display = isClosed ? 'none' : 'block';
-    }
-    if (closedBar) {
-        closedBar.style.display = isClosed ? 'flex' : 'none';
-    }
-
-    await window.loadMentoringMessages(threadId);
-
-    const input = document.getElementById('mentoring-chat-input');
-    if (input) {
-        window.autoResizeMentoringInput(input);
-    }
-
-    if (mentoringChatPollTimer) clearInterval(mentoringChatPollTimer);
+    await loadMentoringMessages(threadId);
+    autoResizeMentoringInput($('mentoring-chat-input'));
+    clearInterval(mentoringChatPollTimer);
     mentoringChatPollTimer = setInterval(() => {
-        if (activeMentoringThreadId === threadId && currentActiveTab === 'mentoring' && currentMentoringSubTab === 'chats') {
-            window.loadMentoringMessages(threadId, true);
-        }
+        if (activeMentoringThreadId === threadId && currentActiveTab === 'mentoring' && currentMentoringSubTab === 'chats') loadMentoringMessages(threadId, true);
     }, 3500);
-};
+}
 
-window.closeMentoringChatMobile = function(fromHistory = false) {
+function closeMentoringChatMobile(fromHistory = false) {
     activeMentoringThreadId = null;
-    if (mentoringChatPollTimer) {
-        clearInterval(mentoringChatPollTimer);
-        mentoringChatPollTimer = null;
-    }
-
-    const layout = document.getElementById('mentoring-threads-layout');
-    if (layout) layout.classList.remove('in-chat');
-    const chatPane = document.getElementById('mentoring-chat-pane');
-    if (chatPane) chatPane.classList.remove('mobile-open');
-    document.body.classList.remove('mentoring-mobile-chat-open');
-
-    const items = document.querySelectorAll('.mentoring-thread-item');
-    items.forEach(el => el.classList.remove('active'));
-
-    if (!fromHistory && window._mentoringChatHistoryPushed) {
-        window._mentoringChatHistoryPushed = false;
-        window._programmaticBacks = (window._programmaticBacks || 0) + 1;
+    clearInterval(mentoringChatPollTimer);
+    mentoringChatPollTimer = null;
+    closeMobileChatPane();
+    document.querySelectorAll('.mentoring-thread-item').forEach(item => item.classList.remove('active'));
+    if (!fromHistory && mentoringChatHistoryPushed) {
+        mentoringChatHistoryPushed = false;
+        programmaticBacks++;
         history.back();
     }
+    loadMentoringThreads(false);
+}
 
-    window.loadMentoringThreads(false);
-};
-window.backToMentoringThreadList = window.closeMentoringChatMobile;
-
-window.loadMentoringMessages = async function(threadId, isPoll = false) {
-    const messagesEl = document.getElementById('mentoring-chat-messages');
+async function loadMentoringMessages(threadId, isPoll = false) {
+    const messagesEl = $('mentoring-chat-messages');
     if (!messagesEl) return;
-
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads/${threadId}/messages`);
+        const res = await api(`/mentoring/threads/${threadId}/messages`);
         if (!res.ok) {
-            if (res.status === 403) {
-                messagesEl.innerHTML = `<div style="text-align:center; color:var(--danger); margin:auto; padding:20px;">${t('mentoring_access_denied', 'Zugriff verweigert (Geschützte Verbindung).')}</div>`;
-            }
+            if (res.status === 403) messagesEl.innerHTML = `<div style="text-align:center; color:var(--danger); margin:auto; padding:20px;">${t('mentoring_access_denied', 'Zugriff verweigert (Geschützte Verbindung).')}</div>`;
             return;
         }
-
         let messages = await res.json();
-        if (messages && Array.isArray(messages.messages)) {
-            messages = messages.messages;
-        }
+        if (Array.isArray(messages?.messages)) messages = messages.messages;
         if (!Array.isArray(messages)) return;
 
-        // Instantly mark thread as read locally, remove side strip/badge & keep Home Card in sync
-        const currentThread = Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === threadId) : null;
-        if (currentThread && currentThread.unread_count > 0) {
-            currentThread.unread_count = 0;
-            const threadEl = document.querySelector(`.mentoring-thread-item[data-thread-id="${threadId}"]`);
-            if (threadEl) {
-                threadEl.classList.remove('unread');
-                threadEl.classList.add('read');
-                const badgeEl = threadEl.querySelector('.mentoring-badge-count');
-                if (badgeEl) badgeEl.remove();
-            }
-
-            let totalUnread = 0;
-            mentoringThreads.forEach(th => {
-                if (th.unread_count > 0) totalUnread += th.unread_count;
-            });
-            const unreadBadge = document.getElementById('mentoring-unread-badge');
-            if (unreadBadge) {
-                unreadBadge.innerText = String(totalUnread);
-                unreadBadge.style.display = totalUnread > 0 ? 'inline-block' : 'none';
-            }
-            if (typeof renderHomeMentoringCard === 'function') {
-                renderHomeMentoringCard();
-            }
+        // Mark the thread as read locally so badges and the home card update instantly
+        const thread = findThread(threadId);
+        if (thread && thread.unread_count > 0) {
+            thread.unread_count = 0;
+            const item = threadElement(threadId);
+            if (item) markThreadElementRead(item);
+            updateMentoringUnreadBadge();
         }
-
-        const isScrolledToBottom = messagesEl.scrollHeight - messagesEl.scrollTop <= messagesEl.clientHeight + 120;
-
+        const wasAtBottom = messagesEl.scrollHeight - messagesEl.scrollTop <= messagesEl.clientHeight + 120;
         if (messages.length === 0) {
             messagesEl.innerHTML = `
                 <div class="mentoring-chat-empty-notice">
                     <div style="font-size:2rem; margin-bottom:8px;">✨</div>
                     <div style="font-weight:600; margin-bottom:4px;">${t('mentoring_no_messages_yet', 'Noch keine Nachrichten')}</div>
                     <div style="font-size:0.85rem; color:var(--text-secondary);">${t('mentoring_start_conversation_desc', 'Beginne das Gespräch! Alles was du schreibst, ist absolut vertraulich.')}</div>
-                </div>
-            `;
+                </div>`;
             return;
         }
-
         messagesEl.innerHTML = messages.map(m => {
-            const isMe = currentUser && (m.sender === currentUser.uid || m.sender === currentUser.id);
-            const timeStr = m.created ? new Date(m.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            const isMe = isCurrentUser(m.sender);
+            const time = m.created ? new Date(m.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             return `
                 <div class="mentoring-message ${isMe ? 'outgoing msg-mine' : 'incoming msg-other'}">
                     ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_mentor', 'Gesprächspartner'))}</div>` : ''}
                     <div class="mentoring-message-bubble">${escapeHtml(m.message || m.text || '')}</div>
-                    <div class="mentoring-message-time">${escapeHtml(timeStr)}</div>
-                </div>
-            `;
+                    <div class="mentoring-message-time">${escapeHtml(time)}</div>
+                </div>`;
         }).join('');
-
-        if (!isPoll || isScrolledToBottom) {
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-        }
+        if (!isPoll || wasAtBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
     } catch (err) {
         console.warn('Failed to load messages:', err);
     }
-};
+}
 
-window.sendMentoringMessage = async function() {
-    if (!activeMentoringThreadId) return;
-    const input = document.getElementById('mentoring-chat-input');
-    if (!input) return;
-    const text = input.value.trim();
-    if (!text) return;
-
-    // Optimistic message append
-    const messagesEl = document.getElementById('mentoring-chat-messages');
-    const tempId = 'msg-' + Date.now();
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    // Clear empty placeholder notice if present
-    const emptyNotice = messagesEl.querySelector('.mentoring-chat-empty-notice');
-    if (emptyNotice) emptyNotice.remove();
-
-    const optimisticNode = document.createElement('div');
-    optimisticNode.id = tempId;
-    optimisticNode.className = 'mentoring-message outgoing msg-mine';
-    optimisticNode.innerHTML = `
+async function sendMentoringMessage() {
+    const input = $('mentoring-chat-input');
+    const text = input?.value.trim();
+    if (!activeMentoringThreadId || !text) return;
+    // Show the message optimistically until the server round-trip completes
+    const messagesEl = $('mentoring-chat-messages');
+    messagesEl.querySelector('.mentoring-chat-empty-notice')?.remove();
+    const pending = createEl('div', 'mentoring-message outgoing msg-mine');
+    pending.innerHTML = `
         <div class="mentoring-message-bubble">${escapeHtml(text)}</div>
-        <div class="mentoring-message-time">${escapeHtml(timeStr)} • ${t('mentoring_sending_optimistic', 'Wird gesendet…')}</div>
-    `;
-    messagesEl.appendChild(optimisticNode);
+        <div class="mentoring-message-time">${escapeHtml(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))} • ${t('mentoring_sending_optimistic', 'Wird gesendet…')}</div>`;
+    messagesEl.appendChild(pending);
     messagesEl.scrollTop = messagesEl.scrollHeight;
-
     input.value = '';
-    window.autoResizeMentoringInput(input);
-
+    autoResizeMentoringInput(input);
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads/${activeMentoringThreadId}/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, text })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || err.error || t('mentoring_send_error', 'Fehler beim Senden.'));
-        }
-
-        await window.loadMentoringMessages(activeMentoringThreadId);
-        window.loadMentoringThreads(false);
+        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/messages`, 'POST', { message: text, text }, t('mentoring_send_error', 'Fehler beim Senden.'));
+        await loadMentoringMessages(activeMentoringThreadId);
+        loadMentoringThreads(false);
     } catch (err) {
-        const pendingEl = document.getElementById(tempId);
-        if (pendingEl) {
-            const timeEl = pendingEl.querySelector('.mentoring-message-time');
-            if (timeEl) timeEl.innerHTML = `<span style="color:#ef4444;">${t('mentoring_send_error', '⚠️ Fehler beim Senden')}</span>`;
-        }
+        const time = pending.querySelector('.mentoring-message-time');
+        if (time) time.innerHTML = `<span style="color:#ef4444;">${t('mentoring_send_error', '⚠️ Fehler beim Senden')}</span>`;
         alert(err.message || t('mentoring_send_error', 'Nachricht konnte nicht gesendet werden.'));
     }
-};
+}
 
-window.handleMentoringChatKey = function(e) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        window.sendMentoringMessage();
-    } else if (e.key === 'Enter') {
-        setTimeout(() => window.autoResizeMentoringInput(e.target), 0);
-    }
-};
+function toggleMentoringChatMenu(e) {
+    e?.stopPropagation();
+    e?.preventDefault();
+    const dropdown = $('mentoring-chat-menu-dropdown');
+    if (dropdown) dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+}
 
-window.toggleMentoringChatMenu = function(e) {
-    if (e) {
-        e.stopPropagation();
-        e.preventDefault();
-    }
-    const dropdown = document.getElementById('mentoring-chat-menu-dropdown');
-    if (!dropdown) return;
-    const isVisible = dropdown.style.display === 'block';
-    dropdown.style.display = isVisible ? 'none' : 'block';
-};
-
-document.addEventListener('click', (e) => {
-    const dropdown = document.getElementById('mentoring-chat-menu-dropdown');
-    if (dropdown && dropdown.style.display === 'block') {
-        const menuBtn = document.getElementById('mentoring-chat-menu-btn');
-        if (menuBtn && !menuBtn.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.style.display = 'none';
-        }
-    }
-});
-
-window.toggleCloseCurrentThread = async function(forcedStatus) {
-    if (!activeMentoringThreadId) return;
-    const thread = mentoringThreads.find(th => th.id === activeMentoringThreadId);
+async function toggleCloseCurrentThread(forcedStatus) {
+    const thread = activeMentoringThreadId && mentoringThreads.find(th => th.id === activeMentoringThreadId);
     if (!thread) return;
-
-    const menuDropdown = document.getElementById('mentoring-chat-menu-dropdown');
-    if (menuDropdown) menuDropdown.style.display = 'none';
-
+    show('mentoring-chat-menu-dropdown', false);
     const newStatus = forcedStatus || (thread.status === 'closed' ? 'active' : 'closed');
-    const confirmMsg = newStatus === 'closed'
+    if (!confirmAction(newStatus === 'closed'
         ? t('mentoring_confirm_close', 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.')
-        : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?');
-
-    if (!confirm(confirmMsg)) return;
-
+        : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?'))) return;
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/threads/${activeMentoringThreadId}/status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
-        }
-
+        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/status`, 'PATCH', { status: newStatus }, t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
         thread.status = newStatus;
-        window.openMentoringThread(activeMentoringThreadId);
-        window.loadMentoringThreads();
-        if (typeof showToast === 'function') {
-            showToast(newStatus === 'closed' ? t('mentoring_toast_closed', 'Gespräch beendet.') : t('mentoring_toast_reopened', 'Gespräch wiedereröffnet.'), 'info');
-        }
+        openMentoringThread(activeMentoringThreadId);
+        loadMentoringThreads();
+        showToast(newStatus === 'closed' ? t('mentoring_toast_closed', 'Gespräch beendet.') : t('mentoring_toast_reopened', 'Gespräch wiedereröffnet.'), 'info');
     } catch (err) {
         alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
     }
-};
+}
 
-window.openMentorApplicationModal = async function() {
-    const bioEl = document.getElementById('mentor-app-bio');
-    const maxEl = document.getElementById('mentor-app-max');
-    const submitBtn = document.getElementById('btn-submit-mentor-app');
-
-    if (myMentorProfile) {
-        if (bioEl) bioEl.value = myMentorProfile.bio || '';
-        if (maxEl) maxEl.value = myMentorProfile.max_mentees || 3;
-        if (submitBtn) submitBtn.innerText = t('mentor_app_btn_update', 'Profil aktualisieren');
-    } else {
-        if (bioEl) bioEl.value = '';
-        if (maxEl) maxEl.value = 3;
-        if (submitBtn) submitBtn.innerText = t('mentor_app_btn_submit', 'Bewerbung absenden');
-    }
-
+function openMentorApplicationModal() {
+    setValue('mentor-app-bio', myMentorProfile ? myMentorProfile.bio || '' : '');
+    setValue('mentor-app-max', myMentorProfile ? myMentorProfile.max_mentees || 3 : 3);
+    const submitBtn = $('btn-submit-mentor-app');
+    if (submitBtn) submitBtn.innerText = myMentorProfile ? t('mentor_app_btn_update', 'Profil aktualisieren') : t('mentor_app_btn_submit', 'Bewerbung absenden');
     openModal('mentor-application-modal');
-};
+}
 
-window.submitMentorApplication = async function() {
-    const bioEl = document.getElementById('mentor-app-bio');
-    const maxEl = document.getElementById('mentor-app-max');
-
-    const bio = bioEl ? bioEl.value.trim() : '';
-    const max_mentees = maxEl ? parseInt(maxEl.value, 10) : 3;
-
-    if (!bio) {
-        alert(t('mentor_app_error_no_bio', 'Bitte gib eine persönliche Vorstellung ein, was du über dich sagst und dich beschreibt.'));
-        return;
-    }
-
+async function submitMentorApplication(e) {
+    e?.preventDefault?.();
+    const bio = inputValue('mentor-app-bio').trim();
+    const max_mentees = $('mentor-app-max') ? parseInt(inputValue('mentor-app-max'), 10) : 3;
+    if (!bio) return alert(t('mentor_app_error_no_bio', 'Bitte gib eine persönliche Vorstellung ein, was du über dich sagst und dich beschreibt.'));
+    const isUpdate = !!myMentorProfile;
     try {
-        const isUpdate = !!myMentorProfile;
-        const endpoint = isUpdate ? `${config.apiBaseUrl}/mentoring/my-profile` : `${config.apiBaseUrl}/mentoring/apply`;
-        const method = isUpdate ? 'PUT' : 'POST';
-
-        const res = await fetchWithAuth(endpoint, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bio, max_mentees })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || t('mentor_app_error_generic', 'Fehler beim Einreichen der Bewerbung.'));
-        }
-
-        const data = await res.json();
+        const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees }, t('mentor_app_error_generic', 'Fehler beim Einreichen der Bewerbung.'));
         myMentorProfile = data.mentor || myMentorProfile;
-
         closeModal('mentor-application-modal');
-        if (typeof showToast === 'function') {
-            showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentoren-Profil aktualisiert!') : t('mentor_app_toast_submitted', 'Bewerbung erfolgreich eingereicht! Die Leitung wird sie prüfen.'), 'success');
-        }
-
-        window.loadMentoringData();
+        showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentoren-Profil aktualisiert!') : t('mentor_app_toast_submitted', 'Bewerbung erfolgreich eingereicht! Die Leitung wird sie prüfen.'), 'success');
+        loadMentoringData();
     } catch (err) {
         alert(err.message || t('mentor_app_error_generic', 'Fehler bei der Bewerbung.'));
     }
+}
+
+const MENTOR_STATUS_STYLES = {
+    pending: ['rgba(234, 179, 8, 0.15)', '#eab308', 'mentoring_filter_pending', 'Ausstehend'],
+    approved: ['rgba(16, 185, 129, 0.15)', '#10b981', 'mentoring_filter_approved', 'Freigegeben'],
+    rejected: ['rgba(239, 68, 68, 0.15)', '#ef4444', 'mentoring_filter_rejected', 'Abgelehnt']
 };
 
-window.loadMentoringReviewList = async function() {
-    if (!canManageMentoring()) return;
-    const listEl = document.getElementById('mentoring-review-list');
-    const filterEl = document.getElementById('mentor-review-filter');
-    const statusFilter = filterEl ? filterEl.value : 'pending';
-
-    if (!listEl) return;
-    listEl.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-secondary);">${t('mentoring_review_loading', 'Lade Bewerbungen...')}</div>`;
-
+async function loadMentoringReviewList() {
+    const listEl = $('mentoring-review-list');
+    if (!canManageMentoring() || !listEl) return;
+    const statusFilter = $('mentor-review-filter') ? inputValue('mentor-review-filter') : 'pending';
+    const notice = (color, text, padding = 20) => `<div style="text-align:center; padding:${padding}px; color:var(${color});">${text}</div>`;
+    listEl.innerHTML = notice('--text-secondary', t('mentoring_review_loading', 'Lade Bewerbungen...'));
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/mentors?status=${encodeURIComponent(statusFilter)}`);
+        const res = await api(`/mentoring/mentors?status=${encodeURIComponent(statusFilter)}`);
         if (!res.ok) {
-            listEl.innerHTML = `<div style="text-align:center; padding:20px; color:var(--danger);">${t('mentoring_review_load_error', 'Fehler beim Laden der Bewerbungen.')}</div>`;
+            listEl.innerHTML = notice('--danger', t('mentoring_review_load_error', 'Fehler beim Laden der Bewerbungen.'));
             return;
         }
-
         const mentors = await res.json();
         if (!Array.isArray(mentors) || mentors.length === 0) {
-            const filterLabel = t(`mentoring_filter_${statusFilter}`, statusFilter);
-            listEl.innerHTML = `
-                <div style="text-align:center; padding:30px; color:var(--text-secondary);">
-                    ${t('mentoring_review_none', 'Keine Bewerbungen mit Status "{status}" vorhanden.', { status: filterLabel })}
-                </div>
-            `;
+            listEl.innerHTML = notice('--text-secondary', t('mentoring_review_none', 'Keine Bewerbungen mit Status "{status}" vorhanden.', { status: t(`mentoring_filter_${statusFilter}`, statusFilter) }), 30);
             return;
         }
-
         listEl.innerHTML = mentors.map(m => {
-            const name = escapeHtml(m.name || m.mentorName || t('mentoring_applicant_fallback', 'Bewerber'));
-            const email = escapeHtml(m.email || m.userEmail || '');
-            const bio = escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Personenbeschreibung hinterlegt.'));
-            const maxMentees = m.max_mentees || 3;
             const status = m.status || 'pending';
+            const [bg, color, labelKey, labelFallback] = MENTOR_STATUS_STYLES[status] || MENTOR_STATUS_STYLES.pending;
+            const email = escapeHtml(m.email || m.userEmail || '');
             const dateStr = m.created ? new Date(m.created).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '';
-
-            const statusColors = {
-                pending: { bg: 'rgba(234, 179, 8, 0.15)', text: '#eab308', label: t('mentoring_filter_pending', 'Ausstehend') },
-                approved: { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', label: t('mentoring_filter_approved', 'Freigegeben') },
-                rejected: { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', label: t('mentoring_filter_rejected', 'Abgelehnt') }
-            };
-            const sMeta = statusColors[status] || statusColors.pending;
-
+            const statusButton = (target, cls, style, key, fallback) => status === target ? '' : `
+                <button type="button" class="btn ${cls} btn-small"${style} onclick="window.setMentorStatus('${escapeHtml(m.id)}', '${target}')">
+                    ${t(key, fallback)}
+                </button>`;
             return `
                 <div class="card" style="margin-bottom:12px; border:1px solid var(--border); padding:16px; border-radius:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
                         <div>
                             <div style="font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:8px;">
-                                <span>${name}</span>
-                                <span style="font-size:0.75rem; padding:2px 8px; border-radius:999px; background:${sMeta.bg}; color:${sMeta.text}; font-weight:700;">
-                                    ${sMeta.label}
+                                <span>${escapeHtml(m.name || m.mentorName || t('mentoring_applicant_fallback', 'Bewerber'))}</span>
+                                <span style="font-size:0.75rem; padding:2px 8px; border-radius:999px; background:${bg}; color:${color}; font-weight:700;">
+                                    ${t(labelKey, labelFallback)}
                                 </span>
                             </div>
                             <div style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;">
-                                ${email ? `${email} • ` : ''}${t('mentoring_review_submitted', 'Eingereicht: {date} • Kapazität: max. {max} Mentees', { date: dateStr, max: maxMentees })}
+                                ${email ? `${email} • ` : ''}${t('mentoring_review_submitted', 'Eingereicht: {date} • Kapazität: max. {max} Mentees', { date: dateStr, max: m.max_mentees || 3 })}
                             </div>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            ${status !== 'approved' ? `
-                                <button type="button" class="btn btn-primary btn-small" onclick="window.setMentorStatus('${escapeHtml(m.id)}', 'approved')">
-                                    ${t('mentoring_btn_approve', '✓ Genehmigen')}
-                                </button>
-                            ` : ''}
-                            ${status !== 'rejected' ? `
-                                <button type="button" class="btn btn-secondary btn-small" style="color:var(--danger);" onclick="window.setMentorStatus('${escapeHtml(m.id)}', 'rejected')">
-                                    ${t('mentoring_btn_reject', '✗ Ablehnen')}
-                                </button>
-                            ` : ''}
+                            ${statusButton('approved', 'btn-primary', '', 'mentoring_btn_approve', '✓ Genehmigen')}
+                            ${statusButton('rejected', 'btn-secondary', ' style="color:var(--danger);"', 'mentoring_btn_reject', '✗ Ablehnen')}
                         </div>
                     </div>
-
                     <div style="background:var(--surface-alt); padding:12px 14px; border-radius:8px; font-size:0.92rem; line-height:1.5;">
                         <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${t('mentoring_review_bio_label', 'Über sich / Selbstbeschreibung:')}</div>
-                        ${bio}
+                        ${escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Personenbeschreibung hinterlegt.'))}
                     </div>
-                </div>
-            `;
+                </div>`;
         }).join('');
     } catch (err) {
         console.warn('Failed to load review list:', err);
     }
-};
+}
 
-window.setMentorStatus = async function(mentorId, status) {
-    const actionLabel = status === 'approved' ? t('mentoring_action_approve', 'genehmigen') : t('mentoring_action_reject', 'ablehnen');
-    if (!confirm(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action: actionLabel }))) return;
-
+async function setMentorStatus(mentorId, status) {
+    const action = status === 'approved' ? t('mentoring_action_approve', 'genehmigen') : t('mentoring_action_reject', 'ablehnen');
+    if (!confirmAction(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action }))) return;
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/mentoring/manage/${mentorId}/status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || t('mentoring_status_error', 'Status konnte nicht geändert werden.'));
-        }
-
-        if (typeof showToast === 'function') {
-            showToast(status === 'approved' ? t('mentoring_toast_approved', 'Bewerbung erfolgreich freigegeben!') : t('mentoring_toast_rejected', 'Bewerbung erfolgreich abgelehnt!'), 'success');
-        }
-
-        window.loadMentoringReviewList();
-        window.loadMentoringData();
+        await apiJson(`/mentoring/manage/${mentorId}/status`, 'POST', { status }, t('mentoring_status_error', 'Status konnte nicht geändert werden.'));
+        showToast(status === 'approved' ? t('mentoring_toast_approved', 'Bewerbung erfolgreich freigegeben!') : t('mentoring_toast_rejected', 'Bewerbung erfolgreich abgelehnt!'), 'success');
+        loadMentoringReviewList();
+        loadMentoringData();
     } catch (err) {
         alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
     }
-};
+}
 
-window.renderHomeMentoringCard = function() {
-    const container = document.getElementById('user-mentoring-home-card');
+// Home screen teaser for the newest unread conversation (hidden when everything is read)
+function renderHomeMentoringCard() {
+    const container = $('user-mentoring-home-card');
     if (!container) return;
-
-    if (!currentUser || (!canParticipateMentoring() && !canManageMentoring())) {
+    const unread = currentUser && canUseMentoring() ? mentoringThreads.filter(th => (th.unread_count || 0) > 0) : [];
+    container.style.display = unread.length ? 'block' : 'none';
+    if (unread.length === 0) {
         container.innerHTML = '';
-        container.style.display = 'none';
         return;
     }
-
-    const threads = Array.isArray(mentoringThreads) ? mentoringThreads : [];
-    const unreadThreads = threads.filter(th => (th.unread_count || 0) > 0);
-
-    // Strictly hide when there are no unread messages
-    if (unreadThreads.length === 0) {
-        container.innerHTML = '';
-        container.style.display = 'none';
-        return;
-    }
-
-    container.style.display = 'block';
-
-    const tItem = unreadThreads[0];
-    const isMentor = currentUser && (tItem.mentor === currentUser.uid || tItem.mentor === currentUser.id);
-    const senderName = isMentor
-        ? (tItem.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender'))
-        : (tItem.mentor_name || t('mentoring_partner_mentor', 'Mentor'));
-    const senderRole = isMentor
-        ? t('mentoring_role_seeker', 'Suchender (anonym)')
-        : t('mentoring_role_mentor', 'Dein Mentor');
-    const snippet = tItem.last_message || t('mentoring_start_conversation_desc', 'Neue vertrauliche Nachricht');
-    const timeStr = tItem.updated ? new Date(tItem.updated).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-
+    const thread = unread[0];
+    const { name, role } = threadPartner(thread);
+    const time = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
     container.innerHTML = `
-        <div class="home-mentoring-card home-mentoring-card-unread" onclick="window.openMentoringChatDirect('${escapeHtml(tItem.id)}', 'home')" role="button" tabindex="0">
+        <div class="home-mentoring-card home-mentoring-card-unread" onclick="window.openMentoringChatDirect('${escapeHtml(thread.id)}', 'home')" role="button" tabindex="0">
             <div class="home-mentoring-top-row">
                 <div class="home-mentoring-sender-info">
                     <span class="home-mentoring-pulse-dot"></span>
-                    <span class="home-mentoring-sender-name">${escapeHtml(senderName)}</span>
-                    <span class="home-mentoring-role-pill">${escapeHtml(senderRole)}</span>
+                    <span class="home-mentoring-sender-name">${escapeHtml(name)}</span>
+                    <span class="home-mentoring-role-pill">${escapeHtml(role)}</span>
                 </div>
-                ${timeStr ? `<span class="home-mentoring-time">${escapeHtml(timeStr)}</span>` : ''}
+                ${time ? `<span class="home-mentoring-time">${escapeHtml(time)}</span>` : ''}
             </div>
             <div class="home-mentoring-snippet-box">
-                <div class="home-mentoring-snippet">"${escapeHtml(snippet)}"</div>
+                <div class="home-mentoring-snippet">"${escapeHtml(thread.last_message || t('mentoring_start_conversation_desc', 'Neue vertrauliche Nachricht'))}"</div>
                 <div class="home-mentoring-arrow" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
+                    ${svgIcon('chevronRight', 18, 2.5)}
                 </div>
             </div>
-            ${unreadThreads.length > 1 ? `
-                <div class="home-mentoring-extra-bar">
-                    <span>+${unreadThreads.length - 1} ${t('home_mentoring_more_unread', 'weitere ungelesene Unterhaltungen')}</span>
-                </div>
-            ` : ''}
-        </div>
-    `;
-};
+            ${unread.length > 1 ? `
+            <div class="home-mentoring-extra-bar">
+                <span>+${unread.length - 1} ${t('home_mentoring_more_unread', 'weitere ungelesene Unterhaltungen')}</span>
+            </div>` : ''}
+        </div>`;
+}
 
-window.openMentoringChatDirect = async function(threadId, origin = 'home') {
-    window._chatOrigin = origin;
-    window._openingDirectChat = true;
+async function openMentoringChatDirect(threadId) {
+    openingDirectChat = true;
     currentMentoringSubTab = 'chats';
+    switchTab('mentoring');
+    switchMentoringSubTab('chats');
+    await loadMentoringThreads(true, threadId || null);
+    // Keep the flag long enough for tab transitions and pending loads
+    setTimeout(() => { openingDirectChat = false; }, 400);
+}
 
-    // 1. Switch to mentoring tab so DOM containers are active
-    window.switchTab('mentoring');
+Object.assign(window, {
+    switchMentoringSubTab, openMentorContactModal, submitMentorContact, filterMentoringThreads, autoResizeMentoringInput, openMentoringThread,
+    sendMentoringMessage, toggleMentoringChatMenu, toggleCloseCurrentThread, openMentorApplicationModal, submitMentorApplication,
+    loadMentoringReviewList, setMentorStatus, openMentoringChatDirect,
+    backToMentoringThreadList: closeMentoringChatMobile,
+    handleMentoringChatKey: chatKeyHandler(sendMentoringMessage, autoResizeMentoringInput)
+});
 
-    // 2. Switch subtab to 'chats'
-    window.switchMentoringSubTab('chats');
-
-    // 3. Load threads and open the requested thread
-    if (threadId) {
-        await window.loadMentoringThreads(true, threadId);
-    } else {
-        await window.loadMentoringThreads(true);
-    }
-
-    // Keep direct chat opening flag true long enough for transitions and any pending data loads
-    setTimeout(() => {
-        window._openingDirectChat = false;
-    }, 400);
-};
-
-// ============================================================================
-// Events & Dienstplan Module (CITADEL) - Frontend Logic
-// ============================================================================
+// --- Events & duty roster ---
 let appEvents = [];
-let currentEventsSubTab = 'termine'; // 'termine' | 'events'
-let eventsActiveFilter = 'all'; // 'all' | 'mine' | 'registration' | 'open_duties'
+let currentEventsSubTab = 'termine';
 let eventsSearchQuery = '';
 let currentDetailEvent = null;
-let currentDetailAttendees = null;
 let myDutyRequests = [];
 let eventCandidatesCache = null;
 let eventGroupsCache = null;
-let eventSettings = {
-    allowMemberCreation: true,
-    defaultDuties: ['Bistro-Team', 'Technik', 'Begrüßung', 'Moderation', 'Musik/Lobpreis']
+let showPastEvents = false;
+
+const WEEKDAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const splitDate = dateStr => dateStr.split('-').map(Number);
+
+function isEventPast(ev, todayStr = getTodayStr()) {
+    const compareDate = ev.endDate?.trim() || ev.date?.trim() || '';
+    return !!compareDate && compareDate < todayStr;
+}
+
+function userInGroup(user, groupId) {
+    return (Array.isArray(user?.groups) ? user.groups : []).some(g => {
+        const isObj = typeof g === 'object' && g;
+        return (isObj ? g.id || g.name : String(g)) === groupId || (isObj ? g.name : String(g)) === groupId;
+    });
+}
+
+// A duty is "mine" when it is assigned/confirmed to me or assigned to one of my groups.
+const isMyDuty = d => ((d.assignedUser === currentUid() || d.assignedUser === currentUser?.id) && (d.status === 'confirmed' || d.status === 'assigned'))
+    || (d.status === 'assigned' && d.assignedGroup && userInGroup(currentUser, d.assignedGroup));
+const hasDutyAssignee = d => Boolean(d.assignedUser || d.requestedUser || d.assignedGroup || d.assignedGroupName);
+
+function getEventCardStatusInfo(ev) {
+    const duties = ev.canAccessDutyPlan && Array.isArray(ev.duties) ? ev.duties : null;
+    return {
+        myDuty: duties ? duties.find(isMyDuty) : null,
+        myRequestedDuty: duties ? duties.find(d => (d.requestedUser === currentUid() || d.requestedUser === currentUser?.id) && d.status === 'requested') : null,
+        isRegistered: ev.myRegistration?.status === 'registered',
+        isWaitlist: ev.myRegistration?.status === 'waitlist',
+        openDutiesCount: duties ? duties.filter(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup && !d.requestedUser)).length : 0
+    };
+}
+
+function eventDateParts(dateStr) {
+    if (!dateStr) return { dayNum: '--', weekdayStr: '' };
+    const [y, m, d] = splitDate(dateStr);
+    return { dayNum: String(d), weekdayStr: WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()] || '' };
+}
+
+function formatEventDate(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = splitDate(dateStr);
+    return `${WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()]}, ${d}. ${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+function formatEventDateSpanCompact(startDate, endDate) {
+    if (!startDate) return '--';
+    const months = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sept.', 'Okt.', 'Nov.', 'Dez.'];
+    const [y1, m1, d1] = splitDate(startDate);
+    if (!endDate || endDate === startDate) return `${WEEKDAY_SHORT[new Date(y1, m1 - 1, d1).getDay()]}., ${d1}. ${months[m1 - 1]} ${y1}`;
+    const [y2, m2, d2] = splitDate(endDate);
+    if (y1 === y2 && m1 === m2) return `${d1}. – ${d2}. ${months[m1 - 1]} ${y1}`;
+    if (y1 === y2) return `${d1}. ${months[m1 - 1]} – ${d2}. ${months[m2 - 1]} ${y1}`;
+    return `${d1}.${m1}.${y1} – ${d2}.${m2}.${y2}`;
+}
+
+const eventTimeRange = (ev, withUhr = true) => ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}${withUhr ? ' Uhr' : ''}` : (withUhr ? `ab ${ev.startTime} Uhr` : ev.startTime)) : '';
+const eventImage = ev => {
+    const raw = ev ? (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '') : '';
+    return typeof raw === 'string' ? raw.trim() : '';
 };
+const cardIcon = name => svgIcon(name, 12, name === 'chevronRight' ? 2.5 : 2);
 
-window.switchEventsSubTab = function(tabName) {
-    currentEventsSubTab = (tabName === 'events') ? 'events' : 'termine';
-
-    const btnTermine = document.getElementById('events-tab-btn-termine');
-    const btnEvents = document.getElementById('events-tab-btn-events');
-
-    if (btnTermine) {
-        btnTermine.classList.toggle('is-active', currentEventsSubTab === 'termine');
-        btnTermine.classList.toggle('active', currentEventsSubTab === 'termine');
-    }
-    if (btnEvents) {
-        btnEvents.classList.toggle('is-active', currentEventsSubTab === 'events');
-        btnEvents.classList.toggle('active', currentEventsSubTab === 'events');
-    }
-
-    window.renderEvents();
-};
-
-window.loadEventsData = async function() {
+async function loadEventsData() {
     if (!currentUser) return;
     try {
-        const [eventsRes, settingsRes, requestsRes] = await Promise.all([
-            fetchWithAuth(`${config.apiBaseUrl}/events`),
-            fetchWithAuth(`${config.apiBaseUrl}/events/settings`).catch(() => null),
-            fetchWithAuth(`${config.apiBaseUrl}/events/my-requests`).catch(() => null),
-            loadSystemGroups().catch(() => null)
+        const [eventsRes, requestsRes] = await Promise.all([
+            api('/events'),
+            api('/events/my-requests').catch(() => null),
+            loadSystemGroups()
         ]);
-
-        if (eventsRes && eventsRes.ok) {
-            appEvents = await eventsRes.json();
-        }
-        if (settingsRes && settingsRes.ok) {
-            eventSettings = await settingsRes.json();
-        }
-        if (requestsRes && requestsRes.ok) {
-            myDutyRequests = await requestsRes.json();
-        } else {
-            myDutyRequests = [];
-        }
-
-        window.renderMyDutyRequests();
-        window.renderEvents();
-        if (typeof window.renderHomeDutiesCard === 'function') {
-            window.renderHomeDutiesCard();
-        }
+        if (eventsRes.ok) appEvents = await eventsRes.json();
+        myDutyRequests = requestsRes?.ok ? await requestsRes.json() : [];
+        renderMyDutyRequests();
+        renderEvents();
+        renderHomeDutiesCard();
     } catch (err) {
         console.warn('Failed to load events:', err);
     }
-};
+}
 
-window.renderMyDutyRequests = function() {
-    const banner = document.getElementById('events-my-requests-banner');
-    if (!banner) return;
+function switchEventsSubTab(tabName) {
+    currentEventsSubTab = tabName === 'events' ? 'events' : 'termine';
+    ['termine', 'events'].forEach(key => {
+        const btn = $(`events-tab-btn-${key}`);
+        btn?.classList.toggle('is-active', currentEventsSubTab === key);
+        btn?.classList.toggle('active', currentEventsSubTab === key);
+    });
+    renderEvents();
+}
 
-    if (!Array.isArray(myDutyRequests) || myDutyRequests.length === 0) {
-        banner.style.display = 'none';
-        banner.innerHTML = '';
-        return;
-    }
-
-    banner.style.display = 'block';
-    banner.innerHTML = `
+function dutyRequestBanner(list, onHome) {
+    const stop = onHome ? 'event.stopPropagation(); ' : '';
+    return `
         <div class="events-requests-banner-content">
             <div class="events-requests-banner-header">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="events-requests-bell">📬</span>
-                    <strong style="font-size:0.95rem; color:var(--text);">Offene Dienstanfragen an dich (${myDutyRequests.length})</strong>
+                    <strong style="font-size:0.95rem; color:var(--text);">Offene Dienstanfragen an dich (${list.length})</strong>
                 </div>
                 <span class="events-requests-badge">Rückmeldung erbeten</span>
             </div>
             <div class="events-requests-list">
-                ${myDutyRequests.map(req => {
-                    const timeStr = req.eventStartTime ? ` um ${escapeHtml(req.eventStartTime)} Uhr` : '';
-                    const sectionStr = req.section ? `Bereich: ${escapeHtml(req.section)} • ` : '';
+                ${list.map(req => {
+                    const id = escapeHtml(req.id);
                     return `
-                        <div class="events-request-card" id="duty-request-${req.id}">
-                            <div class="events-request-info">
-                                <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || 'Event')}</div>
-                                <div class="events-request-event-sub">
-                                    <span>${escapeHtml(formatEventDate(req.eventDate))}${timeStr}</span>
-                                </div>
-                                <div class="events-request-role">
-                                    🛠️ <strong>${escapeHtml(req.roleName)}</strong>
-                                    <span style="color:var(--text-secondary); font-size:0.8rem;">(${sectionStr}Angefragt von ${escapeHtml(req.requestedByName || 'Team')})</span>
-                                </div>
+                    <div class="events-request-card" id="${onHome ? 'home-' : ''}duty-request-${id}">
+                        <div class="events-request-info"${onHome ? ` onclick="window.openEventDetailModal('${escapeHtml(req.eventId)}')" role="button" tabindex="0" style="cursor:pointer;" title="Termin-Details anzeigen"` : ''}>
+                            <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || 'Event')}</div>
+                            <div class="events-request-event-sub">
+                                <span>${escapeHtml(formatEventDate(req.eventDate))}${req.eventStartTime ? ` um ${escapeHtml(req.eventStartTime)} Uhr` : ''}</span>
                             </div>
-                            <div class="events-request-actions">
-                                <button type="button" class="btn btn-success btn-small" onclick="window.respondToDutyRequest('${req.id}', 'accept')">
-                                    ✅ Zusagen
-                                </button>
-                                <button type="button" class="btn btn-ghost btn-small text-danger" onclick="window.respondToDutyRequest('${req.id}', 'decline')">
-                                    ❌ Ablehnen
-                                </button>
+                            <div class="events-request-role">
+                                🛠️ <strong>${escapeHtml(req.roleName)}</strong>
+                                <span style="color:var(--text-secondary); font-size:0.8rem;">(${req.section ? `Bereich: ${escapeHtml(req.section)} • ` : ''}Angefragt von ${escapeHtml(req.requestedByName || 'Team')})</span>
                             </div>
                         </div>
-                    `;
+                        <div class="events-request-actions">
+                            <button type="button" class="btn btn-success btn-small" onclick="${stop}window.respondToDutyRequest('${id}', 'accept')">
+                                ✅ Zusagen
+                            </button>
+                            <button type="button" class="btn btn-ghost btn-small text-danger" onclick="${stop}window.respondToDutyRequest('${id}', 'decline')">
+                                ❌ Ablehnen
+                            </button>
+                        </div>
+                    </div>`;
                 }).join('')}
             </div>
-        </div>
-    `;
-};
+        </div>`;
+}
 
-window.renderHomeDutiesCard = function() {
-    const container = document.getElementById('user-duties-home-card');
+function renderMyDutyRequests() {
+    const banner = $('events-my-requests-banner');
+    if (!banner) return;
+    const list = Array.isArray(myDutyRequests) ? myDutyRequests : [];
+    banner.style.display = list.length ? 'block' : 'none';
+    banner.innerHTML = list.length ? dutyRequestBanner(list, false) : '';
+}
+
+// Home screen: open duty requests plus upcoming events where I have a duty
+function renderHomeDutiesCard() {
+    const container = $('user-duties-home-card');
     if (!container) return;
-
-    if (!currentUser) {
-        container.innerHTML = '';
-        container.style.display = 'none';
-        return;
-    }
-
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const currentUid = currentUser.uid || currentUser.id;
-    const userGroups = Array.isArray(currentUser.groups) ? currentUser.groups : [];
-    const isUserInGroup = (groupId) => userGroups.some(g => {
-        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-        const gname = typeof g === 'object' && g ? g.name : String(g);
-        return gid === groupId || gname === groupId;
-    });
-
-    // 1. Filter open duty requests for current user (ignore past events)
-    const requests = Array.isArray(myDutyRequests) ? myDutyRequests.filter(req => {
-        if (!req) return false;
-        if (req.eventDate && req.eventDate < todayStr) return false;
-        return true;
-    }) : [];
-
-    // 2. Find upcoming events where user has an assigned duty
-    const dutyEvents = [];
-    const seenEventIds = new Set();
-
-    (appEvents || []).forEach(ev => {
-        if (!ev || ev.status === 'cancelled') return;
-        if (isEventPast(ev, todayStr)) return;
-        if (!Array.isArray(ev.duties) || ev.duties.length === 0) return;
-
-        const hasDuty = ev.duties.some(d => {
-            if (!d) return false;
-            const isUserAssigned = (d.assignedUser === currentUid || d.assignedUser === currentUser.id) &&
-                (d.status === 'confirmed' || d.status === 'assigned');
-            if (isUserAssigned) return true;
-
-            if (d.status === 'assigned' && d.assignedGroup) {
-                return isUserInGroup(d.assignedGroup);
-            }
-            return false;
-        });
-
-        if (hasDuty && !seenEventIds.has(ev.id)) {
-            seenEventIds.add(ev.id);
-            dutyEvents.push(ev);
-        }
-    });
-
-    // Sort chronologically (date ascending, startTime ascending)
-    dutyEvents.sort((a, b) => {
-        const dComp = (a.date || '').localeCompare(b.date || '');
-        if (dComp !== 0) return dComp;
-        return (a.startTime || '').localeCompare(b.startTime || '');
-    });
-
-    // If neither requests nor duty events exist, keep home area hidden
-    if (requests.length === 0 && dutyEvents.length === 0) {
-        container.innerHTML = '';
-        container.style.display = 'none';
-        return;
-    }
-
-    container.style.display = 'block';
-
-    let html = '';
-
-    // A) Open Duty Requests Banner (if any)
-    if (requests.length > 0) {
-        html += `
-            <div class="events-requests-banner" style="margin-bottom: 20px;">
-                <div class="events-requests-banner-content">
-                    <div class="events-requests-banner-header">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span class="events-requests-bell">📬</span>
-                            <strong style="font-size:0.95rem; color:var(--text);">Offene Dienstanfragen an dich (${requests.length})</strong>
-                        </div>
-                        <span class="events-requests-badge">Rückmeldung erbeten</span>
-                    </div>
-                    <div class="events-requests-list">
-                        ${requests.map(req => {
-                            const timeStr = req.eventStartTime ? ` um ${escapeHtml(req.eventStartTime)} Uhr` : '';
-                            const sectionStr = req.section ? `Bereich: ${escapeHtml(req.section)} • ` : '';
-                            return `
-                                <div class="events-request-card" id="home-duty-request-${escapeHtml(req.id)}">
-                                    <div class="events-request-info" onclick="window.openEventDetailModal('${escapeHtml(req.eventId)}')" role="button" tabindex="0" style="cursor:pointer;" title="Termin-Details anzeigen">
-                                        <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || 'Event')}</div>
-                                        <div class="events-request-event-sub">
-                                            <span>${escapeHtml(formatEventDate(req.eventDate))}${timeStr}</span>
-                                        </div>
-                                        <div class="events-request-role">
-                                            🛠️ <strong>${escapeHtml(req.roleName)}</strong>
-                                            <span style="color:var(--text-secondary); font-size:0.8rem;">(${sectionStr}Angefragt von ${escapeHtml(req.requestedByName || 'Team')})</span>
-                                        </div>
-                                    </div>
-                                    <div class="events-request-actions">
-                                        <button type="button" class="btn btn-success btn-small" onclick="event.stopPropagation(); window.respondToDutyRequest('${escapeHtml(req.id)}', 'accept')">
-                                            ✅ Zusagen
-                                        </button>
-                                        <button type="button" class="btn btn-ghost btn-small text-danger" onclick="event.stopPropagation(); window.respondToDutyRequest('${escapeHtml(req.id)}', 'decline')">
-                                            ❌ Ablehnen
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    // B) Deine Dienste - Freistehender Titel & Eventkarten 1:1 wie unter der Terminliste
-    if (dutyEvents.length > 0) {
-        html += `
+    const todayStr = getTodayStr();
+    const openRequests = currentUser && Array.isArray(myDutyRequests) ? myDutyRequests.filter(req => req && !(req.eventDate && req.eventDate < todayStr)) : [];
+    const dutyEvents = currentUser ? appEvents.filter(ev => ev && ev.status !== 'cancelled' && !isEventPast(ev, todayStr) && Array.isArray(ev.duties) && ev.duties.some(d => d && isMyDuty(d))) : [];
+    dutyEvents.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
+    container.style.display = openRequests.length || dutyEvents.length ? 'block' : 'none';
+    container.innerHTML = (openRequests.length ? `<div class="events-requests-banner" style="margin-bottom: 20px;">${dutyRequestBanner(openRequests, true)}</div>` : '')
+        + (dutyEvents.length ? `
             <div class="home-duties-freestanding-wrap" style="margin-top: 16px;">
                 <h2 class="home-duties-freestanding-title">Deine Dienste</h2>
                 <div class="events-feed-list">
                     ${dutyEvents.map(ev => renderEventCard(ev, 'home-duty-card-')).join('')}
                 </div>
-            </div>
-        `;
-    }
+            </div>` : '');
+}
 
-    container.innerHTML = html;
-};
+function refreshDetailEvent(openDuties) {
+    if (!currentDetailEvent) return;
+    openEventDetailModal(currentDetailEvent.id);
+    const details = $('detail-modal-duties-details');
+    if (openDuties && details) details.open = true;
+}
 
-window.respondToDutyRequest = async function(dutyId, action) {
+// Runs an event API call, reports the outcome as toast, reloads events and refreshes the open detail modal.
+async function eventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = 'Verbindungsfehler', before, after = () => refreshDetailEvent(true) }) {
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/respond`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action })
-        });
-        if (res.ok) {
-            if (action === 'accept') {
-                showToast('Dienst zugesagt! Du bist jetzt für dieses Event eingeteilt.', 'success');
-            } else {
-                showToast('Dienstanfrage abgelehnt.', 'info');
-            }
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Antworten auf die Dienstanfrage', 'error');
-        }
+        const res = await api(path, method, body);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast((useServerError && data.error) || error, 'error');
+        await before?.();
+        showToast(typeof success === 'function' ? success(data) : success, typeof successType === 'function' ? successType(data) : successType);
+        await loadEventsData();
+        await after();
     } catch {
-        showToast('Verbindungsfehler', 'error');
+        showToast(networkError, 'error');
     }
-};
+}
 
-window.loadEventCandidates = async function(force = false) {
-    if (eventCandidatesCache && !force) return eventCandidatesCache;
+const respondToDutyRequest = (dutyId, action) => eventAction(`/events/duties/${dutyId}/respond`, 'POST', { action }, {
+    success: action === 'accept' ? 'Dienst zugesagt! Du bist jetzt für dieses Event eingeteilt.' : 'Dienstanfrage abgelehnt.',
+    successType: action === 'accept' ? 'success' : 'info',
+    error: 'Fehler beim Antworten auf die Dienstanfrage',
+    after: () => refreshDetailEvent(false)
+});
+
+async function loadEventCandidates() {
+    if (eventCandidatesCache) return eventCandidatesCache;
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/candidates`);
+        const res = await api('/events/candidates');
         if (res.ok) {
             const data = await res.json();
-            if (Array.isArray(data)) {
-                eventCandidatesCache = data;
-                eventGroupsCache = [];
-            } else {
-                eventCandidatesCache = data.candidates || [];
-                eventGroupsCache = data.groups || [];
-            }
+            eventCandidatesCache = Array.isArray(data) ? data : data.candidates || [];
+            eventGroupsCache = Array.isArray(data) ? [] : data.groups || [];
             return eventCandidatesCache;
         }
     } catch (err) {
         console.warn('Failed to fetch event candidates:', err);
     }
     return [];
-};
-
-window.setEventsFilter = function(filter, btnEl) {
-    eventsActiveFilter = filter;
-    document.querySelectorAll('.events-filter-pill').forEach(el => el.classList.remove('active'));
-    if (btnEl) btnEl.classList.add('active');
-    window.renderEvents();
-};
-
-window.handleEventsSearchInput = function(val) {
-    eventsSearchQuery = (val || '').toLowerCase().trim();
-    const clearBtn = document.getElementById('events-search-clear');
-    if (clearBtn) clearBtn.style.display = eventsSearchQuery ? 'block' : 'none';
-    window.renderEvents();
-};
-
-window.clearEventsSearch = function() {
-    eventsSearchQuery = '';
-    const input = document.getElementById('events-search-input');
-    if (input) input.value = '';
-    const clearBtn = document.getElementById('events-search-clear');
-    if (clearBtn) clearBtn.style.display = 'none';
-    window.renderEvents();
-};
-
-function isEventPast(ev, todayStr) {
-    if (!todayStr) {
-        const today = new Date();
-        todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    }
-    const cmpDate = (ev.endDate && ev.endDate.trim()) ? ev.endDate.trim() : (ev.date ? ev.date.trim() : '');
-    if (!cmpDate) return false;
-    return cmpDate < todayStr;
 }
 
-let showPastEventsInEventsTab = false;
-window.toggleShowPastEvents = function() {
-    showPastEventsInEventsTab = !showPastEventsInEventsTab;
-    window.renderEvents();
-};
+function setEventsSearch(value) {
+    eventsSearchQuery = (value || '').toLowerCase().trim();
+    show('events-search-clear', !!eventsSearchQuery, 'block');
+    renderEvents();
+}
 
-function getFilteredEvents() {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
+function getFilteredEvents(todayStr) {
+    const matches = text => (text || '').toLowerCase().includes(eventsSearchQuery);
     return appEvents.filter(ev => {
-        // Sub-Tab Filter: Termine vs Events
+        const duties = Array.isArray(ev.duties) ? ev.duties : [];
         if (currentEventsSubTab === 'termine') {
-            // Expired events are completely removed from Termine
-            if (isEventPast(ev, todayStr)) {
-                return false;
-            }
-
-            const isRegistered = ev.myRegistration && (ev.myRegistration.status === 'registered' || ev.myRegistration.status === 'waitlist');
-            const hasDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.assignedUser === currentUser?.id || d.requestedUser === currentUser?.id);
-
-            // Events requiring registration MUST only appear under Termine if the user is registered or assigned a duty
-            if (ev.requiresRegistration) {
-                if (!isRegistered && !hasDuty) {
-                    return false;
-                }
-            } else {
-                // If no registration is required: routine appointments and open community events are shown.
-                // Pinned Großevents belong on the Events tab unless the user has an assigned duty
-                if (ev.isPinned && ev.eventType !== 'termin' && !hasDuty) {
-                    return false;
-                }
-            }
-        } else if (currentEventsSubTab === 'events') {
-            // Pure official routine appointments stay in Termine
-            if (ev.eventType === 'termin' && !ev.isPinned) {
-                return false;
-            }
+            if (isEventPast(ev, todayStr)) return false;
+            const isRegistered = ev.myRegistration?.status === 'registered' || ev.myRegistration?.status === 'waitlist';
+            const hasDuty = duties.some(d => d.assignedUser === currentUser?.id || d.requestedUser === currentUser?.id);
+            // Registration events only show up in "Termine" for participants; pinned highlights live on the events tab
+            if (ev.requiresRegistration ? !isRegistered && !hasDuty : ev.isPinned && ev.eventType !== 'termin' && !hasDuty) return false;
+        } else if (ev.eventType === 'termin' && !ev.isPinned) {
+            return false;
         }
-
-        // Search filter
-        if (eventsSearchQuery) {
-            const matchTitle = (ev.title || '').toLowerCase().includes(eventsSearchQuery);
-            const matchLoc = (ev.location || '').toLowerCase().includes(eventsSearchQuery);
-            const matchDesc = (ev.description || '').toLowerCase().includes(eventsSearchQuery);
-            const matchDuties = Array.isArray(ev.duties) && ev.duties.some(d =>
-                (d.roleName || '').toLowerCase().includes(eventsSearchQuery) ||
-                (d.assignedGroupName || '').toLowerCase().includes(eventsSearchQuery) ||
-                (d.assignedUserName || '').toLowerCase().includes(eventsSearchQuery)
-            );
-            if (!matchTitle && !matchLoc && !matchDesc && !matchDuties) return false;
-        }
-
-        // Active pill filter
-        if (eventsActiveFilter === 'mine') {
-            if (!isMine) return false;
-        } else if (eventsActiveFilter === 'registration') {
-            if (!ev.requiresRegistration) return false;
-        } else if (eventsActiveFilter === 'open_duties') {
-            const hasOpenDuty = Array.isArray(ev.duties) && ev.duties.some(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup));
-            if (!hasOpenDuty) return false;
-        }
-
-        return true;
+        return !eventsSearchQuery || matches(ev.title) || matches(ev.location) || matches(ev.description)
+            || duties.some(d => matches(d.roleName) || matches(d.assignedGroupName) || matches(d.assignedUserName));
     });
 }
 
-window.renderEvents = function() {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-    const container = document.getElementById('events-list-container');
+function renderEvents() {
+    const container = $('events-list-container');
     if (!container) return;
+    const todayStr = getTodayStr();
+    const isEventsTab = currentEventsSubTab === 'events';
+    const filtered = getFilteredEvents(todayStr);
+    const upcoming = isEventsTab ? filtered.filter(ev => !isEventPast(ev, todayStr)) : filtered;
+    const past = isEventsTab ? filtered.filter(ev => isEventPast(ev, todayStr)) : [];
+    const listClass = isEventsTab ? 'events-cards-grid' : 'events-feed-list';
 
-    const filtered = getFilteredEvents();
-    const isEventsTab = (currentEventsSubTab === 'events');
-
-    let upcomingList = filtered;
-    let pastList = [];
-
-    if (isEventsTab) {
-        upcomingList = filtered.filter(ev => !isEventPast(ev, todayStr));
-        pastList = filtered.filter(ev => isEventPast(ev, todayStr));
-    }
-
-    let pastSectionHtml = '';
-    if (isEventsTab && pastList.length > 0) {
-        pastList.sort((a, b) => {
-            const dComp = (b.endDate || b.date || '').localeCompare(a.endDate || a.date || '');
-            if (dComp !== 0) return dComp;
-            return (b.startTime || '').localeCompare(a.startTime || '');
-        });
-
-        pastSectionHtml = `
-            <div class="events-past-toggle-wrap">
-                <button type="button" class="events-past-toggle-btn" onclick="window.toggleShowPastEvents()">
-                    <span style="font-size: 0.72rem;">${showPastEventsInEventsTab ? '▲' : '▼'}</span>
-                    <span>Abgelaufene Events ${showPastEventsInEventsTab ? 'verbergen' : 'anzeigen'} (${pastList.length})</span>
-                </button>
-                ${showPastEventsInEventsTab ? `
-                    <div style="width: 100%; margin-top: 22px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
-                            <span style="font-size: 0.84rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
-                                Abgelaufene Events (${pastList.length})
-                            </span>
-                            <span style="font-size: 0.76rem; color: var(--text-secondary);">Versteckt bis zur manuellen Löschung</span>
-                        </div>
-                        <div class="events-cards-grid">
-                            ${pastList.map(ev => renderChurchtoolsEventCard(ev, true)).join('')}
-                        </div>
+    past.sort((a, b) => (b.endDate || b.date || '').localeCompare(a.endDate || a.date || '') || (b.startTime || '').localeCompare(a.startTime || ''));
+    const pastSection = past.length === 0 ? '' : `
+        <div class="events-past-toggle-wrap">
+            <button type="button" class="events-past-toggle-btn" onclick="window.toggleShowPastEvents()">
+                <span style="font-size: 0.72rem;">${showPastEvents ? '▲' : '▼'}</span>
+                <span>Abgelaufene Events ${showPastEvents ? 'verbergen' : 'anzeigen'} (${past.length})</span>
+            </button>
+            ${showPastEvents ? `
+                <div style="width: 100%; margin-top: 22px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
+                        <span style="font-size: 0.84rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+                            Abgelaufene Events (${past.length})
+                        </span>
+                        <span style="font-size: 0.76rem; color: var(--text-secondary);">Versteckt bis zur manuellen Löschung</span>
                     </div>
-                ` : ''}
-            </div>
-        `;
-    }
+                    <div class="events-cards-grid">
+                        ${past.map(ev => renderChurchtoolsEventCard(ev, true)).join('')}
+                    </div>
+                </div>` : ''}
+        </div>`;
 
-    if (upcomingList.length === 0) {
-        const emptyTitle = isEventsTab ? 'Keine anstehenden Events gefunden' : 'Keine passenden Termine gefunden';
-        const createBtnText = isEventsTab ? '+ Neues Event' : '+ Neuer Termin';
-
+    if (upcoming.length === 0) {
         container.innerHTML = `
             <div class="card" style="padding: 48px 20px; text-align: center; color: var(--text-secondary); border-radius: 16px;">
                 <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
-                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${emptyTitle}</div>
+                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? 'Keine anstehenden Events gefunden' : 'Keine passenden Termine gefunden'}</div>
                 <div style="font-size: 0.88rem; margin-bottom: 14px;">Versuche die Filter zurückzusetzen oder erstelle einen neuen Eintrag.</div>
                 <div>
-                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">${createBtnText}</button>
+                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">${isEventsTab ? '+ Neues Event' : '+ Neuer Termin'}</button>
                 </div>
             </div>
-            ${pastSectionHtml}
-        `;
+            ${pastSection}`;
         return;
     }
 
-    // Sort upcoming events: Highlights / Pinned events first, then chronologically (date ascending, startTime ascending)
-    upcomingList.sort((a, b) => {
-        const aPinned = Boolean(a.isPinned);
-        const bPinned = Boolean(b.isPinned);
-        if (aPinned !== bPinned) return bPinned ? 1 : -1;
-        const dComp = (a.date || '').localeCompare(b.date || '');
-        if (dComp !== 0) return dComp;
-        return (a.startTime || '').localeCompare(b.startTime || '');
-    });
-
-    const monthNames = [
-        'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
-    ];
-
-    const listClass = isEventsTab ? 'events-cards-grid' : 'events-feed-list';
-
-    let html = '';
-
-    if (isEventsTab) {
-        const pinnedList = upcomingList.filter(ev => ev.isPinned);
-        const nonPinnedList = upcomingList.filter(ev => !ev.isPinned);
-
-        if (pinnedList.length > 0) {
-            html += `
-                <div class="events-month-group events-highlights-group">
-                    <div class="events-month-header">
-                        <span>Highlights</span>
-                        <span class="events-month-count">(${pinnedList.length})</span>
-                    </div>
-                    <div class="${listClass}">
-                        ${pinnedList.map(ev => renderChurchtoolsEventCard(ev, false)).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Group remaining non-pinned events by Month and Year
-        const groups = new Map();
-        nonPinnedList.forEach(ev => {
-            const monthKey = ev.date ? ev.date.substring(0, 7) : 'Ohne Datum';
-            if (!groups.has(monthKey)) groups.set(monthKey, []);
-            groups.get(monthKey).push(ev);
-        });
-
-        groups.forEach((eventsInMonth, key) => {
-            let groupTitle = key;
-            if (key.includes('-')) {
-                const [y, m] = key.split('-').map(Number);
-                groupTitle = `${monthNames[m - 1]} ${y}`;
-            }
-
-            html += `
-                <div class="events-month-group">
-                    <div class="events-month-header">
-                        <span>${escapeHtml(groupTitle)}</span>
-                        <span class="events-month-count">(${eventsInMonth.length})</span>
-                    </div>
-                    <div class="${listClass}">
-                        ${eventsInMonth.map(ev => renderChurchtoolsEventCard(ev, false)).join('')}
-                    </div>
-                </div>
-            `;
-        });
-    } else {
-        // Group all events chronologically by Month and Year for Termine
-        const groups = new Map();
-        upcomingList.forEach(ev => {
-            const monthKey = ev.date ? ev.date.substring(0, 7) : 'Ohne Datum';
-            if (!groups.has(monthKey)) groups.set(monthKey, []);
-            groups.get(monthKey).push(ev);
-        });
-
-        groups.forEach((eventsInMonth, key) => {
-            let groupTitle = key;
-            if (key.includes('-')) {
-                const [y, m] = key.split('-').map(Number);
-                groupTitle = `${monthNames[m - 1]} ${y}`;
-            }
-
-            html += `
-                <div class="events-month-group">
-                    <div class="events-month-header">
-                        <span>${escapeHtml(groupTitle)}</span>
-                        <span class="events-month-count">(${eventsInMonth.length})</span>
-                    </div>
-                    <div class="${listClass}">
-                        ${eventsInMonth.map(ev => renderEventCard(ev)).join('')}
-                    </div>
-                </div>
-            `;
-        });
-    }
-
-    html += pastSectionHtml;
-    container.innerHTML = html;
-};
-
-function parseEventDateComponents(dateStr) {
-    if (!dateStr) return { monthStr: '---', dayNum: '--', weekdayStr: '' };
-    try {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const dt = new Date(y, m - 1, d);
-        const shortMonths = ['JAN', 'FEB', 'MÄR', 'APR', 'MAI', 'JUN', 'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DEZ'];
-        const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-        return {
-            monthStr: shortMonths[m - 1] || '',
-            dayNum: String(d),
-            weekdayStr: dayNames[dt.getDay()] || ''
-        };
-    } catch {
-        return { monthStr: '---', dayNum: '--', weekdayStr: '' };
-    }
+    // Pinned highlights first, then chronologically
+    upcoming.sort((a, b) => Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned)) || (a.date || '').localeCompare(b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
+    const group = (title, items, render, extraClass = '') => `
+        <div class="events-month-group${extraClass}">
+            <div class="events-month-header">
+                <span>${title}</span>
+                <span class="events-month-count">(${items.length})</span>
+            </div>
+            <div class="${listClass}">
+                ${items.map(render).join('')}
+            </div>
+        </div>`;
+    const byMonth = (list, render) => [...groupBy(list, ev => (ev.date ? ev.date.substring(0, 7) : 'Ohne Datum'))].map(([key, items]) => {
+        const [y, m] = key.split('-').map(Number);
+        return group(escapeHtml(key.includes('-') ? `${MONTH_NAMES[m - 1]} ${y}` : key), items, render);
+    }).join('');
+    const ctCard = ev => renderChurchtoolsEventCard(ev, false);
+    const pinned = upcoming.filter(ev => ev.isPinned);
+    container.innerHTML = (isEventsTab
+        ? (pinned.length ? group('Highlights', pinned, ctCard, ' events-highlights-group') : '') + byMonth(upcoming.filter(ev => !ev.isPinned), ctCard)
+        : byMonth(upcoming, ev => renderEventCard(ev))) + pastSection;
 }
 
-function formatEventDate(dateStr) {
-    if (!dateStr) return '';
-    try {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const dt = new Date(y, m - 1, d);
-        const dayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-        return `${dayNames[dt.getDay()]}, ${d}. ${monthNames[m - 1]} ${y}`;
-    } catch {}
-    return dateStr;
-}
+const statusBadge = (cls, content, title = '') => `<span class="event-card-status ${cls}"${title ? ` title="${title}"` : ''}>${content}</span>`;
 
-function formatEventDateSpan(startDateStr, endDateStr) {
-    if (!startDateStr) return '';
-    if (!endDateStr || endDateStr === startDateStr) {
-        return formatEventDate(startDateStr);
-    }
-    try {
-        const [y1, m1, d1] = startDateStr.split('-').map(Number);
-        const [y2, m2, d2] = endDateStr.split('-').map(Number);
-        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-        if (y1 === y2 && m1 === m2) {
-            return `${d1}. – ${d2}. ${monthNames[m1 - 1]} ${y1}`;
-        } else if (y1 === y2) {
-            return `${d1}. ${monthNames[m1 - 1]} – ${d2}. ${monthNames[m2 - 1]} ${y1}`;
-        } else {
-            return `${d1}. ${monthNames[m1 - 1]} ${y1} – ${d2}. ${monthNames[m2 - 1]} ${y2}`;
-        }
-    } catch {
-        return `${startDateStr} – ${endDateStr}`;
-    }
-}
-
-function formatEventDateSpanCompact(startDateStr, endDateStr) {
-    if (!startDateStr) return '--';
-    const shortDays = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
-    const shortMonths = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sept.', 'Okt.', 'Nov.', 'Dez.'];
-    if (!endDateStr || endDateStr === startDateStr) {
-        try {
-            const [y, m, d] = startDateStr.split('-').map(Number);
-            const dt = new Date(y, m - 1, d);
-            return `${shortDays[dt.getDay()]}, ${d}. ${shortMonths[m - 1]} ${y}`;
-        } catch {
-            return startDateStr;
-        }
-    }
-    try {
-        const [y1, m1, d1] = startDateStr.split('-').map(Number);
-        const [y2, m2, d2] = endDateStr.split('-').map(Number);
-        if (y1 === y2 && m1 === m2) {
-            return `${d1}. – ${d2}. ${shortMonths[m1 - 1]} ${y1}`;
-        } else if (y1 === y2) {
-            return `${d1}. ${shortMonths[m1 - 1]} – ${d2}. ${shortMonths[m2 - 1]} ${y1}`;
-        } else {
-            return `${d1}.${m1}.${y1} – ${d2}.${m2}.${y2}`;
-        }
-    } catch {
-        return `${startDateStr} – ${endDateStr}`;
-    }
-}
-
-
-
-window.renderChurchtoolsEventCard = function renderChurchtoolsEventCard(ev, forcePast = false, idPrefix = 'event-card-') {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const isPast = forcePast || isEventPast(ev, todayStr);
+// Large cover card used on the events tab
+function renderChurchtoolsEventCard(ev, forcePast = false) {
+    const isPast = forcePast || isEventPast(ev);
     const isPinned = Boolean(ev.isPinned);
-
-    const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
+    const { dayNum, weekdayStr } = eventDateParts(ev.date);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
-    const timeDisplay = (!isMultiDay && ev.startTime) ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : '';
-    const dateSpan = isMultiDay ? `Bis ${formatEventDate(ev.endDate)}` : '';
-
-    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
-
-    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.assignedUser === currentUser?.id) : null;
-    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d => d.requestedUser === currentUser?.id && d.status === 'requested') : null;
-
-    let floatingBadges = '';
-    floatingBadges += `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`;
-
-    if (isPast) {
-        floatingBadges += `<span class="event-card-status status-past">⌛ Vorbei</span>`;
-    } else if (myDuty) {
-        floatingBadges += `
-            <span class="event-card-status status-duty">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <span>${escapeHtml(myDuty.roleName || 'Dienst')}</span>
-            </span>
-        `;
-    } else if (myRequestedDuty) {
-        floatingBadges += `
-            <span class="event-card-status status-requested">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-                <span>Anfrage offen</span>
-            </span>
-        `;
-    } else if (isWaitlist) {
-        floatingBadges += `
-            <span class="event-card-status status-waitlist">
-                <span>Warteliste</span>
-            </span>
-        `;
-    } else if (ev.requiresRegistration && ev.isFull && !isRegistered) {
-        floatingBadges += `
-            <span class="event-card-status status-full">
-                <span>Ausgebucht</span>
-            </span>
-        `;
-    }
-
-    const dateBadgeClass = isPinned ? 'is-pinned-date' : 'is-event-date';
-    const dateBadgeHtml = `
-        <div class="ct-event-card-date-badge ${dateBadgeClass}">
-            <span class="ct-event-card-date-weekday">${escapeHtml(weekdayStr || '')}</span>
-            <span class="ct-event-card-date-day">${escapeHtml(dayNum || '')}</span>
-        </div>
-    `;
-
-    let coverHtml = '';
-    if (ev.imageUrl) {
-        coverHtml = `
-            <div class="ct-event-card-cover-wrap">
-                <img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">
-                ${dateBadgeHtml}
-                <div class="ct-event-card-badges-floating">${floatingBadges}</div>
-            </div>
-        `;
-    } else {
-        coverHtml = `
-            <div class="ct-event-card-cover-wrap">
-                <div class="ct-event-card-fallback-cover">
-                    <div class="ct-fallback-icon-wrap">
-                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    </div>
-                </div>
-                ${dateBadgeHtml}
-                <div class="ct-event-card-badges-floating">${floatingBadges}</div>
-            </div>
-        `;
-    }
-
-    let footerBadges = '';
-    if (ev.requiresRegistration) {
-        const regCount = ev.registeredCount || 0;
-        const max = ev.maxParticipants || 0;
-        if (max > 0) {
-            const pct = Math.min(100, Math.round((regCount / max) * 100));
-            footerBadges = `
-                <div class="ct-capacity-wrap" title="${regCount} von ${max} Plätzen belegt">
-                    <span class="ct-capacity-text">${regCount}/${max} Plätze</span>
-                    <div class="ct-capacity-track"><div class="ct-capacity-bar" style="width:${pct}%;"></div></div>
-                </div>
-            `;
-        } else {
-            footerBadges = `<span class="ct-footer-pill">${regCount} angemeldet</span>`;
-        }
-    } else {
-        footerBadges = `<span class="ct-footer-pill-muted">Ohne Anmeldung</span>`;
-    }
-
-    const cardClass = `churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}`;
-
+    const timeDisplay = !isMultiDay ? eventTimeRange(ev) : '';
+    const { myDuty, myRequestedDuty, isWaitlist } = getEventCardStatusInfo(ev);
+    const status = isPast ? statusBadge('status-past', '⌛ Vorbei')
+        : myDuty ? statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(myDuty.roleName || 'Dienst')}</span>`)
+        : myRequestedDuty ? statusBadge('status-requested', `${cardIcon('clock')}<span>Anfrage offen</span>`)
+        : isWaitlist ? statusBadge('status-waitlist', '<span>Warteliste</span>')
+        : ev.requiresRegistration && ev.isFull && !ev.myRegistration ? statusBadge('status-full', '<span>Ausgebucht</span>') : '';
+    const regCount = ev.registeredCount || 0;
+    const max = ev.maxParticipants || 0;
+    const footerBadges = !ev.requiresRegistration ? '<span class="ct-footer-pill-muted">Ohne Anmeldung</span>'
+        : max > 0 ? `
+            <div class="ct-capacity-wrap" title="${regCount} von ${max} Plätzen belegt">
+                <span class="ct-capacity-text">${regCount}/${max} Plätze</span>
+                <div class="ct-capacity-track"><div class="ct-capacity-bar" style="width:${Math.min(100, Math.round((regCount / max) * 100))}%;"></div></div>
+            </div>` : `<span class="ct-footer-pill">${regCount} angemeldet</span>`;
+    const metaRow = (icon, text, extra = '') => `<div class="ct-event-card-meta-row${extra}">${cardIcon(icon)}<span>${escapeHtml(text)}</span></div>`;
     return `
-        <div class="${cardClass}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
-            ${coverHtml}
+        <div class="churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}" id="event-card-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
+            <div class="ct-event-card-cover-wrap">
+                ${ev.imageUrl
+                    ? `<img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">`
+                    : `<div class="ct-event-card-fallback-cover"><div class="ct-fallback-icon-wrap">${cardIcon('calendar')}</div></div>`}
+                <div class="ct-event-card-date-badge ${isPinned ? 'is-pinned-date' : 'is-event-date'}">
+                    <span class="ct-event-card-date-weekday">${escapeHtml(weekdayStr)}</span>
+                    <span class="ct-event-card-date-day">${escapeHtml(dayNum)}</span>
+                </div>
+                <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>${status}</div>
+            </div>
             <div class="ct-event-card-body">
                 <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="ct-event-card-meta">
-                    ${isMultiDay ? `
-                        <div class="ct-event-card-meta-row multiday-row">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            <span>${escapeHtml(dateSpan)}</span>
-                        </div>
-                    ` : ''}
-                    ${timeDisplay ? `
-                        <div class="ct-event-card-meta-row">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                            <span>${escapeHtml(timeDisplay)}</span>
-                        </div>
-                    ` : ''}
-                    ${ev.location ? `
-                        <div class="ct-event-card-meta-row">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                            <span>${escapeHtml(ev.location)}</span>
-                        </div>
-                    ` : ''}
+                    ${isMultiDay ? metaRow('calendar', `Bis ${formatEventDate(ev.endDate)}`, ' multiday-row') : ''}
+                    ${timeDisplay ? metaRow('clock', timeDisplay) : ''}
+                    ${ev.location ? metaRow('location', ev.location) : ''}
                 </div>
                 <div class="ct-event-card-footer">
                     <div>${footerBadges}</div>
-                    <div class="ct-details-btn">
-                        <span>Details</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    </div>
+                    <div class="ct-details-btn"><span>Details</span>${cardIcon('chevronRight')}</div>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
 }
 
-window.renderEventCard = function renderEventCard(ev, idPrefix = 'event-card-') {
-    const { monthStr, dayNum, weekdayStr } = parseEventDateComponents(ev.date);
-    const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}` : ev.startTime) : '';
-
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+// Compact list card used for appointments and on the home screen
+function renderEventCard(ev, idPrefix = 'event-card-') {
+    const { dayNum, weekdayStr } = eventDateParts(ev.date);
+    const timeDisplay = eventTimeRange(ev, false);
+    const todayStr = getTodayStr();
     const isToday = ev.date === todayStr;
     const isPast = ev.date && ev.date < todayStr;
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
-
-    const isEvent = ev.eventType ? (ev.eventType === 'event') : !ev.isOfficialTermin;
+    const isEvent = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
     const isPinned = isEvent && Boolean(ev.isPinned);
-
-    const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-    const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
-
-    const currentUid = currentUser?.uid || currentUser?.id;
-    const userGroups = Array.isArray(currentUser?.groups) ? currentUser.groups : [];
-    const isUserInGroup = (groupId) => userGroups.some(g => {
-        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-        const gname = typeof g === 'object' && g ? g.name : String(g);
-        return gid === groupId || gname === groupId;
-    });
-
-    const myDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
-        ((d.assignedUser === currentUid || d.assignedUser === currentUser?.id) && (d.status === 'confirmed' || d.status === 'assigned')) ||
-        (d.status === 'assigned' && d.assignedGroup && isUserInGroup(d.assignedGroup))
-    ) : null;
-    const myRequestedDuty = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.find(d =>
-        (d.requestedUser === currentUid || d.requestedUser === currentUser?.id) && d.status === 'requested'
-    ) : null;
-    const openDutiesCount = (ev.canAccessDutyPlan && Array.isArray(ev.duties)) ? ev.duties.filter(d => d.status === 'open' || (!d.assignedUser && !d.assignedGroup && !d.requestedUser)).length : 0;
-
-    let cardClass = 'event-card';
-    if (isEvent) {
-        cardClass += isPinned ? ' is-event is-pinned' : ' is-event';
-    } else {
-        cardClass += ' is-termin';
-    }
-    if (isPast) cardClass += ' is-past';
-    if (isToday) cardClass += ' is-today';
-
-    const dateBoxClass = isEvent ? 'is-event-date' : 'is-termin-date';
-
-    // Single prioritized status indicator on the right side
-    let statusHtml = '';
+    const { myDuty, myRequestedDuty, isRegistered, isWaitlist, openDutiesCount } = getEventCardStatusInfo(ev);
+    let status = '';
     if (myDuty) {
-        const dutyLabel = myDuty.assignedGroup && isUserInGroup(myDuty.assignedGroup) && myDuty.assignedUser !== currentUid && myDuty.assignedUser !== currentUser?.id
-            ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || 'Dienst')
-            : (myDuty.roleName || 'Dienst');
-        statusHtml = `
-            <span class="event-card-status status-duty" title="Eingeteilter Dienst">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <span>${escapeHtml(dutyLabel)}</span>
-            </span>
-        `;
+        const viaGroup = myDuty.assignedGroup && userInGroup(currentUser, myDuty.assignedGroup) && !isCurrentUser(myDuty.assignedUser);
+        const label = viaGroup ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || 'Dienst') : (myDuty.roleName || 'Dienst');
+        status = statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(label)}</span>`, 'Eingeteilter Dienst');
     } else if (myRequestedDuty) {
-        statusHtml = `
-            <span class="event-card-status status-requested" title="Dienstanfrage offen">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-                <span>Anfrage offen</span>
-            </span>
-        `;
+        status = statusBadge('status-requested', `${cardIcon('clock')}<span>Anfrage offen</span>`, 'Dienstanfrage offen');
     } else if (isWaitlist) {
-        statusHtml = `
-            <span class="event-card-status status-waitlist" title="Auf der Warteliste">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <span>Warteliste</span>
-            </span>
-        `;
+        status = statusBadge('status-waitlist', `${cardIcon('alert')}<span>Warteliste</span>`, 'Auf der Warteliste');
     } else if (!isRegistered && openDutiesCount > 0 && ev.canAccessDutyPlan) {
-        statusHtml = `
-            <span class="event-card-status status-open-duties" title="${openDutiesCount} offene Dienste">
-                <span>${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst frei' : 'Dienste frei'}</span>
-            </span>
-        `;
+        status = statusBadge('status-open-duties', `<span>${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst frei' : 'Dienste frei'}</span>`, `${openDutiesCount} offene Dienste`);
     } else if (!isRegistered && ev.requiresRegistration && ev.isFull) {
-        statusHtml = `
-            <span class="event-card-status status-full">
-                <span>Ausgebucht</span>
-            </span>
-        `;
+        status = statusBadge('status-full', '<span>Ausgebucht</span>');
     }
-
-    // Top-right rounded label for Events
-    const eventTopLabelHtml = isEvent
-        ? `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>`
-        : '';
-
+    const subline = (icon, text, extra = '') => `<span class="event-card-subline-item${extra}">${cardIcon(icon)}<span>${escapeHtml(text)}</span></span>`;
     return `
-        <div class="${cardClass}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
+        <div class="event-card ${isEvent ? (isPinned ? 'is-event is-pinned' : 'is-event') : 'is-termin'} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
             <div class="event-card-left">
-                <div class="event-date-box ${dateBoxClass} ${isToday ? 'is-today' : ''}">
-                    <span class="event-date-weekday">${escapeHtml(weekdayStr || '')}</span>
-                    <span class="event-date-day">${escapeHtml(dayNum || '')}</span>
+                <div class="event-date-box ${isEvent ? 'is-event-date' : 'is-termin-date'} ${isToday ? 'is-today' : ''}">
+                    <span class="event-date-weekday">${escapeHtml(weekdayStr)}</span>
+                    <span class="event-date-day">${escapeHtml(dayNum)}</span>
                 </div>
                 <div class="event-card-body">
                     <div class="event-card-title">${escapeHtml(ev.title)}</div>
                     <div class="event-card-subline">
-                        ${isToday ? `<span class="event-type-pill pill-today">Heute</span>` : ''}
-                        ${isMultiDay ? `
-                            <span class="event-card-subline-item multiday-item">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                <span>Bis ${escapeHtml(formatEventDate(ev.endDate))}</span>
-                            </span>
-                        ` : (timeDisplay ? `
-                            <span class="event-card-subline-item">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                                <span>${escapeHtml(timeDisplay)} Uhr</span>
-                            </span>
-                        ` : '')}
-                        ${ev.location ? `
-                            <span class="event-card-subline-item">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                <span>${escapeHtml(ev.location)}</span>
-                            </span>
-                        ` : ''}
+                        ${isToday ? '<span class="event-type-pill pill-today">Heute</span>' : ''}
+                        ${isMultiDay ? subline('calendar', `Bis ${formatEventDate(ev.endDate)}`, ' multiday-item') : (timeDisplay ? subline('clock', `${timeDisplay} Uhr`) : '')}
+                        ${ev.location ? subline('location', ev.location) : ''}
                     </div>
                 </div>
             </div>
             <div class="event-card-right">
-                ${eventTopLabelHtml}
+                ${isEvent ? `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>` : ''}
                 <div class="event-card-right-actions">
-                    ${statusHtml}
-                    <div class="event-card-arrow">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    </div>
+                    ${status}
+                    <div class="event-card-arrow">${cardIcon('chevronRight')}</div>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
 }
 
-// ==========================================================
-// Event Detail Modal & Actions
-// ==========================================================
-window.openEventDetailModal = async function(eventId) {
+// --- Event detail modal ---
+const detailCard = () => document.querySelector('.event-detail-modal-card');
+
+function setCoverVisible(visible) {
+    show('detail-modal-cover-wrap', visible, 'block');
+    detailCard()?.classList.toggle('has-hero-image', visible);
+}
+
+function showDetailCover(src, watchLoading = false) {
+    const img = $('detail-modal-cover-img');
+    if (img) {
+        img.src = src;
+        if (src && watchLoading) {
+            img.onload = () => setCoverVisible(true);
+            img.onerror = () => setCoverVisible(false);
+        }
+    }
+    setCoverVisible(!!src);
+}
+
+function hideTypeSelector() {
+    const wrap = $('detail-edit-type-container');
+    if (!wrap) return;
+    wrap.style.display = 'none';
+    wrap.classList.add('is-hidden');
+}
+
+function syncTypeSelector(canManage) {
+    const wrap = $('detail-edit-type-container');
+    if (!wrap) return;
+    wrap.classList.toggle('can-manage-events', canManage);
+    wrap.classList.toggle('is-hidden', !canManage);
+    wrap.style.removeProperty('display');
+}
+
+function setTextWithTitle(id, text) {
+    const target = $(id);
+    if (!target) return;
+    target.textContent = text;
+    target.title = text;
+}
+
+function setDescriptionToggle(expanded) {
+    setText('detail-desc-toggle-text', expanded ? 'Weniger anzeigen' : 'Mehr anzeigen');
+    const icon = $('detail-desc-toggle-icon');
+    if (icon) icon.style.transform = `rotate(${expanded ? 180 : 0}deg)`;
+}
+
+function toggleDetailDescription() {
+    const wrap = $('detail-modal-desc-wrap');
+    if (!wrap) return;
+    const expand = wrap.classList.contains('is-clamped');
+    wrap.classList.toggle('is-clamped', !expand);
+    wrap.classList.toggle('is-expanded', expand);
+    setDescriptionToggle(expand);
+}
+
+function renderRegistrationSection(ev) {
+    const isRegistered = ev.myRegistration?.status === 'registered';
+    const max = ev.maxParticipants || 0;
+    const count = ev.registeredCount || 0;
+    const capInfo = $('detail-modal-capacity-info');
+    if (capInfo) {
+        capInfo.innerHTML = max > 0 ? `<span class="event-reg-cap-pill ${count >= max ? 'is-full' : ''}"><strong>${count}</strong> / ${max} Plätze</span>` : '';
+        capInfo.style.display = max > 0 ? 'flex' : 'none';
+    }
+    const button = (cls, status, title, content) => `
+        <button type="button" class="btn ${cls}" onclick="window.toggleEventRegistration('${ev.id}', '${status}')"${title ? ` title="${title}"` : ''}>
+            ${content}
+        </button>`;
+    const iconStyle = extra => `style="margin-right: 6px;${extra}"`;
+    $('detail-modal-reg-action-wrap').innerHTML = isEventPast(ev)
+        ? `<div class="event-reg-past-notice">${isRegistered ? '✓ Du warst angemeldet (Event ist vorüber)' : '⌛ Event ist bereits vorüber'}</div>`
+        : isRegistered ? button('btn-secondary btn-block event-btn-registered', 'registered', 'Klicken zum Abmelden', `
+            ${svgIcon('check', 15, 2.5, `class="event-reg-check-icon" ${iconStyle('')}`)}
+            ${svgIcon('x', 15, 2.5, `class="event-reg-unreg-icon" ${iconStyle(' display: none;')}`)}
+            <span class="event-reg-btn-text-reg">Angemeldet</span>
+            <span class="event-reg-btn-text-unreg">Abmelden</span>`)
+        : ev.myRegistration?.status === 'waitlist' ? button('btn-secondary btn-block event-btn-waitlist', 'waitlist', 'Klicken zum Verlassen der Warteliste', `${svgIcon('clock', 15, 2, iconStyle(''))}
+            <span>Auf der Warteliste (Verlassen)</span>`)
+        : ev.isFull ? button('btn-secondary btn-block', 'none', '', 'Auf Warteliste setzen')
+        : button('btn-primary btn-block', 'none', '', 'Verbindlich anmelden');
+    const attendees = $('detail-modal-attendees-details');
+    if (attendees) attendees.open = false;
+    loadEventAttendees(ev.id);
+}
+
+async function openEventDetailModal(eventId) {
     let ev = appEvents.find(e => e.id === eventId);
-    if (!ev && typeof window.loadEventsData === 'function') {
-        await window.loadEventsData();
+    if (!ev) {
+        await loadEventsData();
         ev = appEvents.find(e => e.id === eventId);
     }
     if (!ev) return;
     currentDetailEvent = ev;
-
-    // Cover Image Banner (Displayed only when an image is uploaded)
-    const coverWrap = document.getElementById('detail-modal-cover-wrap');
-    const coverImg = document.getElementById('detail-modal-cover-img');
-    const modalCard = document.querySelector('.event-detail-modal-card');
     const modalBody = document.querySelector('.event-detail-body');
     if (modalBody) modalBody.scrollTop = 0;
+    detailCard()?.classList.remove('detail-is-editing', 'detail-is-new');
+    show('detail-edit-cover-placeholder', false);
+    hideTypeSelector();
+    showDetailCover(eventImage(ev), true);
 
-    // Reset edit mode state
-    if (modalCard) {
-        modalCard.classList.remove('detail-is-editing', 'detail-is-new');
+    const typeIndicator = $('detail-modal-type-indicator');
+    if (typeIndicator) {
+        typeIndicator.innerHTML = ev.isPinned ? `${svgIcon('star', 13)}<span>Großevent & Highlight</span>` : '';
+        typeIndicator.className = `event-detail-type-badge${ev.isPinned ? ' type-pinned' : ''}`;
+        typeIndicator.style.display = ev.isPinned ? 'inline-flex' : 'none';
     }
-    const editPlaceholder = document.getElementById('detail-edit-cover-placeholder');
-    if (editPlaceholder) editPlaceholder.style.display = 'none';
-    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
-    if (typeWrap) {
-        typeWrap.style.removeProperty('display');
-        typeWrap.style.display = 'none';
-        typeWrap.classList.add('is-hidden');
-    }
+    setText('detail-modal-title', ev.title);
 
-    const rawImg = (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '');
-    const imgSrc = typeof rawImg === 'string' ? rawImg.trim() : '';
-    if (coverWrap && coverImg) {
-        if (imgSrc) {
-            coverImg.src = imgSrc;
-            coverWrap.style.display = 'block';
-            if (modalCard) modalCard.classList.add('has-hero-image');
-            coverImg.onload = function() {
-                if (coverWrap) coverWrap.style.display = 'block';
-                if (modalCard) modalCard.classList.add('has-hero-image');
-            };
-            coverImg.onerror = function() {
-                if (coverWrap) coverWrap.style.display = 'none';
-                if (modalCard) modalCard.classList.remove('has-hero-image');
-            };
-        } else {
-            coverImg.src = '';
-            coverWrap.style.display = 'none';
-            if (modalCard) modalCard.classList.remove('has-hero-image');
-        }
-    }
-
-    // Dynamic Type Indicator Badge (User requested: remove "Termin" label completely)
-    const typeInd = document.getElementById('detail-modal-type-indicator');
-    if (typeInd) {
-        if (ev.isPinned) {
-            typeInd.innerHTML = `
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                <span>Großevent & Highlight</span>
-            `;
-            typeInd.className = 'event-detail-type-badge type-pinned';
-            typeInd.style.display = 'inline-flex';
-        } else {
-            typeInd.innerHTML = '';
-            typeInd.className = 'event-detail-type-badge';
-            typeInd.style.display = 'none';
-        }
-    }
-
-    document.getElementById('detail-modal-title').textContent = ev.title;
-
-    // Compact Info Cards: Wann (Datum & ggf. Uhrzeit)
+    // Multi-day events show only the date span, no times
     const isMultiDay = Boolean(ev.endDate && ev.endDate !== ev.date);
-    const dateDisplay = formatEventDateSpanCompact(ev.date, ev.endDate);
-    const infoDate = document.getElementById('detail-modal-info-date');
-    if (infoDate) {
-        infoDate.textContent = dateDisplay;
-        infoDate.title = dateDisplay;
+    setTextWithTitle('detail-modal-info-date', formatEventDateSpanCompact(ev.date, ev.endDate));
+    const infoTime = $('detail-modal-info-time');
+    if (infoTime) {
+        if (isMultiDay) infoTime.textContent = '';
+        else setTextWithTitle('detail-modal-info-time', eventTimeRange(ev) || 'Ganztägig');
+        infoTime.style.display = isMultiDay ? 'none' : 'inline';
     }
+    show('detail-modal-when-sep', !isMultiDay, 'inline');
 
-    const infoTime = document.getElementById('detail-modal-info-time');
-    const whenSep = document.getElementById('detail-modal-when-sep');
-
-    // Bei mehrtägigen Events soll die Uhrzeit wegfallen
-    if (isMultiDay) {
-        if (infoTime) {
-            infoTime.textContent = '';
-            infoTime.style.display = 'none';
-        }
-        if (whenSep) {
-            whenSep.style.display = 'none';
-        }
-    } else {
-        const timeDisplay = ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime} Uhr` : `ab ${ev.startTime} Uhr`) : 'Ganztägig';
-        if (infoTime) {
-            infoTime.textContent = timeDisplay;
-            infoTime.title = timeDisplay;
-            infoTime.style.display = 'inline';
-        }
-        if (whenSep) {
-            whenSep.style.display = 'inline';
-        }
-    }
-
-    const rawLoc = (ev.location && typeof ev.location === 'string') ? ev.location.trim() : '';
-    const locDisplay = rawLoc || 'Keine Angabe';
-    const infoWhere = document.getElementById('detail-modal-info-where');
-    if (infoWhere) {
-        infoWhere.textContent = locDisplay;
-        infoWhere.title = locDisplay;
-    }
-
-    const mapLink = document.getElementById('detail-modal-map-link');
+    const location = typeof ev.location === 'string' ? ev.location.trim() : '';
+    setTextWithTitle('detail-modal-info-where', location || 'Keine Angabe');
+    const mapLink = $('detail-modal-map-link');
     if (mapLink) {
-        const isOnlineOrEmpty = !rawLoc || /^(online|zoom|teams|skype|meet|keine angabe)$/i.test(rawLoc);
-        if (!isOnlineOrEmpty) {
-            mapLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rawLoc)}`;
-            mapLink.style.display = 'inline-flex';
-        } else {
-            mapLink.href = '#';
-            mapLink.style.display = 'none';
-        }
+        const isPlace = location && !/^(online|zoom|teams|skype|meet|keine angabe)$/i.test(location);
+        mapLink.href = isPlace ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}` : '#';
+        mapLink.style.display = isPlace ? 'inline-flex' : 'none';
     }
 
-    const creatorDisplay = (ev.createdByName && ev.createdByName.trim()) ? ev.createdByName.trim() : '';
-    const creatorEl = document.getElementById('detail-creator-name');
-    const organizerPill = document.getElementById('detail-modal-organizer-pill');
+    const creator = ev.createdByName?.trim() || '';
+    const creatorEl = $('detail-creator-name');
     if (creatorEl) {
-        creatorEl.textContent = creatorDisplay || 'Mitglied';
-        creatorEl.title = creatorDisplay || 'Mitglied';
+        creatorEl.textContent = ev.createdByName || 'Mitglied';
+        creatorEl.title = creator || 'Mitglied';
     }
-    if (organizerPill) {
-        organizerPill.style.display = creatorDisplay ? 'inline-flex' : 'none';
-    }
+    show('detail-modal-organizer-pill', !!creator, 'inline-flex');
 
-    // Tags
-    const tagsContainer = document.getElementById('detail-modal-tags');
-    let tagsHtml = '';
-    if (Array.isArray(ev.targetGroups) && ev.targetGroups.length > 0) {
-        tagsHtml += ev.targetGroups.map(g => `<span class="event-tag event-tag-group">${escapeHtml(g)}</span>`).join(' ');
-    }
-    if (tagsContainer) {
-        tagsContainer.innerHTML = tagsHtml;
-        tagsContainer.style.display = tagsHtml ? 'flex' : 'none';
+    const tags = $('detail-modal-tags');
+    if (tags) {
+        tags.innerHTML = Array.isArray(ev.targetGroups) ? ev.targetGroups.map(g => `<span class="event-tag event-tag-group">${escapeHtml(g)}</span>`).join(' ') : '';
+        tags.style.display = tags.innerHTML ? 'flex' : 'none';
     }
 
-    // Description (Markdown support)
-    const descCard = document.getElementById('detail-modal-desc-card');
-    const descWrap = document.getElementById('detail-modal-desc-wrap');
-    const descText = document.getElementById('detail-modal-description');
-    const descToggleBtn = document.getElementById('detail-desc-toggle-btn');
-    const descToggleText = document.getElementById('detail-desc-toggle-text');
-    const descToggleIcon = document.getElementById('detail-desc-toggle-icon');
+    const description = ev.description?.trim();
+    const descCard = $('detail-modal-desc-card');
+    if (description) {
+        $('detail-modal-description')?.replaceChildren(renderMarkdown(description));
+        $('detail-modal-desc-wrap')?.classList.remove('is-clamped', 'is-expanded');
+        show('detail-desc-toggle-btn', false);
+        setDescriptionToggle(false);
+    }
+    descCard.style.display = description ? 'block' : 'none';
 
-    if (ev.description && ev.description.trim()) {
-        if (descText) {
-            descText.innerHTML = '';
-            descText.appendChild(renderMarkdown(ev.description.trim()));
-        }
-        if (descWrap) {
-            descWrap.classList.remove('is-clamped', 'is-expanded');
-        }
-        if (descToggleBtn) {
-            descToggleBtn.style.display = 'none';
-        }
-        if (descToggleText) descToggleText.textContent = 'Mehr anzeigen';
-        if (descToggleIcon) descToggleIcon.style.transform = 'rotate(0deg)';
-        descCard.style.display = 'block';
-    } else {
-        descCard.style.display = 'none';
+    show('detail-modal-reg-box', !!ev.requiresRegistration, 'block');
+    if (ev.requiresRegistration) renderRegistrationSection(ev);
+
+    const dutiesBox = $('detail-modal-duties-box');
+    show(dutiesBox, !!ev.canAccessDutyPlan, 'block');
+    if (ev.canAccessDutyPlan && dutiesBox) {
+        const dutiesDetails = $('detail-modal-duties-details');
+        if (dutiesDetails) dutiesDetails.open = false;
+        show('detail-modal-add-duty-wrap', !!ev.canEdit, 'block');
+        hideAddNewTaskForm();
+        const duties = Array.isArray(ev.duties) ? ev.duties : [];
+        setText('detail-modal-duties-count', duties.filter(hasDutyAssignee).length);
+        renderGroupedDuties(duties, ev);
     }
 
-    // Registration Section (Uncontained & Compact)
-    const regBox = document.getElementById('detail-modal-reg-box');
-    if (ev.requiresRegistration) {
-        regBox.style.display = 'block';
-        const isRegistered = ev.myRegistration && ev.myRegistration.status === 'registered';
-        const isWaitlist = ev.myRegistration && ev.myRegistration.status === 'waitlist';
-
-        const max = ev.maxParticipants || 0;
-        const regCount = ev.registeredCount || 0;
-        const capInfo = document.getElementById('detail-modal-capacity-info');
-        if (capInfo) {
-            if (max > 0) {
-                const isFull = regCount >= max;
-                capInfo.innerHTML = `<span class="event-reg-cap-pill ${isFull ? 'is-full' : ''}"><strong>${regCount}</strong> / ${max} Plätze</span>`;
-                capInfo.style.display = 'flex';
-            } else {
-                capInfo.innerHTML = '';
-                capInfo.style.display = 'none';
-            }
-        }
-
-        // Action Button
-        const actionWrap = document.getElementById('detail-modal-reg-action-wrap');
-        const isPast = isEventPast(ev);
-        if (isPast) {
-            actionWrap.innerHTML = `
-                <div class="event-reg-past-notice">
-                    ${isRegistered ? '✓ Du warst angemeldet (Event ist vorüber)' : '⌛ Event ist bereits vorüber'}
-                </div>
-            `;
-        } else if (isRegistered) {
-            actionWrap.innerHTML = `
-                <button type="button" class="btn btn-secondary btn-block event-btn-registered" onclick="window.toggleEventRegistration('${ev.id}', 'registered')" title="Klicken zum Abmelden">
-                    <svg class="event-reg-check-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    <svg class="event-reg-unreg-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px; display: none;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    <span class="event-reg-btn-text-reg">Angemeldet</span>
-                    <span class="event-reg-btn-text-unreg">Abmelden</span>
-                </button>
-            `;
-        } else if (isWaitlist) {
-            actionWrap.innerHTML = `
-                <button type="button" class="btn btn-secondary btn-block event-btn-waitlist" onclick="window.toggleEventRegistration('${ev.id}', 'waitlist')" title="Klicken zum Verlassen der Warteliste">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    <span>Auf der Warteliste (Verlassen)</span>
-                </button>
-            `;
-        } else if (ev.isFull) {
-            actionWrap.innerHTML = `
-                <button type="button" class="btn btn-secondary btn-block" onclick="window.toggleEventRegistration('${ev.id}', 'none')">
-                    Auf Warteliste setzen
-                </button>
-            `;
-        } else {
-            actionWrap.innerHTML = `
-                <button type="button" class="btn btn-primary btn-block" onclick="window.toggleEventRegistration('${ev.id}', 'none')">
-                    Verbindlich anmelden
-                </button>
-            `;
-        }
-
-        // Reset attendees details open state to closed
-        const attDetails = document.getElementById('detail-modal-attendees-details');
-        if (attDetails) attDetails.open = false;
-
-        // Load attendees
-        loadEventAttendees(ev.id);
-    } else {
-        regBox.style.display = 'none';
-    }
-
-    // Duties / Sub-Management Box (Only visible if user has access to duty plan)
-    const dutiesBox = document.getElementById('detail-modal-duties-box');
-    const dutiesSections = document.getElementById('detail-modal-duties-sections');
-    const dutiesCount = document.getElementById('detail-modal-duties-count');
-
-    if (!ev.canAccessDutyPlan) {
-        if (dutiesBox) dutiesBox.style.display = 'none';
-    } else {
-        if (dutiesBox) {
-            dutiesBox.style.display = 'block';
-            const dutiesDetails = document.getElementById('detail-modal-duties-details');
-            if (dutiesDetails) {
-                dutiesDetails.open = false; // Standardmäßig eingeklappt!
-            }
-            const addDutyWrap = document.getElementById('detail-modal-add-duty-wrap');
-            if (addDutyWrap) {
-                addDutyWrap.style.display = ev.canEdit ? 'block' : 'none';
-            }
-            if (typeof window.hideAddNewTaskForm === 'function') {
-                window.hideAddNewTaskForm();
-            }
-            const duties = Array.isArray(ev.duties) ? ev.duties : [];
-            const totalAssigned = duties.filter(d => Boolean(d.assignedUser || d.requestedUser || d.assignedGroup || d.assignedGroupName)).length;
-            if (dutiesCount) {
-                dutiesCount.textContent = totalAssigned;
-            }
-            window.renderGroupedDuties(duties, ev);
-        }
-    }
-
-    // Creator & Admin Buttons
-    document.getElementById('detail-creator-name').textContent = ev.createdByName || 'Mitglied';
-    const editBtn = document.getElementById('detail-btn-edit');
-    const deleteBtn = document.getElementById('detail-btn-delete');
-    const actionBar = document.getElementById('detail-modal-action-bar');
-    if (editBtn) editBtn.style.display = ev.canEdit ? 'inline-flex' : 'none';
-    if (deleteBtn) deleteBtn.style.display = ev.canEdit ? 'inline-flex' : 'none';
-    if (actionBar) actionBar.style.display = ev.canEdit ? 'flex' : 'none';
-
+    show('detail-btn-edit', !!ev.canEdit, 'inline-flex');
+    show('detail-btn-delete', !!ev.canEdit, 'inline-flex');
+    show('detail-modal-action-bar', !!ev.canEdit, 'flex');
     openModal('event-detail-modal');
 
-    // Dynamic clamp for long event descriptions (fades out with "Mehr anzeigen")
+    // Clamp long descriptions behind a "Mehr anzeigen" toggle
     requestAnimationFrame(() => {
-        if (descWrap && descCard && descCard.style.display !== 'none') {
-            const clampThreshold = 105;
-            if (descWrap.scrollHeight > clampThreshold + 15) {
-                descWrap.classList.add('is-clamped');
-                if (descToggleBtn) descToggleBtn.style.display = 'inline-flex';
-            }
+        const wrap = $('detail-modal-desc-wrap');
+        if (wrap && descCard && descCard.style.display !== 'none' && wrap.scrollHeight > 120) {
+            wrap.classList.add('is-clamped');
+            show('detail-desc-toggle-btn', true, 'inline-flex');
         }
     });
-};
-
-window.toggleDetailDescription = function() {
-    const descWrap = document.getElementById('detail-modal-desc-wrap');
-    const descToggleText = document.getElementById('detail-desc-toggle-text');
-    const descToggleIcon = document.getElementById('detail-desc-toggle-icon');
-    if (!descWrap) return;
-
-    const isClamped = descWrap.classList.contains('is-clamped');
-    if (isClamped) {
-        descWrap.classList.remove('is-clamped');
-        descWrap.classList.add('is-expanded');
-        if (descToggleText) descToggleText.textContent = 'Weniger anzeigen';
-        if (descToggleIcon) descToggleIcon.style.transform = 'rotate(180deg)';
-    } else {
-        descWrap.classList.add('is-clamped');
-        descWrap.classList.remove('is-expanded');
-        if (descToggleText) descToggleText.textContent = 'Mehr anzeigen';
-        if (descToggleIcon) descToggleIcon.style.transform = 'rotate(0deg)';
-    }
-};
-
-function getAttendeeInitials(name) {
-    if (!name || typeof name !== 'string') return '?';
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-        return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || '?';
-    }
-    return (parts[0] || '?').slice(0, 2).toUpperCase();
 }
 
 async function loadEventAttendees(eventId) {
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/attendees`);
-        if (res.ok) {
-            currentDetailAttendees = await res.json();
-            const countEl = document.getElementById('detail-attendees-count');
-            if (countEl) countEl.textContent = currentDetailAttendees.registeredCount || 0;
-
-            const itemsEl = document.getElementById('detail-attendees-items');
-            if (itemsEl) {
-                const canManage = currentDetailEvent && currentDetailEvent.canEdit;
-                const regList = currentDetailAttendees.registered || [];
-                const waitList = currentDetailAttendees.waitlist || [];
-
-                const regRows = regList.map(att => {
-                    const initials = getAttendeeInitials(att.name);
-                    const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(att.userId)}`;
-                    const removeBtn = canManage ? `
-                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Teilnehmer entfernen">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                    ` : '';
-                    return `
-                        <div class="event-attendee-row">
-                            <div class="event-attendee-left">
-                                <div class="event-attendee-avatar-wrap">
-                                    <span class="event-attendee-initials">${escapeHtml(initials)}</span>
-                                    <img src="${picUrl}" alt="${escapeHtml(att.name)}" class="event-attendee-avatar-img" onerror="this.style.display='none'">
-                                </div>
-                                <div class="event-attendee-name-wrap">
-                                    <span class="event-attendee-name">${escapeHtml(att.name)}</span>
-                                </div>
-                            </div>
-                            ${removeBtn}
-                        </div>
-                    `;
-                }).join('');
-
-                const waitRows = waitList.map(att => {
-                    const initials = getAttendeeInitials(att.name);
-                    const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(att.userId)}`;
-                    const removeBtn = canManage ? `
-                        <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="Von Warteliste entfernen">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                    ` : '';
-                    return `
-                        <div class="event-attendee-row is-waitlist">
-                            <div class="event-attendee-left">
-                                <div class="event-attendee-avatar-wrap">
-                                    <span class="event-attendee-initials">${escapeHtml(initials)}</span>
-                                    <img src="${picUrl}" alt="${escapeHtml(att.name)}" class="event-attendee-avatar-img" onerror="this.style.display='none'">
-                                </div>
-                                <div class="event-attendee-name-wrap">
-                                    <span class="event-attendee-name">${escapeHtml(att.name)}</span>
-                                    <span class="event-attendee-waitlist-badge">Warteliste</span>
-                                </div>
-                            </div>
-                            ${removeBtn}
-                        </div>
-                    `;
-                }).join('');
-
-                itemsEl.innerHTML = (regRows + waitRows) || '<div class="event-attendees-empty">Noch keine Teilnehmer angemeldet</div>';
-            }
-        }
+        const res = await api(`/events/${eventId}/attendees`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setText('detail-attendees-count', data.registeredCount || 0);
+        const itemsEl = $('detail-attendees-items');
+        if (!itemsEl) return;
+        const canManage = currentDetailEvent && currentDetailEvent.canEdit;
+        const row = (att, isWaitlist) => `
+            <div class="event-attendee-row ${isWaitlist ? 'is-waitlist' : ''}">
+                <div class="event-attendee-left">
+                    ${renderAvatarWrap(att.userId, att.name, { wrapClass: 'event-attendee-avatar-wrap', imgClass: 'event-attendee-avatar-img', initialsClass: 'event-attendee-initials' })}
+                    <div class="event-attendee-name-wrap">
+                        <span class="event-attendee-name">${escapeHtml(att.name)}</span>
+                        ${isWaitlist ? '<span class="event-attendee-waitlist-badge">Warteliste</span>' : ''}
+                    </div>
+                </div>
+                ${canManage ? `
+                <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="${isWaitlist ? 'Von Warteliste entfernen' : 'Teilnehmer entfernen'}">
+                    ${svgIcon('x', 13, 2.5)}
+                </button>` : ''}
+            </div>`;
+        itemsEl.innerHTML = [...(data.registered || []).map(att => row(att, false)), ...(data.waitlist || []).map(att => row(att, true))].join('')
+            || '<div class="event-attendees-empty">Noch keine Teilnehmer angemeldet</div>';
     } catch (err) {
         console.warn('Failed to load event attendees:', err);
     }
 }
 
-window.toggleDetailAttendeesList = function() {
-    const details = document.getElementById('detail-modal-attendees-details');
-    if (details) {
-        details.open = !details.open;
-    }
-};
+async function removeEventAttendee(eventId, userId) {
+    if (!confirmAction('Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?')) return;
+    await eventAction(`/events/${eventId}/attendees/${userId}`, 'DELETE', undefined, {
+        success: 'Teilnehmer entfernt', successType: 'info', error: 'Fehler beim Entfernen des Teilnehmers', useServerError: false,
+        after: () => loadEventAttendees(eventId)
+    });
+}
 
-window.removeEventAttendee = async function(eventId, userId) {
-    if (!confirm('Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?')) return;
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/attendees/${userId}`, {
-            method: 'DELETE'
-        });
-        if (res.ok) {
-            showToast('Teilnehmer entfernt', 'info');
-            await window.loadEventsData();
-            await loadEventAttendees(eventId);
-        } else {
-            showToast('Fehler beim Entfernen des Teilnehmers', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-// ==========================================================
-// Modern Grouped Duty Planner Implementation
-// ==========================================================
-
-window.renderGroupedDuties = function(duties, ev) {
-    const container = document.getElementById('detail-modal-duties-sections');
+// --- Duty planner (tasks grouped by role) ---
+function renderGroupedDuties(duties, ev) {
+    const container = $('detail-modal-duties-sections');
     if (!container) return;
-
     if (!duties || duties.length === 0) {
         container.innerHTML = `
             <div class="duty-empty-simple">
                 <span>${ev.canEdit ? 'Noch keine Aufgaben angelegt.' : 'Keine Dienste eingetragen.'}</span>
-            </div>
-        `;
+            </div>`;
         return;
     }
+    const grouped = groupBy(duties, d => (d.roleName || 'Aufgabe').trim());
+    container.innerHTML = `<div class="duty-tasks-container">${[...grouped].map(([roleName, roleDuties], idx) => renderDutyTaskCard(roleName, roleDuties, ev, `task-${idx + 1}-${Math.random().toString(36).substring(2, 7)}`)).join('')}</div>`;
+}
 
-    // Group duties by roleName
-    const grouped = new Map();
-    duties.forEach(d => {
-        const role = (d.roleName || 'Aufgabe').trim();
-        if (!grouped.has(role)) {
-            grouped.set(role, []);
-        }
-        grouped.get(role).push(d);
-    });
-
-    let html = '<div class="duty-tasks-container">';
-    let taskIdx = 0;
-    for (const [roleName, roleDuties] of grouped.entries()) {
-        taskIdx++;
-        const cardId = `task-${taskIdx}-${Math.random().toString(36).substring(2, 7)}`;
-        html += window.renderChurchDutyTaskCard(roleName, roleDuties, ev, cardId);
-    }
-    html += '</div>';
-
-    container.innerHTML = html;
-};
-
-window.renderChurchDutyTaskCard = function(roleName, roleDuties, ev, cardId) {
+function renderDutyTaskCard(roleName, roleDuties, ev, cardId) {
     const canManage = ev.canEdit || roleDuties.some(d => d.canManageDuty);
-    const safeRoleName = escapeHtml(roleName);
     const encodedRoleName = encodeURIComponent(roleName);
-
-    // Filter out empty placeholder slots (status === 'open' with no person or group)
-    const realAssignees = roleDuties.filter(d => {
-        const hasUser = Boolean(d.assignedUser || d.requestedUser);
-        const hasGroup = Boolean(d.assignedGroup || d.assignedGroupName);
-        return hasUser || hasGroup;
-    });
-
-    // Render each real assignee item
-    const assigneesHtml = realAssignees.map(d => window.renderDutyAssigneeItem(d, ev, cardId)).join('');
-
-    // Header delete button for manager (delete whole task)
-    const taskDeleteBtn = canManage ? `
-        <button type="button" class="duty-task-delete-btn" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="Gesamte Aufgabe löschen">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-        </button>
-    ` : '';
-
-    // "+ Person oder Gruppe hinzufügen" button (opens Pop-Up Modal)
-    const addAssigneeBtn = canManage ? `
-        <div style="margin-top: 4px;">
-            <button type="button" class="btn btn-ghost btn-small duty-add-person-btn" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                <span>Person oder Gruppe hinzufügen</span>
-            </button>
-        </div>
-    ` : '';
-
-    const countPill = realAssignees.length > 0 ? `<span class="duty-task-count-pill">${realAssignees.length}</span>` : '';
-
+    const assignees = roleDuties.filter(hasDutyAssignee);
+    const assigneesHtml = assignees.map(d => renderDutyAssigneeItem(d, ev)).join('');
     return `
         <div class="duty-task-section" id="duty-task-sec-${cardId}">
             <div class="duty-task-header">
                 <div class="duty-task-title-wrap">
-                    <span class="duty-task-title">${safeRoleName}</span>
-                    ${countPill}
+                    <span class="duty-task-title">${escapeHtml(roleName)}</span>
+                    ${assignees.length > 0 ? `<span class="duty-task-count-pill">${assignees.length}</span>` : ''}
                 </div>
-                ${taskDeleteBtn}
+                ${canManage ? `
+                <button type="button" class="duty-task-delete-btn" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="Gesamte Aufgabe löschen">
+                    ${svgIcon('trash', 13)}
+                </button>` : ''}
             </div>
             ${assigneesHtml ? `<div class="duty-assignees-list">${assigneesHtml}</div>` : ''}
-            ${addAssigneeBtn}
-        </div>
-    `;
-};
+            ${canManage ? `
+            <div style="margin-top: 4px;">
+                <button type="button" class="btn btn-ghost btn-small duty-add-person-btn" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')">
+                    ${svgIcon('plus', 13, 2.5)}
+                    <span>Person oder Gruppe hinzufügen</span>
+                </button>
+            </div>` : ''}
+        </div>`;
+}
 
-window.renderDutyAssigneeItem = function(d, ev, cardId) {
-    const canManage = ev.canEdit || d.canManageDuty;
+function renderDutyAssigneeItem(d, ev) {
     const isMe = d.assignedUser === currentUser?.id;
-    const isMeRequested = d.requestedUser === currentUser?.id;
-    const encodedRoleName = encodeURIComponent(d.roleName || '');
-
-    let avatarHtml = '';
-    let displayName = '';
-    let statusBadge = '';
-    let actionButtons = '';
-
+    const personName = fallback => (d.requestedUser === currentUser?.id ? 'Du' : (d.requestedUserName || fallback));
+    let avatar = `<div class="duty-assignee-open-badge">👤</div>`;
+    let displayName = `<span class="duty-empty-assigned">Noch niemand eingeteilt (Offene Aufgabe)</span>`;
+    let status = '';
+    let actions = '';
     if (d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup)) {
-        const groupName = d.assignedGroupName || d.assignedGroup;
-        displayName = `Gruppe: ${escapeHtml(groupName)}`;
-        avatarHtml = `<div class="duty-assignee-group-badge">👥</div>`;
-        statusBadge = `<span class="duty-status-sub">(Gruppe eingeteilt)</span>`;
-    } else if (d.status === 'requested') {
-        const reqName = isMeRequested ? 'Du' : (d.requestedUserName || 'Person');
-        displayName = escapeHtml(reqName);
-        const initials = getAttendeeInitials(d.requestedUserName || 'P');
-        const picUrl = d.requestedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.requestedUser)}` : '';
-        avatarHtml = `
-            <div class="duty-assignee-avatar-wrap">
-                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>
-        `;
-        statusBadge = `<span class="duty-status-sub is-requested">(Anfrage offen)</span>`;
-
-        if (isMeRequested) {
-            actionButtons += `
+        avatar = `<div class="duty-assignee-group-badge">👥</div>`;
+        displayName = `Gruppe: ${escapeHtml(d.assignedGroupName || d.assignedGroup)}`;
+        status = `<span class="duty-status-sub">(Gruppe eingeteilt)</span>`;
+    } else if (d.status === 'requested' || d.status === 'declined') {
+        avatar = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P');
+        displayName = escapeHtml(personName('Person'));
+        status = d.status === 'requested' ? `<span class="duty-status-sub is-requested">(Anfrage offen)</span>` : `<span class="duty-status-sub is-declined">✕ Abgelehnt</span>`;
+        if (d.status === 'requested' && d.requestedUser === currentUser?.id) {
+            actions = `
                 <button type="button" class="btn btn-success btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'accept')">Zusagen</button>
-                <button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'decline')">Ablehnen</button>
-            `;
+                <button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'decline')">Ablehnen</button>`;
         }
-    } else if (d.status === 'declined') {
-        const reqName = (d.requestedUser === currentUser?.id) ? 'Du' : (d.requestedUserName || 'Person');
-        displayName = escapeHtml(reqName);
-        const initials = getAttendeeInitials(d.requestedUserName || 'P');
-        const picUrl = d.requestedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.requestedUser)}` : '';
-        avatarHtml = `
-            <div class="duty-assignee-avatar-wrap">
-                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>
-        `;
-        statusBadge = `<span class="duty-status-sub is-declined">✕ Abgelehnt</span>`;
     } else if (d.status === 'confirmed' && (d.assignedUserName || d.assignedUser)) {
-        const assName = isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt');
-        displayName = escapeHtml(assName);
-        const initials = getAttendeeInitials(d.assignedUserName || 'P');
-        const picUrl = d.assignedUser ? `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(d.assignedUser)}` : '';
-        avatarHtml = `
-            <div class="duty-assignee-avatar-wrap">
-                <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                ${picUrl ? `<img src="${picUrl}" alt="${displayName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>
-        `;
-        statusBadge = `<span class="duty-status-sub is-confirmed">✓ Eingeteilt</span>`;
-    } else {
-        // Open Slot
-        displayName = `<span class="duty-empty-assigned">Noch niemand eingeteilt (Offene Aufgabe)</span>`;
-        avatarHtml = `<div class="duty-assignee-open-badge">👤</div>`;
+        avatar = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P');
+        displayName = escapeHtml(isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt'));
+        status = `<span class="duty-status-sub is-confirmed">✓ Eingeteilt</span>`;
     }
-
-    const removeBtnTop = canManage ? `
-        <div class="duty-assignee-top-actions">
-            <button type="button" class="duty-action-icon text-danger" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="Eintrag entfernen">
-                ✕
-            </button>
-        </div>
-    ` : '';
-
     return `
         <div class="duty-assignee-item" id="duty-slot-${escapeHtml(d.id)}">
             <div class="duty-assignee-top">
-                ${avatarHtml}
+                ${avatar}
                 <div class="duty-assignee-info">
                     <span class="duty-assignee-name ${isMe ? 'is-me' : ''}">${displayName}</span>
-                    ${statusBadge}
+                    ${status}
                 </div>
-                ${removeBtnTop}
+                ${ev.canEdit || d.canManageDuty ? `
+                <div class="duty-assignee-top-actions">
+                    <button type="button" class="duty-action-icon text-danger" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="Eintrag entfernen">
+                        ✕
+                    </button>
+                </div>` : ''}
             </div>
-            ${actionButtons ? `<div class="duty-assignee-actions-row">${actionButtons}</div>` : ''}
+            ${actions ? `<div class="duty-assignee-actions-row">${actions}</div>` : ''}
             ${d.notes ? `<div class="duty-assignee-notes">${escapeHtml(d.notes)}</div>` : ''}
-        </div>
-    `;
-};
+        </div>`;
+}
 
-// Inline Task Creation Form
-window.showAddNewTaskForm = function() {
-    const btn = document.getElementById('detail-btn-add-duty');
-    const form = document.getElementById('duty-new-task-form');
-    const input = document.getElementById('duty-new-task-name');
-    if (btn) btn.style.display = 'none';
-    if (form) form.style.display = 'block';
-    if (input) {
-        input.value = '';
-        input.focus();
-    }
-};
+function setNewTaskFormVisible(visible) {
+    show('detail-btn-add-duty', !visible, 'inline-flex');
+    show('duty-new-task-form', visible, 'block');
+    const input = $('duty-new-task-name');
+    if (!input) return;
+    input.value = '';
+    if (visible) input.focus();
+}
+const hideAddNewTaskForm = () => setNewTaskFormVisible(false);
 
-window.hideAddNewTaskForm = function() {
-    const btn = document.getElementById('detail-btn-add-duty');
-    const form = document.getElementById('duty-new-task-form');
-    const input = document.getElementById('duty-new-task-name');
-    if (btn) btn.style.display = 'inline-flex';
-    if (form) form.style.display = 'none';
-    if (input) input.value = '';
-};
-
-window.submitAddNewTask = async function() {
+async function submitAddNewTask() {
     if (!currentDetailEvent) return;
-    const input = document.getElementById('duty-new-task-name');
+    const input = $('duty-new-task-name');
     const roleName = input?.value?.trim();
     if (!roleName) {
         showToast('Bitte einen Namen für die Aufgabe eingeben', 'warning');
-        if (input) input.focus();
+        input?.focus();
         return;
     }
+    await eventAction(`/events/${currentDetailEvent.id}/duties`, 'POST', { roleName }, {
+        before: hideAddNewTaskForm, success: `Aufgabe "${roleName}" hinzugefügt!`, error: 'Fehler beim Anlegen der Aufgabe'
+    });
+}
 
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${currentDetailEvent.id}/duties`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roleName })
-        });
-        if (res.ok) {
-            window.hideAddNewTaskForm();
-            showToast(`Aufgabe "${roleName}" hinzugefügt!`, 'success');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-                const details = document.getElementById('detail-modal-duties-details');
-                if (details) details.open = true;
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Anlegen der Aufgabe', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-// ==========================================================
-// Pop-Up Modal for Assigning Persons / Groups (with top tabs)
-// ==========================================================
-
-window.openAssignDutyModalForRole = async function(encodedRoleName, replaceDutyId = '') {
-    const roleName = decodeURIComponent(encodedRoleName);
-    const hiddenRole = document.getElementById('assign-duty-role-encoded');
-    const hiddenReplace = document.getElementById('assign-duty-replace-id');
-    const subtitle = document.getElementById('subtitle-assign-duty');
-    const searchInput = document.getElementById('assign-duty-search-input');
-
-    if (hiddenRole) hiddenRole.value = encodedRoleName;
-    if (hiddenReplace) hiddenReplace.value = replaceDutyId || '';
-    if (subtitle) subtitle.textContent = `Aufgabe: ${roleName}`;
-    if (searchInput) searchInput.value = '';
-
-    window.switchAssignDutyTab('user');
+// --- Assign duty pop-up (persons / groups) ---
+function openAssignDutyModalForRole(encodedRoleName) {
+    setValue('assign-duty-role-encoded', encodedRoleName);
+    setValue('assign-duty-replace-id', '');
+    setText('subtitle-assign-duty', `Aufgabe: ${decodeURIComponent(encodedRoleName)}`);
+    setValue('assign-duty-search-input', '');
+    switchAssignDutyTab('user');
     openModal('assign-duty-modal');
-};
+}
 
-window.switchAssignDutyTab = function(type) {
-    const hiddenTab = document.getElementById('assign-duty-active-tab');
-    if (hiddenTab) hiddenTab.value = type;
+function switchAssignDutyTab(type) {
+    setValue('assign-duty-active-tab', type);
+    $('assign-tab-user')?.classList.toggle('is-active', type === 'user');
+    $('assign-tab-group')?.classList.toggle('is-active', type === 'group');
+    const search = $('assign-duty-search-input');
+    if (search) search.placeholder = type === 'user' ? 'Person suchen...' : 'Gruppe suchen...';
+    renderAssignDutyModalList(search ? search.value : '');
+}
 
-    const tabUser = document.getElementById('assign-tab-user');
-    const tabGroup = document.getElementById('assign-tab-group');
-    if (tabUser) tabUser.classList.toggle('is-active', type === 'user');
-    if (tabGroup) tabGroup.classList.toggle('is-active', type === 'group');
+const pickerOption = ({ name, subtitle, badgeHtml, btnText, btnClass, onclick }) => `
+    <div class="duty-picker-option" onclick="${onclick}">
+        <div class="duty-picker-option-left">
+            ${badgeHtml}
+            <div class="duty-picker-option-info">
+                <span class="duty-picker-option-name">${escapeHtml(name || '')}</span>
+                ${subtitle ? `<span class="duty-picker-option-sub">${escapeHtml(subtitle)}</span>` : ''}
+            </div>
+        </div>
+        <button type="button" class="btn ${btnClass} duty-picker-btn-action">${escapeHtml(btnText)}</button>
+    </div>`;
 
-    const searchInput = document.getElementById('assign-duty-search-input');
-    if (searchInput) {
-        searchInput.placeholder = type === 'user' ? 'Person suchen...' : 'Gruppe suchen...';
-    }
-
-    const filterText = searchInput ? searchInput.value : '';
-    window.renderAssignDutyModalList(filterText);
-};
-
-window.filterAssignDutyModalList = function(filterText) {
-    window.renderAssignDutyModalList(filterText);
-};
-
-window.renderAssignDutyModalList = async function(filterText = '') {
-    const listEl = document.getElementById('assign-duty-popup-list');
+async function renderAssignDutyModalList(filterText = '') {
+    const listEl = $('assign-duty-popup-list');
     if (!listEl) return;
-
-    const activeTab = document.getElementById('assign-duty-active-tab')?.value || 'user';
-    const normFilter = (filterText || '').trim().toLowerCase();
-
-    listEl.innerHTML = '<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">Wird geladen...</div>';
-
-    await window.loadEventCandidates();
-
-    if (activeTab === 'user') {
-        const candidates = Array.isArray(eventCandidatesCache) ? eventCandidatesCache : [];
-        const matched = candidates.filter(c => {
-            const name = (c.name || '').toLowerCase();
-            const email = (c.email || '').toLowerCase();
-            return !normFilter || name.includes(normFilter) || email.includes(normFilter);
-        });
-
-        if (matched.length === 0) {
-            listEl.innerHTML = '<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">Keine passende Person gefunden.</div>';
-            return;
-        }
-
-        listEl.innerHTML = matched.map(c => {
-            const cName = c.name || c.email || 'Mitglied';
-            const initials = getAttendeeInitials(cName);
-            const picUrl = `${config.apiBaseUrl}/profile/picture/${encodeURIComponent(c.id)}`;
-            const safeName = escapeHtml(cName);
-            const safeEmail = escapeHtml(c.email || '');
-            const safeId = escapeHtml(c.id);
-
-            return `
-                <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetUserId: '${safeId}', sendEmail: true })">
-                    <div class="duty-picker-option-left">
-                        <div class="duty-assignee-avatar-wrap" style="width: 32px; height: 32px; font-size: 0.74rem;">
-                            <span class="duty-assignee-initials">${escapeHtml(initials)}</span>
-                            <img src="${picUrl}" alt="${safeName}" class="duty-assignee-avatar-img" onerror="this.style.display='none'">
-                        </div>
-                        <div class="duty-picker-option-info">
-                            <span class="duty-picker-option-name">${safeName}</span>
-                            ${safeEmail ? `<span class="duty-picker-option-sub">${safeEmail}</span>` : ''}
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-primary btn-tiny">Anfragen</button>
-                </div>
-            `;
+    const isUserTab = (inputValue('assign-duty-active-tab') || 'user') === 'user';
+    const term = (filterText || '').trim().toLowerCase();
+    const matches = text => !term || (text || '').toLowerCase().includes(term);
+    const notice = text => `<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">${text}</div>`;
+    listEl.innerHTML = notice('Wird geladen...');
+    await loadEventCandidates();
+    if (isUserTab) {
+        const matched = (Array.isArray(eventCandidatesCache) ? eventCandidatesCache : []).filter(c => matches(c.name) || (term && matches(c.email)));
+        listEl.innerHTML = matched.length === 0 ? notice('Keine passende Person gefunden.') : matched.map(c => {
+            const name = c.name || c.email || 'Mitglied';
+            return pickerOption({
+                name,
+                subtitle: c.email || '',
+                badgeHtml: renderAvatarWrap(c.id, name, { style: 'width: 36px; height: 36px; font-size: 0.8rem;' }),
+                btnText: 'Anfragen',
+                btnClass: 'btn-primary',
+                onclick: `window.selectDutyAssignee({ targetUserId: '${escapeHtml(c.id)}', sendEmail: true })`
+            });
         }).join('');
     } else {
-        const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0
-            ? eventGroupsCache
-            : (Array.isArray(systemGroups) ? systemGroups : []);
-        const matched = groups.filter(g => {
-            const name = (g.name || g.id || '').toLowerCase();
-            return !normFilter || name.includes(normFilter);
-        });
-
-        if (matched.length === 0) {
-            listEl.innerHTML = '<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">Keine passende Gruppe gefunden.</div>';
-            return;
-        }
-
-        listEl.innerHTML = matched.map(g => {
-            const gName = g.name || g.id;
-            const safeGName = escapeHtml(gName);
-            const safeGId = escapeHtml(g.id || gName);
-
-            return `
-                <div class="duty-picker-option" onclick="window.selectDutyAssignee({ targetGroupId: '${safeGId}' })">
-                    <div class="duty-picker-option-left">
-                        <div class="duty-assignee-group-badge" style="width: 30px; height: 30px; font-size: 0.9rem;">👥</div>
-                        <div class="duty-picker-option-info">
-                            <span class="duty-picker-option-name">${safeGName}</span>
-                            <span class="duty-picker-option-sub">Gruppe fest einteilen</span>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-tiny">Zuweisen</button>
-                </div>
-            `;
-        }).join('');
+        const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0 ? eventGroupsCache : groupList();
+        const matched = groups.filter(g => matches(g.name || g.id));
+        listEl.innerHTML = matched.length === 0 ? notice('Keine passende Gruppe gefunden.') : matched.map(g => pickerOption({
+            name: g.name || g.id,
+            subtitle: 'Gruppe fest einteilen',
+            badgeHtml: '<div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>',
+            btnText: 'Zuweisen',
+            btnClass: 'btn-secondary',
+            onclick: `window.selectDutyAssignee({ targetGroupId: '${escapeHtml(g.id || g.name || g.id)}' })`
+        })).join('');
     }
-};
+}
 
-window.selectDutyAssignee = function(assignData) {
-    const encodedRoleName = document.getElementById('assign-duty-role-encoded')?.value;
-    const replaceDutyId = document.getElementById('assign-duty-replace-id')?.value;
+function selectDutyAssignee(assignData) {
+    const encodedRoleName = inputValue('assign-duty-role-encoded');
+    const replaceDutyId = inputValue('assign-duty-replace-id');
     closeModal('assign-duty-modal');
-    if (currentDetailEvent && encodedRoleName) {
-        window.assignToDutyRole(currentDetailEvent.id, encodedRoleName, assignData, replaceDutyId);
-    }
-};
+    if (currentDetailEvent && encodedRoleName) assignToDutyRole(currentDetailEvent.id, encodedRoleName, assignData, replaceDutyId);
+}
 
-window.assignToDutyRole = async function(eventId, encodedRoleName, assignData, replaceDutyId = '') {
+async function assignToDutyRole(eventId, encodedRoleName, assignData, replaceDutyId = '') {
     if (!eventId) return;
     const roleName = decodeURIComponent(encodedRoleName);
+    // Fill an existing open slot of this task before creating a new one
+    const slotId = replaceDutyId || (Array.isArray(currentDetailEvent?.duties) ? currentDetailEvent.duties.find(d => (d.roleName || '').trim() === roleName.trim() && d.status === 'open')?.id : null);
+    await eventAction(slotId ? `/events/duties/${slotId}/assign` : `/events/${eventId}/duties`, 'POST', slotId ? { ...assignData, sendEmail: true } : { roleName, ...assignData, sendEmail: true }, {
+        success: assignData.targetGroupId ? 'Gruppe erfolgreich eingeteilt!' : 'Dienstanfrage versendet & E-Mail übermittelt!',
+        error: 'Fehler beim Zuweisen'
+    });
+}
 
-    try {
-        let res;
-        if (replaceDutyId) {
-            res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${replaceDutyId}/assign`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...assignData, sendEmail: true })
-            });
-        } else {
-            const ev = currentDetailEvent;
-            // Check if there is an unassigned / open slot for this task
-            const openSlot = ev && Array.isArray(ev.duties) ? ev.duties.find(d => (d.roleName || '').trim() === roleName.trim() && d.status === 'open') : null;
-            if (openSlot) {
-                res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${openSlot.id}/assign`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...assignData, sendEmail: true })
-                });
-            } else {
-                res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/duties`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roleName, ...assignData, sendEmail: true })
-                });
-            }
-        }
-
-        if (res.ok) {
-            showToast(assignData.targetGroupId ? 'Gruppe erfolgreich eingeteilt!' : 'Dienstanfrage versendet & E-Mail übermittelt!', 'success');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-                const details = document.getElementById('detail-modal-duties-details');
-                if (details) details.open = true;
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Zuweisen', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-window.deleteEntireDutyTask = async function(encodedRoleName) {
+async function deleteEntireDutyTask(encodedRoleName) {
     if (!currentDetailEvent) return;
     const roleName = decodeURIComponent(encodedRoleName);
-    if (!confirm(`Möchtest du die gesamte Aufgabe "${roleName}" mit allen Einträgen wirklich löschen?`)) return;
-
+    if (!confirmAction(`Möchtest du die gesamte Aufgabe "${roleName}" mit allen Einträgen wirklich löschen?`)) return;
     try {
-        const dutiesToDelete = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
-        if (dutiesToDelete.length === 0) return;
-
-        await Promise.all(dutiesToDelete.map(d => fetchWithAuth(`${config.apiBaseUrl}/events/duties/${d.id}`, { method: 'DELETE' })));
-
+        const duties = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
+        if (duties.length === 0) return;
+        await Promise.all(duties.map(d => api(`/events/duties/${d.id}`, 'DELETE')));
         showToast(`Aufgabe "${roleName}" gelöscht`, 'info');
-        await window.loadEventsData();
-        if (currentDetailEvent) {
-            window.openEventDetailModal(currentDetailEvent.id);
-            const details = document.getElementById('detail-modal-duties-details');
-            if (details) details.open = true;
-        }
+        await loadEventsData();
+        refreshDetailEvent(true);
     } catch {
         showToast('Fehler beim Löschen der Aufgabe', 'error');
     }
-};
-
-window.removeDutyAssignee = async function(dutyId) {
-    if (!dutyId) return;
-    if (!confirm('Diesen Eintrag wirklich entfernen?')) return;
-
-    try {
-        const ev = currentDetailEvent;
-        const currentDuty = ev?.duties?.find(d => d.id === dutyId);
-        const roleName = currentDuty?.roleName;
-        const dutiesForThisRole = ev?.duties?.filter(d => (d.roleName || '').trim() === (roleName || '').trim()) || [];
-        const wasOnlySlot = dutiesForThisRole.length === 1;
-
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
-            method: 'DELETE'
-        });
-        if (res.ok) {
-            if (wasOnlySlot && roleName && ev?.id) {
-                // Keep the task as an empty role so it doesn't vanish
-                await fetchWithAuth(`${config.apiBaseUrl}/events/${ev.id}/duties`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roleName })
-                });
-            }
-            showToast('Eintrag entfernt', 'info');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-                const details = document.getElementById('detail-modal-duties-details');
-                if (details) details.open = true;
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Entfernen', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-window.cancelDutyRequest = async function(dutyId) {
-    if (!confirm('Möchtest du diese Dienstanfrage wirklich zurückziehen?')) return;
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/cancel-request`, {
-            method: 'POST'
-        });
-        if (res.ok) {
-            showToast('Dienstanfrage zurückgezogen', 'info');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-                const details = document.getElementById('detail-modal-duties-details');
-                if (details) details.open = true;
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Zurückziehen der Anfrage', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-window.claimEventDuty = async function(dutyId) {
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/claim`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'claim' })
-        });
-        if (res.ok) {
-            showToast('Dienst erfolgreich übernommen! Vielen Dank für deinen Einsatz.', 'success');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-                const details = document.getElementById('detail-modal-duties-details');
-                if (details) details.open = true;
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Dienstübernahme fehlgeschlagen', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-window.unclaimEventDuty = async function(dutyId) {
-    if (!confirm('Möchtest du diese Zuweisung wirklich aufheben / austragen?')) return;
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}/claim`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'unclaim' })
-        });
-        if (res.ok) {
-            showToast('Zuweisung aufgehoben', 'info');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-                const details = document.getElementById('detail-modal-duties-details');
-                if (details) details.open = true;
-            }
-        } else {
-            showToast('Fehler beim Freigeben des Dienstes', 'error');
-        }
-    } catch {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-// Fallback compatibility stubs
-window.renderChurchDutyCard = function(d, ev) {
-    return window.renderDutyAssigneeItem(d, ev, 'default');
-};
-window.openAddDutySlotModal = function() {
-    window.showAddNewTaskForm();
-};
-
-window.exportCurrentDetailEventIcs = async function() {
-    if (!currentDetailEvent) return;
-    await window.exportEventIcs(currentDetailEvent.id, currentDetailEvent.title);
-};
-
-window.downloadCurrentEventIcs = function() {
-    window.exportCurrentDetailEventIcs();
-};
-
-window.exportEventIcs = async function(eventId, eventTitle = 'termin') {
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/export.ics`);
-        if (!res.ok) {
-            showToast('Export fehlgeschlagen', 'error');
-            return;
-        }
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        const cleanName = (eventTitle || 'termin').toLowerCase().replace(/[^a-z0-9_-]/g, '_').substring(0, 30);
-        a.download = `${cleanName || 'termin'}.ics`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-        showToast('Kalendertermin (.ics) heruntergeladen', 'success');
-    } catch (e) {
-        console.error('ICS Export error:', e);
-        showToast('Export fehlgeschlagen', 'error');
-    }
-};
-
-window.openEditEventFromDetail = function() {
-    if (!currentDetailEvent) return;
-    window.enterDetailEditMode();
-};
-
-window.deleteCurrentEventFromDetail = async function() {
-    if (!currentDetailEvent) return;
-    const eventId = currentDetailEvent.id;
-    closeModal('event-detail-modal');
-    window.deleteEvent(eventId);
-};
-
-// ==========================================================
-// Event Registration Toggle
-// ==========================================================
-window.toggleEventRegistration = async function(eventId, currentStatus) {
-    if (!currentUser) return;
-    const action = (currentStatus === 'registered' || currentStatus === 'waitlist') ? 'cancel' : 'register';
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action })
-        });
-        if (res.ok) {
-            const data = await res.json();
-            if (action === 'cancel') {
-                showToast(t('events_unregistered_success', 'Erfolgreich abgemeldet'), 'info');
-            } else if (data.isWaitlist) {
-                showToast(t('events_waitlist_success', 'Auf die Warteliste gesetzt'), 'warning');
-            } else {
-                showToast(t('events_registered_success', 'Erfolgreich verbindlich angemeldet!'), 'success');
-            }
-            await window.loadEventsData();
-            if (currentDetailEvent && currentDetailEvent.id === eventId) {
-                window.openEventDetailModal(eventId);
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Aktion fehlgeschlagen', 'error');
-        }
-    } catch (e) {
-        showToast('Verbindungsfehler', 'error');
-    }
-};
-
-// ==========================================================
-// Delete Event
-// ==========================================================
-window.deleteEvent = async function(eventId) {
-    if (!confirm(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/${eventId}`, {
-            method: 'DELETE'
-        });
-        if (res.ok) {
-            showToast(t('events_deleted_success', 'Event gelöscht'), 'success');
-            await window.loadEventsData();
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Löschen fehlgeschlagen', 'error');
-        }
-    } catch (e) {
-        showToast('Fehler beim Löschen des Events', 'error');
-    }
-};
-
-// ==========================================================
-// Create & Edit Event Modal
-// ==========================================================
-window.setCreateEventType = function(type) {
-    const isTermin = (type === 'termin');
-    const hidden = document.getElementById('event-input-type');
-    if (hidden) hidden.value = isTermin ? 'termin' : 'event';
-
-    const tabEvent = document.getElementById('type-tab-event');
-    const tabTermin = document.getElementById('type-tab-termin');
-    if (tabEvent) tabEvent.classList.toggle('is-active', !isTermin);
-    if (tabTermin) tabTermin.classList.toggle('is-active', isTermin);
-
-    const canManage = canManageEvents();
-    const recWrap = document.getElementById('event-recurring-wrap');
-    const pinnedWrap = document.getElementById('event-pinned-wrap');
-    const isEdit = Boolean(document.getElementById('event-input-id')?.value);
-
-    if (recWrap) recWrap.style.display = (canManage && isTermin && !isEdit) ? 'block' : 'none';
-    if (pinnedWrap) pinnedWrap.style.display = (canManage && !isTermin) ? 'block' : 'none';
-};
-
-let _eventCropDataUrl = null;
-let _eventCropOriginalDataUrl = null;
-let _eventCropContext = null;
-
-function _eventCropClamp(val, min, max) {
-    if (val < min) return min;
-    if (val > max) return max;
-    return val;
 }
 
-window.openEventCrop = async function(fileOrDataUrl) {
-    let dataUrl = '';
-    if (typeof fileOrDataUrl === 'string') {
-        dataUrl = fileOrDataUrl;
-    } else if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
-        let imageFile = fileOrDataUrl;
-        const isHeic = (imageFile.name && (imageFile.name.toLowerCase().endsWith('.heic') || imageFile.name.toLowerCase().endsWith('.heif'))) ||
-            imageFile.type === 'image/heic' || imageFile.type === 'image/heif';
-        if (isHeic && typeof heic2any === 'function') {
-            try {
-                const blob = await heic2any({ blob: imageFile, toType: 'image/jpeg', quality: 0.85 });
-                const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
-                imageFile = new File([convertedBlob], (imageFile.name || 'image').replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg' });
-            } catch (e) {
-                console.error('HEIC conversion failed:', e);
-            }
-        }
-        dataUrl = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = e => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(imageFile);
-        });
-    }
-
-    if (!dataUrl) return;
-    _eventCropOriginalDataUrl = dataUrl;
-    _eventCropDataUrl = dataUrl;
-
-    const viewport = document.getElementById('eventCropViewport');
-    const imgEl = document.getElementById('eventCropImage');
-    const overlay = document.getElementById('eventCropOverlay');
-    const zoomSlider = document.getElementById('eventCropZoom');
-
-    if (!viewport || !imgEl || !overlay) return;
-
-    imgEl.src = _eventCropDataUrl;
-    await new Promise(resolve => {
-        imgEl.onload = resolve;
-        imgEl.onerror = resolve;
+async function removeDutyAssignee(dutyId) {
+    if (!dutyId || !confirmAction('Diesen Eintrag wirklich entfernen?')) return;
+    const ev = currentDetailEvent;
+    const roleName = ev?.duties?.find(d => d.id === dutyId)?.roleName;
+    const isOnlySlot = (ev?.duties?.filter(d => (d.roleName || '').trim() === (roleName || '').trim()) || []).length === 1;
+    await eventAction(`/events/duties/${dutyId}`, 'DELETE', undefined, {
+        // Keep the task as an empty role so it doesn't vanish with its last entry
+        before: async () => { if (isOnlySlot && roleName && ev?.id) await api(`/events/${ev.id}/duties`, 'POST', { roleName }); },
+        success: 'Eintrag entfernt', successType: 'info', error: 'Fehler beim Entfernen'
     });
+}
 
-    const nw = imgEl.naturalWidth || 800;
-    const nh = imgEl.naturalHeight || 600;
+async function toggleEventRegistration(eventId, currentStatus) {
+    if (!currentUser) return;
+    const cancel = currentStatus === 'registered' || currentStatus === 'waitlist';
+    await eventAction(`/events/${eventId}/register`, 'POST', { action: cancel ? 'cancel' : 'register' }, {
+        success: data => cancel ? t('events_unregistered_success', 'Erfolgreich abgemeldet') : data.isWaitlist ? t('events_waitlist_success', 'Auf die Warteliste gesetzt') : t('events_registered_success', 'Erfolgreich verbindlich angemeldet!'),
+        successType: data => cancel ? 'info' : data.isWaitlist ? 'warning' : 'success',
+        error: 'Aktion fehlgeschlagen',
+        after: () => { if (currentDetailEvent?.id === eventId) openEventDetailModal(eventId); }
+    });
+}
 
-    // Viewport dimensions
-    const vw = viewport.clientWidth || 480;
-    const vh = Math.max(260, Math.round(vw * (9 / 16)));
-    viewport.style.height = vh + 'px';
+async function deleteEvent(eventId) {
+    if (!confirmAction(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
+    await eventAction(`/events/${eventId}`, 'DELETE', undefined, {
+        success: t('events_deleted_success', 'Event gelöscht'), error: 'Löschen fehlgeschlagen', networkError: 'Fehler beim Löschen des Events', after: () => {}
+    });
+}
 
-    // The crop window overlay is strictly 16:9
-    const cropW = Math.round(vw * 0.94);
-    const cropH = Math.round(cropW * (9 / 16));
-    overlay.style.width = cropW + 'px';
-    overlay.style.height = cropH + 'px';
+// --- Event cover image cropping (16:9) ---
+let eventCropper = null;
 
-    let offsetX = Math.round((vw - cropW) / 2);
-    let offsetY = Math.round((vh - cropH) / 2);
-    overlay.style.left = offsetX + 'px';
-    overlay.style.top = offsetY + 'px';
-
-    // Scale image to cover the crop area at zoom = 1
-    const baseScale = Math.max(cropW / nw, cropH / nh);
-    let currentZoom = 1;
-
-    function applyZoom() {
-        const dispW = Math.round(nw * baseScale * currentZoom);
-        const dispH = Math.round(nh * baseScale * currentZoom);
-        imgEl.style.width = dispW + 'px';
-        imgEl.style.height = dispH + 'px';
-        imgEl.style.position = 'absolute';
-
-        // Center image relative to viewport
-        imgEl.style.left = Math.round((vw - dispW) / 2) + 'px';
-        imgEl.style.top = Math.round((vh - dispH) / 2) + 'px';
-
-        // Constrain overlay within image bounds
-        const imgL = parseInt(imgEl.style.left);
-        const imgT = parseInt(imgEl.style.top);
-        offsetX = _eventCropClamp(offsetX, imgL, imgL + dispW - cropW);
-        offsetY = _eventCropClamp(offsetY, imgT, imgT + dispH - cropH);
-        overlay.style.left = offsetX + 'px';
-        overlay.style.top = offsetY + 'px';
-    }
-
-    applyZoom();
-
-    let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartOX = 0, dragStartOY = 0;
-
-    function onPointerDown(e) {
-        e.preventDefault();
-        isDragging = true;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        dragStartX = clientX; dragStartY = clientY;
-        dragStartOX = offsetX; dragStartOY = offsetY;
-    }
-
-    function onPointerMove(e) {
-        if (!isDragging) return;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        const imgL = parseInt(imgEl.style.left);
-        const imgT = parseInt(imgEl.style.top);
-        const dispW = Math.round(nw * baseScale * currentZoom);
-        const dispH = Math.round(nh * baseScale * currentZoom);
-        offsetX = _eventCropClamp(dragStartOX + (clientX - dragStartX), imgL, imgL + dispW - cropW);
-        offsetY = _eventCropClamp(dragStartOY + (clientY - dragStartY), imgT, imgT + dispH - cropH);
-        overlay.style.left = offsetX + 'px';
-        overlay.style.top = offsetY + 'px';
-    }
-
-    function onPointerUp() { isDragging = false; }
-
-    overlay.removeEventListener('mousedown', overlay._md);
-    overlay.removeEventListener('touchstart', overlay._td);
-    overlay._md = onPointerDown; overlay._td = onPointerDown;
-    overlay.addEventListener('mousedown', overlay._md);
-    overlay.addEventListener('touchstart', overlay._td, { passive: false });
-
-    document.removeEventListener('mousemove', overlay._mm);
-    document.removeEventListener('mouseup', overlay._mu);
-    document.removeEventListener('touchmove', overlay._tm);
-    document.removeEventListener('touchend', overlay._tu);
-    overlay._mm = onPointerMove; overlay._mu = onPointerUp;
-    overlay._tm = onPointerMove; overlay._tu = onPointerUp;
-    document.addEventListener('mousemove', overlay._mm);
-    document.addEventListener('mouseup', overlay._mu);
-    document.addEventListener('touchmove', overlay._tm, { passive: false });
-    document.addEventListener('touchend', overlay._tu);
-
-    if (zoomSlider) {
-        zoomSlider.value = 1;
-        zoomSlider.removeEventListener('input', zoomSlider._zl);
-        zoomSlider._zl = function(e) {
-            currentZoom = parseFloat(e.target.value);
-            applyZoom();
-        };
-        zoomSlider.addEventListener('input', zoomSlider._zl);
-    }
-
-    viewport.removeEventListener('wheel', viewport._wl);
-    viewport._wl = function(e) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        currentZoom = _eventCropClamp(currentZoom + delta, 1, 3);
-        if (zoomSlider) zoomSlider.value = currentZoom;
-        applyZoom();
-    };
-    viewport.addEventListener('wheel', viewport._wl, { passive: false });
-
-    _eventCropContext = {
-        imgEl, nw, nh,
-        get dispW() { return Math.round(nw * baseScale * currentZoom); },
-        get dispH() { return Math.round(nh * baseScale * currentZoom); },
-        get imgLeft() { return parseInt(imgEl.style.left); },
-        get imgTop() { return parseInt(imgEl.style.top); },
-        cropW, cropH, vw, vh,
-        getOffset: () => ({ x: offsetX, y: offsetY }),
-        setZoom: (z) => {
-            currentZoom = z;
-            if (zoomSlider) zoomSlider.value = z;
-            applyZoom();
+async function openEventCrop(file) {
+    const viewport = $('eventCropViewport');
+    const img = $('eventCropImage');
+    const overlay = $('eventCropOverlay');
+    if (!viewport || !img || !overlay) return;
+    eventCropper = await initCropper({
+        viewport, img, overlay,
+        zoomSlider: $('eventCropZoom'),
+        src: await readAsDataUrl(await convertHeic(file, 0.85, file.name || 'image')),
+        fallbackSize: [800, 600],
+        layout: (width, nw, nh) => {
+            const vw = width || 480;
+            const cropW = Math.round(vw * 0.94);
+            const cropH = Math.round(cropW * (9 / 16));
+            return { vw, vh: Math.max(260, Math.round(vw * (9 / 16))), cropW, cropH, scale: Math.max(cropW / nw, cropH / nh) };
         }
-    };
-
+    });
     openModal('event-crop-modal');
-};
+}
 
-window.resetEventCropZoom = function() {
-    if (_eventCropContext && _eventCropContext.setZoom) {
-        _eventCropContext.setZoom(1);
-    }
-};
-
-window.cancelEventCrop = function() {
-    closeModal('event-crop-modal');
-};
-
-window.reopenEventCrop = function() {
-    if (_eventCropOriginalDataUrl) {
-        window.openEventCrop(_eventCropOriginalDataUrl);
-    } else {
-        const previewImg = document.getElementById('event-image-preview');
-        const urlInput = document.getElementById('event-input-image-url');
-        const src = (previewImg && previewImg.src) || (urlInput && urlInput.value);
-        if (src) {
-            window.openEventCrop(src);
-        }
-    }
-};
-
-window.confirmEventCrop = async function() {
-    const ctx = _eventCropContext;
-    if (!ctx) return;
-
-    const { imgEl, nw, nh, dispW, dispH, imgLeft, imgTop, cropW, cropH, getOffset } = ctx;
-    const { x: offsetX, y: offsetY } = getOffset();
-
-    const relX = offsetX - imgLeft;
-    const relY = offsetY - imgTop;
-    const scaleX = nw / dispW;
-    const scaleY = nh / dispH;
-
-    const srcX = Math.round(relX * scaleX);
-    const srcY = Math.round(relY * scaleY);
-    const srcW = Math.round(cropW * scaleX);
-    const srcH = Math.round(cropH * scaleY);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 1280;
-    canvas.height = 720;
-    const c = canvas.getContext('2d');
-    c.imageSmoothingEnabled = true;
-    c.imageSmoothingQuality = 'high';
-    c.drawImage(imgEl, srcX, srcY, srcW, srcH, 0, 0, 1280, 720);
-
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
-    if (!blob) {
-        showToast('Fehler beim Zuschneiden des Bildes.', 'error');
-        return;
-    }
-
-    const jpegFile = new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' });
-    const confirmBtn = document.getElementById('btn-confirm-event-crop');
-    if (confirmBtn) setButtonLoading('btn-confirm-event-crop', true, 'Wird gespeichert...');
-
+async function confirmEventCrop() {
+    if (!eventCropper) return;
+    const { x, y, scaleX, scaleY } = eventCropper.region();
+    const blob = await cropToJpeg(eventCropper.img, [x, y, Math.round(eventCropper.cropW * scaleX), Math.round(eventCropper.cropH * scaleY)], 1280, 720, 0.82);
+    if (!blob) return showToast('Fehler beim Zuschneiden des Bildes.', 'error');
+    setButtonLoading('btn-confirm-event-crop', true, 'Wird gespeichert...');
     try {
-        const formData = new FormData();
-        formData.append('image', jpegFile);
-
-        const token = (typeof auth !== 'undefined' && auth.currentUser) 
-            ? (await auth.currentUser.getIdToken()) 
-            : (localStorage.getItem('token') || '');
-        const headers = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch(`${config.apiBaseUrl}/events/upload-image`, {
+        const token = await getToken();
+        const res = await fetch(`${API}/events/upload-image`, {
             method: 'POST',
-            headers,
-            body: formData
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: toFormData({ image: new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' }) })
         });
-
-        if (res.ok) {
-            const data = await res.json();
-            const urlInput = document.getElementById('event-input-image-url');
-            const previewImg = document.getElementById('event-image-preview');
-            const previewWrap = document.getElementById('event-image-preview-wrap');
-            const placeholder = document.getElementById('event-image-placeholder');
-
-            if (urlInput) urlInput.value = data.url;
-            if (previewImg) previewImg.src = data.url;
-            if (previewWrap) previewWrap.style.display = 'block';
-            if (placeholder) placeholder.style.display = 'none';
-
-            // If triggered from detail edit mode, also update the detail cover image
-            const isDetailEditing = Boolean(window._detailEditImagePending || document.querySelector('.event-detail-modal-card.detail-is-editing'));
-            if (isDetailEditing) {
-                window._detailEditImagePending = false;
-                const detailImgInput = document.getElementById('detail-edit-image-url');
-                if (detailImgInput) detailImgInput.value = data.url;
-                // Update detail cover banner
-                const detailCoverImg = document.getElementById('detail-modal-cover-img');
-                const detailCoverWrap = document.getElementById('detail-modal-cover-wrap');
-                const detailPlaceholder = document.getElementById('detail-edit-cover-placeholder');
-                const modalCard = document.querySelector('.event-detail-modal-card');
-                if (detailCoverImg) detailCoverImg.src = data.url;
-                if (detailCoverWrap) detailCoverWrap.style.display = 'block';
-                if (detailPlaceholder) detailPlaceholder.style.display = 'none';
-                if (modalCard) modalCard.classList.add('has-hero-image');
-            }
-
-            closeModal('event-crop-modal');
-            showToast('Eventbild im 16:9-Format übernommen!', 'success');
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Upload fehlgeschlagen', 'error');
-        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(data.error || 'Upload fehlgeschlagen', 'error');
+        setValue('detail-edit-image-url', data.url);
+        showDetailCover(data.url);
+        show('detail-edit-cover-placeholder', false);
+        closeModal('event-crop-modal');
+        showToast('Eventbild im 16:9-Format übernommen!', 'success');
     } catch (e) {
         console.error('Crop upload error:', e);
         showToast('Fehler beim Speichern des Eventbildes', 'error');
     } finally {
-        if (confirmBtn) setButtonLoading('btn-confirm-event-crop', false, null);
-    }
-};
-
-window.compressEventImage = async function(file, quality = 0.60) {
-    let uploadFile = file;
-    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
-    if (isHeic && typeof heic2any === 'function') {
-        try {
-            const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
-            const convertedBlob = Array.isArray(blob) ? blob[0] : blob;
-            const newName = file.name.replace(/\.hei[cf]$/i, '.jpg');
-            uploadFile = new File([convertedBlob], newName, { type: 'image/jpeg' });
-        } catch (e) {
-            console.error('HEIC conversion failed, using original:', e);
-        }
-    }
-
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(uploadFile);
-        reader.onload = event => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                const maxDim = 1920;
-                if (width > maxDim || height > maxDim) {
-                    if (width > height) {
-                        height = Math.round((height * maxDim) / width);
-                        width = maxDim;
-                    } else {
-                        width = Math.round((width * maxDim) / height);
-                        height = maxDim;
-                    }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-
-                let newName = uploadFile.name;
-                if (!newName.toLowerCase().endsWith('.jpg') && !newName.toLowerCase().endsWith('.jpeg')) {
-                    newName = newName.replace(/\.[^/.]+$/, '') + '.jpg';
-                }
-
-                canvas.toBlob(blob => {
-                    if (blob) {
-                        resolve(new File([blob], newName, { type: 'image/jpeg' }));
-                    } else {
-                        resolve(uploadFile);
-                    }
-                }, 'image/jpeg', quality);
-            };
-            img.onerror = () => resolve(uploadFile);
-        };
-        reader.onerror = () => resolve(uploadFile);
-    });
-};
-
-window.removeEventImage = function() {
-    _eventCropOriginalDataUrl = null;
-    _eventCropDataUrl = null;
-    const previewWrap = document.getElementById('event-image-preview-wrap');
-    const placeholder = document.getElementById('event-image-placeholder');
-    const previewImg = document.getElementById('event-image-preview');
-    const urlInput = document.getElementById('event-input-image-url');
-    const fileInput = document.getElementById('event-input-file');
-
-    if (previewImg) previewImg.src = '';
-    if (previewWrap) previewWrap.style.display = 'none';
-    if (placeholder) placeholder.style.display = 'block';
-    if (urlInput) urlInput.value = '';
-    if (fileInput) fileInput.value = '';
-};
-
-window.handleEventImageSelect = async function(files) {
-    if (!files || !files[0]) return;
-    const file = files[0];
-    await window.openEventCrop(file);
-    const fileInput = document.getElementById('event-input-file');
-    if (fileInput) fileInput.value = '';
-};
-
-function renderQuickDutyChips() {
-    const chipsContainer = document.getElementById('event-quick-duty-chips');
-    if (!chipsContainer) return;
-    const suggestions = (Array.isArray(eventSettings?.defaultDuties) && eventSettings.defaultDuties.length > 0)
-        ? eventSettings.defaultDuties
-        : ['Bistro-Team', 'Technik', 'Moderation', 'Musik / Lobpreis', 'Begrüßung', 'Kinderbetreuung'];
-
-    chipsContainer.innerHTML = suggestions.map(role => `
-        <button type="button" class="duty-suggestion-chip" onclick="window.addEventDutySlot('${escapeHtml(role)}')">
-            + ${escapeHtml(role)}
-        </button>
-    `).join('');
-}
-
-window.openCreateEventModal = function(requiresRegistration = false, defaultType = null) {
-    const canManage = canManageEvents();
-    const chosenType = canManage ? (defaultType || (currentEventsSubTab === 'termine' ? 'termin' : 'event')) : 'event';
-    window.openNewEventDetailModal(chosenType);
-    if (requiresRegistration) {
-        const regCheck = document.getElementById('detail-edit-requires-reg');
-        if (regCheck) {
-            regCheck.checked = true;
-            window.toggleDetailRegFields(true);
-        }
-    }
-};
-
-window.openCreateEventModalForDate = function(dateStr) {
-    const canManage = canManageEvents();
-    const chosenType = canManage ? (currentEventsSubTab === 'termine' ? 'termin' : 'event') : 'event';
-    window.openNewEventDetailModal(chosenType);
-    const dateInput = document.getElementById('detail-edit-date');
-    if (dateInput && dateStr) dateInput.value = dateStr;
-};
-
-window.openEditEventModal = async function(eventId) {
-    await window.openEventDetailModal(eventId);
-    window.enterDetailEditMode();
-};
-
-function populateTargetGroupsCheckboxes(selectedGroups = []) {
-    const targetGroupsContainer = document.getElementById('event-target-groups-container');
-    if (!targetGroupsContainer) return;
-    const groups = Array.isArray(systemGroups) ? systemGroups : [];
-    if (groups.length > 0) {
-        targetGroupsContainer.innerHTML = groups.map(g => {
-            const gName = g.name || g.id;
-            const isChecked = selectedGroups.includes(gName) || selectedGroups.includes(g.id);
-            return `
-                <label style="display:inline-flex; align-items:center; gap:6px; background:var(--surface-alt); padding:5px 10px; border-radius:8px; border:1px solid var(--border-light); cursor:pointer; font-size:0.82rem;">
-                    <input type="checkbox" name="event-target-group" value="${escapeHtml(gName)}" ${isChecked ? 'checked' : ''} style="accent-color:var(--primary);">
-                    <span>${escapeHtml(gName)}</span>
-                </label>
-            `;
-        }).join('');
-    } else {
-        targetGroupsContainer.innerHTML = '<span style="font-size:0.8rem; color:var(--text-secondary);">Keine Gruppen vorhanden (Event ist öffentlich).</span>';
+        setButtonLoading('btn-confirm-event-crop', false, null);
     }
 }
 
-window.toggleEventRegistrationFields = function(isChecked) {
-    const regOpts = document.getElementById('event-reg-options');
-    if (regOpts) regOpts.style.display = isChecked ? 'grid' : 'none';
-};
+// --- Calendar subscription (WebCal feed) ---
+let cachedCalendarFeed = null;
+const fallbackFeedUrl = () => `${location.protocol === 'https:' ? 'https:' : 'http:'}//${location.host}/api/events/calendar.ics?token=${encodeURIComponent(localStorage.getItem('token') || '')}`;
 
-window.toggleEventRecurringFields = function(isChecked) {
-    const recurringOpts = document.getElementById('event-recurring-options');
-    if (recurringOpts) recurringOpts.style.display = isChecked ? 'block' : 'none';
-};
-
-window.addEventDutySlot = function(defaultRole = '', defaultGroup = '', dutyId = '') {
-    const container = document.getElementById('event-duties-input-list');
-    if (!container) return;
-
-    const groups = Array.isArray(systemGroups) ? systemGroups : [];
-    const groupOptions = groups.map(g => {
-        const gName = g.name || g.id;
-        const isSel = gName === defaultGroup || g.id === defaultGroup;
-        return `<option value="${escapeHtml(gName)}" ${isSel ? 'selected' : ''}>👥 ${escapeHtml(gName)}</option>`;
-    }).join('');
-
-    const row = document.createElement('div');
-    row.className = 'duty-slot-row';
-    if (dutyId) row.dataset.dutyId = dutyId;
-
-    row.innerHTML = `
-        <div>
-            <input type="text" class="form-input duty-input-role" placeholder="Rolle (z. B. Bistro-Team)" value="${escapeHtml(defaultRole)}" required>
-        </div>
-        <div>
-            <select class="form-select duty-select-group">
-                <option value="">-- Gruppe zuweisen (optional) --</option>
-                ${groupOptions}
-            </select>
-        </div>
-        <div>
-            <button type="button" class="btn btn-ghost btn-small text-danger" onclick="this.closest('.duty-slot-row').remove()" title="Entfernen">✕</button>
-        </div>
-    `;
-    container.appendChild(row);
-};
-
-window.handleCreateEventSubmit = async function(e) {
-    e.preventDefault();
-
-    const eventId = document.getElementById('event-input-id')?.value;
-    const titleInput = document.getElementById('event-input-title');
-    const dateInput = document.getElementById('event-input-date');
-
-    const title = titleInput ? titleInput.value.trim() : '';
-    const date = dateInput ? dateInput.value.trim() : '';
-    const endDate = document.getElementById('event-input-end-date')?.value || '';
-    const startTime = document.getElementById('event-input-start-time')?.value || '';
-    const endTime = document.getElementById('event-input-end-time')?.value || '';
-    const location = document.getElementById('event-input-location')?.value || '';
-    const description = document.getElementById('event-input-description')?.value || '';
-    const imageUrl = document.getElementById('event-input-image-url')?.value || '';
-
-    if (!title) {
-        showToast('Bitte gib einen Titel ein', 'warning');
-        if (titleInput) titleInput.focus();
-        return;
-    }
-    if (!date) {
-        showToast('Bitte gib ein Datum ein', 'warning');
-        if (dateInput) dateInput.focus();
-        return;
-    }
-    if (endDate && date && endDate < date) {
-        showToast('Das Enddatum darf nicht vor dem Startdatum liegen', 'warning');
-        return;
-    }
-
-    const eventType = document.getElementById('event-input-type')?.value || 'event';
-    const isPinned = document.getElementById('event-check-pinned')?.checked === true;
-
-    const requiresRegistration = document.getElementById('event-check-requires-reg')?.checked === true;
-    const minParticipants = parseInt(document.getElementById('event-input-min-participants')?.value, 10) || 0;
-    const maxParticipants = parseInt(document.getElementById('event-input-max-participants')?.value, 10) || 0;
-
-    const isRecurring = !eventId && (eventType === 'termin') && (document.getElementById('event-check-recurring')?.checked === true);
-    const recurringRule = document.getElementById('event-select-recurring-rule')?.value || 'weekly';
-    const recurringCount = isRecurring ? Math.min(52, Math.max(2, parseInt(document.getElementById('event-recurring-count')?.value, 10) || 10)) : 1;
-
-    // Target Groups
-    const targetGroupCheckboxes = document.querySelectorAll('input[name="event-target-group"]:checked');
-    const targetGroups = Array.from(targetGroupCheckboxes).map(cb => cb.value);
-
-    // Duty Slots
-    const dutyRows = document.querySelectorAll('#event-duties-input-list .duty-slot-row');
-    const duties = [];
-    dutyRows.forEach(row => {
-        const roleName = row.querySelector('.duty-input-role')?.value;
-        const assignedGroup = row.querySelector('.duty-select-group')?.value;
-        const dutyId = row.dataset.dutyId || undefined;
-        if (roleName && roleName.trim()) {
-            duties.push({
-                id: dutyId,
-                roleName: roleName.trim(),
-                assignedGroup: assignedGroup || ''
-            });
-        }
-    });
-
-    const submitBtn = document.getElementById('event-submit-btn');
-    if (submitBtn) submitBtn.disabled = true;
-
-    const payload = {
-        title,
-        date,
-        endDate,
-        startTime,
-        endTime,
-        location,
-        description,
-        imageUrl,
-        eventType,
-        isPinned: (eventType === 'event') ? isPinned : false,
-        requiresRegistration,
-        minParticipants,
-        maxParticipants,
-        isRecurring,
-        recurringRule,
-        recurringCount,
-        targetGroups,
-        duties
-    };
-
+async function fetchPersonalCalendarFeed(force = false) {
+    if (cachedCalendarFeed && !force) return cachedCalendarFeed;
     try {
-        const url = eventId ? `${config.apiBaseUrl}/events/${eventId}` : `${config.apiBaseUrl}/events`;
-        const method = eventId ? 'PATCH' : 'POST';
-
-        const res = await fetchWithAuth(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-            const shouldReopenDetail = Boolean(eventId && currentDetailEvent && currentDetailEvent.id === eventId);
-            closeModal('create-event-modal', shouldReopenDetail);
-            showToast(eventId ? 'Event erfolgreich aktualisiert!' : t('events_created_success', 'Event erfolgreich erstellt!'), 'success');
-            await window.loadEventsData();
-            if (shouldReopenDetail) {
-                window.openEventDetailModal(eventId);
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Speichern des Events', 'error');
-        }
-    } catch (err) {
-        showToast('Verbindungsfehler beim Speichern', 'error');
-    } finally {
-        if (submitBtn) submitBtn.disabled = false;
-    }
-};
-
-// ==========================================================
-// Edit Duty Modal (Group self-organization)
-// ==========================================================
-window.openEditDutyModal = function(dutyId, roleName, groupName, status, notes) {
-    const idInput = document.getElementById('edit-duty-id');
-    const subtitle = document.getElementById('edit-duty-subtitle');
-    const statusSelect = document.getElementById('edit-duty-status');
-    const notesInput = document.getElementById('edit-duty-notes');
-
-    if (idInput) idInput.value = dutyId;
-    if (subtitle) subtitle.textContent = `${roleName} • ${groupName}`;
-    if (statusSelect) statusSelect.value = status || 'open';
-    if (notesInput) notesInput.value = notes || '';
-
-    openModal('edit-duty-modal');
-};
-
-window.handleEditDutySubmit = async function(e) {
-    e.preventDefault();
-    const dutyId = document.getElementById('edit-duty-id')?.value;
-    const status = document.getElementById('edit-duty-status')?.value;
-    const notes = document.getElementById('edit-duty-notes')?.value;
-
-    if (!dutyId) return;
-
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/duties/${dutyId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status, notes })
-        });
-        if (res.ok) {
-            closeModal('edit-duty-modal');
-            showToast(t('events_duty_updated_success', 'Dienst-Details aktualisiert!'), 'success');
-            await window.loadEventsData();
-            if (currentDetailEvent) {
-                window.openEventDetailModal(currentDetailEvent.id);
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Speichern', 'error');
-        }
-    } catch (e) {
-        showToast('Verbindungsfehler beim Speichern', 'error');
-    }
-};
-
-// ==========================================================
-// Calendar Subscription & WebCal Feed
-// ==========================================================
-let cachedCalendarFeedData = null;
-
-async function fetchPersonalCalendarFeed(forceRefresh = false) {
-    if (cachedCalendarFeedData && !forceRefresh) {
-        return cachedCalendarFeedData;
-    }
-    try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/user/calendar-feed`);
-        if (res.ok) {
-            const data = await res.json();
-            cachedCalendarFeedData = data;
-            return data;
-        }
+        const res = await api('/user/calendar-feed');
+        if (res.ok) return (cachedCalendarFeed = await res.json());
     } catch (err) {
         console.warn('Failed to load personal calendar feed:', err);
     }
-    const token = typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('token') || '');
-    const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
-    const fallbackUrl = `${protocol}//${location.host}/api/events/calendar.ics?token=${encodeURIComponent(token)}`;
-    return {
-        feedUrl: fallbackUrl,
-        webcalUrl: fallbackUrl.replace(/^https?:/, 'webcal:'),
-        calendarToken: ''
-    };
+    const url = fallbackFeedUrl();
+    return { feedUrl: url, webcalUrl: url.replace(/^https?:/, 'webcal:'), calendarToken: '' };
 }
 
-function getWebCalFeedUrl() {
-    if (cachedCalendarFeedData && cachedCalendarFeedData.feedUrl) {
-        return cachedCalendarFeedData.feedUrl;
-    }
-    const token = typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('token') || '');
-    const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
-    return `${protocol}//${location.host}/api/events/calendar.ics?token=${encodeURIComponent(token)}`;
-}
+const personalFeedUrl = async () => (await fetchPersonalCalendarFeed())?.feedUrl || cachedCalendarFeed?.feedUrl || fallbackFeedUrl();
 
-window.getPersonalCalendarFeedUrl = getWebCalFeedUrl;
-
-window.loadPersonalCalendarFeedSettings = async function(force = false) {
+async function loadPersonalCalendarFeedSettings(force = false) {
     const feed = await fetchPersonalCalendarFeed(force);
-    if (!feed) return;
-    const url = feed.feedUrl;
+    ['user-cal-feed-url', 'admin-cal-feed-url', 'super-admin-events-feed-url'].forEach(id => setValue(id, feed.feedUrl));
+}
 
-    const userCalInput = document.getElementById('user-cal-feed-url');
-    if (userCalInput) userCalInput.value = url;
+async function copyPersonalCalendarFeedUrl() {
+    navigator.clipboard.writeText(await personalFeedUrl())
+        .then(() => showToast('Kalender-URL in die Zwischenablage kopiert!', 'success'))
+        .catch(() => showToast('Fehler beim Kopieren der Kalender-URL', 'error'));
+}
 
-    const adminCalInput = document.getElementById('admin-cal-feed-url');
-    if (adminCalInput) adminCalInput.value = url;
-
-    const subCalInput = document.getElementById('sub-cal-feed-url');
-    if (subCalInput) subCalInput.value = url;
-
-    const superAdminFeedInput = document.getElementById('super-admin-events-feed-url');
-    if (superAdminFeedInput) superAdminFeedInput.value = url;
-};
-
-window.openSubscribeCalendarModal = async function() {
-    await window.loadPersonalCalendarFeedSettings();
-    openModal('subscribe-calendar-modal');
-};
-
-window.copyCalendarFeedUrl = function(type) {
-    window.copyPersonalCalendarFeedUrl();
-};
-
-window.copyPersonalCalendarFeedUrl = async function() {
-    const feed = await fetchPersonalCalendarFeed();
-    const url = feed?.feedUrl || getWebCalFeedUrl();
-    navigator.clipboard.writeText(url).then(() => {
-        showToast((typeof i18n === 'function' && i18n('calendar_sub_copied')) || 'Kalender-URL in die Zwischenablage kopiert!', 'success');
-    }).catch(() => {
-        showToast('Fehler beim Kopieren der Kalender-URL', 'error');
-    });
-};
-
-window.openWebCalDirectly = async function() {
-    const feed = await fetchPersonalCalendarFeed();
-    const feedUrl = feed?.feedUrl || getWebCalFeedUrl();
-    const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
-    window.location.href = webcalUrl;
-};
-
-window.openGoogleCalendarSubscription = async function() {
-    const feed = await fetchPersonalCalendarFeed();
-    const feedUrl = feed?.feedUrl || getWebCalFeedUrl();
-    const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(feedUrl)}`;
-    window.open(googleUrl, '_blank', 'noopener,noreferrer');
-};
-
-window.downloadIcsFile = async function() {
-    const feed = await fetchPersonalCalendarFeed();
-    const feedUrl = feed?.feedUrl || getWebCalFeedUrl();
-    window.open(feedUrl, '_blank');
-};
-
-window.resetCalendarFeedToken = async function() {
-    const confirmPrompt = (typeof i18n === 'function' && i18n('calendar_sub_reset_confirm')) || 'Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.';
-    if (!confirm(confirmPrompt)) return;
-
+async function resetCalendarFeedToken() {
+    if (!confirmAction('Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.')) return;
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/user/calendar-feed/reset`, {
-            method: 'POST'
-        });
-        if (res.ok) {
-            const data = await res.json();
-            cachedCalendarFeedData = data;
-            await window.loadPersonalCalendarFeedSettings(true);
-            showToast((typeof i18n === 'function' && i18n('calendar_sub_reset_success')) || 'Neuer Kalender-Link erfolgreich generiert!', 'success');
-        } else {
-            showToast('Fehler beim Zurücksetzen des Links', 'error');
-        }
-    } catch (err) {
+        const res = await api('/user/calendar-feed/reset', 'POST');
+        if (!res.ok) return showToast('Fehler beim Zurücksetzen des Links', 'error');
+        cachedCalendarFeed = await res.json();
+        await loadPersonalCalendarFeedSettings(true);
+        showToast('Neuer Kalender-Link erfolgreich generiert!', 'success');
+    } catch {
         showToast('Verbindungsfehler beim Zurücksetzen', 'error');
     }
-};
+}
 
-// ==========================================================
-// System Settings for Events
-// ==========================================================
-window.loadEventSystemSettings = async function() {
+// --- Event system settings ---
+async function loadEventSystemSettings() {
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/settings`);
-        if (res.ok) {
-            const settings = await res.json();
-            eventSettings = settings;
-            const allowMemberCb = document.getElementById('super-admin-events-allow-member-creation');
-            if (allowMemberCb) allowMemberCb.checked = settings.allowMemberCreation !== false;
-
-            const dutiesInput = document.getElementById('super-admin-events-default-duties');
-            if (dutiesInput) {
-                dutiesInput.value = Array.isArray(settings.defaultDuties) ? settings.defaultDuties.join(', ') : '';
-            }
-
-            const feedUrlInput = document.getElementById('super-admin-events-feed-url');
-            if (feedUrlInput) feedUrlInput.value = getWebCalFeedUrl();
-        }
+        const res = await api('/events/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        const allowMember = $('super-admin-events-allow-member-creation');
+        if (allowMember) allowMember.checked = data.allowMemberCreation !== false;
+        setValue('super-admin-events-default-duties', Array.isArray(data.defaultDuties) ? data.defaultDuties.join(', ') : '');
+        setValue('super-admin-events-feed-url', cachedCalendarFeed?.feedUrl || fallbackFeedUrl());
     } catch (err) {
         console.warn('Failed to load event system settings:', err);
     }
-};
+}
 
-window.saveEventSystemSettings = async function() {
-    const allowMemberCreation = document.getElementById('super-admin-events-allow-member-creation')?.checked === true;
-    const defaultDutiesStr = document.getElementById('super-admin-events-default-duties')?.value || '';
-    const defaultDuties = defaultDutiesStr.split(',').map(s => s.trim()).filter(Boolean);
-
+async function saveEventSystemSettings() {
+    const payload = {
+        allowMemberCreation: isChecked('super-admin-events-allow-member-creation'),
+        defaultDuties: inputValue('super-admin-events-default-duties').split(',').map(s => s.trim()).filter(Boolean)
+    };
     try {
-        const res = await fetchWithAuth(`${config.apiBaseUrl}/events/settings`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ allowMemberCreation, defaultDuties })
-        });
-        if (res.ok) {
-            showToast('Event-Einstellungen erfolgreich gespeichert!', 'success');
-            eventSettings = { allowMemberCreation, defaultDuties };
-        } else {
-            showToast('Fehler beim Speichern der Event-Einstellungen', 'error');
-        }
+        const res = await api('/events/settings', 'PATCH', payload);
+        showToast(res.ok ? 'Event-Einstellungen erfolgreich gespeichert!' : 'Fehler beim Speichern der Event-Einstellungen', res.ok ? 'success' : 'error');
     } catch {
         showToast('Verbindungsfehler', 'error');
     }
-};
+}
 
-
-
-
-// ==========================================================
-// DETAIL MODAL — INLINE EDIT MODE
-// ==========================================================
-
-/**
- * Enter edit mode on the currently open detail modal.
- * Populates all edit inputs from currentDetailEvent and adds .detail-is-editing class.
- */
-window.enterDetailEditMode = function() {
+// --- Detail modal: inline edit mode (create & edit) ---
+function enterDetailEditMode() {
     const ev = currentDetailEvent;
-    const modalCard = document.querySelector('.event-detail-modal-card');
-    if (!modalCard) return;
+    const card = detailCard();
+    if (!card) return;
+    card.classList.add('detail-is-editing');
+    setValue('detail-edit-title', ev ? ev.title || '' : '');
 
-    modalCard.classList.add('detail-is-editing');
-
-    // Populate title
-    const titleInput = document.getElementById('detail-edit-title');
-    if (titleInput) titleInput.value = ev ? (ev.title || '') : '';
-
-    // Type selector (strictly only for managers with extended event permissions)
+    // Only event managers may choose between appointment ("Termin") and event
     const canManage = canManageEvents();
-    if (modalCard) modalCard.classList.toggle('can-manage-events', canManage);
-    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
-    if (typeWrap) {
-        typeWrap.classList.toggle('can-manage-events', canManage);
-        typeWrap.classList.toggle('is-hidden', !canManage);
-        typeWrap.style.removeProperty('display');
-    }
-    const evType = canManage ? (ev ? (ev.eventType || (ev.isOfficialTermin ? 'termin' : 'event')) : 'termin') : 'event';
-    window.setDetailEditType(evType);
-
-    // Highlight (Großevent) toggle
-    const pinnedWrap = document.getElementById('detail-edit-pinned-wrap');
-    const pinnedCheck = document.getElementById('detail-edit-pinned');
-    const isPinned = ev ? (ev.isPinned === true) : false;
+    card.classList.toggle('can-manage-events', canManage);
+    syncTypeSelector(canManage);
+    setDetailEditType(canManage ? (ev ? ev.eventType || (ev.isOfficialTermin ? 'termin' : 'event') : 'termin') : 'event');
+    const isPinned = ev?.isPinned === true;
+    const pinnedCheck = $('detail-edit-pinned');
     if (pinnedCheck) pinnedCheck.checked = isPinned;
-    if (pinnedWrap) {
-        pinnedWrap.classList.toggle('is-active', isPinned);
-        pinnedWrap.style.display = (canManage && evType === 'event') ? 'flex' : 'none';
-    }
+    $('detail-edit-pinned-wrap')?.classList.toggle('is-active', isPinned);
 
-    // Date / Time / Multi-day
     const isMultiDay = Boolean(ev && ev.endDate && ev.endDate !== ev.date);
-    const multiDayCheck = document.getElementById('detail-edit-is-multiday');
+    const multiDayCheck = $('detail-edit-is-multiday');
     if (multiDayCheck) multiDayCheck.checked = isMultiDay;
-    window.toggleDetailMultiDay(isMultiDay);
-
-    const dateInput = document.getElementById('detail-edit-date');
-    const endDateInput = document.getElementById('detail-edit-end-date');
-    const startTimeInput = document.getElementById('detail-edit-start-time');
-    const endTimeInput = document.getElementById('detail-edit-end-time');
-
+    toggleDetailMultiDay(isMultiDay);
+    const timeFields = { 'detail-edit-end-date': 'endDate', 'detail-edit-start-time': 'startTime', 'detail-edit-end-time': 'endTime' };
     if (ev) {
-        if (dateInput) dateInput.value = ev.date || '';
-        if (endDateInput) endDateInput.value = ev.endDate || '';
-        if (startTimeInput) startTimeInput.value = ev.startTime || '';
-        if (endTimeInput) endTimeInput.value = ev.endTime || '';
-    } else {
-        // New event: default to tomorrow if empty
-        if (dateInput && !dateInput.value) {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            dateInput.value = tomorrow.toISOString().split('T')[0];
-        }
-        if (endDateInput) endDateInput.value = '';
-        if (startTimeInput) startTimeInput.value = '';
-        if (endTimeInput) endTimeInput.value = '';
+        setValue('detail-edit-date', ev.date || '');
+    } else if ($('detail-edit-date') && !inputValue('detail-edit-date')) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        setValue('detail-edit-date', toDateStr(tomorrow));
     }
+    for (const [id, key] of Object.entries(timeFields)) setValue(id, ev ? ev[key] || '' : '');
 
-    // Recurring toggle (only for creating new routine appointments)
-    const recWrap = document.getElementById('detail-edit-recurring-toggle-wrap');
-    const recCheck = document.getElementById('detail-edit-is-recurring');
-    const recPanel = document.getElementById('detail-recurring-options-panel');
-    const isNew = !ev;
-    if (recWrap) recWrap.style.display = (canManage && evType === 'termin' && isNew) ? 'inline-flex' : 'none';
-    if (recCheck) recCheck.checked = false;
-    if (recPanel) recPanel.style.display = 'none';
-
-    // Location
-    const locInput = document.getElementById('detail-edit-location');
-    if (locInput) locInput.value = ev ? (ev.location || '') : '';
-
-    // Description
-    const descInput = document.getElementById('detail-edit-description');
+    const recurringCheck = $('detail-edit-is-recurring');
+    if (recurringCheck) recurringCheck.checked = false;
+    show('detail-recurring-options-panel', false);
+    setValue('detail-edit-location', ev ? ev.location || '' : '');
+    const descInput = $('detail-edit-description');
     if (descInput) {
-        descInput.value = ev ? (ev.description || '') : '';
-        window.autoResizeDetailTextarea(descInput);
+        descInput.value = ev ? ev.description || '' : '';
+        autoResizeDetailTextarea(descInput);
     }
 
-    // Registration
-    const regCheck = document.getElementById('detail-edit-requires-reg');
-    const minPart = document.getElementById('detail-edit-min-participants');
-    const maxPart = document.getElementById('detail-edit-max-participants');
-    const reqReg = ev ? (ev.requiresRegistration === true) : false;
-    if (regCheck) regCheck.checked = reqReg;
-    if (minPart) minPart.value = (ev && ev.minParticipants) ? ev.minParticipants : '';
-    if (maxPart) maxPart.value = (ev && ev.maxParticipants) ? ev.maxParticipants : '';
-    window.toggleDetailRegFields(reqReg);
+    const requiresReg = ev?.requiresRegistration === true;
+    const regCheck = $('detail-edit-requires-reg');
+    if (regCheck) regCheck.checked = requiresReg;
+    setValue('detail-edit-min-participants', ev?.minParticipants || '');
+    setValue('detail-edit-max-participants', ev?.maxParticipants || '');
+    toggleDetailRegFields(requiresReg);
 
-    // Image & banner
-    const detailImgInput = document.getElementById('detail-edit-image-url');
-    const coverWrap = document.getElementById('detail-modal-cover-wrap');
-    const coverImg = document.getElementById('detail-modal-cover-img');
-    const placeholder = document.getElementById('detail-edit-cover-placeholder');
-    const rawImg = ev ? (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '') : '';
-    const imgSrc = typeof rawImg === 'string' ? rawImg.trim() : '';
+    const image = eventImage(ev);
+    setValue('detail-edit-image-url', image);
+    showDetailCover(image);
+    show('detail-edit-cover-placeholder', !image, 'flex');
 
-    if (detailImgInput) detailImgInput.value = imgSrc;
-    if (imgSrc) {
-        if (coverImg) coverImg.src = imgSrc;
-        if (coverWrap) coverWrap.style.display = 'block';
-        if (placeholder) placeholder.style.display = 'none';
-        modalCard.classList.add('has-hero-image');
-    } else {
-        if (coverImg) coverImg.src = '';
-        if (coverWrap) coverWrap.style.display = 'none';
-        if (placeholder) placeholder.style.display = 'flex';
-        modalCard.classList.remove('has-hero-image');
-    }
+    const selectedGroups = ev ? ev.targetGroups || [] : [];
+    populateDetailEditTargetGroups(selectedGroups);
+    if (groupList().length === 0) loadSystemGroups().then(() => populateDetailEditTargetGroups(selectedGroups));
+    show('detail-modal-action-bar', true, 'flex');
+    setText('detail-btn-save-text', ev ? 'Speichern' : 'Veröffentlichen');
+}
 
-    // Target groups
-    _populateDetailEditTargetGroups(ev ? (ev.targetGroups || []) : []);
-    if (!Array.isArray(systemGroups) || systemGroups.length === 0) {
-        loadSystemGroups().then(() => {
-            _populateDetailEditTargetGroups(ev ? (ev.targetGroups || []) : []);
-        });
-    }
+function cancelDetailEditMode() {
+    detailCard()?.classList.remove('detail-is-editing', 'detail-is-new', 'can-manage-events');
+    hideTypeSelector();
+    if (!currentDetailEvent) return closeModal('event-detail-modal');
+    show('detail-edit-cover-placeholder', false);
+    setCoverVisible(!!eventImage(currentDetailEvent));
+}
 
-    // Action bar & save button label
-    const actionBar = document.getElementById('detail-modal-action-bar');
-    if (actionBar) actionBar.style.display = 'flex';
-    const saveBtnText = document.getElementById('detail-btn-save-text');
-    if (saveBtnText) saveBtnText.textContent = ev ? 'Speichern' : 'Veröffentlichen';
-};
-
-/**
- * Cancel edit mode — remove editing class and restore view.
- */
-window.cancelDetailEditMode = function() {
-    const modalCard = document.querySelector('.event-detail-modal-card');
-    if (modalCard) modalCard.classList.remove('detail-is-editing', 'detail-is-new', 'can-manage-events');
-
-    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
-    if (typeWrap) {
-        typeWrap.style.removeProperty('display');
-        typeWrap.style.display = 'none';
-        typeWrap.classList.add('is-hidden');
-    }
-
-    // If we were creating a new event (no currentDetailEvent), close the modal
-    if (!currentDetailEvent) {
-        closeModal('event-detail-modal');
-        return;
-    }
-
-    // Restore cover image placeholder visibility
-    const placeholder = document.getElementById('detail-edit-cover-placeholder');
-    if (placeholder) placeholder.style.display = 'none';
-
-    // Re-sync display from currentDetailEvent
-    const rawImg = (currentDetailEvent.imageUrl || currentDetailEvent.image || currentDetailEvent.coverUrl || currentDetailEvent.photo || '');
-    const imgSrc = typeof rawImg === 'string' ? rawImg.trim() : '';
-    const coverWrap = document.getElementById('detail-modal-cover-wrap');
-    if (coverWrap) coverWrap.style.display = imgSrc ? 'block' : 'none';
-    if (modalCard) modalCard.classList.toggle('has-hero-image', Boolean(imgSrc));
-};
-
-/**
- * Save the detail edit form — POST (new) or PATCH (edit).
- */
-window.saveDetailEditMode = async function() {
-    const title = (document.getElementById('detail-edit-title')?.value || '').trim();
-    const date = (document.getElementById('detail-edit-date')?.value || '').trim();
-    const isMultiDay = document.getElementById('detail-edit-is-multiday')?.checked === true;
-    let endDate = '';
-    let startTime = '';
-    let endTime = '';
-
-    if (isMultiDay) {
-        endDate = (document.getElementById('detail-edit-end-date')?.value || '').trim();
-        // Rule: "Wenn es ein mehrtägiges Event ist, dann soll Uhrzeit wegfallen"
-        startTime = '';
-        endTime = '';
-    } else {
-        endDate = '';
-        startTime = (document.getElementById('detail-edit-start-time')?.value || '').trim();
-        endTime = (document.getElementById('detail-edit-end-time')?.value || '').trim();
-    }
-
-    const location = (document.getElementById('detail-edit-location')?.value || '').trim();
-    const description = (document.getElementById('detail-edit-description')?.value || '').trim();
-    const imageUrl = (document.getElementById('detail-edit-image-url')?.value || '').trim();
+async function saveDetailEditMode() {
+    const title = inputValue('detail-edit-title').trim();
+    const date = inputValue('detail-edit-date').trim();
+    const isMultiDay = isChecked('detail-edit-is-multiday');
     const canManage = canManageEvents();
-    const rawEventType = document.getElementById('detail-edit-type')?.value || 'event';
-    const eventType = canManage ? rawEventType : 'event';
-    const isPinned = canManage && (eventType === 'event') && (document.getElementById('detail-edit-pinned')?.checked === true);
-    const requiresRegistration = document.getElementById('detail-edit-requires-reg')?.checked === true;
-    const minParticipants = parseInt(document.getElementById('detail-edit-min-participants')?.value, 10) || 0;
-    const maxParticipants = parseInt(document.getElementById('detail-edit-max-participants')?.value, 10) || 0;
-
-    // Recurring (only valid for users with manage permissions and routine appointments)
-    const isRecurring = canManage && !currentDetailEvent && (eventType === 'termin') && (document.getElementById('detail-edit-is-recurring')?.checked === true);
-    const recurringRule = document.getElementById('detail-edit-recurring-rule')?.value || 'weekly';
-    const recurringCount = isRecurring ? Math.min(52, Math.max(2, parseInt(document.getElementById('detail-edit-recurring-count')?.value, 10) || 10)) : 1;
-
-    // Validation
-    if (!title) {
-        showToast('Bitte gib einen Titel ein', 'warning');
-        document.getElementById('detail-edit-title')?.focus();
-        return;
-    }
-    if (!date) {
-        showToast('Bitte gib ein Datum ein', 'warning');
-        document.getElementById('detail-edit-date')?.focus();
-        return;
-    }
-    if (isMultiDay && endDate && endDate < date) {
-        showToast('Das Enddatum darf nicht vor dem Startdatum liegen', 'warning');
-        return;
-    }
-
-    // Target groups
-    const selectedChips = document.querySelectorAll('#detail-edit-target-groups-container .detail-group-chip.is-selected');
-    const targetGroups = Array.from(selectedChips).map(c => c.dataset.group).filter(Boolean);
-
+    const eventType = canManage ? inputValue('detail-edit-type') || 'event' : 'event';
+    // Recurring series only for new appointments created by event managers
+    const isRecurring = canManage && !currentDetailEvent && eventType === 'termin' && isChecked('detail-edit-is-recurring');
+    const recurringCount = isRecurring ? Math.min(52, Math.max(2, parseInt(inputValue('detail-edit-recurring-count'), 10) || 10)) : 1;
     const payload = {
         title,
         date,
-        endDate,
-        startTime,
-        endTime,
-        location,
-        description,
-        imageUrl,
+        // Multi-day events have an end date but no times
+        endDate: isMultiDay ? inputValue('detail-edit-end-date').trim() : '',
+        startTime: isMultiDay ? '' : inputValue('detail-edit-start-time').trim(),
+        endTime: isMultiDay ? '' : inputValue('detail-edit-end-time').trim(),
+        location: inputValue('detail-edit-location').trim(),
+        description: inputValue('detail-edit-description').trim(),
+        imageUrl: inputValue('detail-edit-image-url').trim(),
         eventType,
-        isPinned,
-        requiresRegistration,
-        minParticipants,
-        maxParticipants,
-        targetGroups,
+        isPinned: canManage && eventType === 'event' && isChecked('detail-edit-pinned'),
+        requiresRegistration: isChecked('detail-edit-requires-reg'),
+        minParticipants: parseInt(inputValue('detail-edit-min-participants'), 10) || 0,
+        maxParticipants: parseInt(inputValue('detail-edit-max-participants'), 10) || 0,
+        targetGroups: [...document.querySelectorAll('#detail-edit-target-groups-container .detail-group-chip.is-selected')].map(chip => chip.dataset.group).filter(Boolean),
         isRecurring,
-        recurringRule,
+        recurringRule: inputValue('detail-edit-recurring-rule') || 'weekly',
         recurringCount
     };
+    if (!title) {
+        showToast('Bitte gib einen Titel ein', 'warning');
+        return $('detail-edit-title')?.focus();
+    }
+    if (!date) {
+        showToast('Bitte gib ein Datum ein', 'warning');
+        return $('detail-edit-date')?.focus();
+    }
+    if (isMultiDay && payload.endDate && payload.endDate < date) return showToast('Das Enddatum darf nicht vor dem Startdatum liegen', 'warning');
 
-    const saveBtn = document.getElementById('detail-btn-save');
-    const saveBtnText = document.getElementById('detail-btn-save-text');
+    const saveBtn = $('detail-btn-save');
     if (saveBtn) saveBtn.disabled = true;
-    if (saveBtnText) saveBtnText.textContent = 'Wird gespeichert...';
-
+    setText('detail-btn-save-text', 'Wird gespeichert...');
     try {
         const eventId = currentDetailEvent ? currentDetailEvent.id : null;
-        const url = eventId ? `${config.apiBaseUrl}/events/${eventId}` : `${config.apiBaseUrl}/events`;
-        const method = eventId ? 'PATCH' : 'POST';
-
-        const res = await fetchWithAuth(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-            const saved = await res.json().catch(() => ({}));
-            showToast(eventId ? 'Erfolgreich aktualisiert!' : (isRecurring ? `${recurringCount} Termine erfolgreich erstellt!` : 'Erfolgreich veröffentlicht!'), 'success');
-
-            // Exit edit mode
-            const modalCard = document.querySelector('.event-detail-modal-card');
-            if (modalCard) modalCard.classList.remove('detail-is-editing', 'detail-is-new');
-            const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
-            if (typeWrap) {
-                typeWrap.style.removeProperty('display');
-                typeWrap.style.display = 'none';
-                typeWrap.classList.add('is-hidden');
-            }
-
-            // Reload events
-            await window.loadEventsData();
-
-            const reopenId = eventId || (saved && (saved.id || saved._id || (saved.event && (saved.event.id || saved.event._id))));
-            if (reopenId) {
-                window.openEventDetailModal(reopenId);
-            } else {
-                closeModal('event-detail-modal');
-            }
-        } else {
-            const err = await res.json().catch(() => ({}));
-            showToast(err.error || 'Fehler beim Speichern', 'error');
-        }
+        const res = await api(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload);
+        const saved = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(saved.error || 'Fehler beim Speichern', 'error');
+        showToast(eventId ? 'Erfolgreich aktualisiert!' : (isRecurring ? `${recurringCount} Termine erfolgreich erstellt!` : 'Erfolgreich veröffentlicht!'), 'success');
+        detailCard()?.classList.remove('detail-is-editing', 'detail-is-new');
+        hideTypeSelector();
+        await loadEventsData();
+        const reopenId = eventId || saved.id || saved._id || saved.event?.id || saved.event?._id;
+        if (reopenId) openEventDetailModal(reopenId);
+        else closeModal('event-detail-modal');
     } catch (err) {
         console.error('saveDetailEditMode error:', err);
         showToast('Verbindungsfehler beim Speichern', 'error');
     } finally {
         if (saveBtn) saveBtn.disabled = false;
-        if (saveBtnText) saveBtnText.textContent = currentDetailEvent ? 'Speichern' : 'Veröffentlichen';
-    }
-};
-
-/**
- * Open the detail modal in "new event / termin" mode.
- * @param {string} defaultType - 'termin' or 'event'
- */
-window.openNewEventDetailModal = function(defaultType) {
-    currentDetailEvent = null;
-    const canManage = canManageEvents();
-    const effectiveType = canManage ? (defaultType || 'termin') : 'event';
-
-    const modalCard = document.querySelector('.event-detail-modal-card');
-    if (modalCard) {
-        modalCard.classList.remove('detail-is-editing', 'detail-is-new', 'has-hero-image');
-        modalCard.classList.toggle('can-manage-events', canManage);
-    }
-    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
-    if (typeWrap) {
-        typeWrap.classList.toggle('can-manage-events', canManage);
-        typeWrap.classList.toggle('is-hidden', !canManage);
-        typeWrap.style.removeProperty('display');
-    }
-
-    // Reset cover image
-    const coverWrap = document.getElementById('detail-modal-cover-wrap');
-    const coverImg = document.getElementById('detail-modal-cover-img');
-    if (coverWrap) coverWrap.style.display = 'none';
-    if (coverImg) coverImg.src = '';
-
-    // Reset view-mode elements
-    const titleEl = document.getElementById('detail-modal-title');
-    if (titleEl) titleEl.textContent = effectiveType === 'event' ? 'Neues Event' : 'Neuer Termin';
-    const orgPill = document.getElementById('detail-modal-organizer-pill');
-    if (orgPill) orgPill.style.display = 'none';
-    const tagsContainer = document.getElementById('detail-modal-tags');
-    if (tagsContainer) { tagsContainer.innerHTML = ''; tagsContainer.style.display = 'none'; }
-    const regBox = document.getElementById('detail-modal-reg-box');
-    if (regBox) regBox.style.display = 'block';
-    const dutiesBox = document.getElementById('detail-modal-duties-box');
-    if (dutiesBox) dutiesBox.style.display = 'block';
-    const descCard = document.getElementById('detail-modal-desc-card');
-    if (descCard) descCard.style.display = 'block';
-
-    // Admin bar
-    const actionBar = document.getElementById('detail-modal-action-bar');
-    if (actionBar) actionBar.style.display = 'flex';
-    const editBtn = document.getElementById('detail-btn-edit');
-    if (editBtn) editBtn.style.display = 'none';
-    const deleteBtn = document.getElementById('detail-btn-delete');
-    if (deleteBtn) deleteBtn.style.display = 'none';
-
-    openModal('event-detail-modal');
-
-    // Add edit mode classes after opening
-    if (modalCard) {
-        modalCard.classList.add('detail-is-editing', 'detail-is-new');
-    }
-
-    // Populate edit fields for new event
-    window.enterDetailEditMode();
-    window.setDetailEditType(effectiveType);
-};
-
-/**
- * Set the event type in the detail edit type selector.
- */
-window.setDetailEditType = function(type) {
-    const canManage = canManageEvents();
-    const effectiveType = canManage ? type : 'event';
-    const isTermin = (effectiveType === 'termin');
-    const hidden = document.getElementById('detail-edit-type');
-    if (hidden) hidden.value = isTermin ? 'termin' : 'event';
-
-    const typeWrap = document.getElementById('detail-edit-type-container') || document.getElementById('detail-edit-type-wrap');
-    if (typeWrap) {
-        typeWrap.classList.toggle('can-manage-events', canManage);
-        typeWrap.classList.toggle('is-hidden', !canManage);
-        typeWrap.style.removeProperty('display');
-    }
-
-    const cardTermin = document.getElementById('detail-type-card-termin') || document.getElementById('detail-type-tab-termin');
-    const cardEvent = document.getElementById('detail-type-card-event') || document.getElementById('detail-type-tab-event');
-    if (cardTermin) cardTermin.classList.toggle('is-active', isTermin);
-    if (cardEvent) cardEvent.classList.toggle('is-active', !isTermin);
-
-    const descText = document.getElementById('detail-type-desc-text');
-    if (descText) {
-        descText.textContent = isTermin
-            ? 'Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.'
-            : 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.';
-    }
-
-    // Show/hide pinned toggle based on type (only for events)
-    const pinnedWrap = document.getElementById('detail-edit-pinned-wrap');
-    if (pinnedWrap) pinnedWrap.style.display = (canManage && !isTermin) ? 'flex' : 'none';
-
-    // Show/hide recurring toggle (only for new routine appointments)
-    const recWrap = document.getElementById('detail-edit-recurring-toggle-wrap');
-    const isNew = !currentDetailEvent;
-    if (recWrap) recWrap.style.display = (canManage && isTermin && isNew) ? 'inline-flex' : 'none';
-};
-
-/**
- * Toggle Highlight (Großevent) state
- */
-window.toggleDetailPinnedState = function(isChecked) {
-    const wrap = document.getElementById('detail-edit-pinned-wrap');
-    if (wrap) wrap.classList.toggle('is-active', isChecked);
-};
-
-/**
- * Toggle multi-day event state.
- * When multi-day is active: show end date and hide time fields ("Uhrzeit entfällt").
- */
-window.toggleDetailMultiDay = function(isChecked) {
-    const endField = document.getElementById('detail-field-end-date');
-    const timeRow = document.getElementById('detail-when-time-row');
-    const hint = document.getElementById('detail-multiday-hint');
-    const dateLabel = document.querySelector('label[for="detail-edit-date"]');
-
-    if (endField) endField.style.display = isChecked ? 'flex' : 'none';
-    if (timeRow) timeRow.style.display = isChecked ? 'none' : 'grid';
-    if (hint) hint.style.display = isChecked ? 'flex' : 'none';
-    if (dateLabel) dateLabel.textContent = isChecked ? 'Startdatum' : 'Datum';
-
-    if (isChecked) {
-        const startDate = document.getElementById('detail-edit-date')?.value;
-        const endDateInput = document.getElementById('detail-edit-end-date');
-        if (endDateInput && !endDateInput.value && startDate) {
-            endDateInput.value = startDate;
-        }
-    }
-};
-
-/**
- * Toggle recurring options panel.
- */
-window.toggleDetailRecurring = function(isChecked) {
-    const panel = document.getElementById('detail-recurring-options-panel');
-    if (panel) panel.style.display = isChecked ? 'block' : 'none';
-};
-
-/**
- * Toggle registration options in detail edit mode.
- */
-window.toggleDetailRegFields = function(isChecked) {
-    const regOpts = document.getElementById('detail-edit-reg-options');
-    if (regOpts) regOpts.style.display = isChecked ? 'block' : 'none';
-    const card = document.querySelector('.detail-reg-card');
-    if (card) card.classList.toggle('is-active', isChecked);
-};
-
-
-/**
- * Populate the detail edit target groups clickable chips.
- */
-function _populateDetailEditTargetGroups(selectedGroups = []) {
-    const container = document.getElementById('detail-edit-target-groups-container');
-    if (!container) return;
-    const groups = Array.isArray(systemGroups) ? systemGroups : [];
-    if (groups.length > 0) {
-        container.innerHTML = groups.map(g => {
-            const gName = g.name || g.id;
-            const isChecked = selectedGroups.includes(gName) || selectedGroups.includes(g.id);
-            return `
-                <button type="button" class="detail-group-chip ${isChecked ? 'is-selected' : ''}" data-group="${escapeHtml(gName)}" onclick="this.classList.toggle('is-selected')">
-                    <span>👥 ${escapeHtml(gName)}</span>
-                </button>
-            `;
-        }).join('');
-    } else {
-        container.innerHTML = '<span style="font-size:0.78rem; color:var(--text-secondary);">Öffentlich für alle Mitglieder</span>';
+        setText('detail-btn-save-text', currentDetailEvent ? 'Speichern' : 'Veröffentlichen');
     }
 }
 
-/**
- * Trigger file selection for detail edit cover image.
- */
-window.detailEditSelectImage = function() {
-    const fileInput = document.getElementById('detail-edit-file-input');
-    if (fileInput) {
+function openNewEventDetailModal(defaultType) {
+    currentDetailEvent = null;
+    const canManage = canManageEvents();
+    const type = canManage ? defaultType || 'termin' : 'event';
+    const card = detailCard();
+    card?.classList.remove('detail-is-editing', 'detail-is-new', 'has-hero-image');
+    card?.classList.toggle('can-manage-events', canManage);
+    syncTypeSelector(canManage);
+    show('detail-modal-cover-wrap', false);
+    const coverImg = $('detail-modal-cover-img');
+    if (coverImg) coverImg.src = '';
+    setText('detail-modal-title', type === 'event' ? 'Neues Event' : 'Neuer Termin');
+    show('detail-modal-organizer-pill', false);
+    const tags = $('detail-modal-tags');
+    if (tags) {
+        tags.innerHTML = '';
+        tags.style.display = 'none';
+    }
+    ['detail-modal-reg-box', 'detail-modal-duties-box', 'detail-modal-desc-card'].forEach(id => show(id, true, 'block'));
+    show('detail-modal-action-bar', true, 'flex');
+    show('detail-btn-edit', false);
+    show('detail-btn-delete', false);
+    openModal('event-detail-modal');
+    card?.classList.add('detail-is-editing', 'detail-is-new');
+    enterDetailEditMode();
+    setDetailEditType(type);
+}
+
+function setDetailEditType(type) {
+    const canManage = canManageEvents();
+    const isTermin = canManage && type === 'termin';
+    setValue('detail-edit-type', isTermin ? 'termin' : 'event');
+    syncTypeSelector(canManage);
+    $('detail-type-card-termin')?.classList.toggle('is-active', isTermin);
+    $('detail-type-card-event')?.classList.toggle('is-active', !isTermin);
+    setText('detail-type-desc-text', isTermin
+        ? 'Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.'
+        : 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.');
+    show('detail-edit-pinned-wrap', canManage && !isTermin, 'flex');
+    show('detail-edit-recurring-toggle-wrap', canManage && isTermin && !currentDetailEvent, 'inline-flex');
+}
+
+function toggleDetailMultiDay(isMultiDay) {
+    show('detail-field-end-date', isMultiDay, 'flex');
+    show('detail-when-time-row', !isMultiDay, 'grid');
+    show('detail-multiday-hint', isMultiDay, 'flex');
+    const dateLabel = document.querySelector('label[for="detail-edit-date"]');
+    if (dateLabel) dateLabel.textContent = isMultiDay ? 'Startdatum' : 'Datum';
+    if (isMultiDay && !inputValue('detail-edit-end-date') && inputValue('detail-edit-date')) setValue('detail-edit-end-date', inputValue('detail-edit-date'));
+}
+
+function toggleDetailRegFields(enabled) {
+    show('detail-edit-reg-options', enabled, 'block');
+    document.querySelector('.detail-reg-card')?.classList.toggle('is-active', enabled);
+}
+
+function populateDetailEditTargetGroups(selectedGroups = []) {
+    const container = $('detail-edit-target-groups-container');
+    if (!container) return;
+    container.innerHTML = groupList().length === 0
+        ? '<span style="font-size:0.78rem; color:var(--text-secondary);">Öffentlich für alle Mitglieder</span>'
+        : groupList().map(g => {
+            const name = g.name || g.id;
+            return `
+                <button type="button" class="detail-group-chip ${selectedGroups.includes(name) || selectedGroups.includes(g.id) ? 'is-selected' : ''}" data-group="${escapeHtml(name)}" onclick="this.classList.toggle('is-selected')">
+                    <span>👥 ${escapeHtml(name)}</span>
+                </button>`;
+        }).join('');
+}
+
+function autoResizeDetailTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(300, Math.max(85, textarea.scrollHeight)) + 'px';
+}
+
+Object.assign(window, {
+    switchEventsSubTab, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, submitAddNewTask,
+    hideAddNewTaskForm, openAssignDutyModalForRole, switchAssignDutyTab, selectDutyAssignee, deleteEntireDutyTask, removeDutyAssignee,
+    toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
+    enterDetailEditMode, cancelDetailEditMode, saveDetailEditMode, openNewEventDetailModal, setDetailEditType, toggleDetailMultiDay,
+    toggleDetailRegFields, autoResizeDetailTextarea,
+    showAddNewTaskForm: () => setNewTaskFormVisible(true),
+    handleEventsSearchInput: setEventsSearch,
+    clearEventsSearch: () => {
+        setValue('events-search-input', '');
+        setEventsSearch('');
+    },
+    toggleShowPastEvents: () => {
+        showPastEvents = !showPastEvents;
+        renderEvents();
+    },
+    filterAssignDutyModalList: renderAssignDutyModalList,
+    deleteCurrentEventFromDetail: () => {
+        if (!currentDetailEvent) return;
+        const eventId = currentDetailEvent.id;
+        closeModal('event-detail-modal');
+        deleteEvent(eventId);
+    },
+    resetEventCropZoom: () => eventCropper?.setZoom(1),
+    cancelEventCrop: () => closeModal('event-crop-modal'),
+    copyCalendarFeedUrl: copyPersonalCalendarFeedUrl,
+    openWebCalDirectly: async () => { window.location.href = (await personalFeedUrl()).replace(/^https?:/, 'webcal:'); },
+    openGoogleCalendarSubscription: async () => window.open(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(await personalFeedUrl())}`, '_blank', 'noopener,noreferrer'),
+    downloadIcsFile: async () => window.open(await personalFeedUrl(), '_blank'),
+    toggleDetailPinnedState: pinned => $('detail-edit-pinned-wrap')?.classList.toggle('is-active', pinned),
+    toggleDetailRecurring: recurring => show('detail-recurring-options-panel', recurring, 'block'),
+    detailEditSelectImage: () => {
+        const fileInput = $('detail-edit-file-input');
+        if (!fileInput) return;
         fileInput.value = '';
         fileInput.click();
+    },
+    detailEditRemoveImage: () => {
+        setValue('detail-edit-image-url', '');
+        showDetailCover('');
+        show('detail-edit-cover-placeholder', true, 'flex');
+    },
+    detailEditImageFileSelected: async files => {
+        if (!files || !files[0]) return;
+        await openEventCrop(files[0]);
+        setValue('detail-edit-file-input', '');
     }
-};
-
-/**
- * Remove cover image in detail edit mode.
- */
-window.detailEditRemoveImage = function() {
-    const detailImgInput = document.getElementById('detail-edit-image-url');
-    if (detailImgInput) detailImgInput.value = '';
-    const coverImg = document.getElementById('detail-modal-cover-img');
-    if (coverImg) coverImg.src = '';
-    const coverWrap = document.getElementById('detail-modal-cover-wrap');
-    if (coverWrap) coverWrap.style.display = 'none';
-    const placeholder = document.getElementById('detail-edit-cover-placeholder');
-    if (placeholder) placeholder.style.display = 'flex';
-    const modalCard = document.querySelector('.event-detail-modal-card');
-    if (modalCard) modalCard.classList.remove('has-hero-image');
-};
-
-/**
- * Handle file selection for detail edit mode — pipes through the existing crop flow.
- */
-window.detailEditImageFileSelected = async function(files) {
-    if (!files || !files[0]) return;
-    window._detailEditImagePending = true;
-    await window.openEventCrop(files[0]);
-    const fileInput = document.getElementById('detail-edit-file-input');
-    if (fileInput) fileInput.value = '';
-};
-
-/**
- * Auto-resize textarea smoothly as user types.
- */
-window.autoResizeDetailTextarea = function(el) {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(300, Math.max(85, el.scrollHeight)) + 'px';
-};
-
-window._detailEditImagePending = false;
-
+});

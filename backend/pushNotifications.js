@@ -1,5 +1,5 @@
 const webpush = require('web-push');
-const { getStateValue, upsertStateValue, listAllRecords, createRecord, deleteRecord } = require('./pocketbase');
+const { getStateValue, upsertStateValue, listAllRecords, deleteRecord } = require('./pocketbase');
 
 let vapidConfigured = false;
 let currentVapidKeys = null;

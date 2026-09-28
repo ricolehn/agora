@@ -187,12 +187,12 @@
         <!-- FINANCES VIEW (Consolidated Financial Components with Subpage Selector) -->
         <div id="finances" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-finances">
             <!-- Subpage Selector -->
-            <div class="finance-subnav" role="tablist">
-                <button type="button" class="finance-subnav-btn active" id="finances-sub-btn-history" onclick="switchFinanceSubpage('history', this)">
+            <div class="pill-tabs finance-subnav" role="tablist">
+                <button type="button" class="pill-tab finance-subnav-btn active" id="finances-sub-btn-history" onclick="switchFinanceSubpage('history', this)">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
                     <span data-i18n="finances_sub_history">Übersicht</span>
                 </button>
-                <button type="button" class="finance-subnav-btn" id="finances-sub-btn-members" onclick="switchFinanceSubpage('members', this)">
+                <button type="button" class="pill-tab finance-subnav-btn" id="finances-sub-btn-members" onclick="switchFinanceSubpage('members', this)">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                     <span data-i18n="finances_sub_members">Beitragsliste</span>
                 </button>
@@ -464,20 +464,20 @@
         <div id="super-admin-settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-super-admin-settings">
             <div class="sys-settings-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
                 <h2 style="font-size: 1.3rem; font-weight: 800; margin: 0;" data-i18n="nav_superadmin_settings">Systemeinstellungen</h2>
-                <div class="sys-subnav" role="tablist">
-                    <button class="sys-subnav-btn active" id="sys-subtab-btn-accounts" onclick="switchSysSettingsTab('accounts')">
+                <div class="pill-tabs sys-subnav" role="tablist">
+                    <button class="pill-tab sys-subnav-btn active" id="sys-subtab-btn-accounts" onclick="switchSysSettingsTab('accounts')">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         <span data-i18n="nav_sys_accounts">Benutzer</span>
                     </button>
-                    <button class="sys-subnav-btn" id="sys-subtab-btn-config" onclick="switchSysSettingsTab('config')">
+                    <button class="pill-tab sys-subnav-btn" id="sys-subtab-btn-config" onclick="switchSysSettingsTab('config')">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                         <span data-i18n="nav_sys_config">System-Konfiguration</span>
                     </button>
-                    <button class="sys-subnav-btn" id="sys-subtab-btn-ai" onclick="switchSysSettingsTab('ai')">
+                    <button class="pill-tab sys-subnav-btn" id="sys-subtab-btn-ai" onclick="switchSysSettingsTab('ai')">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         <span data-i18n="nav_sys_ai">KI-Support</span>
                     </button>
-                    <button class="sys-subnav-btn" id="sys-subtab-btn-events" onclick="switchSysSettingsTab('events')">
+                    <button class="pill-tab sys-subnav-btn" id="sys-subtab-btn-events" onclick="switchSysSettingsTab('events')">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                         <span data-i18n="nav_sys_events">Events & Kalender</span>
                     </button>
@@ -709,10 +709,10 @@
                     </div>
                 </div>
 
-                <div class="ai-chat-input-bar ai-chat-input-styled">
-                    <div class="ai-chat-input-inner">
+                <div class="chat-input-bar ai-chat-input-styled">
+                    <div class="chat-input">
                         <textarea id="ai-chat-input" rows="1" data-i18n-placeholder="ai_chat_input_placeholder" placeholder="Nachricht eingeben…" data-i18n-title="chat_enter_hint" title="Enter für neue Zeile, Strg+Enter zum Senden" onkeydown="handleAiChatKey(event)" oninput="handleAiChatInput(event)" aria-label="Nachricht an KI eingeben"></textarea>
-                        <button id="ai-chat-send-btn" type="button" class="ai-chat-send-btn" onclick="sendAiMessage()" aria-label="Nachricht senden" data-i18n-title="ai_chat_send_tooltip">
+                        <button id="ai-chat-send-btn" type="button" class="chat-send-btn ai-chat-send-btn" onclick="sendAiMessage()" aria-label="Nachricht senden" data-i18n-title="ai_chat_send_tooltip">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
                     </div>
@@ -737,15 +737,15 @@
 
                 <!-- Modern OS Segmented Tabs Bar -->
                 <div class="mentoring-nav-bar">
-                    <div class="mentoring-nav-segments" role="tablist">
-                        <button id="mentoring-tab-chats" class="mentoring-nav-segment active" onclick="switchMentoringSubTab('chats')" role="tab" aria-selected="true">
+                    <div class="pill-tabs mentoring-nav-segments" role="tablist">
+                        <button id="mentoring-tab-chats" class="pill-tab mentoring-nav-segment active" onclick="switchMentoringSubTab('chats')" role="tab" aria-selected="true">
                             <span data-i18n="mentoring_tab_chats">Nachrichten</span>
                             <span id="mentoring-unread-badge" class="mentoring-badge-count" style="display:none;">0</span>
                         </button>
-                        <button id="mentoring-tab-find" class="mentoring-nav-segment" onclick="switchMentoringSubTab('find')" role="tab" aria-selected="false">
+                        <button id="mentoring-tab-find" class="pill-tab mentoring-nav-segment" onclick="switchMentoringSubTab('find')" role="tab" aria-selected="false">
                             <span data-i18n="mentoring_tab_find">Mentoren finden</span>
                         </button>
-                        <button id="mentoring-tab-review" class="mentoring-nav-segment" onclick="switchMentoringSubTab('review')" role="tab" aria-selected="false" style="display:none;">
+                        <button id="mentoring-tab-review" class="pill-tab mentoring-nav-segment" onclick="switchMentoringSubTab('review')" role="tab" aria-selected="false" style="display:none;">
                             <span data-i18n="mentoring_tab_review">Bewerbungen</span>
                             <span id="mentoring-pending-badge" class="mentoring-badge-count badge-danger" style="display:none;">0</span>
                         </button>
@@ -805,10 +805,10 @@
                                     <div style="font-size:0.85rem; color:var(--text-secondary);" data-i18n="mentoring_no_chat_selected_desc">Wähle einen Kontakt aus der Liste oder kontaktiere einen Mentor.</div>
                                 </div>
                             </div>
-                            <div id="mentoring-chat-input-container" class="mentoring-chat-input-bar" style="display:none;">
-                                <div class="mentoring-input-inner">
+                            <div id="mentoring-chat-input-container" class="chat-input-bar mentoring-chat-input-bar" style="display:none;">
+                                <div class="chat-input">
                                     <textarea id="mentoring-chat-input" data-i18n-placeholder="mentoring_chat_input_placeholder" placeholder="Vertrauliche Nachricht schreiben…" data-i18n-title="chat_enter_hint" title="Enter für neue Zeile, Strg+Enter zum Senden" rows="1" onkeydown="handleMentoringChatKey(event)" oninput="autoResizeMentoringInput(this)"></textarea>
-                                    <button type="button" class="mentoring-send-btn" onclick="sendMentoringMessage()" id="mentoring-send-btn" data-i18n-title="mentoring_chat_send_tooltip" data-i18n-aria-label="mentoring_chat_send_label" title="Nachricht senden" aria-label="Senden">
+                                    <button type="button" class="chat-send-btn mentoring-send-btn" onclick="sendMentoringMessage()" id="mentoring-send-btn" data-i18n-title="mentoring_chat_send_tooltip" data-i18n-aria-label="mentoring_chat_send_label" title="Nachricht senden" aria-label="Senden">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                             <line x1="22" y1="2" x2="11" y2="13"></line>
                                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -876,12 +876,12 @@
 
                 <!-- Sub-Navigation: Termine vs Events -->
                 <div class="events-subnav-bar">
-                    <div class="events-subnav-segments" role="tablist" aria-label="Ansicht wählen">
-                        <button type="button" class="events-subnav-segment is-active" id="events-tab-btn-termine" onclick="window.switchEventsSubTab('termine')">
+                    <div class="pill-tabs events-subnav-segments" role="tablist" aria-label="Ansicht wählen">
+                        <button type="button" class="pill-tab events-subnav-segment is-active" id="events-tab-btn-termine" onclick="window.switchEventsSubTab('termine')">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                             <span data-i18n="events_tab_termine">Termine</span>
                         </button>
-                        <button type="button" class="events-subnav-segment" id="events-tab-btn-events" onclick="window.switchEventsSubTab('events')">
+                        <button type="button" class="pill-tab events-subnav-segment" id="events-tab-btn-events" onclick="window.switchEventsSubTab('events')">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
                             <span data-i18n="events_tab_events">Events</span>
                         </button>
@@ -1902,7 +1902,7 @@
             </div>
             <button class="close-btn" onclick="closeModal('mentor-application-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <form onsubmit="event.preventDefault(); window.submitMentorApplication();" class="modal-body-enhanced">
+        <form onsubmit="window.submitMentorApplication(event);" class="modal-body-enhanced">
             <div class="modal-section-card">
                 <div class="modal-section-header">
                     <span>✨</span> <span data-i18n="mentor_app_section_bio">Über mich & Motivation</span>
@@ -1943,7 +1943,7 @@
             </div>
             <button class="close-btn" onclick="closeModal('mentor-contact-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
         </div>
-        <form onsubmit="event.preventDefault(); window.submitMentorContact();" class="modal-body-enhanced">
+        <form onsubmit="window.submitMentorContact(event);" class="modal-body-enhanced">
             <input type="hidden" id="mentor-contact-user-id">
 
             <div class="mentor-contact-privacy-note">
@@ -1981,9 +1981,9 @@
             <p id="auth-subtitle" class="login-subtitle" data-i18n="login_subtitle">Melden Sie sich an, um fortzufahren</p>
         </div>
 
-        <div class="auth-tabs">
-            <button class="auth-tab-btn active" onclick="showLogin()" id="btn-show-login" data-i18n="login_tab">Login</button>
-            <button class="auth-tab-btn" onclick="showRegister()" id="btn-show-register" data-i18n="register_tab">Registrieren</button>
+        <div class="pill-tabs auth-tabs">
+            <button class="pill-tab auth-tab-btn active" onclick="showLogin()" id="btn-show-login" data-i18n="login_tab">Login</button>
+            <button class="pill-tab auth-tab-btn" onclick="showRegister()" id="btn-show-register" data-i18n="register_tab">Registrieren</button>
         </div>
 
         <!-- Login Form -->
@@ -2065,225 +2065,6 @@
         </form>
         
         <div id="auth-error" style="color: var(--danger); text-align: center; margin-top: 15px; display: none; font-weight: bold;"></div>
-    </div>
-</div>
-
-<!-- Create / Edit Event Modal -->
-<div id="create-event-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-create-event">
-    <div class="modal-content modal-content-enhanced" style="max-width: 600px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                </div>
-                <div>
-                    <div id="title-create-event" class="modal-title-main" data-i18n="events_modal_create_title">Neues Event erstellen</div>
-                    <div class="modal-subtitle" id="subtitle-create-event" data-i18n="events_modal_create_sub">Termin, Ort, Anmeldung & Dienste planen</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('create-event-modal')" aria-label="Schließen">&times;</button>
-        </div>
-        <div class="modal-body-enhanced">
-            <form id="create-event-form" onsubmit="window.handleCreateEventSubmit(event)">
-                <input type="hidden" id="event-input-id">
-                <input type="hidden" id="event-input-type" value="event">
-
-                <!-- Basis-Informationen -->
-                <div class="form-group">
-                    <label class="form-label" for="event-input-title" data-i18n="events_input_title">Titel des Events *</label>
-                    <input type="text" id="event-input-title" class="form-input" placeholder="z. B. Bistro-Abend, Jugendtreff, Sommerfest" required>
-                </div>
-
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="form-group">
-                        <label class="form-label" for="event-input-date" id="event-label-date" data-i18n="events_input_date">Datum *</label>
-                        <input type="date" id="event-input-date" class="form-input" required>
-                    </div>
-                    <div class="form-group" id="event-end-date-wrap">
-                        <label class="form-label" for="event-input-end-date">Enddatum (optional)</label>
-                        <input type="date" id="event-input-end-date" class="form-input">
-                    </div>
-                </div>
-
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="form-group">
-                        <label class="form-label" for="event-input-start-time" data-i18n="events_input_start">Startzeit</label>
-                        <input type="time" id="event-input-start-time" class="form-input" value="19:00">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="event-input-end-time" data-i18n="events_input_end">Endzeit (optional)</label>
-                        <input type="time" id="event-input-end-time" class="form-input">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="event-input-location" data-i18n="events_input_location">Ort / Treffpunkt</label>
-                    <input type="text" id="event-input-location" class="form-input" placeholder="z. B. Saal 1, Bistro, Jugendraum">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="event-input-description" data-i18n="events_input_desc">Beschreibung</label>
-                    <textarea id="event-input-description" class="form-input" rows="3" placeholder="Worum geht es? Was sollten Teilnehmer mitbringen?"></textarea>
-                </div>
-
-                <!-- Event Cover Image Upload (16:9 Banner) -->
-                <div class="form-group" id="event-image-upload-wrap">
-                    <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-                        <span>Eventbild / Flyer (optional)</span>
-                        <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">16:9 Bannerformat</span>
-                    </label>
-                    <div class="file-upload-box event-upload-box" onclick="document.getElementById('event-input-file').click()" id="event-upload-dropzone" style="cursor:pointer; padding:16px; border:2px dashed var(--border); border-radius:14px; text-align:center; background:var(--surface-alt); transition:all 0.2s;">
-                        <input type="file" id="event-input-file" accept="image/*,.heic,.heif" style="display:none;" onchange="window.handleEventImageSelect(this.files)">
-                        <div id="event-image-placeholder">
-                            <div style="font-size:1.8rem; margin-bottom:4px;">🖼️</div>
-                            <div style="font-weight:600; font-size:0.9rem; color:var(--text);">Bild auswählen oder hineinziehen</div>
-                            <div style="font-size:0.76rem; color:var(--text-secondary); margin-top:2px;">Wird im 16:9-Format zugeschnitten • JPG, PNG, HEIC</div>
-                        </div>
-                        <div id="event-image-preview-wrap" style="display:none; position:relative;">
-                            <img id="event-image-preview" src="" alt="Vorschau" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; display:block;">
-                            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
-                                <button type="button" class="btn btn-small btn-secondary" onclick="event.stopPropagation(); window.reopenEventCrop();" title="Bildausschnitt anpassen">
-                                    ✏️ Ausschnitt anpassen
-                                </button>
-                                <button type="button" class="btn btn-small btn-secondary text-danger" onclick="event.stopPropagation(); window.removeEventImage();" title="Bild entfernen">
-                                    ✕ Entfernen
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <input type="hidden" id="event-input-image-url" value="">
-                </div>
-
-                <!-- Anmeldepflicht Toggle -->
-                <div class="modal-section-card">
-                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
-                        <input type="checkbox" id="event-check-requires-reg" onchange="window.toggleEventRegistrationFields(this.checked)" style="accent-color:var(--primary);">
-                        <span data-i18n="events_check_requires_reg">Verbindliche Anmeldung erforderlich</span>
-                    </label>
-                    <div id="event-reg-options" style="display:none; margin-top:12px; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" for="event-input-max-participants" data-i18n="events_max_participants">Max. Teilnehmer (0 = unbegrenzt)</label>
-                            <input type="number" id="event-input-max-participants" class="form-input" min="0" value="0">
-                        </div>
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" for="event-input-min-participants" data-i18n="events_min_participants">Min. Teilnehmer</label>
-                            <input type="number" id="event-input-min-participants" class="form-input" min="0" value="0">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Oben anpinnen (Großevent / Highlight) - nur für Leitung -->
-                <div id="event-pinned-wrap" class="modal-section-card" style="display:none;">
-                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
-                        <input type="checkbox" id="event-check-pinned" style="accent-color:var(--primary);">
-                        <span>📌 Als Highlight oben anpinnen (Großevent)</span>
-                    </label>
-                    <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:4px;">
-                        Wird dauerhaft ganz oben hervorgehoben (ideal für Freizeiten, Konferenzen & Reisen).
-                    </div>
-                </div>
-
-                <!-- Zielgruppen / Exklusivität -->
-                <div class="modal-section-card">
-                    <div class="modal-section-header" style="display:flex; align-items:center; gap:6px;">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
-                        <span data-i18n="events_section_target_groups">Sichtbarkeit / Zielgruppen</span>
-                    </div>
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px;" data-i18n="events_target_groups_help">
-                        Wähle Gruppen aus, für die das Event gedacht ist. Keine Auswahl = Für alle sichtbar!
-                    </div>
-                    <div id="event-target-groups-container" style="display:flex; flex-wrap:wrap; gap:8px;">
-                        <!-- Populated with system groups -->
-                    </div>
-                </div>
-
-                <!-- Serientermin Toggle (nur Leitung / Admin) -->
-                <div id="event-recurring-wrap" class="modal-section-card" style="display:none;">
-                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.92rem;">
-                        <input type="checkbox" id="event-check-recurring" onchange="window.toggleEventRecurringFields(this.checked)" style="accent-color:var(--primary);">
-                        <span data-i18n="events_check_recurring">Wiederkehrender Serientermin (Leitung)</span>
-                    </label>
-                    <div id="event-recurring-options" style="display:none; margin-top:10px;">
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                            <div>
-                                <label class="form-label" for="event-select-recurring-rule" data-i18n="events_recurring_rule">Wiederholungsrhythmus</label>
-                                <select id="event-select-recurring-rule" class="form-select">
-                                    <option value="weekly" data-i18n="events_rule_weekly">Wöchentlich</option>
-                                    <option value="biweekly" data-i18n="events_rule_biweekly">Alle 2 Wochen</option>
-                                    <option value="monthly" data-i18n="events_rule_monthly">Monatlich</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" for="event-recurring-count">Anzahl Termine (Vorlage)</label>
-                                <input type="number" id="event-recurring-count" class="form-input" min="2" max="52" value="10">
-                            </div>
-                        </div>
-                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
-                            Erstellt eigenständige Einzeltermine am gleichen Wochentag. Jeder Termin kann später separat bearbeitet oder mit Diensten besetzt werden.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Dienstplan Slots -->
-                <div class="modal-section-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <div class="modal-section-header" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line></svg>
-                            <span data-i18n="events_section_duties">Dienste & Aufgaben</span>
-                        </div>
-                        <button type="button" class="btn btn-secondary btn-small" onclick="window.addEventDutySlot()">+ Dienst hinzufügen</button>
-                    </div>
-                    <!-- Quick suggestions chips -->
-                    <div id="event-quick-duty-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"></div>
-                    <div id="event-duties-input-list">
-                        <!-- Dynamic duty slots -->
-                    </div>
-                </div>
-
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('create-event-modal')" data-i18n="btn_cancel">Abbrechen</button>
-                    <button type="submit" class="btn btn-primary" id="event-submit-btn" data-i18n="events_btn_publish">Event veröffentlichen</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Duty Notes Modal (Gruppen-Selbstorganisation) -->
-<div id="edit-duty-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-edit-duty">
-    <div class="modal-content modal-content-enhanced" style="max-width: 480px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">🛠️</div>
-                <div>
-                    <div id="title-edit-duty" class="modal-title-main" data-i18n="events_duty_modal_title">Dienst organisieren</div>
-                    <div id="edit-duty-subtitle" class="modal-subtitle" data-i18n="events_duty_modal_sub">Details & Notizen für das Team</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('edit-duty-modal')" aria-label="Schließen">&times;</button>
-        </div>
-        <div class="modal-body-enhanced">
-            <form id="edit-duty-form" onsubmit="window.handleEditDutySubmit(event)">
-                <input type="hidden" id="edit-duty-id">
-                <div class="form-group">
-                    <label class="form-label" for="edit-duty-status" data-i18n="events_duty_status">Status des Dienstes</label>
-                    <select id="edit-duty-status" class="form-select">
-                        <option value="open" data-i18n="events_duty_status_open">Offen (Noch nicht besetzt)</option>
-                        <option value="assigned" data-i18n="events_duty_status_assigned">Eingeteilt</option>
-                        <option value="confirmed" data-i18n="events_duty_status_confirmed">Bestätigt (Team ist bereit)</option>
-                        <option value="swap_requested" data-i18n="events_duty_status_swap">Tausch / Hilfe gesucht</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="edit-duty-notes" data-i18n="events_duty_notes_label">Team-Notizen & Vorbereitung</label>
-                    <textarea id="edit-duty-notes" class="form-input" rows="4" placeholder="z. B. Welcher Snack wird gekocht? Wer kauft ein? Interne Aufgabenaufteilung..."></textarea>
-                </div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('edit-duty-modal')" data-i18n="btn_cancel">Abbrechen</button>
-                    <button type="submit" class="btn btn-primary" data-i18n="btn_save">Speichern</button>
-                </div>
-            </form>
-        </div>
     </div>
 </div>
 
@@ -2580,14 +2361,14 @@
 
                 <!-- Collapsible Attendees List (Vertical with Avatar) -->
                 <details id="detail-modal-attendees-details" class="event-attendees-details">
-                    <summary class="event-attendees-summary">
-                        <div class="event-attendees-summary-left">
+                    <summary class="event-section-summary">
+                        <div class="event-section-summary-left">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            <span class="event-attendees-title">Teilnehmer</span>
-                            <span id="detail-attendees-count" class="event-attendees-count-pill">0</span>
+                            <span class="event-section-title">Teilnehmer</span>
+                            <span id="detail-attendees-count" class="event-section-count">0</span>
                         </div>
-                        <div class="event-attendees-summary-right">
-                            <span class="event-attendees-chevron">
+                        <div class="event-section-summary-right">
+                            <span class="event-section-chevron">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </span>
                         </div>
@@ -2602,14 +2383,14 @@
             <div id="detail-modal-duties-box" class="event-detail-duties-uncontained detail-view-only" style="display:none;">
                 <!-- View Mode Duties -->
                 <details id="detail-modal-duties-details" class="event-duties-details">
-                    <summary class="event-duties-summary">
-                        <div class="event-duties-summary-left">
+                    <summary class="event-section-summary">
+                        <div class="event-section-summary-left">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
-                            <span class="event-duties-title">Dienstplan</span>
-                            <span id="detail-modal-duties-count" class="event-duties-count-pill">0</span>
+                            <span class="event-section-title">Dienstplan</span>
+                            <span id="detail-modal-duties-count" class="event-section-count">0</span>
                         </div>
-                        <div class="event-duties-summary-right">
-                            <span class="event-duties-chevron">
+                        <div class="event-section-summary-right">
+                            <span class="event-section-chevron">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </span>
                         </div>
@@ -2697,173 +2478,24 @@
             </div>
 
             <!-- Search input -->
-            <div style="margin-bottom: 10px;">
-                <input type="text" id="assign-duty-search-input" class="form-input" placeholder="Person suchen..." oninput="window.filterAssignDutyModalList(this.value)" style="width: 100%; box-sizing: border-box; font-size: 0.85rem; padding: 8px 12px; border-radius: 8px;">
+            <div class="input-with-icon search-bar-wrapper" style="margin-bottom: 12px;">
+                <span class="input-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </span>
+                <input type="text" id="assign-duty-search-input" class="form-input search-input" placeholder="Person suchen..." oninput="window.filterAssignDutyModalList(this.value)" style="width: 100%; box-sizing: border-box; font-size: 0.88rem; padding: 9px 14px 9px 40px; border-radius: 999px;">
             </div>
 
             <!-- Scrollable list of People or Groups -->
-            <div id="assign-duty-popup-list" class="duty-popup-picker-list" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+            <div id="assign-duty-popup-list" class="duty-popup-picker-list" style="max-height: 290px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
                 <!-- Dynamically rendered -->
             </div>
         </div>
-        <div class="modal-footer-enhanced" style="padding-top: 10px;">
-            <button type="button" class="btn btn-ghost" onclick="closeModal('assign-duty-modal')">Abbrechen</button>
+        <div class="modal-footer-enhanced">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('assign-duty-modal')">Abbrechen</button>
         </div>
     </div>
 </div>
 
-<!-- Add Duty Modal (Direct flat service under event) -->
-<div id="add-duty-slot-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-add-duty-slot">
-    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
-                </div>
-                <div>
-                    <div id="title-add-duty-slot" class="modal-title-main">Dienst anlegen</div>
-                    <div id="subtitle-add-duty-slot" class="modal-subtitle">Event</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('add-duty-slot-modal')" aria-label="Schließen">&times;</button>
-        </div>
-        <form id="add-duty-slot-form" onsubmit="window.submitAddDutySlot(event)">
-            <input type="hidden" id="add-duty-section" value="">
-            <div class="modal-body-enhanced">
-                <div style="margin-bottom: 14px;">
-                    <label class="form-label" for="add-duty-role-name">Dienstbezeichnung *</label>
-                    <input type="text" id="add-duty-role-name" class="form-input" placeholder="z. B. Bistro, Tontechnik, Predigt, Moderation" required>
-                </div>
-
-                <!-- Assignment options with Segmented Control -->
-                <div style="margin-bottom: 14px;">
-                    <label class="form-label" style="margin-bottom: 6px;">Zuweisung (optional)</label>
-                    <div class="segmented-control" id="add-duty-segmented">
-                        <button type="button" class="segmented-tab is-active" id="add-tab-none" onclick="window.setAddDutyType('none')">
-                            <span>Offen</span>
-                        </button>
-                        <button type="button" class="segmented-tab" id="add-tab-group" onclick="window.setAddDutyType('group')">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
-                            <span>Gruppe</span>
-                        </button>
-                        <button type="button" class="segmented-tab" id="add-tab-user" onclick="window.setAddDutyType('user')">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                            <span>Person</span>
-                        </button>
-                    </div>
-                    <input type="hidden" id="add-duty-assign-type-input" value="none">
-                </div>
-
-                <!-- Dynamic select for Group -->
-                <div id="add-duty-group-box" style="margin-bottom: 14px; display: none;">
-                    <label class="form-label" for="add-duty-group-select">Gruppe auswählen</label>
-                    <select id="add-duty-group-select" class="form-select">
-                        <option value="">-- Gruppe auswählen --</option>
-                    </select>
-                </div>
-
-                <!-- Dynamic select for Person -->
-                <div id="add-duty-user-box" style="margin-bottom: 14px; display: none;">
-                    <label class="form-label" for="add-duty-user-select">Person auswählen</label>
-                    <select id="add-duty-user-select" class="form-select">
-                        <option value="">-- Person auswählen --</option>
-                    </select>
-                    <div style="margin-top: 8px;">
-                        <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; cursor: pointer; color: var(--text-secondary);">
-                            <input type="checkbox" id="add-duty-send-email" checked style="accent-color: var(--primary);">
-                            <span>E-Mail-Benachrichtigung mit Details senden</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 12px;">
-                    <label class="form-label" for="add-duty-notes">Notizen & Anweisungen (optional)</label>
-                    <input type="text" id="add-duty-notes" class="form-input" placeholder="z. B. 15 Min. vor Beginn da sein, Bibeltext Römer 8...">
-                </div>
-            </div>
-            <div class="modal-footer-enhanced">
-                <button type="button" class="btn btn-ghost" onclick="closeModal('add-duty-slot-modal')">Abbrechen</button>
-                <button type="submit" class="btn btn-primary">Dienst speichern</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-
-<!-- Edit Duty Notes Modal -->
-<div id="edit-duty-notes-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-edit-duty-notes">
-    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                </div>
-                <div>
-                    <div id="title-edit-duty-notes" class="modal-title-main">Notizen bearbeiten</div>
-                    <div id="subtitle-edit-duty-notes" class="modal-subtitle">Aufgabe</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('edit-duty-notes-modal')" aria-label="Schließen">&times;</button>
-        </div>
-        <form id="edit-duty-notes-form" onsubmit="window.submitEditDutyNotes(event)">
-            <input type="hidden" id="edit-duty-notes-id">
-            <div class="modal-body-enhanced">
-                <div style="margin-bottom: 12px;">
-                    <label class="form-label" for="edit-duty-notes-textarea">Notizen / Anweisungen</label>
-                    <textarea id="edit-duty-notes-textarea" class="form-input" rows="4" placeholder="Hinweise, Absprachen, Dauer, Bibeltexte..."></textarea>
-                </div>
-            </div>
-            <div class="modal-footer-enhanced">
-                <button type="button" class="btn btn-ghost" onclick="closeModal('edit-duty-notes-modal')">Abbrechen</button>
-                <button type="submit" class="btn btn-primary">Speichern</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Subscribe Calendar Modal (WebCal / iCal Feed) -->
-<div id="subscribe-calendar-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-sub-cal">
-    <div class="modal-content modal-content-enhanced" style="max-width: 500px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">📅</div>
-                <div>
-                    <div id="title-sub-cal" class="modal-title-main">Kalender abonnieren</div>
-                    <div class="modal-subtitle">Automatische Synchronisierung auf dein Smartphone</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('subscribe-calendar-modal')" aria-label="Schließen">&times;</button>
-        </div>
-        <div class="modal-body-enhanced">
-            <p style="font-size:0.86rem; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;">
-                Abonniere deinen persönlichen Agora-Terminkalender. Alle kommenden Termine und Events werden automatisch in deiner Smartphone-Kalender-App synchronisiert.
-            </p>
-
-            <div style="margin-bottom:16px;">
-                <label class="form-label" style="color:var(--text-secondary);">Dein persönlicher Kalender-Link (WebCal)</label>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="sub-cal-feed-url" class="form-input" readonly style="font-family:monospace; font-size:0.8rem; background:var(--surface-alt);">
-                    <button type="button" class="btn btn-secondary btn-small" onclick="window.copyCalendarFeedUrl('user')">Kopieren</button>
-                </div>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:10px;">
-                <button type="button" class="btn btn-primary" onclick="window.openWebCalDirectly()">
-                    📱 Auf diesem Gerät abonnieren (Apple Kalender / Outlook)
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="window.openGoogleCalendarSubscription()">
-                    🌐 In Google Kalender abonnieren
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="window.downloadIcsFile()">
-                    📥 .ics Datei herunterladen
-                </button>
-            </div>
-            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:14px; text-align:center;">
-                Diesen Link und weitere Optionen findest du auch in deinen Einstellungen.
-            </div>
-        </div>
-    </div>
-</div>
 
 <script>
     // Optimistic UI: Check if we expect to be logged in to avoid flash of login screen

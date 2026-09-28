@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { resolveDataDirectory, resolvePocketBaseDirectory } = require('./pathConfig');
+const { resolvePocketBaseDirectory } = require('./pathConfig');
 const {
   encryptMentoringText,
   decryptMentoringText
@@ -1111,7 +1111,7 @@ async function migrateUserAndOwnerSchema(appConfig) {
       if (userRecord.superAdmin !== false && userRecord.superAdmin !== undefined) { updates.superAdmin = false; needsPatch = true; }
     }
 
-    if (userRecord.pays === undefined || userRecord.pays === null) {
+    if (userRecord.pays !== true) {
       updates.pays = true;
       needsPatch = true;
     }
@@ -1982,10 +1982,6 @@ async function deleteEventDuty(appConfig, id) {
   return await pocketBaseRequest(`/api/collections/event_duties/records/${id}`, { method: 'DELETE', token });
 }
 
-async function listPushSubscriptions(appConfig, filter = '') {
-  return listAllRecords('push_subscriptions', filter, appConfig);
-}
-
 async function getPushSubscriptionByEndpoint(appConfig, endpoint) {
   return getFirstRecord('push_subscriptions', pbFilterEquals('endpoint', endpoint), appConfig);
 }
@@ -2015,7 +2011,6 @@ async function deletePushSubscription(appConfig, endpoint) {
 }
 
 module.exports = {
-  listPushSubscriptions,
   getPushSubscriptionByEndpoint,
   upsertPushSubscription,
   deletePushSubscription,

@@ -787,6 +787,11 @@ test('Personal calendar feed generation and duty details logic', () => {
   assert.ok(icsUserMax.includes('Technik / Ton (Eingeteilt)'));
   assert.ok(icsUserMax.includes('Begrüßung (Anfrage ausstehend)'));
   assert.ok(!icsUserMax.includes('Bistro')); // Anna's duty should not appear in Max's duty section
+
+  // Test gracefully handling when duties parameter is null/empty or duties fetching throws error
+  const icsNoDuties = generateIcsCalendar(events, 'Agora - Max Mustermann', 'user-max', []);
+  assert.ok(icsNoDuties.includes('X-WR-CALNAME:Agora - Max Mustermann'));
+  assert.ok(!icsNoDuties.includes('[MEINE DIENSTE]'));
 });
 
 
