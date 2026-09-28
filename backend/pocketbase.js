@@ -342,6 +342,26 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'userAgent', type: 'text' },
       { name: 'created', type: 'text' }
     ]
+  },
+  {
+    name: 'fcm_tokens',
+    type: 'base',
+    listRule: 'user = @request.auth.id',
+    viewRule: 'user = @request.auth.id',
+    createRule: '@request.auth.id != ""',
+    updateRule: 'user = @request.auth.id',
+    deleteRule: 'user = @request.auth.id',
+    indexes: [
+      'CREATE INDEX idx_fcm_tokens_user ON fcm_tokens (user)',
+      'CREATE UNIQUE INDEX idx_fcm_tokens_token ON fcm_tokens (token)'
+    ],
+    fields: [
+      { name: 'user', type: 'text', required: true },
+      { name: 'token', type: 'text', required: true },
+      { name: 'platform', type: 'text' },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
   }
 ];
 
@@ -2010,10 +2030,41 @@ async function deletePushSubscription(appConfig, endpoint) {
   return null;
 }
 
+async function getFcmTokenRecord(appConfig, token) {
+  return getFirstRecord('fcm_tokens', pbFilterEquals('token', token), appConfig);
+}
+
+async function upsertFcmToken(appConfig, userId, token, platform = 'android') {
+  const existing = await getFcmTokenRecord(appConfig, token);
+  const now = new Date().toISOString();
+  // A token identifies one app installation, so re-registering moves it to the current user
+  const payload = {
+    user: String(userId),
+    token: String(token),
+    platform: String(platform || 'android'),
+    updated: now
+  };
+  if (existing) {
+    return updateRecord('fcm_tokens', existing.id, payload, appConfig);
+  }
+  return createRecord('fcm_tokens', { ...payload, created: now }, appConfig);
+}
+
+async function deleteFcmToken(appConfig, token, userId = null) {
+  const existing = await getFcmTokenRecord(appConfig, token);
+  if (existing && (!userId || existing.user === String(userId))) {
+    return deleteRecord('fcm_tokens', existing.id, appConfig);
+  }
+  return null;
+}
+
 module.exports = {
   getPushSubscriptionByEndpoint,
   upsertPushSubscription,
   deletePushSubscription,
+  getFcmTokenRecord,
+  upsertFcmToken,
+  deleteFcmToken,
   listAllRecords,
   createRecord,
   updateRecord,

@@ -161,6 +161,7 @@ const ICONS = {
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
     user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     person: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
     clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
@@ -521,10 +522,18 @@ window.addEventListener('popstate', () => {
     }
     if ($('mentoring-threads-layout')?.classList.contains('in-chat') && window.matchMedia('(max-width: 768px)').matches) {
         mentoringChatHistoryPushed = false;
-        closeMentoringChatMobile(true);
+        closeMentoringChatMobile(true, true);
         return;
     }
-    if (modalStack.length > 0) closeModal(modalStack[modalStack.length - 1], true);
+    if (modalStack.length > 0) {
+        closeModal(modalStack[modalStack.length - 1], true);
+        return;
+    }
+    // Back from a tab entry: return to the start page
+    if (tabHistoryPushed && !history.state?.tab) {
+        tabHistoryPushed = false;
+        if (currentActiveTab !== HOME_TAB) switchTab(HOME_TAB, 'history');
+    }
 });
 
 function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, contentHtml, bodyHtml, footerHtml, maxWidth, onClose }) {
@@ -768,8 +777,33 @@ const TAB_LOADERS = {
 };
 TAB_LOADERS['user-settings'] = TAB_LOADERS.settings;
 
-function switchTab(tabName) {
-    if (tabName !== 'mentoring') closeMentoringChatMobile(true);
+// --- Tab history: like the Android app, back from any tab (or the settings) returns to the start page ---
+const HOME_TAB = 'user-overview';
+let tabHistoryPushed = false;
+
+function syncTabHistory(tabName) {
+    if (tabName === HOME_TAB) {
+        if (tabHistoryPushed && history.state?.tab) {
+            tabHistoryPushed = false;
+            programmaticBacks++;
+            history.back();
+        }
+        return;
+    }
+    // One history entry for "somewhere other than home"; moving between tabs only replaces it
+    if (tabHistoryPushed && history.state?.tab) history.replaceState({ tab: tabName }, '');
+    else {
+        history.pushState({ tab: tabName }, '');
+        tabHistoryPushed = true;
+    }
+}
+
+// source: the clicked nav element (ignored) or 'history' when called from a back navigation
+function switchTab(tabName, source) {
+    if (tabName !== 'mentoring') {
+        mentoringChatReturnHome = false;
+        closeMentoringChatMobile(true);
+    }
     if (tabName === 'overview' || tabName === 'payment-history') switchFinanceSubpage('history');
     else if (tabName === 'people-view') switchFinanceSubpage('members');
     tabName = TAB_ALIASES[tabName] || tabName;
@@ -801,6 +835,7 @@ function switchTab(tabName) {
         el.classList.toggle('active', active);
         el.setAttribute('aria-selected', String(active));
     });
+    if (source !== 'history' && isAuthenticated) syncTabHistory(tabName);
     TAB_LOADERS[tabName]?.();
 }
 
@@ -997,6 +1032,8 @@ async function loadData(silent = false) {
 
         setText('user-name-display', fullName(currentUser) || currentUser.name || '');
         setText('user-email-display', currentUser.email || '');
+        setText('profile-menu-name', fullName(currentUser) || currentUser.name || '');
+        setText('profile-menu-email', currentUser.email || '');
         if (canAccessAi()) {
             apiJson('/admin/ai-status').then(data => {
                 aiEnabled = !!data.enabled;
@@ -4282,6 +4319,9 @@ let mentoringChatPollTimer = null;
 let myMentorProfile = null;
 let openingDirectChat = false;
 let mentoringChatHistoryPushed = false;
+let mentoringChatReturnHome = false;
+// Bumped when the chat is closed, so thread loads still in flight don't reopen it
+let mentoringChatGeneration = 0;
 
 const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
 const findThread = id => (Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === id) : null);
@@ -4553,6 +4593,7 @@ function renderThreadItem(thread) {
 async function loadMentoringThreads(shouldSelect = false, selectThreadId = null) {
     const listEl = $('mentoring-threads-list');
     if (!listEl) return;
+    const generation = mentoringChatGeneration;
     try {
         const res = await api('/mentoring/threads');
         if (!res.ok) return console.warn('Failed to fetch mentoring threads, status:', res.status);
@@ -4573,6 +4614,7 @@ async function loadMentoringThreads(shouldSelect = false, selectThreadId = null)
         listEl.innerHTML = mentoringThreads.map(renderThreadItem).join('');
         const search = inputValue('mentoring-threads-search-input');
         if (search) filterMentoringThreads(search);
+        if (generation !== mentoringChatGeneration) return;
         if (selectThreadId) {
             await openMentoringThread(selectThreadId);
         } else if (shouldSelect || (!isMobile() && !activeMentoringThreadId)) {
@@ -4654,18 +4696,27 @@ async function openMentoringThread(threadId) {
     }, 3500);
 }
 
-function closeMentoringChatMobile(fromHistory = false) {
+// fromHistory: the chat's history entry is already gone (back gesture or tab switch).
+// userBack: the user left the chat (button or gesture), so a chat opened from the start page returns there.
+function closeMentoringChatMobile(fromHistory = false, userBack = !fromHistory) {
+    mentoringChatGeneration++;
     activeMentoringThreadId = null;
     clearInterval(mentoringChatPollTimer);
     mentoringChatPollTimer = null;
     closeMobileChatPane();
     document.querySelectorAll('.mentoring-thread-item').forEach(item => item.classList.remove('active'));
-    if (!fromHistory && mentoringChatHistoryPushed) {
-        mentoringChatHistoryPushed = false;
+    const returnHome = userBack && mentoringChatReturnHome;
+    mentoringChatReturnHome = false;
+    // Pop the chat entry (button) and the tab entry (return home) in one step
+    const steps = (!fromHistory && mentoringChatHistoryPushed ? 1 : 0) + (returnHome && tabHistoryPushed ? 1 : 0);
+    mentoringChatHistoryPushed = false;
+    if (returnHome) tabHistoryPushed = false;
+    if (steps > 0) {
         programmaticBacks++;
-        history.back();
+        history.go(-steps);
     }
-    loadMentoringThreads(false);
+    if (returnHome) switchTab(HOME_TAB, 'history');
+    else loadMentoringThreads(false);
 }
 
 async function loadMentoringMessages(threadId, isPoll = false) {
@@ -4903,8 +4954,10 @@ function renderHomeMentoringCard() {
         </div>`;
 }
 
-async function openMentoringChatDirect(threadId) {
+async function openMentoringChatDirect(threadId, source) {
     openingDirectChat = true;
+    // Opened from the start page: going back from the chat leads there again (like the Android app)
+    mentoringChatReturnHome = source === 'home' && isMobile();
     currentMentoringSubTab = 'chats';
     switchTab('mentoring');
     switchMentoringSubTab('chats');
@@ -4962,10 +5015,31 @@ function getEventCardStatusInfo(ev) {
     };
 }
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
 function eventDateParts(dateStr) {
-    if (!dateStr) return { dayNum: '--', weekdayStr: '' };
+    if (!dateStr) return { dayNum: '--', weekdayStr: '', monthStr: '' };
     const [y, m, d] = splitDate(dateStr);
-    return { dayNum: String(d), weekdayStr: WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()] || '' };
+    return { dayNum: String(d), weekdayStr: WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()] || '', monthStr: MONTH_SHORT[m - 1] || '' };
+}
+
+// "17.–19. Okt." / "30. Sep. – 2. Okt." for list cards (the year is in the month header)
+function formatEventDateSpanShort(startDate, endDate) {
+    const [, m1, d1] = splitDate(startDate);
+    const [, m2, d2] = splitDate(endDate);
+    const month = m => `${MONTH_SHORT[m - 1]}.`;
+    return m1 === m2 ? `${d1}.–${d2}. ${month(m1)}` : `${d1}. ${month(m1)} – ${d2}. ${month(m2)}`;
+}
+
+// Tear-off calendar leaf: month strip in the category colour, big day number, weekday
+function eventCalendarLeaf(dateStr, cls = '') {
+    const { dayNum, weekdayStr, monthStr } = eventDateParts(dateStr);
+    return `
+        <div class="event-cal ${cls}" aria-hidden="true">
+            <span class="event-cal-month">${escapeHtml(monthStr)}</span>
+            <span class="event-cal-day">${escapeHtml(dayNum)}</span>
+            <span class="event-cal-weekday">${escapeHtml(weekdayStr)}</span>
+        </div>`;
 }
 
 function formatEventDate(dateStr) {
@@ -5230,7 +5304,6 @@ const statusBadge = (cls, content, title = '') => `<span class="event-card-statu
 function renderChurchtoolsEventCard(ev, forcePast = false) {
     const isPast = forcePast || isEventPast(ev);
     const isPinned = Boolean(ev.isPinned);
-    const { dayNum, weekdayStr } = eventDateParts(ev.date);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
     const timeDisplay = !isMultiDay ? eventTimeRange(ev) : '';
     const { myDuty, myRequestedDuty, isWaitlist } = getEventCardStatusInfo(ev);
@@ -5254,16 +5327,13 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                 ${ev.imageUrl
                     ? `<img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">`
                     : `<div class="ct-event-card-fallback-cover"><div class="ct-fallback-icon-wrap">${cardIcon('calendar')}</div></div>`}
-                <div class="ct-event-card-date-badge ${isPinned ? 'is-pinned-date' : 'is-event-date'}">
-                    <span class="ct-event-card-date-weekday">${escapeHtml(weekdayStr)}</span>
-                    <span class="ct-event-card-date-day">${escapeHtml(dayNum)}</span>
-                </div>
+                ${eventCalendarLeaf(ev.date, `ct-event-card-date-badge ${isPinned ? 'cat-pinned' : 'cat-event'}`)}
                 <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>${status}</div>
             </div>
             <div class="ct-event-card-body">
                 <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="ct-event-card-meta">
-                    ${isMultiDay ? metaRow('calendar', `Bis ${formatEventDate(ev.endDate)}`, ' multiday-row') : ''}
+                    ${isMultiDay ? metaRow('calendar', formatEventDateSpanShort(ev.date, ev.endDate), ' multiday-row') : ''}
                     ${timeDisplay ? metaRow('clock', timeDisplay) : ''}
                     ${ev.location ? metaRow('location', ev.location) : ''}
                 </div>
@@ -5275,10 +5345,10 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
         </div>`;
 }
 
-// Compact list card used for appointments and on the home screen
+// Compact list card used for appointments and on the home screen: calendar leaf, title, one "when" line,
+// location and at most one status badge; the category colour shows as leaf strip and left accent
 function renderEventCard(ev, idPrefix = 'event-card-') {
-    const { dayNum, weekdayStr } = eventDateParts(ev.date);
-    const timeDisplay = eventTimeRange(ev, false);
+    const timeDisplay = eventTimeRange(ev);
     const todayStr = getTodayStr();
     const isToday = ev.date === todayStr;
     const isPast = ev.date && ev.date < todayStr;
@@ -5300,29 +5370,23 @@ function renderEventCard(ev, idPrefix = 'event-card-') {
     } else if (!isRegistered && ev.requiresRegistration && ev.isFull) {
         status = statusBadge('status-full', '<span>Ausgebucht</span>');
     }
-    const subline = (icon, text, extra = '') => `<span class="event-card-subline-item${extra}">${cardIcon(icon)}<span>${escapeHtml(text)}</span></span>`;
+    const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || 'Ganztägig');
+    const category = isPinned ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
+    const categoryLabel = isPinned ? 'Großevent' : isEvent ? 'Event' : 'Termin';
     return `
-        <div class="event-card ${isEvent ? (isPinned ? 'is-event is-pinned' : 'is-event') : 'is-termin'} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
-            <div class="event-card-left">
-                <div class="event-date-box ${isEvent ? 'is-event-date' : 'is-termin-date'} ${isToday ? 'is-today' : ''}">
-                    <span class="event-date-weekday">${escapeHtml(weekdayStr)}</span>
-                    <span class="event-date-day">${escapeHtml(dayNum)}</span>
+        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}" title="${categoryLabel}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
+            ${eventCalendarLeaf(ev.date)}
+            <div class="event-card-body">
+                <div class="event-card-title">${escapeHtml(ev.title)}</div>
+                <div class="event-card-when">
+                    ${isToday ? '<span class="event-card-today">Heute</span>' : ''}
+                    ${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(when)}</span>
                 </div>
-                <div class="event-card-body">
-                    <div class="event-card-title">${escapeHtml(ev.title)}</div>
-                    <div class="event-card-subline">
-                        ${isToday ? '<span class="event-type-pill pill-today">Heute</span>' : ''}
-                        ${isMultiDay ? subline('calendar', `Bis ${formatEventDate(ev.endDate)}`, ' multiday-item') : (timeDisplay ? subline('clock', `${timeDisplay} Uhr`) : '')}
-                        ${ev.location ? subline('location', ev.location) : ''}
-                    </div>
-                </div>
+                ${ev.location ? `<div class="event-card-where">${cardIcon('location')}<span>${escapeHtml(ev.location)}</span></div>` : ''}
             </div>
             <div class="event-card-right">
-                ${isEvent ? `<span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>` : ''}
-                <div class="event-card-right-actions">
-                    ${status}
-                    <div class="event-card-arrow">${cardIcon('chevronRight')}</div>
-                </div>
+                ${status}
+                <div class="event-card-arrow">${cardIcon('chevronRight')}</div>
             </div>
         </div>`;
 }
@@ -5384,31 +5448,39 @@ function toggleDetailDescription() {
     setDescriptionToggle(expand);
 }
 
+// Registration card: "1 von 2 Plätzen belegt · 1 frei", capacity bar, then my status or the register button
 function renderRegistrationSection(ev) {
-    const isRegistered = ev.myRegistration?.status === 'registered';
+    const status = ev.myRegistration?.status;
     const max = ev.maxParticipants || 0;
     const count = ev.registeredCount || 0;
-    const capInfo = $('detail-modal-capacity-info');
-    if (capInfo) {
-        capInfo.innerHTML = max > 0 ? `<span class="event-reg-cap-pill ${count >= max ? 'is-full' : ''}"><strong>${count}</strong> / ${max} Plätze</span>` : '';
-        capInfo.style.display = max > 0 ? 'flex' : 'none';
+    const min = ev.minParticipants || 0;
+    const free = Math.max(0, max - count);
+    const meta = [
+        max > 0 ? `${count} von ${max} Plätzen belegt` : `${count} angemeldet`,
+        max > 0 ? (free > 0 ? `${free} frei` : 'ausgebucht') : '',
+        min > 0 ? `mind. ${min}` : ''
+    ].filter(Boolean).join(' · ');
+    setText('detail-modal-reg-meta', meta);
+    const capacity = $('detail-modal-capacity-info');
+    if (capacity) {
+        capacity.style.display = max > 0 ? 'block' : 'none';
+        capacity.classList.toggle('is-full', max > 0 && free === 0);
+        capacity.querySelector('.event-progress-bar').style.width = `${max > 0 ? Math.min(100, Math.round((count / max) * 100)) : 0}%`;
     }
-    const button = (cls, status, title, content) => `
-        <button type="button" class="btn ${cls}" onclick="window.toggleEventRegistration('${ev.id}', '${status}')"${title ? ` title="${title}"` : ''}>
-            ${content}
-        </button>`;
-    const iconStyle = extra => `style="margin-right: 6px;${extra}"`;
+    const toggle = current => `window.toggleEventRegistration('${ev.id}', '${current}')`;
+    const banner = (cls, icon, title, sub, action = '') => `
+        <div class="event-reg-status ${cls}">
+            <span class="event-reg-status-icon">${svgIcon(icon, 16, 2.5)}</span>
+            <div class="event-reg-status-text"><strong>${title}</strong>${sub ? `<span>${sub}</span>` : ''}</div>
+            ${action}
+        </div>`;
+    const leave = (current, label) => `<button type="button" class="event-reg-status-action" onclick="${toggle(current)}">${label}</button>`;
     $('detail-modal-reg-action-wrap').innerHTML = isEventPast(ev)
-        ? `<div class="event-reg-past-notice">${isRegistered ? '✓ Du warst angemeldet (Event ist vorüber)' : '⌛ Event ist bereits vorüber'}</div>`
-        : isRegistered ? button('btn-secondary btn-block event-btn-registered', 'registered', 'Klicken zum Abmelden', `
-            ${svgIcon('check', 15, 2.5, `class="event-reg-check-icon" ${iconStyle('')}`)}
-            ${svgIcon('x', 15, 2.5, `class="event-reg-unreg-icon" ${iconStyle(' display: none;')}`)}
-            <span class="event-reg-btn-text-reg">Angemeldet</span>
-            <span class="event-reg-btn-text-unreg">Abmelden</span>`)
-        : ev.myRegistration?.status === 'waitlist' ? button('btn-secondary btn-block event-btn-waitlist', 'waitlist', 'Klicken zum Verlassen der Warteliste', `${svgIcon('clock', 15, 2, iconStyle(''))}
-            <span>Auf der Warteliste (Verlassen)</span>`)
-        : ev.isFull ? button('btn-secondary btn-block', 'none', '', 'Auf Warteliste setzen')
-        : button('btn-primary btn-block', 'none', '', 'Verbindlich anmelden');
+        ? banner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? 'Du warst angemeldet' : 'Die Anmeldung ist beendet', 'Das Event ist vorbei.')
+        : status === 'registered' ? banner('is-registered', 'check', 'Du bist angemeldet', 'Wir freuen uns auf dich!', leave('registered', 'Abmelden'))
+        : status === 'waitlist' ? banner('is-waitlist', 'clock', 'Du stehst auf der Warteliste', 'Du rückst nach, sobald ein Platz frei wird.', leave('waitlist', 'Verlassen'))
+        : ev.isFull ? `<button type="button" class="btn btn-secondary btn-block" onclick="${toggle('none')}">${svgIcon('clock', 15, 2)}<span>Auf die Warteliste setzen</span></button>`
+        : `<button type="button" class="btn btn-primary btn-block" onclick="${toggle('none')}">${svgIcon('check', 15, 2.5)}<span>Verbindlich anmelden</span></button>`;
     const attendees = $('detail-modal-attendees-details');
     if (attendees) attendees.open = false;
     loadEventAttendees(ev.id);
@@ -5432,7 +5504,8 @@ async function openEventDetailModal(eventId) {
     const typeIndicator = $('detail-modal-type-indicator');
     if (typeIndicator) {
         typeIndicator.innerHTML = ev.isPinned ? `${svgIcon('star', 13)}<span>Großevent & Highlight</span>` : '';
-        typeIndicator.className = `event-detail-type-badge${ev.isPinned ? ' type-pinned' : ''}`;
+        // Keep detail-view-only so the badge hides while editing or creating an event
+        typeIndicator.className = `event-detail-type-badge detail-view-only${ev.isPinned ? ' type-pinned' : ''}`;
         typeIndicator.style.display = ev.isPinned ? 'inline-flex' : 'none';
     }
     setText('detail-modal-title', ev.title);
@@ -5492,7 +5565,16 @@ async function openEventDetailModal(eventId) {
         show('detail-modal-add-duty-wrap', !!ev.canEdit, 'block');
         hideAddNewTaskForm();
         const duties = Array.isArray(ev.duties) ? ev.duties : [];
-        setText('detail-modal-duties-count', duties.filter(hasDutyAssignee).length);
+        // "2 von 3 besetzt": confirmed people and assigned groups count as filled
+        const filled = duties.filter(d => d.status === 'confirmed' || (d.status === 'assigned' && (d.assignedGroup || d.assignedGroupName))).length;
+        const tasks = new Set(duties.map(d => (d.roleName || 'Aufgabe').trim())).size;
+        setText('detail-modal-duties-count', duties.length ? `${filled} von ${duties.length} besetzt · ${tasks} ${tasks === 1 ? 'Aufgabe' : 'Aufgaben'}` : 'Noch keine Aufgaben');
+        const progress = $('detail-modal-duties-progress');
+        if (progress) {
+            progress.style.display = duties.length ? 'block' : 'none';
+            progress.classList.toggle('is-complete', duties.length > 0 && filled === duties.length);
+            progress.querySelector('.event-progress-bar').style.width = `${duties.length ? Math.round((filled / duties.length) * 100) : 0}%`;
+        }
         renderGroupedDuties(duties, ev);
     }
 
@@ -5516,26 +5598,34 @@ async function loadEventAttendees(eventId) {
         const res = await api(`/events/${eventId}/attendees`);
         if (!res.ok) return;
         const data = await res.json();
-        setText('detail-attendees-count', data.registeredCount || 0);
+        const registered = data.registered || [];
+        const waitlist = data.waitlist || [];
+        setText('detail-attendees-count', registered.length);
+        setText('detail-attendees-label-text', registered.length ? 'Teilnehmer' : 'Noch niemand angemeldet');
+        show('detail-attendees-count', registered.length > 0, 'inline-flex');
+        // Overlapping avatar stack of the first attendees
+        const stack = $('detail-attendees-stack');
+        if (stack) {
+            const shown = registered.slice(0, 5);
+            stack.innerHTML = shown.map(att => renderAvatarWrap(att.userId, att.name, { wrapClass: 'avatar-stack-item' })).join('')
+                + (registered.length > shown.length ? `<span class="avatar-stack-more">+${registered.length - shown.length}</span>` : '');
+            stack.style.display = shown.length ? 'flex' : 'none';
+        }
         const itemsEl = $('detail-attendees-items');
         if (!itemsEl) return;
         const canManage = currentDetailEvent && currentDetailEvent.canEdit;
         const row = (att, isWaitlist) => `
             <div class="event-attendee-row ${isWaitlist ? 'is-waitlist' : ''}">
-                <div class="event-attendee-left">
-                    ${renderAvatarWrap(att.userId, att.name, { wrapClass: 'event-attendee-avatar-wrap', imgClass: 'event-attendee-avatar-img', initialsClass: 'event-attendee-initials' })}
-                    <div class="event-attendee-name-wrap">
-                        <span class="event-attendee-name">${escapeHtml(att.name)}</span>
-                        ${isWaitlist ? '<span class="event-attendee-waitlist-badge">Warteliste</span>' : ''}
-                    </div>
-                </div>
+                ${renderAvatarWrap(att.userId, att.name, { wrapClass: 'event-attendee-avatar' })}
+                <span class="event-attendee-name">${escapeHtml(att.name)}</span>
                 ${canManage ? `
-                <button type="button" class="event-attendee-remove-btn" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="${isWaitlist ? 'Von Warteliste entfernen' : 'Teilnehmer entfernen'}">
+                <button type="button" class="event-attendee-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="${isWaitlist ? 'Von Warteliste entfernen' : 'Teilnehmer entfernen'}" aria-label="Entfernen">
                     ${svgIcon('x', 13, 2.5)}
                 </button>` : ''}
             </div>`;
-        itemsEl.innerHTML = [...(data.registered || []).map(att => row(att, false)), ...(data.waitlist || []).map(att => row(att, true))].join('')
-            || '<div class="event-attendees-empty">Noch keine Teilnehmer angemeldet</div>';
+        itemsEl.innerHTML = registered.map(att => row(att, false)).join('')
+            + (waitlist.length ? `<div class="event-attendees-sub">Warteliste · ${waitlist.length}</div>${waitlist.map(att => row(att, true)).join('')}` : '')
+            || '<div class="event-attendees-empty">Sobald sich jemand anmeldet, erscheint die Person hier.</div>';
     } catch (err) {
         console.warn('Failed to load event attendees:', err);
     }
@@ -5554,87 +5644,76 @@ function renderGroupedDuties(duties, ev) {
     const container = $('detail-modal-duties-sections');
     if (!container) return;
     if (!duties || duties.length === 0) {
-        container.innerHTML = `
-            <div class="duty-empty-simple">
-                <span>${ev.canEdit ? 'Noch keine Aufgaben angelegt.' : 'Keine Dienste eingetragen.'}</span>
-            </div>`;
+        container.innerHTML = `<div class="duty-rows-empty">${ev.canEdit ? 'Lege Aufgaben an und frage Personen oder Gruppen dafür an.' : 'Für dieses Event sind keine Dienste eingetragen.'}</div>`;
         return;
     }
     const grouped = groupBy(duties, d => (d.roleName || 'Aufgabe').trim());
-    container.innerHTML = `<div class="duty-tasks-container">${[...grouped].map(([roleName, roleDuties], idx) => renderDutyTaskCard(roleName, roleDuties, ev, `task-${idx + 1}-${Math.random().toString(36).substring(2, 7)}`)).join('')}</div>`;
+    container.innerHTML = [...grouped].map(([roleName, roleDuties]) => renderDutyTaskCard(roleName, roleDuties, ev)).join('');
 }
 
-function renderDutyTaskCard(roleName, roleDuties, ev, cardId) {
+// One compact row per task: name, people as status chips, small add/delete tools for managers
+function renderDutyTaskCard(roleName, roleDuties, ev) {
     const canManage = ev.canEdit || roleDuties.some(d => d.canManageDuty);
     const encodedRoleName = encodeURIComponent(roleName);
     const assignees = roleDuties.filter(hasDutyAssignee);
-    const assigneesHtml = assignees.map(d => renderDutyAssigneeItem(d, ev)).join('');
+    const openSlots = roleDuties.length - assignees.length;
+    const chips = assignees.map(d => renderDutyAssigneeItem(d, ev)).join('')
+        + (assignees.length === 0 || openSlots > 0
+            ? `<button type="button" class="duty-chip is-open" ${canManage ? `onclick="window.openAssignDutyModalForRole('${encodedRoleName}')"` : 'disabled'}>${svgIcon(canManage ? 'plus' : 'user', 12, 2.5)}<span>${canManage ? 'Offen – zuweisen' : 'Offen'}</span></button>`
+            : '');
+    // Requests to me get the answer buttons right in the row
+    const myRequest = roleDuties.find(d => d.status === 'requested' && isCurrentUser(d.requestedUser));
+    const notes = roleDuties.filter(d => d.notes).map(d => `<div class="duty-row-note">${escapeHtml(d.notes)}</div>`).join('');
     return `
-        <div class="duty-task-section" id="duty-task-sec-${cardId}">
-            <div class="duty-task-header">
-                <div class="duty-task-title-wrap">
-                    <span class="duty-task-title">${escapeHtml(roleName)}</span>
-                    ${assignees.length > 0 ? `<span class="duty-task-count-pill">${assignees.length}</span>` : ''}
-                </div>
+        <div class="duty-row">
+            <div class="duty-row-head">
+                <span class="duty-row-name">${escapeHtml(roleName)}</span>
                 ${canManage ? `
-                <button type="button" class="duty-task-delete-btn" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="Gesamte Aufgabe löschen">
-                    ${svgIcon('trash', 13)}
-                </button>` : ''}
+                <div class="duty-row-tools">
+                    ${assignees.length > 0 && openSlots === 0 ? `<button type="button" class="duty-tool" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')" title="Person oder Gruppe hinzufügen" aria-label="Person oder Gruppe hinzufügen">${svgIcon('plus', 14, 2.5)}</button>` : ''}
+                    <button type="button" class="duty-tool is-danger" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="Aufgabe löschen" aria-label="Aufgabe löschen">${svgIcon('trash', 14)}</button>
+                </div>` : ''}
             </div>
-            ${assigneesHtml ? `<div class="duty-assignees-list">${assigneesHtml}</div>` : ''}
-            ${canManage ? `
-            <div style="margin-top: 4px;">
-                <button type="button" class="btn btn-ghost btn-small duty-add-person-btn" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')">
-                    ${svgIcon('plus', 13, 2.5)}
-                    <span>Person oder Gruppe hinzufügen</span>
-                </button>
+            <div class="duty-row-people">${chips}</div>
+            ${myRequest ? `
+            <div class="duty-row-request">
+                <span>Du wurdest angefragt</span>
+                <button type="button" class="btn btn-primary btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(myRequest.id)}', 'accept')">${svgIcon('check', 13, 2.5)}<span>Zusagen</span></button>
+                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(myRequest.id)}', 'decline')">Ablehnen</button>
             </div>` : ''}
+            ${notes}
         </div>`;
 }
 
+// Person / group chip with its status colour (confirmed, requested, declined, group)
 function renderDutyAssigneeItem(d, ev) {
-    const isMe = d.assignedUser === currentUser?.id;
-    const personName = fallback => (d.requestedUser === currentUser?.id ? 'Du' : (d.requestedUserName || fallback));
-    let avatar = `<div class="duty-assignee-open-badge">👤</div>`;
-    let displayName = `<span class="duty-empty-assigned">Noch niemand eingeteilt (Offene Aufgabe)</span>`;
-    let status = '';
-    let actions = '';
+    const canRemove = ev.canEdit || d.canManageDuty;
+    let cls = 'is-confirmed';
+    let avatar = '';
+    let name = '';
+    let state = '';
     if (d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup)) {
-        avatar = `<div class="duty-assignee-group-badge">👥</div>`;
-        displayName = `Gruppe: ${escapeHtml(d.assignedGroupName || d.assignedGroup)}`;
-        status = `<span class="duty-status-sub">(Gruppe eingeteilt)</span>`;
+        cls = 'is-group';
+        avatar = `<span class="duty-chip-icon">${svgIcon('users', 12, 2.5)}</span>`;
+        name = d.assignedGroupName || d.assignedGroup;
+        state = 'Gruppe';
     } else if (d.status === 'requested' || d.status === 'declined') {
-        avatar = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P');
-        displayName = escapeHtml(personName('Person'));
-        status = d.status === 'requested' ? `<span class="duty-status-sub is-requested">(Anfrage offen)</span>` : `<span class="duty-status-sub is-declined">✕ Abgelehnt</span>`;
-        if (d.status === 'requested' && d.requestedUser === currentUser?.id) {
-            actions = `
-                <button type="button" class="btn btn-success btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'accept')">Zusagen</button>
-                <button type="button" class="btn btn-ghost btn-tiny text-danger" onclick="window.respondToDutyRequest('${escapeHtml(d.id)}', 'decline')">Ablehnen</button>`;
-        }
-    } else if (d.status === 'confirmed' && (d.assignedUserName || d.assignedUser)) {
-        avatar = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P');
-        displayName = escapeHtml(isMe ? 'Du' : (d.assignedUserName || 'Eingeteilt'));
-        status = `<span class="duty-status-sub is-confirmed">✓ Eingeteilt</span>`;
+        cls = d.status === 'requested' ? 'is-requested' : 'is-declined';
+        avatar = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
+        name = isCurrentUser(d.requestedUser) ? 'Du' : (d.requestedUserName || 'Person');
+        state = d.status === 'requested' ? 'angefragt' : 'abgelehnt';
+    } else {
+        avatar = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
+        name = isCurrentUser(d.assignedUser) ? 'Du' : (d.assignedUserName || 'Eingeteilt');
+        state = '';
     }
     return `
-        <div class="duty-assignee-item" id="duty-slot-${escapeHtml(d.id)}">
-            <div class="duty-assignee-top">
-                ${avatar}
-                <div class="duty-assignee-info">
-                    <span class="duty-assignee-name ${isMe ? 'is-me' : ''}">${displayName}</span>
-                    ${status}
-                </div>
-                ${ev.canEdit || d.canManageDuty ? `
-                <div class="duty-assignee-top-actions">
-                    <button type="button" class="duty-action-icon text-danger" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="Eintrag entfernen">
-                        ✕
-                    </button>
-                </div>` : ''}
-            </div>
-            ${actions ? `<div class="duty-assignee-actions-row">${actions}</div>` : ''}
-            ${d.notes ? `<div class="duty-assignee-notes">${escapeHtml(d.notes)}</div>` : ''}
-        </div>`;
+        <span class="duty-chip ${cls}" id="duty-slot-${escapeHtml(d.id)}" title="${escapeHtml(state ? `${name} · ${state}` : name)}">
+            ${avatar}
+            <span class="duty-chip-name">${escapeHtml(name)}</span>
+            ${state ? `<span class="duty-chip-state">${state}</span>` : `<span class="duty-chip-check">${svgIcon('check', 11, 3)}</span>`}
+            ${canRemove ? `<button type="button" class="duty-chip-remove" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="Eintrag entfernen" aria-label="Eintrag entfernen">${svgIcon('x', 11, 2.5)}</button>` : ''}
+        </span>`;
 }
 
 function setNewTaskFormVisible(visible) {

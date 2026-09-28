@@ -106,6 +106,37 @@ When you first access the application at `http://localhost:3000` (or your mapped
 PocketBase is provisioned automatically inside the container. Agora stores its runtime configuration in `/app/data/config.json`, the uploaded logo in `/app/data/church-logo.svg`, and the PocketBase database in `/app/db` by default. If needed, you can override the database path with `DB_DIR` (or the more explicit `POCKETBASE_DIR`).
 </details>
 
+<details>
+<summary><b>Android App Push Notifications (Firebase)</b></summary>
+
+## 📱 Android App Push Notifications (Firebase)
+
+Browsers receive notifications via Web Push, which works out of the box. The native Android app receives the same notifications (respecting the same per-user notification settings) via Firebase Cloud Messaging. Every instance uses its **own** Firebase project — the app fetches the Firebase client config from your server at runtime, so nothing app-specific has to be rebuilt:
+
+1. Create a Firebase project and add an **Android app with the package name `org.agora.app`** (Firebase Console → Project settings → General → Add app).
+2. Download its **`google-services.json`** and place it as `/app/data/google-services.json` (or set `FCM_GOOGLE_SERVICES_FILE` / `FCM_GOOGLE_SERVICES_JSON`). It only contains public identifiers.
+3. Generate the **service account key** (Project settings → Service accounts → Generate new private key) and provide it in one of these ways:
+   - place the file as `/app/data/firebase-service-account.json` in your mapped storage directory, or
+   - set `FCM_SERVICE_ACCOUNT_FILE` to the path of the key file inside the container, or
+   - set `FCM_SERVICE_ACCOUNT_JSON` to the raw JSON content of the key file.
+
+If you restrict the API key in the Google Cloud console, allow the package `org.agora.app` with the SHA-1 fingerprint of the published app.
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v /path/to/your/storage:/app/data \
+  -v /path/to/your/cache:/app/db \
+  -v /path/to/firebase-adminsdk.json:/run/secrets/firebase.json:ro \
+  -e FCM_SERVICE_ACCOUNT_FILE=/run/secrets/firebase.json \
+  --name agora-app \
+  --restart unless-stopped \
+  ghcr.io/ricolehn/agora:latest
+```
+
+Both files are read once on startup, so restart the container after adding them. Without them, FCM is disabled (the app then checks for news about every 15 minutes) and everything else (including Web Push) keeps working. Keep the key file private — it is excluded from Git and Docker builds.
+</details>
+
 ## 👑 Owner & User Roles
 
 The **account created during the initial setup wizard** is designated as the **Owner**:

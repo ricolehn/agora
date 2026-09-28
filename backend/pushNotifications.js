@@ -1,5 +1,6 @@
 const webpush = require('web-push');
 const { getStateValue, upsertStateValue, listAllRecords, deleteRecord } = require('./pocketbase');
+const { sendFcmToUser } = require('./fcmNotifications');
 
 let vapidConfigured = false;
 let currentVapidKeys = null;
@@ -137,28 +138,39 @@ async function sendPushToSubscription(subscriptionRecord, payload, appConfig) {
 }
 
 /**
- * Sends a push notification to all active devices of a given user.
+ * Sends a Web Push notification to all browser subscriptions of a given user.
  */
-async function sendPushToUser(appConfig, userId, payload) {
-  if (!appConfig || !userId) return;
+async function sendWebPushToUser(appConfig, userId, fullPayload) {
   try {
     await getOrInitVapidKeys(appConfig);
     const subs = await listAllRecords('push_subscriptions', `user = "${userId}"`, appConfig);
     if (!subs || !subs.length) return;
 
-    const fullPayload = {
-      title: payload.title || (appConfig.appName || 'Agora'),
-      body: payload.body || '',
-      icon: payload.icon || './assets/icon-notification.png',
-      badge: payload.badge || './assets/badge-monochrome.png',
-      data: payload.data || {},
-      tag: payload.tag || 'agora-notification'
-    };
-
     await Promise.all(subs.map(sub => sendPushToSubscription(sub, fullPayload, appConfig)));
   } catch (err) {
     console.warn(`[WebPush] Failed to send push to user ${userId}:`, err.message);
   }
+}
+
+/**
+ * Sends a push notification to all active devices of a given user
+ * (browsers via Web Push, native Android apps via FCM).
+ */
+async function sendPushToUser(appConfig, userId, payload = {}) {
+  if (!appConfig || !userId) return;
+  const fullPayload = {
+    title: payload.title || (appConfig.appName || 'Agora'),
+    body: payload.body || '',
+    icon: payload.icon || './assets/icon-notification.png',
+    badge: payload.badge || './assets/badge-monochrome.png',
+    data: payload.data || {},
+    tag: payload.tag || 'agora-notification'
+  };
+
+  await Promise.all([
+    sendWebPushToUser(appConfig, userId, fullPayload),
+    sendFcmToUser(appConfig, userId, fullPayload)
+  ]);
 }
 
 /**

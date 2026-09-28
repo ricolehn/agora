@@ -2,3 +2,5 @@ backend/node_modules/
 pb_data/
 node_modules/
 data/
+firebase-service-account.json
+*firebase-adminsdk*.json

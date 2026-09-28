@@ -37,6 +37,8 @@ const {
   getUserRecord,
   upsertPushSubscription,
   deletePushSubscription,
+  upsertFcmToken,
+  deleteFcmToken,
   isPlaceholderEmail,
   resolveUserPermissions,
   SYSTEM_PERMISSIONS
@@ -51,6 +53,8 @@ const {
   getVapidPublicKey,
   sendPushToUser
 } = require('../pushNotifications');
+
+const { isFcmEnabled, getClientConfig } = require('../fcmNotifications');
 
 const router = express.Router();
 
@@ -659,12 +663,48 @@ router.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
   }
 });
 
+// The Android app initialises Firebase with this public client config, so each instance can use its own project
+router.get('/api/push/fcm', verifyToken, (req, res) => {
+  const enabled = isFcmEnabled();
+  res.json({ enabled, config: enabled ? getClientConfig() : null });
+});
+
+router.post('/api/push/fcm/subscribe', verifyToken, async (req, res) => {
+  try {
+    const { token, platform } = req.body || {};
+    if (!token || typeof token !== 'string' || token.length > 4096) {
+      return res.status(400).json({ error: 'Invalid FCM token' });
+    }
+    const currentUid = req.user.uid || req.user.id;
+    await upsertFcmToken(context.appConfig, currentUid, token, typeof platform === 'string' && platform ? platform.slice(0, 32) : 'android');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to save FCM token:', error);
+    res.status(500).json({ error: 'Failed to save FCM token' });
+  }
+});
+
+router.post('/api/push/fcm/unsubscribe', verifyToken, async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+    const currentUid = req.user.uid || req.user.id;
+    await deleteFcmToken(context.appConfig, token, currentUid);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete FCM token:', error);
+    res.status(500).json({ error: 'Failed to unsubscribe' });
+  }
+});
+
 router.post('/api/push/test', verifyToken, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
     await sendPushToUser(context.appConfig, currentUid, {
       title: `${context.appConfig?.appName || 'Agora'} Test`,
-      body: 'Web-Push-Benachrichtigungen sind erfolgreich eingerichtet!',
+      body: 'Push-Benachrichtigungen sind erfolgreich eingerichtet!',
       data: { url: '/' }
     });
     res.json({ success: true });
