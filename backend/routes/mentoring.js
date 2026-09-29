@@ -30,6 +30,10 @@ const { sendPushToUser } = require('../pushNotifications');
 
 const router = express.Router();
 
+// A blocked chat is closed for both; the status remembers who blocked (only they can reopen it)
+const isBlockedStatus = status => typeof status === 'string' && status.startsWith('blocked_');
+const isClosedStatus = status => status === 'closed' || isBlockedStatus(status);
+
 router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, async (req, res) => {
   try {
     const isManager = req.user?.canManageMentoring === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('manage_mentoring'));
@@ -53,7 +57,7 @@ router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, as
     try {
       const allThreads = await listMentoringThreadsForUser(context.appConfig, mentors.map(m => m.user));
       for (const t of allThreads) {
-        if (t.mentor && t.status !== 'closed') {
+        if (t.mentor && !isClosedStatus(t.status)) {
           activeThreadCounts.set(t.mentor, (activeThreadCounts.get(t.mentor) || 0) + 1);
         }
       }
@@ -237,7 +241,9 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, as
           id: t.id,
           mentor: t.mentor,
           mentee: isMentor ? null : t.mentee,
-          status: t.status || 'active',
+          status: isClosedStatus(t.status) ? 'closed' : (t.status || 'active'),
+          blocked: isBlockedStatus(t.status),
+          blockedByMe: t.status === `blocked_${isMentor ? 'mentor' : 'mentee'}`,
           created: t.created,
           updated: t.updated || t.created,
           unreadCount,
@@ -293,7 +299,7 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
     }
 
     const allMentorThreads = await listMentoringThreadsForUser(context.appConfig, mentorRec.user);
-    const activeMenteesCount = allMentorThreads.filter(t => t.mentor === mentorRec.user && t.status !== 'closed').length;
+    const activeMenteesCount = allMentorThreads.filter(t => t.mentor === mentorRec.user && !isClosedStatus(t.status)).length;
     const maxMentees = typeof mentorRec.max_mentees === 'number' ? mentorRec.max_mentees : 3;
     if (activeMenteesCount >= maxMentees) {
       return res.status(400).json({ error: 'Dieser Mentor hat die maximale Anzahl an Begleitungen erreicht' });
@@ -306,6 +312,9 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
     );
 
     if (existingThread) {
+      if (isBlockedStatus(existingThread.status)) {
+        return res.status(403).json({ error: 'Dieses Gespräch wurde blockiert.', threadId: existingThread.id, status: 'closed' });
+      }
       if (existingThread.status === 'closed') {
         return res.status(400).json({
           error: 'Du hast bereits ein früheres Gespräch mit diesem Mentor. Du kannst es unter "Meine Begleitungen" wiedereröffnen.',
@@ -425,8 +434,8 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
       return res.status(403).json({ error: 'Vertrauliche Seelsorge-Verbindung: Zugriff verweigert' });
     }
 
-    if (thread.status === 'closed') {
-      return res.status(400).json({ error: 'Gespräch ist beendet' });
+    if (isClosedStatus(thread.status)) {
+      return res.status(400).json({ error: isBlockedStatus(thread.status) ? 'Dieses Gespräch wurde blockiert.' : 'Gespräch ist beendet' });
     }
 
     const senderRole = isMentor ? 'mentor' : 'mentee';
@@ -493,7 +502,7 @@ router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringPa
   try {
     const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
     const { status } = req.body || {};
-    if (status !== 'open' && status !== 'active' && status !== 'closed') {
+    if (status !== 'open' && status !== 'active' && status !== 'closed' && status !== 'blocked') {
       return res.status(400).json({ error: 'Ungültiger Status' });
     }
 
@@ -508,7 +517,12 @@ router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringPa
       return res.status(403).json({ error: 'Zugriff verweigert' });
     }
 
-    const updated = await updateMentoringThread(context.appConfig, thread.id, { status });
+    const myBlock = `blocked_${isMentor ? 'mentor' : 'mentee'}`;
+    // Only the person who blocked can lift the block (reopening or ending the chat)
+    if (isBlockedStatus(thread.status) && thread.status !== myBlock) {
+      return res.status(403).json({ error: 'Dieses Gespräch wurde vom Gegenüber blockiert.' });
+    }
+    const updated = await updateMentoringThread(context.appConfig, thread.id, { status: status === 'blocked' ? myBlock : status });
     broadcastDataUpdate();
     res.json({ success: true, thread: updated });
   } catch (err) {

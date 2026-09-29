@@ -12,9 +12,11 @@ const {
   verifyToken,
   broadcastDataUpdate,
   configFile,
+  profilesDir,
   newPersonRecord
 } = require('../context');
 const fs = require('fs');
+const { deleteAccountData } = require('../accountDeletion');
 
 const {
   DEFAULT_SYSTEM_STATE,
@@ -257,6 +259,36 @@ router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) =
     res.json({ success: true, loggedOut: true });
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message || 'Failed to update password.' });
+  }
+});
+
+// Users delete their own account (web UI + app settings, Google Play account deletion policy).
+// The password confirms it; the owner account has to stay (like in the admin deletion).
+router.post('/api/auth/delete-account', authRateLimit, verifyToken, async (req, res) => {
+  const password = String(req.body?.password || '');
+  const uid = req.user.uid || req.user.id;
+  if (!password) {
+    return res.status(400).json({ error: 'Bitte bestätige die Löschung mit deinem Passwort.' });
+  }
+  try {
+    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+    if (uid === ownerUid || req.user.owner === true || req.user.superAdmin === true) {
+      return res.status(400).json({ error: 'Der Eigentümer-Account verwaltet diese Instanz und kann nicht gelöscht werden.' });
+    }
+    try {
+      await loginUser(req.user.rawEmail || req.user.email, password);
+    } catch {
+      return res.status(403).json({ error: 'Das Passwort ist nicht korrekt.' });
+    }
+    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir });
+    console.log(`[Account] User ${uid} deleted their account`, summary);
+    clearAuthCookie(req, res);
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete own account:', error);
+    res.status(500).json({ error: 'Konto konnte nicht gelöscht werden.' });
   }
 });
 

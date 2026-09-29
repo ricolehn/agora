@@ -6,6 +6,7 @@ const { rateLimit } = require('express-rate-limit');
 const { isSafeSvg } = require('./svgValidation');
 const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig');
 const { runAutomatedStandingOrders } = require('./standingOrders');
+const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests } = require('./requestRetention');
 
 const {
   DEFAULT_SETTINGS,
@@ -122,6 +123,7 @@ async function initializeRuntime(config) {
   console.log('Configuration loaded successfully. Setup mode: false');
 
   runAutomatedStandingOrders(context.appConfig);
+  purgeExpiredRequests(context.appConfig);
 }
 
 function setRuntimeConfig(config) {
@@ -589,7 +591,8 @@ async function readLogicalPath(targetPath, query, user) {
       return { value, version: record?.updated || null };
     }
 
-    let requests = await listRequestRecords(context.appConfig, query);
+    // Approved / rejected requests are only shown for 30 days (the daily cleanup deletes them)
+    let requests = (await listRequestRecords(context.appConfig, query)).filter((record) => !isExpiredRequest(record));
     if (!user.canViewFinances) {
       requests = requests.filter((record) => record.userId === user.uid || record.data?.userId === user.uid);
     }
@@ -774,9 +777,11 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
     if (existing && existing.data && !canManageRequests && String(existing.data.userId || existing.userId) !== String(user.uid)) {
       throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
     }
-    const nextValue = method === 'patch' && existing?.data && value && typeof value === 'object'
+    const mergedValue = method === 'patch' && existing?.data && value && typeof value === 'object'
       ? { ...existing.data, ...value }
       : value;
+    // Remember when the request was approved or rejected (starts the 30-day retention)
+    const nextValue = withDecisionTimestamp(existing?.data, mergedValue);
     if (!nextValue.userId) {
       nextValue.userId = user.uid;
     }

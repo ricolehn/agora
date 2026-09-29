@@ -140,7 +140,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     justify-content: center;
     cursor: pointer;
     box-shadow: var(--shadow);
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, opacity 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
 .profile-btn:active {
     transform: scale(0.95);
@@ -277,7 +277,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 .card {
     background: var(--surface); border-radius: var(--radius);
     box-shadow: var(--shadow); border: 1px solid var(--border);
-    margin-bottom: 20px; overflow: hidden; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+    margin-bottom: 20px; overflow: hidden; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), border-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), color 0.3s cubic-bezier(0.25, 1, 0.5, 1);
 }
 .card-settings { padding: 0; }
 .card-header {
@@ -301,7 +301,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 /* Wrapper for the whole card item */
 .person-wrapper {
     margin-bottom: 12px;
-    transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), border-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), color 0.3s cubic-bezier(0.25, 1, 0.5, 1);
     /* ⚡ Bolt: Optimizes rendering performance for long lists */
 }
 
@@ -322,7 +322,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     cursor: pointer;
     position: relative;
     z-index: 2;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Active state for the main card */
@@ -426,7 +426,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     padding: 12px 14px;
     margin-bottom: 12px;
     border: 1px solid var(--border);
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 .member-summary-card.danger {
     background: rgba(239, 68, 68, 0.04);
@@ -614,7 +614,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     border-radius: 8px;
     padding: 4px 9px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 .btn-so-action:hover {
     background: var(--border-light);
@@ -664,7 +664,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     border-radius: 10px;
     cursor: pointer;
     box-shadow: 0 2px 6px rgba(6, 182, 212, 0.2);
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 .btn-member-primary:hover {
     opacity: 0.95;
@@ -693,7 +693,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     font-size: 0.84rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 .btn-member-secondary:hover {
     background: var(--surface-alt);
@@ -729,7 +729,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 /* --- Buttons --- */
 .btn {
     padding: 12px 20px; border-radius: 12px; border: none; font-weight: 600;
-    cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); font-size: 0.95rem; width: auto;
+    cursor: pointer; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), border-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), color 0.3s cubic-bezier(0.25, 1, 0.5, 1); font-size: 0.95rem; width: auto;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
 .btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
@@ -1207,7 +1207,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     padding: 8px 12px;
     text-align: center;
     background: var(--surface);
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     cursor: pointer;
     position: relative;
 }
@@ -1243,7 +1243,7 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     font-size: 0.95rem;
     position: relative;
     z-index: 2;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 @media (hover: hover) {
     .trans-item:hover {
@@ -1379,7 +1379,7 @@ input:checked + .slider:before { transform: translateX(22px); }
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     white-space: nowrap;
 }
 
@@ -1854,7 +1854,7 @@ input:checked + .slider:before { transform: translateX(22px); }
     display: flex; align-items: center; gap: 12px; font-weight: 600;
     max-width: 350px;
     transform: translateX(30px) scale(0.95); opacity: 0; pointer-events: none;
-    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
     will-change: transform, opacity;
 }
 .toast.show { transform: translateX(0) scale(1); opacity: 1; pointer-events: all; }
@@ -2502,7 +2502,7 @@ details[open] .ai-thinking-summary::before {
     font-weight: 600;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     user-select: none;
 }
 .pill-tab:hover {
@@ -2569,7 +2569,7 @@ details[open] .ai-thinking-summary::before {
     z-index: 2;
 }
 .input-with-icon .form-input {
-    padding-left: 44px;
+    padding-left: 56px;
 }
 .input-with-icon:focus-within .input-icon {
     color: var(--primary);
@@ -2693,7 +2693,7 @@ details[open] .ai-thinking-summary::before {
     border-radius: var(--radius);
     margin-bottom: 24px;
     box-shadow: var(--shadow);
-    transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), border-color 0.3s cubic-bezier(0.25, 1, 0.5, 1), color 0.3s cubic-bezier(0.25, 1, 0.5, 1);
     position: relative;
     overflow: hidden;
 }
@@ -2745,7 +2745,7 @@ details[open] .ai-thinking-summary::before {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, opacity 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
 
 [data-theme="dark"] .premium-invite-display-container {
@@ -2786,7 +2786,7 @@ details[open] .ai-thinking-summary::before {
     border-radius: 10px;
     font-weight: 600;
     font-size: 0.88rem;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
@@ -3261,7 +3261,7 @@ details[open] .ai-thinking-summary::before {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .nc-icon-btn:hover {
@@ -3392,7 +3392,7 @@ details[open] .ai-thinking-summary::before {
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     text-align: left;
     user-select: none;
     width: 100%;
@@ -4175,7 +4175,7 @@ details[open] .ai-thinking-summary::before {
     padding: 13px 16px;
     box-shadow: var(--shadow);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     gap: 14px;
@@ -4511,7 +4511,7 @@ details[open] .ai-thinking-summary::before {
     border: 1px solid var(--border-light);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .mentoring-chat-menu-btn svg {
@@ -4974,7 +4974,7 @@ details[open] .ai-thinking-summary::before {
     cursor: pointer;
     position: relative;
     box-shadow: var(--shadow-sm);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     margin-top: 16px;
 }
@@ -5255,7 +5255,7 @@ details[open] .ai-thinking-summary::before {
     position: relative;
     z-index: 2;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @media (hover: hover) {
@@ -5473,7 +5473,7 @@ details[open] .ai-thinking-summary::before {
     color: var(--text-secondary);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -5694,7 +5694,7 @@ details[open] .ai-thinking-summary::before {
     gap: 10px;
     min-width: 0;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .event-detail-quad-cell:hover {
@@ -5798,7 +5798,7 @@ details[open] .ai-thinking-summary::before {
     background: rgba(16, 185, 129, 0.12);
     color: #059669;
     flex-shrink: 0;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     text-decoration: none;
     margin-left: auto;
 }
@@ -5869,7 +5869,7 @@ details[open] .ai-thinking-summary::before {
     background: transparent;
     border: none;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .event-desc-toggle-btn:hover {
@@ -6017,7 +6017,7 @@ details[open] .ai-thinking-summary::before {
     font-weight: 600;
     border-radius: 8px;
     min-height: 35px;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     cursor: pointer;
     box-sizing: border-box;
     width: 100%;
@@ -6335,7 +6335,7 @@ details[open] .ai-thinking-summary::before {
     border: none;
     background: transparent;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     user-select: none;
     white-space: nowrap;
 }
@@ -6376,7 +6376,7 @@ details[open] .ai-thinking-summary::before {
     border-radius: 16px;
     overflow: hidden;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
     position: relative;
@@ -6637,7 +6637,7 @@ details[open] .ai-thinking-summary::before {
     border-radius: 8px;
     background: rgba(6, 182, 212, 0.08);
     border: 1px solid rgba(6, 182, 212, 0.2);
-    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     white-space: nowrap;
 }
 
@@ -6686,7 +6686,7 @@ details[open] .ai-thinking-summary::before {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    transition: all 0.2s;
+    transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .events-past-toggle-btn:hover {
@@ -6830,7 +6830,7 @@ details[open] .ai-thinking-summary::before {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s, color 0.2s;
     font-family: inherit;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
@@ -6859,7 +6859,7 @@ details[open] .ai-thinking-summary::before {
     border-radius: 12px;
     background: var(--surface-alt);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s, color 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -6882,7 +6882,7 @@ details[open] .ai-thinking-summary::before {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.2s;
+    transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .detail-cover-edit-strip:hover .detail-cover-strip-icon {
@@ -6943,7 +6943,7 @@ details[open] .ai-thinking-summary::before {
     background: var(--surface);
     padding: 5px 8px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     display: flex;
     align-items: center;
     font-family: inherit;
@@ -6976,7 +6976,7 @@ details[open] .ai-thinking-summary::before {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .detail-type-card-icon svg {
@@ -7018,7 +7018,7 @@ details[open] .ai-thinking-summary::before {
     border: 1.5px solid var(--border-light);
     display: inline-block;
     flex-shrink: 0;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .detail-type-card.is-active .detail-type-card-radio {
@@ -7061,7 +7061,7 @@ details[open] .ai-thinking-summary::before {
     border: 1px dashed rgba(245, 158, 11, 0.35);
     cursor: pointer;
     margin-top: 6px;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     user-select: none;
 }
 
@@ -7147,7 +7147,7 @@ details[open] .ai-thinking-summary::before {
     color: var(--text);
     width: 100%;
     box-sizing: border-box;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     font-family: inherit;
 }
 
@@ -7242,7 +7242,7 @@ details[open] .ai-thinking-summary::before {
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
-    transition: all 0.15s;
+    transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s, background-color 0.15s, border-color 0.15s, color 0.15s;
     font-family: inherit;
 }
 
@@ -7286,7 +7286,7 @@ details[open] .ai-thinking-summary::before {
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
-    transition: all 0.15s;
+    transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s, background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .detail-mini-pill-toggle:hover {
@@ -7440,7 +7440,7 @@ details[open] .ai-thinking-summary::before {
     border: 1.5px solid var(--border-light);
     border-radius: 12px;
     padding: 12px 14px;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     margin-top: 8px;
     width: 100%;
     max-width: 100%;
@@ -7480,7 +7480,7 @@ details[open] .ai-thinking-summary::before {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .detail-reg-card:has(#detail-edit-requires-reg:checked) .detail-reg-card-icon {
@@ -7533,7 +7533,7 @@ details[open] .ai-thinking-summary::before {
     inset: 0;
     background: var(--border);
     border-radius: 24px;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .detail-switch-slider::before {
@@ -7545,7 +7545,7 @@ details[open] .ai-thinking-summary::before {
     bottom: 3px;
     background-color: #ffffff;
     border-radius: 50%;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
@@ -8610,4 +8610,87 @@ details[open] > summary .event-chevron {
 .duty-add-task-btn:hover {
     color: var(--primary);
     border-color: var(--primary);
+}
+/* Event page: the back button stays on screen while scrolling. The page card is its containing block (will-change: transform) and does not scroll itself, only .event-detail-body does */
+#event-detail-modal.modal-page .event-detail-modal-card {
+    will-change: transform;
+}
+#event-detail-modal.modal-page .event-detail-close-btn {
+    position: fixed;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: 20px;
+    z-index: 30;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+}
+#event-detail-modal.modal-page .event-detail-top-bar {
+    padding-left: 72px;
+}
+#event-detail-modal.modal-page .has-hero-image .event-detail-top-bar {
+    padding-left: 44px;
+}
+/* Invisible 42px row so the badges line up with the pinned back button */
+#event-detail-modal.modal-page .event-detail-top-bar::before {
+    content: "";
+    width: 0;
+    height: 42px;
+    flex-shrink: 0;
+    margin-right: -12px;
+}
+@media (min-width: 769px) {
+    #event-detail-modal.modal-page .event-detail-close-btn {
+        top: 28px;
+    }
+}
+#event-detail-modal.modal-page .has-hero-image .event-detail-top-bar {
+    top: calc(12px + env(safe-area-inset-top, 0px));
+}
+@media (min-width: 769px) {
+    #event-detail-modal.modal-page .event-detail-top-bar {
+        top: -28px;
+        margin-top: -28px;
+        padding-top: 28px;
+    }
+    #event-detail-modal.modal-page .has-hero-image .event-detail-top-bar {
+        top: 28px;
+        margin-top: 0;
+        padding-top: 0;
+        padding-left: 66px;
+    }
+}
+
+/* --- Play policies: account deletion, reporting AI replies --- */
+.card-danger-zone {
+    border-color: rgba(239, 68, 68, 0.35);
+}
+.card-danger-zone .card-header {
+    color: var(--danger);
+}
+.danger-zone-text {
+    font-size: 0.84rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+.ai-report-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+.ai-report-btn:hover:not(:disabled) {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+.ai-report-btn:disabled {
+    cursor: default;
+    opacity: 0.7;
 }

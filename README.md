@@ -137,6 +137,21 @@ docker run -d \
 Both files are read once on startup, so restart the container after adding them. Without them, FCM is disabled (the app then checks for news about every 15 minutes) and everything else (including Web Push) keeps working. Keep the key file private — it is excluded from Git and Docker builds.
 </details>
 
+<details>
+<summary><b>Privacy, Account Deletion &amp; Reports</b></summary>
+
+## 🔐 Privacy, Account Deletion & Reports
+
+Every instance serves two public pages that app stores (e.g. Google Play) ask for:
+
+- **`/privacy`** – privacy policy describing what Agora stores and which services it uses (push, optional AI provider, e-mail). Review it and add your organisation's contact details if your jurisdiction requires them.
+- **`/account-deletion`** – explains what is deleted and lets members delete their account without the app (e-mail + password).
+
+Members can also delete their account in the settings of the web app and the Android app (`POST /api/auth/delete-account`, confirmed with the password). This removes the login, profile picture, registrations, freed duty slots, mentoring profile and conversations, finance requests and push tokens; booked payments stay in the ledger for bookkeeping. The owner account cannot delete itself.
+
+AI replies and mentoring conversations can be reported (`POST /api/reports`); admins get a push notification and can list reports via `GET /api/admin/reports`. Mentoring conversations can be blocked – only the person who blocked can reopen them.
+</details>
+
 ## 👑 Owner & User Roles
 
 The **account created during the initial setup wizard** is designated as the **Owner**:

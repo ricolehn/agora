@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const cron = require('node-cron');
 
 const {
@@ -17,6 +18,7 @@ const { selectChurchLogoFilePath } = require('./logoStorage');
 const { resolveTrustProxySetting } = require('./trustProxy');
 const { securityHeadersMiddleware } = require('./securityHeaders');
 const { runAutomatedStandingOrders } = require('./standingOrders');
+const { purgeExpiredRequests } = require('./requestRetention');
 
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
@@ -41,6 +43,7 @@ app.use(express.json({ limit: '2mb' }));
 cron.schedule('0 5 * * *', () => {
   if (!context.setupMode && context.appConfig) {
     runAutomatedStandingOrders(context.appConfig);
+    purgeExpiredRequests(context.appConfig);
   }
 });
 
@@ -53,6 +56,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/db') ||
     req.path === '/setup.html' ||
     req.path === '/floating-menu-demo.html' ||
+    req.path === '/account-deletion' ||
+    req.path === '/privacy' ||
     req.path.startsWith('/assets/')
   ) {
     return next();
@@ -90,6 +95,13 @@ app.get('/sw.js', (req, res) => res.sendFile(path.join(frontendDir, 'sw.js')));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(frontendDir, 'manifest.json')));
 app.get('/setup.html', pageRateLimit, (req, res) => res.sendFile(path.join(frontendDir, 'setup.html')));
 app.get('/floating-menu-demo.html', pageRateLimit, (req, res) => res.sendFile(path.join(frontendDir, 'floating-menu-demo.html')));
+// Public pages for app stores: delete an account without the app, privacy policy.
+// Frontend volumes from older images may lack them, so fall back to the bundled copies.
+const publicPage = name => [frontendDir, process.env.FRONTEND_SEED_DIR || '/app/html-seed', path.join(__dirname, '..')]
+  .map(dir => path.join(dir, name))
+  .find(file => fs.existsSync(file)) || path.join(frontendDir, name);
+app.get('/account-deletion', pageRateLimit, (req, res) => res.sendFile(publicPage('account-deletion.html')));
+app.get('/privacy', pageRateLimit, (req, res) => res.sendFile(publicPage('privacy.html')));
 
 app.use('/api/admin', adminRateLimit);
 

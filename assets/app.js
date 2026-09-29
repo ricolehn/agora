@@ -146,6 +146,7 @@ async function convertHeic(file, quality, name = file.name) {
 
 // --- Icons & shared inline styles ---
 const ICONS = {
+    flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
     fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
     trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
@@ -800,6 +801,10 @@ function syncTabHistory(tabName) {
 
 // source: the clicked nav element (ignored) or 'history' when called from a back navigation
 function switchTab(tabName, source) {
+    // The owner runs the instance and cannot delete their account (the server refuses it too)
+    if (tabName === 'settings' || tabName === 'user-settings') {
+        for (const id of ['card-delete-account-admin', 'card-delete-account-user']) show(id, !isOwnerUser(), 'block');
+    }
     if (tabName !== 'mentoring') {
         mentoringChatReturnHome = false;
         closeMentoringChatMobile(true);
@@ -1248,6 +1253,25 @@ async function changePassword(isUser = false) {
     }
 }
 
+// Deletes the own account after password confirmation (Google Play account deletion policy)
+async function deleteOwnAccount(suffix = '') {
+    const input = $(`delete-account-password${suffix}`);
+    const password = input?.value || '';
+    if (!password) return alert(t('delete_account_need_password', 'Bitte gib dein Passwort zur Bestätigung ein.'));
+    if (!confirmAction(t('delete_account_confirm', 'Dein Konto und deine persönlichen Daten werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden. Fortfahren?'))) return;
+    try {
+        await apiJson('/auth/delete-account', 'POST', { password }, t('delete_account_failed', 'Konto konnte nicht gelöscht werden.'));
+        if (input) input.value = '';
+        alert(t('delete_account_done', 'Dein Konto wurde gelöscht.'));
+        localStorage.removeItem('token');
+        await logout();
+        location.hash = '';
+        location.reload();
+    } catch (err) {
+        alert(err.message || t('delete_account_failed', 'Konto konnte nicht gelöscht werden.'));
+    }
+}
+
 // --- Registration code ---
 async function generateNewCode() {
     if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
@@ -1585,7 +1609,7 @@ async function confirmProfileCrop() {
 }
 
 Object.assign(window, {
-    switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword,
+    switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
     generateNewCode, copyInviteCode, autoSaveNotificationPreferences, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
@@ -3968,6 +3992,26 @@ function appendAiMessage(role, content) {
 }
 
 // Renders streamed assistant content; <think>/<thought> blocks and reasoning go into a collapsed <details>.
+// "Melden" under a finished AI reply: sends reply + question to the admins (Google Play AI content policy)
+function addAiReportButton(bubble, answer, prompt) {
+    if (!bubble || !answer) return;
+    const btn = createEl('button', 'ai-report-btn');
+    btn.type = 'button';
+    btn.innerHTML = `${svgIcon('flag', 13)}<span>${escapeHtml(t('ai_report', 'Antwort melden'))}</span>`;
+    btn.onclick = async () => {
+        const reason = window.prompt(t('ai_report_reason', 'Was ist an dieser Antwort problematisch? (optional)'), '');
+        if (reason === null) return;
+        try {
+            await apiJson('/reports', 'POST', { type: 'ai', content: answer, prompt, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
+            btn.disabled = true;
+            btn.querySelector('span').textContent = t('report_sent', 'Gemeldet – danke!');
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+    bubble.appendChild(btn);
+}
+
 function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
     if (!bubble) return;
     const wasOpen = bubble.querySelector('details.ai-thinking')?.open || false;
@@ -4286,8 +4330,9 @@ async function sendAiMessage() {
             }
         }
         finalizeAssistantBubble(bubble, content, reasoning);
-        scrollToEnd();
         const clean = sanitizeAiText(content).trim();
+        addAiReportButton(bubble, clean, [...aiMessages].reverse().find(m => m.role === 'user')?.content || '');
+        scrollToEnd();
         if (clean) aiMessages.push({ role: 'assistant', content: clean });
     } catch (err) {
         typingEl.remove();
@@ -4314,6 +4359,7 @@ Object.assign(window, {
 let mentoringMentors = [];
 let mentoringThreads = [];
 let activeMentoringThreadId = null;
+let activeMentoringMessages = [];
 let currentMentoringSubTab = 'chats';
 let mentoringChatPollTimer = null;
 let myMentorProfile = null;
@@ -4687,6 +4733,11 @@ async function openMentoringThread(threadId) {
     }
     show('mentoring-chat-input-container', !isClosed, 'block');
     show('mentoring-chat-closed-bar', isClosed, 'flex');
+    const closedText = $('mentoring-chat-closed-text');
+    if (closedText) closedText.textContent = thread?.blocked
+        ? (thread.blockedByMe ? t('mentoring_chat_blocked_by_me', 'Du hast dieses Gespräch blockiert.') : t('mentoring_chat_blocked', 'Dieses Gespräch wurde blockiert.'))
+        : t('mentoring_chat_closed_info', 'Dieses Gespräch wurde beendet.');
+    show('mentoring-reopen-btn', !thread?.blocked || thread.blockedByMe, 'inline-flex');
 
     await loadMentoringMessages(threadId);
     autoResizeMentoringInput($('mentoring-chat-input'));
@@ -4731,6 +4782,7 @@ async function loadMentoringMessages(threadId, isPoll = false) {
         let messages = await res.json();
         if (Array.isArray(messages?.messages)) messages = messages.messages;
         if (!Array.isArray(messages)) return;
+        if (threadId === activeMentoringThreadId) activeMentoringMessages = messages;
 
         // Mark the thread as read locally so badges and the home card update instantly
         const thread = findThread(threadId);
@@ -4797,6 +4849,40 @@ function toggleMentoringChatMenu(e) {
     e?.preventDefault();
     const dropdown = $('mentoring-chat-menu-dropdown');
     if (dropdown) dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+}
+
+// Report the conversation to the admins with the partner's recent messages (Google Play UGC policy)
+async function reportCurrentThread() {
+    const thread = activeMentoringThreadId && mentoringThreads.find(th => th.id === activeMentoringThreadId);
+    if (!thread) return;
+    show('mentoring-chat-menu-dropdown', false);
+    const reason = window.prompt(t('mentoring_report_reason', 'Warum meldest du dieses Gespräch? Die letzten Nachrichten deines Gegenübers werden an die Administratoren gesendet.'), '');
+    if (reason === null) return;
+    const partnerRole = thread.myRole === 'mentor' ? 'mentee' : 'mentor';
+    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || '(keine Nachrichten)';
+    try {
+        await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
+        showToast(t('report_sent', 'Gemeldet – danke!'), 'info');
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+// Block the chat partner: the conversation closes and only you can reopen it
+async function blockCurrentThread() {
+    const thread = activeMentoringThreadId && mentoringThreads.find(th => th.id === activeMentoringThreadId);
+    if (!thread) return;
+    show('mentoring-chat-menu-dropdown', false);
+    if (!confirmAction(t('mentoring_confirm_block', 'Gegenüber blockieren? Das Gespräch wird geschlossen und nur du kannst es wieder öffnen.'))) return;
+    try {
+        await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status: 'blocked' }, t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
+        Object.assign(thread, { status: 'closed', blocked: true, blockedByMe: true });
+        openMentoringThread(thread.id);
+        loadMentoringThreads();
+        showToast(t('mentoring_toast_blocked', 'Gespräch blockiert.'), 'info');
+    } catch (err) {
+        alert(err.message);
+    }
 }
 
 async function toggleCloseCurrentThread(forcedStatus) {
@@ -4968,7 +5054,7 @@ async function openMentoringChatDirect(threadId, source) {
 
 Object.assign(window, {
     switchMentoringSubTab, openMentorContactModal, submitMentorContact, filterMentoringThreads, autoResizeMentoringInput, openMentoringThread,
-    sendMentoringMessage, toggleMentoringChatMenu, toggleCloseCurrentThread, openMentorApplicationModal, submitMentorApplication,
+    sendMentoringMessage, toggleMentoringChatMenu, toggleCloseCurrentThread, reportCurrentThread, blockCurrentThread, openMentorApplicationModal, submitMentorApplication,
     loadMentoringReviewList, setMentorStatus, openMentoringChatDirect,
     backToMentoringThreadList: closeMentoringChatMobile,
     handleMentoringChatKey: chatKeyHandler(sendMentoringMessage, autoResizeMentoringInput)
