@@ -29,6 +29,7 @@ COPY --chown=node:node index.html ./html/
 COPY --chown=node:node manifest.json ./html/
 COPY --chown=node:node sw.js ./html/
 COPY --chown=node:node setup.html ./html/
+COPY --chown=node:node account-deletion.html privacy.html ./html/
 
 # Create the directories and assign ownership to the bundled node user (UID 1000)
 RUN mkdir -p /app/data /app/db /app/html-seed && \

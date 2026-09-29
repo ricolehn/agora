@@ -7,8 +7,11 @@ const {
   verifyToken,
   protectedActionRateLimit,
   profileUpload,
-  profilesDir
+  profilesDir,
+  verifyAdmin
 } = require('../context');
+const { sendPushToAdmins } = require('../pushNotifications');
+const { buildReport, storeReport, listReports, resolveReport } = require('../contentReports');
 
 const { listGroupRecords } = require('../pocketbase');
 
@@ -69,6 +72,43 @@ router.get('/api/groups', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Failed to list groups:', error);
     res.status(500).json({ error: error.message || 'Failed to list groups' });
+  }
+});
+
+// Report an AI reply or a chat message (Google Play AIGC / UGC policies); admins are notified
+router.post('/api/reports', protectedActionRateLimit, verifyToken, async (req, res) => {
+  const { report, error } = buildReport(req.body, req.user);
+  if (error) return res.status(400).json({ error });
+  try {
+    await storeReport(context.appConfig, report);
+    sendPushToAdmins(context.appConfig, {
+      title: report.type === 'ai' ? 'Gemeldete KI-Antwort' : 'Gemeldete Chat-Nachricht',
+      body: report.reason || report.content.slice(0, 120),
+      data: { url: '/#settings' },
+      tag: `agora-report-${report.id}`
+    }).catch(() => {});
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Failed to store report:', err);
+    res.status(500).json({ error: 'Meldung konnte nicht gespeichert werden.' });
+  }
+});
+
+router.get('/api/admin/reports', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    res.json({ reports: await listReports(context.appConfig) });
+  } catch (err) {
+    res.status(500).json({ error: 'Meldungen konnten nicht geladen werden.' });
+  }
+});
+
+router.post('/api/admin/reports/:id/resolve', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const report = await resolveReport(context.appConfig, req.params.id);
+    if (!report) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ error: 'Meldung konnte nicht aktualisiert werden.' });
   }
 });
 

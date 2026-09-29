@@ -43,6 +43,7 @@ const {
 } = require('../pocketbase');
 
 const { sendPushToUser, sendPushToUsers } = require('../pushNotifications');
+const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
 
 const router = express.Router();
 
@@ -239,7 +240,7 @@ router.post('/api/events', verifyToken, async (req, res) => {
       if (Array.isArray(duties)) {
         for (const d of duties) {
           if (d && d.roleName && String(d.roleName).trim()) {
-            await createEventDuty(context.appConfig, {
+            const createdDuty = await createEventDuty(context.appConfig, {
               event: eventRecord.id,
               section: d.section ? String(d.section).trim() : 'Allgemein',
               roleName: String(d.roleName).trim(),
@@ -249,6 +250,10 @@ router.post('/api/events', verifyToken, async (req, res) => {
               notes: d.notes ? String(d.notes).trim() : '',
               status: d.status || (d.assignedGroup || d.assignedUser ? 'confirmed' : (d.requestedUser ? 'requested' : 'open'))
             });
+            // A recurring series notifies once, for its first date
+            if (createdDuty.assignedGroup && createdEvents.length === 0) {
+              notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: createdDuty.assignedGroup, event: eventRecord, duty: createdDuty, assignedBy: currentUid });
+            }
           }
         }
       }
@@ -363,13 +368,17 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
         for (const d of req.body.duties) {
           if (d.id && existingIds.has(d.id)) {
             newDutyIds.add(d.id);
-            await updateEventDuty(context.appConfig, d.id, {
+            const previousGroup = existingDuties.find(x => x.id === d.id)?.assignedGroup || '';
+            const updatedDuty = await updateEventDuty(context.appConfig, d.id, {
               section: d.section ? String(d.section).trim() : 'Allgemein',
               roleName: d.roleName ? String(d.roleName).trim() : 'Dienst',
               assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
               assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
               notes: d.notes ? String(d.notes).trim() : ''
             });
+            if (updatedDuty?.assignedGroup && updatedDuty.assignedGroup !== previousGroup) {
+              notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: updatedDuty.assignedGroup, event: updated, duty: updatedDuty, assignedBy: currentUid });
+            }
           } else if (d.roleName && String(d.roleName).trim()) {
             const createdDuty = await createEventDuty(context.appConfig, {
               event: event.id,
@@ -381,6 +390,9 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
               status: d.assignedGroup || d.assignedUser ? 'confirmed' : 'open'
             });
             newDutyIds.add(createdDuty.id);
+            if (createdDuty.assignedGroup) {
+              notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: createdDuty.assignedGroup, event: updated, duty: createdDuty, assignedBy: currentUid });
+            }
           }
         }
 
@@ -580,6 +592,9 @@ router.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     const updated = await updateEventDuty(context.appConfig, duty.id, updates);
     broadcastDataUpdate();
     res.json({ success: true, duty: updated });
+    if (updates.assignedGroup && updates.assignedGroup !== (duty.assignedGroup || '')) {
+      notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: updates.assignedGroup, event, duty: updated, assignedBy: currentUid });
+    }
   } catch (err) {
     console.error('Failed to update duty:', err);
     res.status(500).json({ error: 'Dienst konnte nicht aktualisiert werden' });
@@ -647,6 +662,9 @@ router.post('/api/events/:id/duties', verifyToken, async (req, res) => {
 
     broadcastDataUpdate();
     res.status(201).json({ success: true, duty });
+    if (finalAssignedGroup) {
+      notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: finalAssignedGroup, event, duty, assignedBy: currentUid });
+    }
   } catch (err) {
     console.error('Failed to add duty:', err);
     res.status(500).json({ error: 'Dienst konnte nicht hinzugefügt werden' });
@@ -780,6 +798,9 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) =
 
     broadcastDataUpdate();
     res.json({ success: true, duty: updated });
+    if (updates.assignedGroup && updates.assignedGroup !== (duty.assignedGroup || '')) {
+      notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: updates.assignedGroup, event, duty: updated, assignedBy: currentUid });
+    }
   } catch (err) {
     console.error('Failed to assign duty:', err);
     res.status(500).json({ error: 'Dienst konnte nicht zugewiesen werden' });

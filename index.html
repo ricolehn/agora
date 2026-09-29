@@ -437,6 +437,17 @@
                 </div>
             </div>
 
+            <div class="card card-settings card-danger-zone" id="card-delete-account-admin">
+                <div class="card-header" data-i18n="delete_account_title">Konto löschen</div>
+                <div class="card-body">
+                    <p class="danger-zone-text" data-i18n="delete_account_desc">Löscht deinen Zugang und deine persönlichen Daten: Profil, Profilbild, Anmeldungen, Mentoring-Gespräche, offene Anfragen und Benachrichtigungen. Gebuchte Zahlungen bleiben aus Gründen der Buchhaltung beim Verein erhalten.</p>
+                    <div class="password-wrapper" style="margin-bottom: 12px;">
+                        <input type="password" id="delete-account-password-admin" class="form-input" data-i18n-placeholder="delete_account_password" placeholder="Passwort zur Bestätigung" autocomplete="current-password">
+                    </div>
+                    <button class="btn btn-danger btn-block" onclick="deleteOwnAccount('-admin')" data-i18n="delete_account_btn">Konto endgültig löschen</button>
+                </div>
+            </div>
+
             <div class="card card-settings" id="card-calendar-subscription-admin">
                 <div class="card-header" data-i18n="calendar_sub_title">Kalender-Abonnement</div>
                 <div class="card-body">
@@ -794,6 +805,14 @@
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>
                                     </button>
                                     <div id="mentoring-chat-menu-dropdown" class="mentoring-chat-dropdown" style="display:none;">
+                                        <button type="button" class="mentoring-dropdown-item" onclick="reportCurrentThread()">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+                                            <span data-i18n="mentoring_chat_report">Gespräch melden</span>
+                                        </button>
+                                        <button type="button" class="mentoring-dropdown-item text-danger" onclick="blockCurrentThread()">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                                            <span data-i18n="mentoring_chat_block">Blockieren</span>
+                                        </button>
                                         <button type="button" class="mentoring-dropdown-item text-danger" onclick="toggleCloseCurrentThread('closed')">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                                             <span data-i18n="mentoring_chat_end">Gespräch beenden</span>
@@ -822,9 +841,9 @@
                             <div id="mentoring-chat-closed-bar" class="mentoring-chat-closed-bar" style="display:none;">
                                 <div class="mentoring-chat-closed-info">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                    <span data-i18n="mentoring_chat_closed_info">Dieses Gespräch wurde beendet.</span>
+                                    <span id="mentoring-chat-closed-text" data-i18n="mentoring_chat_closed_info">Dieses Gespräch wurde beendet.</span>
                                 </div>
-                                <button type="button" class="btn btn-primary btn-small mentoring-reopen-btn" onclick="toggleCloseCurrentThread('active')">
+                                <button type="button" id="mentoring-reopen-btn" class="btn btn-primary btn-small mentoring-reopen-btn" onclick="toggleCloseCurrentThread('active')">
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
                                     <span data-i18n="mentoring_chat_reopen">Wiedereröffnen</span>
                                 </button>
@@ -1091,6 +1110,17 @@
                         </div>
                     </div>
                     <button class="btn btn-secondary btn-block" onclick="changePassword(true)" data-i18n="btn_change_password">Passwort ändern</button>
+                </div>
+            </div>
+
+            <div class="card card-settings card-danger-zone" id="card-delete-account-user">
+                <div class="card-header" data-i18n="delete_account_title">Konto löschen</div>
+                <div class="card-body">
+                    <p class="danger-zone-text" data-i18n="delete_account_desc">Löscht deinen Zugang und deine persönlichen Daten: Profil, Profilbild, Anmeldungen, Mentoring-Gespräche, offene Anfragen und Benachrichtigungen. Gebuchte Zahlungen bleiben aus Gründen der Buchhaltung beim Verein erhalten.</p>
+                    <div class="password-wrapper" style="margin-bottom: 12px;">
+                        <input type="password" id="delete-account-password-user" class="form-input" data-i18n-placeholder="delete_account_password" placeholder="Passwort zur Bestätigung" autocomplete="current-password">
+                    </div>
+                    <button class="btn btn-danger btn-block" onclick="deleteOwnAccount('-user')" data-i18n="delete_account_btn">Konto endgültig löschen</button>
                 </div>
             </div>
 
