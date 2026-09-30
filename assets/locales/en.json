@@ -345,7 +345,6 @@
   "unlinked_no_available_people": "No unlinked people available.",
   "unlinked_alert_select_person": "Please select a person.",
   "unlinked_alert_failed": "Assignment failed. Please try again.",
-  "btn_install_app": "Install App",
   "lang_system": "System",
   "alert_error_loading_data": "Failed to load data. Please reload the page.",
   "alert_please_enter_date": "Please specify a date.",

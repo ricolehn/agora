@@ -20,6 +20,7 @@ const {
   createMentoringThread,
   updateMentoringThread,
   listMentoringMessages,
+  getMentoringThreadSummary,
   createMentoringMessage,
   markMentoringMessagesRead,
   listUserRecords,
@@ -229,10 +230,9 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, as
         const isMentee = userIds.includes(t.mentee);
         if (!isMentor && !isMentee) return null;
 
-        const messages = await listMentoringMessages(context.appConfig, t.id).catch(() => []);
-        const lastMessage = messages[messages.length - 1] || null;
         const otherRole = isMentor ? 'mentee' : 'mentor';
-        const unreadCount = messages.filter(m => m.sender_role === otherRole && !m.read).length;
+        const { unreadCount, lastMessage } = await getMentoringThreadSummary(context.appConfig, t.id, otherRole)
+          .catch(() => ({ unreadCount: 0, lastMessage: null }));
 
         const mentorUser = userMap.get(t.mentor);
         const mentorName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || 'Mentor') : 'Mentor';
@@ -360,7 +360,7 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
       }
     } catch (e) {}
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('mentoring');
     res.json({ success: true, thread, threadId: thread.id, menteeAlias });
   } catch (err) {
     console.error('Failed to create mentoring thread:', err);
@@ -480,7 +480,7 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
       }
     } catch (e) {}
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('mentoring', [thread.mentor, thread.mentee]);
     res.json({
       success: true,
       message: {
@@ -523,7 +523,7 @@ router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringPa
       return res.status(403).json({ error: 'Dieses Gespräch wurde vom Gegenüber blockiert.' });
     }
     const updated = await updateMentoringThread(context.appConfig, thread.id, { status: status === 'blocked' ? myBlock : status });
-    broadcastDataUpdate();
+    broadcastDataUpdate('mentoring');
     res.json({ success: true, thread: updated });
   } catch (err) {
     console.error('Failed to update thread status:', err);

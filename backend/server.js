@@ -19,6 +19,7 @@ const { resolveTrustProxySetting } = require('./trustProxy');
 const { securityHeadersMiddleware } = require('./securityHeaders');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { purgeExpiredRequests } = require('./requestRetention');
+const { compressResponses, compressedStatic, sendCompressedFile } = require('./compression');
 
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
@@ -33,6 +34,8 @@ app.set('trust proxy', resolveTrustProxySetting());
 
 // Security middleware: Set essential HTTP security headers
 app.use(securityHeadersMiddleware);
+// Gzip JSON / text responses (the reverse proxy in front usually does not compress)
+app.use(compressResponses);
 
 // Load configuration
 loadConfig();
@@ -90,18 +93,23 @@ app.get('/assets/church-logo.svg', logoAssetRateLimit, (req, res, next) => {
   });
 });
 
+// Frontend files go out compressed (cached per file version); config.js and the logo keep their own handlers
+const sendPage = file => (req, res) => {
+  if (!sendCompressedFile(req, res, file)) res.sendFile(file);
+};
+app.use('/assets', compressedStatic(path.join(frontendDir, 'assets'), { exclude: ['/config.js', '/church-logo.svg'] }));
 app.use('/assets', express.static(path.join(frontendDir, 'assets')));
-app.get('/sw.js', (req, res) => res.sendFile(path.join(frontendDir, 'sw.js')));
+app.get('/sw.js', sendPage(path.join(frontendDir, 'sw.js')));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(frontendDir, 'manifest.json')));
-app.get('/setup.html', pageRateLimit, (req, res) => res.sendFile(path.join(frontendDir, 'setup.html')));
+app.get('/setup.html', pageRateLimit, sendPage(path.join(frontendDir, 'setup.html')));
 app.get('/floating-menu-demo.html', pageRateLimit, (req, res) => res.sendFile(path.join(frontendDir, 'floating-menu-demo.html')));
 // Public pages for app stores: delete an account without the app, privacy policy.
 // Frontend volumes from older images may lack them, so fall back to the bundled copies.
 const publicPage = name => [frontendDir, process.env.FRONTEND_SEED_DIR || '/app/html-seed', path.join(__dirname, '..')]
   .map(dir => path.join(dir, name))
   .find(file => fs.existsSync(file)) || path.join(frontendDir, name);
-app.get('/account-deletion', pageRateLimit, (req, res) => res.sendFile(publicPage('account-deletion.html')));
-app.get('/privacy', pageRateLimit, (req, res) => res.sendFile(publicPage('privacy.html')));
+app.get('/account-deletion', pageRateLimit, (req, res) => sendPage(publicPage('account-deletion.html'))(req, res));
+app.get('/privacy', pageRateLimit, (req, res) => sendPage(publicPage('privacy.html'))(req, res));
 
 app.use('/api/admin', adminRateLimit);
 
@@ -116,7 +124,7 @@ app.use(systemRouter);
 
 app.get('*', pageRateLimit, (req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/data/')) {
-    return res.sendFile(path.join(frontendDir, 'index.html'));
+    return sendPage(path.join(frontendDir, 'index.html'))(req, res);
   }
   next();
 });

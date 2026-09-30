@@ -81,8 +81,7 @@
             } catch(e) {}
         })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+    <!-- heic2any and html2pdf are loaded on first use (assets/app.js: loadScriptOnce) -->
 </head>
 <body>
 
@@ -93,11 +92,6 @@
 </div>
 
 <div class="container">
-    <button id="install-pwa-btn" class="btn btn-primary" style="display:none; margin-bottom: 20px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        <span data-i18n="btn_install_app">App installieren</span>
-    </button>
-
     <div class="app-layout">
         <header class="header">
             <div class="header-left">
@@ -125,6 +119,7 @@
                     <button id="mentoring-nav-btn-desktop" class="nav-btn" data-tab="mentoring" onclick="switchTab('mentoring', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                         <span class="nav-label" data-i18n="nav_mentoring">Mentoring</span>
+                        <span id="mentoring-nav-badge-desktop" class="mentoring-badge-count nav-count-badge" style="display:none;">0</span>
                     </button>
                     <button id="admin-ai-nav-btn-desktop" class="nav-btn" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" style="display:none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
@@ -1222,6 +1217,7 @@
     <button id="mentoring-nav-btn-bottom" class="nav-item" data-tab="mentoring" onclick="switchTab('mentoring', this)" data-i18n-aria-label="nav_mentoring" aria-label="Mentoring" style="display:none;">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
         <span class="nav-label" data-i18n="nav_mentoring">Mentoring</span>
+        <span id="mentoring-nav-badge-bottom" class="mentoring-badge-count nav-count-badge" style="display:none;">0</span>
     </button>
     <button id="admin-ai-nav-btn-bottom" class="nav-item" data-tab="ai-chat" onclick="switchTab('ai-chat', this)" data-i18n-aria-label="nav_ai" aria-label="KI-Support" style="display:none;">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>

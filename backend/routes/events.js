@@ -261,7 +261,7 @@ router.post('/api/events', verifyToken, async (req, res) => {
       createdEvents.push(eventRecord);
     }
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.status(201).json({ success: true, event: createdEvents[0], count: createdEvents.length });
 
     if (createdEvents.length > 0) {
@@ -406,7 +406,7 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
       }
     }
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, event: updated });
   } catch (err) {
     console.error('Failed to update event:', err);
@@ -429,7 +429,7 @@ router.delete('/api/events/:id', verifyToken, async (req, res) => {
     }
 
     await deleteEventRecord(context.appConfig, event.id);
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete event:', err);
@@ -475,7 +475,7 @@ router.post('/api/events/:id/register', verifyToken, async (req, res) => {
           }
         }
       }
-      broadcastDataUpdate();
+      broadcastDataUpdate('events');
       return res.json({ success: true, status: 'cancelled' });
     }
 
@@ -486,7 +486,7 @@ router.post('/api/events/:id/register', verifyToken, async (req, res) => {
     }
 
     const reg = await upsertEventRegistration(context.appConfig, event.id, currentUid, nextStatus);
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, registration: reg, status: nextStatus, isWaitlist: nextStatus === 'waitlist' });
   } catch (err) {
     console.error('Failed to register for event:', err);
@@ -590,7 +590,7 @@ router.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     if (assignedUser !== undefined && canManage) updates.assignedUser = String(assignedUser).trim();
 
     const updated = await updateEventDuty(context.appConfig, duty.id, updates);
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, duty: updated });
     if (updates.assignedGroup && updates.assignedGroup !== (duty.assignedGroup || '')) {
       notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: updates.assignedGroup, event, duty: updated, assignedBy: currentUid });
@@ -660,7 +660,7 @@ router.post('/api/events/:id/duties', verifyToken, async (req, res) => {
       }).catch(e => console.warn('Duty email error:', e));
     }
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.status(201).json({ success: true, duty });
     if (finalAssignedGroup) {
       notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: finalAssignedGroup, event, duty, assignedBy: currentUid });
@@ -688,7 +688,7 @@ router.delete('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     }
 
     await deleteEventDuty(context.appConfig, duty.id);
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete duty:', err);
@@ -736,7 +736,7 @@ router.post('/api/events/duties/:dutyId/request', verifyToken, async (req, res) 
       }).catch(e => console.warn('Duty email error:', e));
     }
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, duty: updated });
   } catch (err) {
     console.error('Failed to request duty:', err);
@@ -796,7 +796,7 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) =
       }).catch(e => console.warn('Duty email error:', e));
     }
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, duty: updated });
     if (updates.assignedGroup && updates.assignedGroup !== (duty.assignedGroup || '')) {
       notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: updates.assignedGroup, event, duty: updated, assignedBy: currentUid });
@@ -847,7 +847,7 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
         } catch (e) {}
       }
 
-      broadcastDataUpdate();
+      broadcastDataUpdate('events');
       return res.json({ success: true, duty: updated, message: 'Dienstanfrage angenommen' });
     } else if (action === 'decline') {
       const updated = await updateEventDuty(context.appConfig, duty.id, {
@@ -874,7 +874,7 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
         } catch (e) {}
       }
 
-      broadcastDataUpdate();
+      broadcastDataUpdate('events');
       return res.json({ success: true, duty: updated, message: 'Dienstanfrage abgelehnt' });
     } else {
       return res.status(400).json({ error: 'Ungültige Aktion' });
@@ -907,7 +907,7 @@ router.post('/api/events/duties/:dutyId/cancel-request', verifyToken, async (req
       status: 'open'
     });
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, duty: updated });
   } catch (err) {
     console.error('Failed to cancel request:', err);
@@ -941,7 +941,7 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
         requestedBy: '',
         status: duty.assignedGroup ? 'assigned' : 'open'
       });
-      broadcastDataUpdate();
+      broadcastDataUpdate('events');
       return res.json({ success: true, duty: updated });
     }
 
@@ -955,7 +955,7 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
       requestedBy: '',
       status: 'confirmed'
     });
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true, duty: updated });
   } catch (err) {
     console.error('Failed to claim duty:', err);
@@ -1034,7 +1034,7 @@ router.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res)
       }
     }
 
-    broadcastDataUpdate();
+    broadcastDataUpdate('events');
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to remove attendee:', err);

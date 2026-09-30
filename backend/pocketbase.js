@@ -1861,6 +1861,23 @@ async function listMentoringMessages(appConfig, threadId) {
     .sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
 }
 
+// Unread count and newest message of a thread for the thread list: two single-record queries instead of
+// loading and decrypting the whole conversation (the list is requested on every data update).
+async function getMentoringThreadSummary(appConfig, threadId, otherRole) {
+  const token = await authenticateSuperuser(appConfig);
+  const query = params => pocketBaseRequest(`/api/collections/mentoring_messages/records?${new URLSearchParams(params).toString()}`, { token });
+  const thread = pbFilterEquals('thread', threadId);
+  const [unread, latest] = await Promise.all([
+    query({ page: '1', perPage: '1', fields: 'id', filter: `${thread} && ${pbFilterEquals('sender_role', otherRole)} && read = false` }),
+    query({ page: '1', perPage: '1', skipTotal: '1', sort: '-created', filter: thread })
+  ]);
+  const last = latest.items?.[0] || null;
+  return {
+    unreadCount: Number(unread.totalItems) || 0,
+    lastMessage: last ? { ...last, text: decryptMentoringText(last.text, threadId) } : null
+  };
+}
+
 async function createMentoringMessage(appConfig, data) {
   const rawText = data.text ? String(data.text) : '';
   const threadId = data.thread || '';
@@ -2132,6 +2149,7 @@ module.exports = {
   createMentoringThread,
   updateMentoringThread,
   listMentoringMessages,
+  getMentoringThreadSummary,
   createMentoringMessage,
   markMentoringMessagesRead,
   encryptMentoringText,

@@ -44,9 +44,14 @@ const {
 } = require('./pushNotifications');
 
 const sseClients = new Set();
-function broadcastDataUpdate() {
+// Tells the connected clients that data changed. [scope] lets them reload only that area ('mentoring', 'events');
+// without it they reload everything. [userIds] limits the event to those users (private mentoring chats).
+function broadcastDataUpdate(scope = 'all', userIds = null) {
+  invalidateAuthCache();
+  const message = `event: data_update\ndata: ${JSON.stringify({ scope })}\n\n`;
   for (const client of sseClients) {
-    client.write('event: data_update\ndata: {}\n\n');
+    if (userIds && !userIds.includes(client.agoraUserId)) continue;
+    client.write(message);
   }
 }
 
@@ -333,6 +338,45 @@ async function loadUserWithPermissions(token) {
   return user;
 }
 
+// verifyToken needs three PocketBase lookups per request, and clients send bursts (a page load is ~25 requests).
+// The resolved user is kept for a few seconds per token; any write request or data broadcast clears the cache,
+// so changed permissions, passwords or deleted accounts apply immediately.
+const AUTH_CACHE_TTL_MS = 5000;
+const AUTH_CACHE_MAX = 500;
+const authCache = new Map();
+
+function invalidateAuthCache() {
+  authCache.clear();
+}
+
+async function resolveRequestUser(token) {
+  const user = await loadUserWithPermissions(token);
+  try {
+    const mentorRec = await getMentorByUserId(context.appConfig, user.id);
+    user.mentorStatus = mentorRec?.status || null;
+    user.isApprovedMentor = mentorRec?.status === 'approved';
+  } catch {
+    user.mentorStatus = null;
+    user.isApprovedMentor = false;
+  }
+  return user;
+}
+
+function cachedRequestUser(token) {
+  const now = Date.now();
+  let entry = authCache.get(token);
+  if (!entry || entry.expires <= now) {
+    if (authCache.size >= AUTH_CACHE_MAX) authCache.clear();
+    entry = { expires: now + AUTH_CACHE_TTL_MS, promise: resolveRequestUser(token) };
+    entry.promise.catch(() => {
+      if (authCache.get(token) === entry) authCache.delete(token);
+    });
+    authCache.set(token, entry);
+  }
+  // Every request gets its own copy: routes may change req.user
+  return entry.promise.then(user => structuredClone(user));
+}
+
 async function verifyToken(req, res, next) {
   if (context.setupMode) {
     return res.status(503).send('App is in setup mode. Please complete setup first.');
@@ -348,15 +392,10 @@ async function verifyToken(req, res, next) {
   if (!token) return res.status(401).send('Unauthorized');
 
   try {
-    const user = await loadUserWithPermissions(token);
-    try {
-      const mentorRec = await getMentorByUserId(context.appConfig, user.id);
-      user.mentorStatus = mentorRec?.status || null;
-      user.isApprovedMentor = mentorRec?.status === 'approved';
-    } catch {
-      user.mentorStatus = null;
-      user.isApprovedMentor = false;
-    }
+    // Writes always resolve the user freshly and drop the cache once they are done
+    const isRead = req.method === 'GET' || req.method === 'HEAD';
+    if (!isRead) res.on('finish', invalidateAuthCache);
+    const user = isRead ? await cachedRequestUser(token) : await resolveRequestUser(token);
     req.user = user;
     req.authToken = token;
     next();
@@ -1237,6 +1276,7 @@ module.exports = {
   verifyOptionalUser,
   newPersonRecord,
   sendDutyRequestNotificationEmail,
+  invalidateAuthCache,
   escapeHtml,
   userMatchesTargetGroups,
   DEFAULT_EVENT_SETTINGS,

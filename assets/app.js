@@ -100,6 +100,26 @@ function debounce(fn, wait) {
     };
 }
 
+/**
+ * Runs an action and reports a failure (alert, or a toast with `toast`): the message is a string or a function of
+ * the error. `button` shows the loading state on a button meanwhile. Resolves to true on success.
+ */
+async function attempt(action, failure, { toast = null, button = null, loading = 'Speichert...' } = {}) {
+    if (button) setButtonLoading(button, true, loading);
+    try {
+        await action();
+        return true;
+    } catch (err) {
+        console.error(err);
+        const message = typeof failure === 'function' ? failure(err) : failure;
+        if (toast) showToast(message, toast);
+        else alert(message);
+        return false;
+    } finally {
+        if (button) setButtonLoading(button, false);
+    }
+}
+
 function setButtonLoading(btnId, isLoading, loadingText = 'Laden...') {
     const btn = $(btnId);
     if (!btn) return;
@@ -129,12 +149,35 @@ const readAsDataUrl = file => new Promise((resolve, reject) => {
     reader.readAsDataURL(file);
 });
 
+// Large third-party libraries are fetched on first use instead of on every start
+// (HEIC conversion: 1.3 MB, PDF export: 0.9 MB of script).
+const HEIC2ANY_SRC = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+const HTML2PDF_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+const lazyScripts = new Map();
+function loadScriptOnce(src) {
+    if (!lazyScripts.has(src)) {
+        lazyScripts.set(src, new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = () => {
+                lazyScripts.delete(src);
+                script.remove();
+                reject(new Error('Failed to load ' + src));
+            };
+            document.head.appendChild(script);
+        }));
+    }
+    return lazyScripts.get(src);
+}
+
 const isHeic = (name = '', type = '') => /\.hei[cf]$/i.test(name) || type === 'image/heic' || type === 'image/heif';
 
 // Converts HEIC/HEIF files/blobs to JPEG via heic2any; returns the input unchanged when not HEIC or on failure.
 async function convertHeic(file, quality, name = file.name) {
-    if (!isHeic(name, file.type) || typeof heic2any !== 'function') return file;
+    if (!isHeic(name, file.type)) return file;
     try {
+        await loadScriptOnce(HEIC2ANY_SRC);
         const out = await heic2any({ blob: file, toType: 'image/jpeg', quality });
         const blob = Array.isArray(out) ? out[0] : out;
         return file instanceof File ? new File([blob], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: 'image/jpeg' }) : blob;
@@ -648,12 +691,47 @@ Object.assign(window, {
 let sseConnection = null;
 let aiEnabled = false;
 
+// The server names the area that changed ('mentoring', 'events', otherwise 'all'). Events arriving in a burst are
+// collected for a moment and answered with a single reload of just those areas.
+const REMOTE_UPDATE_DELAY_MS = 350;
+const pendingRemoteScopes = new Set();
+let remoteUpdateTimer = null;
+let remoteUpdateRunning = false;
+
+function queueRemoteUpdate(scope) {
+    pendingRemoteScopes.add(scope);
+    if (!remoteUpdateTimer) remoteUpdateTimer = setTimeout(flushRemoteUpdates, REMOTE_UPDATE_DELAY_MS);
+}
+
+const REMOTE_LOADERS = { events: () => loadEventsData(), mentoring: () => refreshMentoringFromRemote() };
+
+async function flushRemoteUpdates() {
+    remoteUpdateTimer = null;
+    if (!isAuthenticated) return pendingRemoteScopes.clear();
+    // A reload is still running: keep the scopes and try again afterwards
+    if (remoteUpdateRunning) return void (remoteUpdateTimer = setTimeout(flushRemoteUpdates, REMOTE_UPDATE_DELAY_MS));
+    const scopes = [...pendingRemoteScopes];
+    pendingRemoteScopes.clear();
+    remoteUpdateRunning = true;
+    try {
+        if (scopes.includes('all')) await loadData(true);
+        else await Promise.all(scopes.map(s => REMOTE_LOADERS[s]?.()));
+    } catch (err) {
+        console.warn('Remote update failed:', err);
+    } finally {
+        remoteUpdateRunning = false;
+    }
+}
+
 function connectSSE() {
     if (sseConnection) return;
     sseConnection = new EventSource(API + '/stream', { withCredentials: true });
-    sseConnection.addEventListener('data_update', () => {
-        console.log('SSE: Data updated remotely, refreshing...');
-        if (isAuthenticated) loadData(true);
+    sseConnection.addEventListener('data_update', e => {
+        let scope = 'all';
+        try {
+            scope = JSON.parse(e.data || '{}').scope || 'all';
+        } catch { /* older servers send an empty payload: reload everything */ }
+        queueRemoteUpdate(scope);
     });
     sseConnection.onerror = () => {
         console.log('SSE error, reconnecting...');
@@ -939,62 +1017,28 @@ const findPerson = id => people.find(p => String(p.id) === String(id));
 
 // Members only see their own person entry and requests; the person is auto-linked by name on first login.
 async function loadMemberData() {
-    try {
-        const snap = await get(ref(db, 'settings'));
-        if (snap.exists()) {
-            settings = snap.val();
-        }
-    } catch (err) {
-        console.warn('Could not fetch settings:', err);
-    }
-
+    settings = (await apiGet('settings').catch(err => (console.warn('Could not fetch settings:', err), null))) || settings;
     const uid = currentUser.uid;
     const peopleRef = ref(db, 'people');
-    const linkPerson = key => update(child(peopleRef, key), { uid }).catch(err => console.warn('Auto-link update failed:', err));
+    const byField = (field, value) => get(query(peopleRef, orderByChild(field), equalTo(value))).then(snap => snap.exists() ? snap.val() : {});
     let peopleList = [];
     try {
-        let snap = await get(query(peopleRef, orderByChild('uid'), equalTo(uid)));
-        if (snap.exists()) peopleList = safeList(snap.val());
+        peopleList = safeList(await byField('uid', uid));
+        // Members created before their account existed: link the person record with the same name once
         const name = fullName(currentUser) || currentUser.name || '';
         if (peopleList.length === 0 && name) {
-            snap = await get(query(peopleRef, orderByChild('name'), equalTo(name)));
-            const val = snap.exists() ? snap.val() : {};
+            const val = await byField('name', name);
             const key = Object.keys(val)[0];
             if (key) {
-                await linkPerson(key);
+                await update(child(peopleRef, key), { uid }).catch(err => console.warn('Auto-link update failed:', err));
                 peopleList = [{ ...val[key], uid }];
             }
         }
-    } catch (queryErr) {
-        console.warn('Index missing, falling back to client-side filtering:', queryErr);
-        try {
-            const snap = await get(peopleRef);
-            const all = snap.val();
-            const name = (fullName(currentUser) || currentUser.name || '').toLowerCase();
-            const nameMatches = p => p.name && p.name.toLowerCase() === name;
-            peopleList = safeList(all).filter(p => p.uid === uid || nameMatches(p));
-            const first = peopleList[0];
-            if (first && !first.uid && nameMatches(first)) {
-                first.uid = uid;
-                const key = snap.exists() && Object.keys(all).find(k => all[k].id === first.id || all[k].personKey === first.id);
-                if (key) await linkPerson(key);
-            }
-        } catch (err) {
-            console.warn('Could not load people:', err);
-        }
+    } catch (err) {
+        console.warn('Could not load people:', err);
     }
     people = peopleList.filter(p => !p.isDeleted);
-
-    let rSnap = null;
-    try {
-        rSnap = await get(query(ref(db, 'requests'), orderByChild('userId'), equalTo(uid)));
-    } catch (reqErr) {
-        console.warn('Request index missing, fetching all requests:', reqErr);
-        rSnap = await get(ref(db, 'requests')).catch(err => {
-            console.warn('Could not get requests:', err);
-            return null;
-        });
-    }
+    const rSnap = await get(query(ref(db, 'requests'), orderByChild('userId'), equalTo(uid))).catch(err => (console.warn('Could not get requests:', err), null));
     requests = (rSnap?.exists() ? safeList(rSnap.val()) : []).filter(r => r.userId === uid);
 }
 
@@ -1276,26 +1320,20 @@ async function deleteOwnAccount(suffix = '') {
 async function generateNewCode() {
     if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
     const newCode = String(100000 + (window.crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
-    try {
+    await attempt(async () => {
         await set(ref(db, 'system/inviteCode'), newCode);
         updateInviteCodeDisplay(newCode);
-    } catch (err) {
-        console.error('Fehler beim Generieren des Codes:', err);
-        alert(t('alert_save_code_failed', 'Neuer Code konnte nicht gespeichert werden.'));
-    }
+    }, t('alert_save_code_failed', 'Neuer Code konnte nicht gespeichert werden.'));
 }
 
 async function copyInviteCode() {
     if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
     const code = inputValue('admin-invite-code') || inputValue('user-invite-code');
     if (!code || code === '------') return;
-    try {
+    await attempt(async () => {
         await navigator.clipboard.writeText(code);
         showToast(t('toast_code_copied', 'Code kopiert!'));
-    } catch (err) {
-        console.error('Kopieren fehlgeschlagen:', err);
-        alert(t('toast_copy_failed', 'Kopieren fehlgeschlagen'));
-    }
+    }, t('toast_copy_failed', 'Kopieren fehlgeschlagen'));
 }
 
 // --- Notification preferences & web push ---
@@ -1313,15 +1351,12 @@ async function autoSaveNotificationPreferences() {
     const notificationSettings = Object.fromEntries(NOTIFICATION_KEYS.map(key => [key, ($(own + key) || $(other + key))?.checked ?? true]));
     // Keep emailNotifications in sync for backwards compatibility
     const emailNotifications = Object.values(notificationSettings).some(Boolean);
-    try {
+    await attempt(async () => {
         await update(ref(db, 'users/' + currentUser.uid), { notificationSettings, emailNotifications });
         Object.assign(currentUser, { notificationSettings, emailNotifications });
         setNotificationCheckboxes(notificationSettings);
         showToast(t('notification_settings_saved', 'Benachrichtigungseinstellungen gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der Benachrichtigungseinstellungen:', err);
-        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
-    }
+    }, t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), { toast: 'error' });
 }
 
 function updateNotificationPreferencesUI() {
@@ -1395,27 +1430,10 @@ async function ensurePushNotificationSubscription(interactive = false) {
 }
 
 // --- PWA install ---
-let deferredInstallPrompt = null;
-const installBtn = $('install-pwa-btn');
-window.addEventListener('beforeinstallprompt', e => {
-    e.preventDefault();
-    deferredInstallPrompt = e;
-    show(installBtn, true, 'inline-flex');
-});
-installBtn?.addEventListener('click', async () => {
-    show(installBtn, false);
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice;
-    console.log(`User response to the install prompt: ${outcome}`);
-    deferredInstallPrompt = null;
-});
-window.addEventListener('appinstalled', () => {
-    show(installBtn, false);
-    deferredInstallPrompt = null;
-    console.log('PWA was installed');
-    setupPwaPushAutoPrompt();
-});
+// No install button (there is a native Android app; iOS never offered the prompt). Chrome's own install
+// banner stays suppressed, installing via the browser menu still works.
+window.addEventListener('beforeinstallprompt', e => e.preventDefault());
+window.addEventListener('appinstalled', () => setupPwaPushAutoPrompt());
 
 // --- Profile pictures ---
 async function fetchProfilePicUrl(uid) {
@@ -1599,6 +1617,10 @@ async function confirmProfileCrop() {
         await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), 'Upload fehlgeschlagen');
         closeModal('profile-crop-modal');
         showToast('Profilbild gespeichert!', 'success');
+        // Pictures are cached by the browser for a few minutes: replace the own entry right away
+        const uid = currentUid();
+        profilePicCache.delete(uid);
+        await fetchWithAuth(`${API}/profile/picture/${encodeURIComponent(uid)}`, { cache: 'reload' }).catch(() => {});
         await loadCurrentProfilePicture();
     } catch (e) {
         console.error('Profile upload error:', e);
@@ -1643,7 +1665,14 @@ const DEFAULT_PERMISSIONS = [
     { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
 ];
 
-async function loadSystemGroups() {
+// Several views ask for the groups during one refresh: they share the request that is already running
+let systemGroupsRequest = null;
+function loadSystemGroups() {
+    if (!systemGroupsRequest) systemGroupsRequest = fetchSystemGroups().finally(() => { systemGroupsRequest = null; });
+    return systemGroupsRequest;
+}
+
+async function fetchSystemGroups() {
     if (!currentUser) return;
     try {
         if (isSuperAdminUser()) {
@@ -1747,31 +1776,25 @@ async function submitSaveGroup() {
     const id = inputValue('manage-group-id');
     const name = inputValue('manage-group-name').trim();
     if (!name) return alert(t('alert_fill_fields', 'Bitte Gruppennamen eingeben.'));
-    try {
+    await attempt(async () => {
         const permissions = checkedValues('#manage-group-permissions-list .group-permission-cb');
         await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, 'Fehler beim Speichern der Gruppe');
         closeModal('manage-group-modal');
         showToast(id ? t('toast_group_updated', 'Gruppe erfolgreich aktualisiert') : t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
         await refreshGroupsAndUsers();
-    } catch (err) {
-        console.error('Fehler beim Speichern der Gruppe:', err);
-        alert(err.message || 'Fehler beim Speichern der Gruppe');
-    }
+    }, err => err.message || 'Fehler beim Speichern der Gruppe');
 }
 
 async function deleteCurrentGroup() {
     const id = inputValue('manage-group-id');
     if (!id || !confirmAction(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) return;
-    try {
+    await attempt(async () => {
         await apiJson(`/admin/groups/${id}`, 'DELETE', undefined, 'Fehler beim Löschen der Gruppe');
         if (activeGroupFilter === id) activeGroupFilter = null;
         closeModal('manage-group-modal');
         showToast(t('toast_group_deleted', 'Gruppe erfolgreich gelöscht'), 'success');
         await refreshGroupsAndUsers();
-    } catch (err) {
-        console.error('Fehler beim Löschen der Gruppe:', err);
-        alert(err.message || 'Fehler beim Löschen der Gruppe');
-    }
+    }, err => err.message || 'Fehler beim Löschen der Gruppe');
 }
 
 function openAssignGroupModal(uid) {
@@ -1795,7 +1818,7 @@ async function submitAssignGroups() {
     const uid = inputValue('assign-group-uid');
     if (!uid) return;
     const groups = checkedValues('#assign-group-checklist .user-group-assign-cb');
-    try {
+    await attempt(async () => {
         await apiJson(`/admin/users/${uid}/groups`, 'PUT', { groups }, 'Fehler beim Zuweisen der Gruppen');
         const localUser = users.find(u => u.uid === uid);
         if (localUser) {
@@ -1805,10 +1828,7 @@ async function submitAssignGroups() {
         closeModal('assign-group-modal');
         showToast(t('toast_user_groups_updated', 'Benutzergruppen erfolgreich aktualisiert'), 'success');
         await refreshGroupsAndUsers(currentUser?.uid === uid);
-    } catch (err) {
-        console.error('Fehler beim Zuweisen der Gruppen:', err);
-        alert(err.message || 'Fehler beim Zuweisen der Gruppen');
-    }
+    }, err => err.message || 'Fehler beim Zuweisen der Gruppen');
 }
 
 async function reloadUsersData() {
@@ -1982,7 +2002,7 @@ async function submitCreateUser() {
     const password = inputValue('new-user-password');
     if (!firstName || !lastName) return alert(t('alert_fill_fields', 'Bitte Vor- und Nachnamen ausfüllen.'));
     if (password && password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
-    try {
+    await attempt(async () => {
         await apiJson('/admin/users', 'POST', {
             firstName, lastName, email, password,
             pays: isChecked('new-user-pays'),
@@ -1994,10 +2014,7 @@ async function submitCreateUser() {
         await loadData();
         closeModal('create-user-modal');
         showToast(t('toast_user_created', 'Benutzer erfolgreich erstellt'));
-    } catch (err) {
-        console.error('Fehler beim Erstellen des Benutzers:', err);
-        alert(err.message || 'Fehler beim Erstellen des Benutzers');
-    }
+    }, err => err.message || 'Fehler beim Erstellen des Benutzers');
 }
 
 function openResetPasswordModal(uid, name) {
@@ -2010,28 +2027,22 @@ function openResetPasswordModal(uid, name) {
 async function submitResetPassword() {
     const password = inputValue('reset-password-new');
     if (password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
-    try {
+    await attempt(async () => {
         await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, 'Passwort-Zurücksetzen fehlgeschlagen');
         closeModal('reset-password-modal');
         showToast(t('toast_password_reset', 'Passwort erfolgreich geändert'));
-    } catch (err) {
-        console.error('Fehler beim Zurücksetzen des Passworts:', err);
-        alert(err.message || 'Fehler beim Zurücksetzen des Passworts');
-    }
+    }, err => err.message || 'Fehler beim Zurücksetzen des Passworts');
 }
 
 async function deleteUserAccount(uid) {
     if (!confirmAction(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
-    try {
+    await attempt(async () => {
         await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, 'Löschen fehlgeschlagen');
         users = users.filter(u => u.uid !== uid);
         renderAccountsTab();
         renderUnlinkedUsers();
         showToast(t('toast_user_deleted', 'Benutzer erfolgreich gelöscht'));
-    } catch (err) {
-        console.error('Fehler beim Löschen des Benutzers:', err);
-        alert(err.message || 'Fehler beim Löschen des Benutzers');
-    }
+    }, err => err.message || 'Fehler beim Löschen des Benutzers');
 }
 
 // --- System, AI & branding configuration ---
@@ -2049,7 +2060,7 @@ const SMTP_FIELDS = ['host', 'port', 'user', 'pass'];
 
 async function loadAdvancedSystemConfig() {
     if (!isSuperAdminUser()) return;
-    try {
+    await attempt(async () => {
         const res = await api('/admin/system-config');
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
@@ -2059,15 +2070,12 @@ async function loadAdvancedSystemConfig() {
         $('super-admin-smtp-secure').checked = !!data.smtp?.secure;
         advancedConfigLoaded = true;
         await loadAiConfig();
-    } catch (err) {
-        console.error('Fehler beim Laden der erweiterten Konfiguration:', err);
-        showToast('Erweiterte Konfiguration konnte nicht geladen werden', 'error');
-    }
+    }, 'Erweiterte Konfiguration konnte nicht geladen werden', { toast: 'error' });
 }
 
 async function saveAdvancedSystemConfig() {
     if (!isSuperAdminUser()) return;
-    try {
+    await attempt(async () => {
         const appName = inputValue('super-admin-app-name').trim() || advancedConfigAppName || config.appName;
         if (!appName) throw new Error('App-Name konnte nicht ermittelt werden. Dies kann auf fehlende Konfigurationsdaten hinweisen. Bitte Seite neu laden.');
         const payload = { appName, smtp: null };
@@ -2087,10 +2095,7 @@ async function saveAdvancedSystemConfig() {
         if (!res.ok) throw new Error(await readErrorText(res));
         advancedConfigAppName = appName;
         showToast(t('toast_config_saved', 'System-Konfiguration gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der erweiterten Konfiguration:', err);
-        alert(t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
-    }
+    }, err => t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
 }
 
 const AI_FIELDS = { baseUrl: 'super-admin-ai-base-url', apiKey: 'super-admin-ai-api-key', model: 'super-admin-ai-model' };
@@ -2113,7 +2118,7 @@ async function loadAiConfig() {
 
 async function saveAiConfig() {
     if (!isSuperAdminUser()) return;
-    try {
+    await attempt(async () => {
         const payload = {
             enabled: $('super-admin-ai-enabled')?.checked ?? false,
             baseUrl: inputValue(AI_FIELDS.baseUrl).trim(),
@@ -2124,10 +2129,7 @@ async function saveAiConfig() {
         aiEnabled = payload.enabled;
         updateAiNavVisibility();
         showToast(t('toast_ai_saved', 'KI-Einstellungen gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der KI-Einstellungen:', err);
-        alert(t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
-    }
+    }, err => t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
 }
 
 async function uploadChurchLogo() {
@@ -2155,14 +2157,11 @@ async function autoSaveRate(fieldId) {
     const val = parseAmount(el.value);
     if (isNaN(val) || val < 0) return;
     settings[['vollverdiener', 'geringverdiener'].find(key => fieldId === 'rate-' + key) || 'keinverdiener'] = val;
-    try {
+    await attempt(async () => {
         await set(ref(db, 'settings'), settings);
         await renderViews();
         showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
-    } catch (err) {
-        console.error('Fehler beim Speichern der Rate:', err);
-        showToast(t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), 'error');
-    }
+    }, t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), { toast: 'error' });
 }
 
 Object.assign(window, {
@@ -2433,16 +2432,13 @@ async function assignUserToPerson(uid) {
     const person = select.value && findPerson(select.value);
     if (!select.value) return alert(t('unlinked_alert_select_person', 'Bitte eine Person auswählen.'));
     if (!person) return alert(t('toast_person_not_found', 'Person nicht gefunden.'));
-    try {
+    await attempt(async () => {
         await update(ref(db, 'people/' + select.value), { uid });
         person.uid = uid;
         showToast('Zuordnung gespeichert');
         renderUnlinkedUsers();
         renderPeople();
-    } catch (err) {
-        console.error('Fehler beim Zuordnen:', err);
-        alert(t('unlinked_alert_failed', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen.'));
-    }
+    }, t('unlinked_alert_failed', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen.'));
 }
 
 // --- Editing & deleting booked entries ---
@@ -2622,7 +2618,7 @@ const REQUEST_APPLIERS = {
 async function approveRequest(reqId) {
     const req = requests.find(r => r.id === reqId);
     if (!req) return;
-    try {
+    await attempt(async () => {
         if (req.type === 'expense') {
             const { amount, description, date, receipt } = req.data;
             await mutateCollection('expenses', list => [...list, { id: newId(), amount: parseFloat(amount), description: description + ` (Von: ${req.personName})`, date, receipt }]);
@@ -2632,23 +2628,17 @@ async function approveRequest(reqId) {
         await update(ref(db, 'requests/' + reqId), { status: 'approved' });
         await loadData();
         showToast(t('toast_request_approved', 'Anfrage genehmigt'));
-    } catch (err) {
-        console.error('Fehler beim Genehmigen der Anfrage:', err);
-        alert(t('alert_approve_failed', 'Anfrage konnte nicht genehmigt werden. Bitte erneut versuchen.'));
-    }
+    }, t('alert_approve_failed', 'Anfrage konnte nicht genehmigt werden. Bitte erneut versuchen.'));
 }
 
 async function rejectRequest(reqId) {
     const reason = prompt(t('status_btn', 'Grund für Ablehnung') + ':');
     if (reason === null) return;
-    try {
+    await attempt(async () => {
         await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
         await loadData();
         showToast(t('toast_request_rejected', 'Anfrage abgelehnt'));
-    } catch (err) {
-        console.error('Fehler beim Ablehnen der Anfrage:', err);
-        alert(t('alert_reject_failed', 'Anfrage konnte nicht abgelehnt werden. Bitte erneut versuchen.'));
-    }
+    }, t('alert_reject_failed', 'Anfrage konnte nicht abgelehnt werden. Bitte erneut versuchen.'));
 }
 
 // --- Member views ---
@@ -3377,11 +3367,15 @@ function updateReportPreview() {
     requestAnimationFrame(resizeReportPreview);
 }
 
-function downloadReportPdf() {
+async function downloadReportPdf() {
     const element = $('report-print-preview');
     if (!element) return;
-    if (typeof html2pdf === 'undefined') return alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
     setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generating...'));
+    await loadScriptOnce(HTML2PDF_SRC).catch(() => {});
+    if (typeof html2pdf === 'undefined') {
+        setButtonLoading('btn-download-pdf', false, null);
+        return alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
+    }
     // Render an unscaled off-screen A4-width clone to avoid a blank first page
     const printContainer = document.createElement('div');
     printContainer.style.cssText = 'position: absolute; left: 0; top: 0; width: 794px; pointer-events: none; z-index: -9999; background: #ffffff;';
@@ -3546,15 +3540,12 @@ async function saveStandingOrderEnd() {
 
 async function deleteStandingOrderCompletely() {
     if (!confirmAction(t('confirm_delete_so', 'Dauerauftrag wirklich komplett entfernen? Historie geht verloren.'))) return;
-    try {
+    await attempt(async () => {
         await mutatePerson(editingPersonId, person => ({ ...person, standingOrders: safeList(person.standingOrders).filter(so => String(so.id) !== String(editingSoId)) }));
         await renderViews();
         closeModal('end-standing-order-modal');
         showToast(t('toast_so_deleted', 'Dauerauftrag gelöscht'));
-    } catch (err) {
-        console.error('Fehler beim Löschen:', err);
-        alert(t('alert_delete_error', 'Fehler beim Löschen.'));
-    }
+    }, t('alert_delete_error', 'Fehler beim Löschen.'));
 }
 
 // --- Member status changes & status e-mail ---
@@ -3652,7 +3643,7 @@ async function sendStatusEmail(personId) {
                 </div>
             </div>
         </div>`;
-    try {
+    await attempt(async () => {
         const res = await api('/send-email', 'POST', { to: email, subject: `Dein Kassenstatus - ${APP_NAME}`, text, html });
         if (res.ok) {
             showToast('Status-E-Mail gesendet');
@@ -3660,10 +3651,7 @@ async function sendStatusEmail(personId) {
             showToast('Fehler beim Senden der E-Mail', 'error');
             console.error('Email API response not ok:', await res.text());
         }
-    } catch (err) {
-        console.error('Fehler beim Senden der Status-E-Mail:', err);
-        showToast('Fehler beim Senden der E-Mail', 'error');
-    }
+    }, 'Fehler beim Senden der E-Mail', { toast: 'error' });
 }
 
 // --- Member requests (payment, status change, expense) ---
@@ -4373,10 +4361,12 @@ const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
 const findThread = id => (Array.isArray(mentoringThreads) ? mentoringThreads.find(th => th.id === id) : null);
 const threadElement = id => document.querySelector(`.mentoring-thread-item[data-thread-id="${id}"]`);
 
-function setCountBadge(id, count, display) {
+// Count badges are flex boxes (the number is centred by CSS); large counts are capped
+const formatBadgeCount = count => (count > 99 ? '99+' : String(count));
+function setCountBadge(id, count, display = 'inline-flex') {
     const badge = $(id);
     if (!badge) return;
-    badge.innerText = String(count);
+    badge.textContent = formatBadgeCount(count);
     badge.style.display = count > 0 ? display : 'none';
 }
 
@@ -4390,8 +4380,22 @@ function threadPartner(thread) {
     };
 }
 
+// The chat pane is on screen: mentoring tab with the "Nachrichten" sub-tab, in a visible browser tab
+const isMentoringChatVisible = () => currentActiveTab === 'mentoring' && currentMentoringSubTab === 'chats' && !document.hidden;
+
+// New message, new chat or changed chat status elsewhere: refresh the list and counts, plus what is on screen
+async function refreshMentoringFromRemote() {
+    if (!canUseMentoring()) return;
+    const openThread = isMentoringChatVisible() ? activeMentoringThreadId : null;
+    await loadMentoringThreads(false, null, false);
+    if (openThread && openThread === activeMentoringThreadId) loadMentoringMessages(openThread, true);
+    if (currentActiveTab === 'mentoring' && currentMentoringSubTab === 'find') loadMentorsList();
+}
+
 function updateMentoringUnreadBadge() {
-    setCountBadge('mentoring-unread-badge', mentoringThreads.reduce((sum, th) => sum + (th.unread_count > 0 ? th.unread_count : 0), 0), 'inline-block');
+    const unread = mentoringThreads.reduce((sum, th) => sum + (th.unread_count > 0 ? th.unread_count : 0), 0);
+    // Sub-tab "Nachrichten" plus the mentoring entry of both navigations
+    for (const id of ['mentoring-unread-badge', 'mentoring-nav-badge-bottom', 'mentoring-nav-badge-desktop']) setCountBadge(id, unread);
     renderHomeMentoringCard();
 }
 
@@ -4451,7 +4455,7 @@ async function loadMentoringData() {
             const res = await api('/mentoring/mentors?status=pending');
             if (res.ok) {
                 const list = await res.json();
-                setCountBadge('mentoring-pending-badge', Array.isArray(list) ? list.length : 0, 'inline-block');
+                setCountBadge('mentoring-pending-badge', Array.isArray(list) ? list.length : 0);
             }
         } catch (err) {
             console.warn('Failed to load pending mentors count:', err);
@@ -4630,13 +4634,13 @@ function renderThreadItem(thread) {
                 </div>
                 <div class="mentoring-thread-bottom">
                     <div class="mentoring-thread-snippet" title="${escapeHtml(lastMsg)}">${escapeHtml(lastMsg)}</div>
-                    ${unread > 0 ? `<span class="mentoring-badge-count">${unread}</span>` : ''}
+                    ${unread > 0 ? `<span class="mentoring-badge-count">${formatBadgeCount(unread)}</span>` : ''}
                 </div>
             </div>
         </div>`;
 }
 
-async function loadMentoringThreads(shouldSelect = false, selectThreadId = null) {
+async function loadMentoringThreads(shouldSelect = false, selectThreadId = null, autoSelect = true) {
     const listEl = $('mentoring-threads-list');
     if (!listEl) return;
     const generation = mentoringChatGeneration;
@@ -4646,7 +4650,7 @@ async function loadMentoringThreads(shouldSelect = false, selectThreadId = null)
         const data = await res.json();
         mentoringThreads = Array.isArray(data) ? data : [];
         updateMentoringUnreadBadge();
-        setCountBadge('mentoring-threads-count-badge', mentoringThreads.length, 'inline-flex');
+        setCountBadge('mentoring-threads-count-badge', mentoringThreads.length);
         if (mentoringThreads.length === 0) {
             listEl.innerHTML = `
                 <div class="mentoring-threads-empty">
@@ -4663,7 +4667,9 @@ async function loadMentoringThreads(shouldSelect = false, selectThreadId = null)
         if (generation !== mentoringChatGeneration) return;
         if (selectThreadId) {
             await openMentoringThread(selectThreadId);
-        } else if (shouldSelect || (!isMobile() && !activeMentoringThreadId)) {
+        } else if (shouldSelect || (autoSelect && !isMobile() && !activeMentoringThreadId && isMentoringChatVisible())) {
+            // Desktop shows list and chat side by side. Only open a chat the user can see: opening marks its
+            // messages as read, which used to clear the unread counts right after login
             await openMentoringThread(mentoringThreads[0].id);
         }
     } catch (err) {
@@ -4743,7 +4749,7 @@ async function openMentoringThread(threadId) {
     autoResizeMentoringInput($('mentoring-chat-input'));
     clearInterval(mentoringChatPollTimer);
     mentoringChatPollTimer = setInterval(() => {
-        if (activeMentoringThreadId === threadId && currentActiveTab === 'mentoring' && currentMentoringSubTab === 'chats') loadMentoringMessages(threadId, true);
+        if (activeMentoringThreadId === threadId && isMentoringChatVisible()) loadMentoringMessages(threadId, true);
     }, 3500);
 }
 
@@ -4751,6 +4757,7 @@ async function openMentoringThread(threadId) {
 // userBack: the user left the chat (button or gesture), so a chat opened from the start page returns there.
 function closeMentoringChatMobile(fromHistory = false, userBack = !fromHistory) {
     mentoringChatGeneration++;
+    const hadOpenChat = !!activeMentoringThreadId;
     activeMentoringThreadId = null;
     clearInterval(mentoringChatPollTimer);
     mentoringChatPollTimer = null;
@@ -4767,7 +4774,8 @@ function closeMentoringChatMobile(fromHistory = false, userBack = !fromHistory) 
         history.go(-steps);
     }
     if (returnHome) switchTab(HOME_TAB, 'history');
-    else loadMentoringThreads(false);
+    // Only a chat that was open changes the unread counts; never pick a new chat while closing
+    else if (hadOpenChat) loadMentoringThreads(false, null, false);
 }
 
 async function loadMentoringMessages(threadId, isPoll = false) {
@@ -4851,58 +4859,51 @@ function toggleMentoringChatMenu(e) {
     if (dropdown) dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
 }
 
-// Report the conversation to the admins with the partner's recent messages (Google Play UGC policy)
-async function reportCurrentThread() {
+// Menu actions on the open chat: close the menu, run with the thread, show errors
+async function withActiveThread(action) {
     const thread = activeMentoringThreadId && mentoringThreads.find(th => th.id === activeMentoringThreadId);
     if (!thread) return;
     show('mentoring-chat-menu-dropdown', false);
-    const reason = window.prompt(t('mentoring_report_reason', 'Warum meldest du dieses Gespräch? Die letzten Nachrichten deines Gegenübers werden an die Administratoren gesendet.'), '');
-    if (reason === null) return;
-    const partnerRole = thread.myRole === 'mentor' ? 'mentee' : 'mentor';
-    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || '(keine Nachrichten)';
     try {
-        await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
-        showToast(t('report_sent', 'Gemeldet – danke!'), 'info');
-    } catch (err) {
-        alert(err.message);
-    }
-}
-
-// Block the chat partner: the conversation closes and only you can reopen it
-async function blockCurrentThread() {
-    const thread = activeMentoringThreadId && mentoringThreads.find(th => th.id === activeMentoringThreadId);
-    if (!thread) return;
-    show('mentoring-chat-menu-dropdown', false);
-    if (!confirmAction(t('mentoring_confirm_block', 'Gegenüber blockieren? Das Gespräch wird geschlossen und nur du kannst es wieder öffnen.'))) return;
-    try {
-        await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status: 'blocked' }, t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
-        Object.assign(thread, { status: 'closed', blocked: true, blockedByMe: true });
-        openMentoringThread(thread.id);
-        loadMentoringThreads();
-        showToast(t('mentoring_toast_blocked', 'Gespräch blockiert.'), 'info');
-    } catch (err) {
-        alert(err.message);
-    }
-}
-
-async function toggleCloseCurrentThread(forcedStatus) {
-    const thread = activeMentoringThreadId && mentoringThreads.find(th => th.id === activeMentoringThreadId);
-    if (!thread) return;
-    show('mentoring-chat-menu-dropdown', false);
-    const newStatus = forcedStatus || (thread.status === 'closed' ? 'active' : 'closed');
-    if (!confirmAction(newStatus === 'closed'
-        ? t('mentoring_confirm_close', 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.')
-        : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?'))) return;
-    try {
-        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/status`, 'PATCH', { status: newStatus }, t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
-        thread.status = newStatus;
-        openMentoringThread(activeMentoringThreadId);
-        loadMentoringThreads();
-        showToast(newStatus === 'closed' ? t('mentoring_toast_closed', 'Gespräch beendet.') : t('mentoring_toast_reopened', 'Gespräch wiedereröffnet.'), 'info');
+        await action(thread);
     } catch (err) {
         alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
     }
 }
+
+// 'blocked' closes the chat so that only the blocker can reopen it (Google Play UGC policy)
+async function setThreadStatus(thread, status, toast) {
+    await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status }, t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
+    Object.assign(thread, status === 'blocked' ? { status: 'closed', blocked: true, blockedByMe: true } : { status });
+    openMentoringThread(thread.id);
+    loadMentoringThreads();
+    showToast(toast, 'info');
+}
+
+// Report the conversation to the admins with the partner's recent messages
+const reportCurrentThread = () => withActiveThread(async thread => {
+    const reason = window.prompt(t('mentoring_report_reason', 'Warum meldest du dieses Gespräch? Die letzten Nachrichten deines Gegenübers werden an die Administratoren gesendet.'), '');
+    if (reason === null) return;
+    const partnerRole = thread.myRole === 'mentor' ? 'mentee' : 'mentor';
+    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || '(keine Nachrichten)';
+    await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
+    showToast(t('report_sent', 'Gemeldet – danke!'), 'info');
+});
+
+const blockCurrentThread = () => withActiveThread(thread => {
+    if (confirmAction(t('mentoring_confirm_block', 'Gegenüber blockieren? Das Gespräch wird geschlossen und nur du kannst es wieder öffnen.'))) {
+        return setThreadStatus(thread, 'blocked', t('mentoring_toast_blocked', 'Gespräch blockiert.'));
+    }
+});
+
+const toggleCloseCurrentThread = forcedStatus => withActiveThread(thread => {
+    const status = forcedStatus || (thread.status === 'closed' ? 'active' : 'closed');
+    const closing = status === 'closed';
+    if (!confirmAction(closing
+        ? t('mentoring_confirm_close', 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.')
+        : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?'))) return;
+    return setThreadStatus(thread, status, closing ? t('mentoring_toast_closed', 'Gespräch beendet.') : t('mentoring_toast_reopened', 'Gespräch wiedereröffnet.'));
+});
 
 function openMentorApplicationModal() {
     setValue('mentor-app-bio', myMentorProfile ? myMentorProfile.bio || '' : '');

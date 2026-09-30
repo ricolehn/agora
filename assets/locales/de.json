@@ -346,7 +346,6 @@
   "unlinked_no_available_people": "Keine freien Personen ohne Zuordnung vorhanden.",
   "unlinked_alert_select_person": "Bitte eine Person auswählen.",
   "unlinked_alert_failed": "Zuordnung fehlgeschlagen. Bitte erneut versuchen.",
-  "btn_install_app": "App installieren",
   "lang_system": "System",
   "alert_error_loading_data": "Fehler beim Laden der Daten. Bitte Seite neu laden.",
   "alert_please_enter_date": "Bitte ein Datum angeben.",

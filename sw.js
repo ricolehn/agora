@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agora-v1.0.20';
+const CACHE_NAME = 'agora-v1.0.21';
 const URLS_TO_CACHE = [
     './',
     './index.html',
@@ -29,6 +29,10 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
     // Only cache GET requests
     if (event.request.method !== 'GET') {
+        return;
+    }
+    // The live-update stream never ends: let the browser handle it directly instead of copying it into the cache
+    if (new URL(event.request.url).pathname === '/api/stream') {
         return;
     }
 

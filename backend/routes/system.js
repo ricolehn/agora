@@ -89,6 +89,8 @@ router.get('/api/stream', verifyToken, (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  // Lets broadcasts address single users (private mentoring updates)
+  res.agoraUserId = req.user.uid || req.user.id;
   sseClients.add(res);
 
   req.on('close', () => {

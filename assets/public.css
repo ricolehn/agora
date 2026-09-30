@@ -1,0 +1,18 @@
+:root { --bg: #f1f5f9; --surface: #ffffff; --text: #0f172a; --muted: #475569; --border: #e2e8f0; --danger: #ef4444; --brand: #06b6d4; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --surface: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155; } }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 20px 48px; }
+main.narrow { max-width: 680px; }
+h1 { font-size: 1.7rem; margin: 0 0 6px; }
+h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+p, li { color: var(--muted); }
+a { color: var(--brand); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-top: 16px; }
+label { display: block; font-weight: 600; font-size: 0.9rem; margin: 12px 0 6px; }
+input { width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font-size: 1rem; }
+button { margin-top: 16px; width: 100%; padding: 12px; border: 0; border-radius: 12px; background: var(--danger); color: #fff; font-weight: 700; font-size: 1rem; cursor: pointer; }
+button:disabled { opacity: 0.6; cursor: default; }
+.msg { margin-top: 12px; font-weight: 600; }
+.msg.ok { color: #10b981; }
+.msg.err { color: var(--danger); }

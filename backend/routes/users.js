@@ -54,8 +54,10 @@ router.get('/api/profile/picture/:uid', protectedActionRateLimit, verifyToken, (
     return res.status(403).send('Forbidden: Path traversal detected');
   }
 
+  // Lists render one avatar per member and re-render on every update: let the browser keep the answer
+  // (picture or "none") for a few minutes. The uploader refreshes their own entry right after an upload.
+  res.setHeader('Cache-Control', 'private, max-age=300');
   if (fs.existsSync(filePath)) {
-    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(filePath);
   } else {
     res.status(204).end();
