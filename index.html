@@ -160,24 +160,25 @@
 
         <!-- USER OVERVIEW (Default Home Page for all users) -->
         <div id="user-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-user-overview">
-            <div class="hero-card" style="cursor:default;">
-                <span class="hero-label" data-i18n="welcome_title">Willkommen</span>
-                <div class="hero-amount" id="user-name-display">—</div>
-                <div class="hero-subtitle" id="user-email-display">—</div>
+            <!-- Start page for members: what is coming up first, administration last -->
+            <div class="home-greeting">
+                <div class="home-greeting-date" id="home-greeting-date"></div>
+                <h1 class="home-greeting-title" id="home-greeting-title">Hallo 👋</h1>
             </div>
 
-            <!-- Main Status Card -->
-            <div id="user-status-card">
-                <div style="text-align:center; padding: 40px 20px; color: var(--text-secondary);">
-                    <div class="spinner" style="margin: 0 auto 15px;"></div>
-                    <div data-i18n="loading">Lade Daten...</div>
-                </div>
-            </div>
+            <!-- Payment state: a slim line at the end, moved up here only when a payment is overdue -->
+            <div id="user-status-card" style="display:none;"></div>
 
-            <!-- Home Duties Card (Dienstanfragen & Eingeteilte Dienste) -->
-            <div id="user-duties-home-card" style="display:none; margin-top: 16px;"></div>
+            <!-- Duty requests waiting for an answer -->
+            <div id="home-duty-requests" style="display:none;"></div>
 
-            <!-- Home Mentoring Card (Unread Messages & Direct Chat Access) -->
+            <!-- Next appointments and events as a swipeable row -->
+            <div id="home-upcoming" style="display:none;"></div>
+
+            <!-- Own upcoming duties -->
+            <div id="user-duties-home-card" style="display:none;"></div>
+
+            <!-- Unread messages -->
             <div id="user-mentoring-home-card" style="display:none;"></div>
         </div>
 
@@ -2124,6 +2125,8 @@
                 <button type="button" class="close-btn event-detail-close-btn" onclick="closeModal('event-detail-modal')" aria-label="Zurück" title="Zurück">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                 </button>
+                <!-- Edit mode: page heading next to the back button ("Neues Event", "Termin bearbeiten") -->
+                <span class="detail-edit-heading detail-edit-only" id="detail-edit-heading">Neues Event</span>
                 <div class="event-detail-pre-title">
                     <!-- Dynamic Type badge (hidden by default; Termin label removed; only shown if pinned highlight) -->
                     <span class="event-detail-type-badge detail-view-only" id="detail-modal-type-indicator" style="display:none;"></span>
@@ -2139,7 +2142,7 @@
                     </div>
                     <div class="detail-cover-strip-texts">
                         <span class="detail-cover-strip-title">Titelbild hinzufügen</span>
-                        <span class="detail-cover-strip-sub">Optionales 16:9 Banner</span>
+                        <span class="detail-cover-strip-sub">Optional · 16:9, erscheint groß oben</span>
                     </div>
                 </div>
             </div>
@@ -2186,8 +2189,8 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                         </div>
                         <div class="detail-highlight-info">
-                            <span class="detail-highlight-title">Als Highlight anpinnen (Großevent)</span>
-                            <span class="detail-highlight-sub">Wird prominent oben in der Highlight-Übersicht präsentiert</span>
+                            <span class="detail-highlight-title">Als Highlight anpinnen</span>
+                            <span class="detail-highlight-sub">Großevent – erscheint groß oben in der Event-Übersicht</span>
                         </div>
                     </label>
                     <input type="hidden" id="detail-edit-type" value="event">
@@ -2198,7 +2201,8 @@
                 <!-- Edit mode: clearly recognized title input field with unmistakable label -->
                 <div class="detail-edit-only detail-title-form-group">
                     <label class="detail-form-label" for="detail-edit-title">
-                        Titel des Termins / Events <span class="detail-required-star">*</span>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                        <span>Titel <span class="detail-required-star">*</span></span>
                     </label>
                     <input type="text" id="detail-edit-title" class="detail-edit-input detail-title-input" placeholder="z. B. Bistro-Abend, Jugendtreff, Gebetstreff..." required>
                 </div>
@@ -2206,6 +2210,11 @@
                 <div class="event-detail-organizer-pill detail-view-only" id="detail-modal-organizer-pill">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                     <span>Veranstalter: <strong id="detail-creator-name">Mitglied</strong></span>
+                </div>
+                <!-- Target groups as text, like the organizer ("Event für die Gruppe „Technik“") -->
+                <div class="event-detail-organizer-pill event-detail-groups-line detail-view-only" id="detail-modal-groups-line" style="display:none;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    <span id="detail-modal-groups-text"></span>
                 </div>
             </div>
 
@@ -2316,7 +2325,8 @@
             <div id="detail-modal-desc-card" class="event-detail-section-card">
                 <div class="event-detail-card-header">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="7" y2="18"></line></svg>
-                    <span>Über diesen Termin</span>
+                    <span class="detail-view-only">Über diesen Termin</span>
+                    <span class="detail-edit-only">Beschreibung</span>
                 </div>
                 <div id="detail-modal-desc-wrap" class="event-detail-desc-wrap detail-view-only">
                     <div id="detail-modal-description" class="event-detail-body-text"></div>
@@ -2337,7 +2347,7 @@
                         <span>Zielgruppen</span>
                     </div>
                     <span class="detail-groups-explanation">
-                        Wähle aus, für welche Gruppen dieser Termin sichtbar ist. Ohne Auswahl ist er für alle Mitglieder öffentlich sichtbar.
+                        Nur die gewählten Gruppen sehen den Eintrag. Ohne Auswahl sehen ihn alle Mitglieder.
                     </span>
                 </div>
                 <div id="detail-edit-target-groups-container" class="detail-edit-chips-wrap"></div>

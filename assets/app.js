@@ -476,7 +476,18 @@ const getToken = async () => (auth.currentUser ? auth.currentUser.getIdToken() :
 
 // --- Modal stack with browser-history integration ---
 const modalStack = [];
+// The app's own history steps (closing a modal, leaving a chat or a tab) must not be handled as a user's back
+// gesture. A step only counts as "ours" for a short time: if its popstate never arrives (a page pushed right after
+// it can cancel the pending traversal on mobile browsers), a stale count would otherwise swallow the next real back
 let programmaticBacks = 0;
+let programmaticBackAt = 0;
+const PROGRAMMATIC_BACK_WINDOW_MS = 1000;
+
+function programmaticBack(steps = 1) {
+    programmaticBacks++;
+    programmaticBackAt = Date.now();
+    history.go(-steps);
+}
 
 function openModal(id) {
     const modal = $(id);
@@ -520,10 +531,7 @@ function closeModal(id, fromPopstate = false) {
     const stackIndex = modalStack.indexOf(id);
     if (stackIndex > -1) {
         modalStack.splice(stackIndex, 1);
-        if (!fromPopstate && history.state?.isModal) {
-            programmaticBacks++;
-            history.back();
-        }
+        if (!fromPopstate && history.state?.isModal) programmaticBack();
     }
     hideModal(modal);
     restoreFocus(modal._returnFocusTo);
@@ -552,18 +560,56 @@ function closeMultipleModals(ids) {
     });
     restoreFocus(finalFocus);
     // Nested modals share a single history entry (replaceState), so step back at most once
-    if (backs > 0 && history.state?.isModal) {
-        programmaticBacks++;
-        history.back();
-    }
+    if (backs > 0 && history.state?.isModal) programmaticBack();
     reshowTopModal();
 }
 
+// --- Header: slides away while scrolling down, comes back on the first scroll up (like the Android app) ---
+const HEADER_SCROLL_THRESHOLD = 8;
+let headerLastY = 0;
+let headerTicking = false;
+
+function revealHeader() {
+    document.querySelector('.header')?.classList.remove('header-hidden');
+}
+
+function updateHeaderOnScroll(container) {
+    const header = document.querySelector('.header');
+    if (!header) return;
+    const y = container.scrollTop;
+    const delta = y - headerLastY;
+    header.classList.toggle('header-scrolled', y > 4);
+    // Near the top, or while the profile menu is open, it always stays
+    if (y < 72 || $('profileDropdown')?.classList.contains('show')) {
+        header.classList.remove('header-hidden');
+        headerLastY = y;
+        return;
+    }
+    if (Math.abs(delta) < HEADER_SCROLL_THRESHOLD) return;
+    header.classList.toggle('header-hidden', delta > 0);
+    headerLastY = y;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const container = document.querySelector('.container');
+    if (!container) return;
+    container.addEventListener('scroll', () => {
+        if (headerTicking) return;
+        headerTicking = true;
+        requestAnimationFrame(() => {
+            headerTicking = false;
+            updateHeaderOnScroll(container);
+        });
+    }, { passive: true });
+});
+
 window.addEventListener('popstate', () => {
-    if (programmaticBacks > 0) {
+    if (programmaticBacks > 0 && Date.now() - programmaticBackAt < PROGRAMMATIC_BACK_WINDOW_MS) {
         programmaticBacks--;
         return;
     }
+    // Anything older was lost: this is the user's own back
+    programmaticBacks = 0;
     if ($('mentoring-threads-layout')?.classList.contains('in-chat') && window.matchMedia('(max-width: 768px)').matches) {
         mentoringChatHistoryPushed = false;
         closeMentoringChatMobile(true, true);
@@ -864,8 +910,7 @@ function syncTabHistory(tabName) {
     if (tabName === HOME_TAB) {
         if (tabHistoryPushed && history.state?.tab) {
             tabHistoryPushed = false;
-            programmaticBacks++;
-            history.back();
+            programmaticBack();
         }
         return;
     }
@@ -902,6 +947,7 @@ function switchTab(tabName, source) {
     $(tabName)?.classList.add('active', currentIndex > -1 && targetIndex > -1 && targetIndex < currentIndex ? 'slide-in-left' : 'slide-in-right');
 
     const container = document.querySelector('.container');
+    revealHeader();
     if (container) {
         container.classList.toggle('ai-chat-active', tabName === 'ai-chat');
         if (tabName === 'ai-chat') {
@@ -1017,13 +1063,19 @@ const findPerson = id => people.find(p => String(p.id) === String(id));
 
 // Members only see their own person entry and requests; the person is auto-linked by name on first login.
 async function loadMemberData() {
-    settings = (await apiGet('settings').catch(err => (console.warn('Could not fetch settings:', err), null))) || settings;
     const uid = currentUser.uid;
     const peopleRef = ref(db, 'people');
     const byField = (field, value) => get(query(peopleRef, orderByChild(field), equalTo(value))).then(snap => snap.exists() ? snap.val() : {});
+    // Independent requests run side by side (each round trip costs on mobile data)
+    const [sData, ownPeople, rSnap] = await Promise.all([
+        apiGet('settings').catch(err => (console.warn('Could not fetch settings:', err), null)),
+        byField('uid', uid).catch(err => (console.warn('Could not load people:', err), {})),
+        get(query(ref(db, 'requests'), orderByChild('userId'), equalTo(uid))).catch(err => (console.warn('Could not get requests:', err), null))
+    ]);
+    settings = sData || settings;
     let peopleList = [];
     try {
-        peopleList = safeList(await byField('uid', uid));
+        peopleList = safeList(ownPeople);
         // Members created before their account existed: link the person record with the same name once
         const name = fullName(currentUser) || currentUser.name || '';
         if (peopleList.length === 0 && name) {
@@ -1038,7 +1090,6 @@ async function loadMemberData() {
         console.warn('Could not load people:', err);
     }
     people = peopleList.filter(p => !p.isDeleted);
-    const rSnap = await get(query(ref(db, 'requests'), orderByChild('userId'), equalTo(uid))).catch(err => (console.warn('Could not get requests:', err), null));
     requests = (rSnap?.exists() ? safeList(rSnap.val()) : []).filter(r => r.userId === uid);
 }
 
@@ -1062,25 +1113,31 @@ async function loadAdminData() {
     });
 }
 
-async function loadData(silent = false) {
+// freshUser: the sign-in just delivered the current account, so /auth/me is not asked again
+async function loadData(silent = false, { freshUser = false } = {}) {
     const loader = $('loading-overlay');
     if (loader && !silent) loader.style.display = 'flex';
     try {
-        if (isAuthenticated) await refreshCurrentUser();
+        if (isAuthenticated && !freshUser) await refreshCurrentUser();
         advancedConfigLoaded = false;
         advancedConfigAppName = null;
+        // Events and conversations do not depend on the finance data: start them right away
+        if (isAuthenticated) {
+            loadMentoringThreads(false);
+            loadEventsData();
+        }
+        const inviteCode = canManageRegistrationCode() ? apiGet('system/inviteCode').catch(() => null) : null;
         if (canViewFinances() || isSuperAdminUser()) await loadAdminData();
         else await loadMemberData();
 
-        if (canManageRegistrationCode()) {
-            const code = await apiGet('system/inviteCode').catch(() => null);
+        if (inviteCode) {
+            const code = await inviteCode;
             if (code) updateInviteCodeDisplay(code);
         } else {
             updateInviteCodeDisplay('');
         }
 
-        setText('user-name-display', fullName(currentUser) || currentUser.name || '');
-        setText('user-email-display', currentUser.email || '');
+        renderHomeGreeting();
         setText('profile-menu-name', fullName(currentUser) || currentUser.name || '');
         setText('profile-menu-email', currentUser.email || '');
         if (canAccessAi()) {
@@ -1090,10 +1147,6 @@ async function loadData(silent = false) {
             }).catch(() => {});
         }
         updateNavVisibility();
-        if (isAuthenticated) {
-            loadMentoringThreads(false);
-            loadEventsData();
-        }
 
         if (window.location.hash) {
             const tab = resolveHashTab();
@@ -1138,7 +1191,7 @@ async function renderViews(full = true) {
         ensurePushNotificationSubscription();
     }
     if (isSuperAdminUser()) {
-        await loadSystemGroups();
+        await loadSystemGroups(10000);
         renderAccountsTab();
         if (full) {
             renderSuperAdminPaymentEditor();
@@ -1167,15 +1220,19 @@ async function fetchUserProfile(uid, retries = 2) {
     return fetchUserProfile(uid, retries - 1);
 }
 
+// Runs beside the start: only a fresh installation (no owner yet) or an owner without flags changes anything,
+// then the profile and the data are loaded again
 async function bootstrapSuperAdmin(user) {
     try {
         const res = await api('/admin/bootstrap-super-admin', 'POST');
         if (!res.ok) return;
         const result = await res.json();
-        if (result.isSuperAdmin || result.isOwner) {
-            currentUser = { ...(currentUser || {}), admin: true, owner: true, superAdmin: true };
-            currentUser = (await fetchUserProfile(user.uid, 2)) || currentUser;
-        }
+        if (!(result.isSuperAdmin || result.isOwner)) return;
+        if (currentUser?.owner && currentUser?.superAdmin && currentUser?.admin) return;
+        currentUser = { ...(currentUser || {}), admin: true, owner: true, superAdmin: true };
+        currentUser = { ...currentUser, ...((await fetchUserProfile(user.uid, 2)) || {}) };
+        updateNavVisibility();
+        loadData(true);
     } catch (error) {
         console.warn('Super admin bootstrap skipped:', error);
     }
@@ -1185,16 +1242,17 @@ onAuthStateChanged(auth, async user => {
     if (user) {
         showAuthLoader('Profil wird geladen...');
         localStorage.setItem('agora-is-logged-in', 'true');
-        currentUser = await fetchUserProfile(user.uid, 2);
-        if (!currentUser) {
-            setLoadingMessage('Profil nicht gefunden, bitte Admin kontaktieren.');
-            currentUser = { role: 'user', email: user.email, uid: user.uid };
-        }
-        await bootstrapSuperAdmin(user);
+        const profile = await fetchUserProfile(user.uid, 2);
+        if (!profile) setLoadingMessage('Profil nicht gefunden, bitte Admin kontaktieren.');
+        // The signed-in account over the stored profile, like refreshCurrentUser did. Only /auth/me (opening the app)
+        // carries the computed fields (mentor status); after a fresh login loadData still asks it
+        const { getIdToken, ...account } = user;
+        currentUser = { ...(profile || { role: 'user', email: user.email, uid: user.uid }), ...account };
         $('login-modal').classList.remove('show');
         isAuthenticated = true;
         connectSSE();
-        loadData();
+        loadData(false, { freshUser: 'isApprovedMentor' in account });
+        bootstrapSuperAdmin(user);
         loadCurrentProfilePicture();
         ensurePushNotificationSubscription();
     } else {
@@ -1667,8 +1725,11 @@ const DEFAULT_PERMISSIONS = [
 
 // Several views ask for the groups during one refresh: they share the request that is already running
 let systemGroupsRequest = null;
-function loadSystemGroups() {
-    if (!systemGroupsRequest) systemGroupsRequest = fetchSystemGroups().finally(() => { systemGroupsRequest = null; });
+// maxAgeMs: reuse a list loaded that recently (the start loads it with the events and again for the views)
+let systemGroupsLoadedAt = 0;
+function loadSystemGroups(maxAgeMs = 0) {
+    if (maxAgeMs && Date.now() - systemGroupsLoadedAt < maxAgeMs) return Promise.resolve();
+    if (!systemGroupsRequest) systemGroupsRequest = fetchSystemGroups().then(() => { systemGroupsLoadedAt = Date.now(); }).finally(() => { systemGroupsRequest = null; });
     return systemGroupsRequest;
 }
 
@@ -2652,8 +2713,12 @@ function renderUserView() {
     const statusCard = $('user-status-card');
     const financeCard = $('user-finances-status-card');
     const historyEl = $('user-payment-history');
+    // The start page shows the payment state only for members with a fee (compact); the finances tab shows all
     const setCards = html => {
-        if (statusCard) statusCard.innerHTML = html;
+        if (statusCard) {
+            statusCard.innerHTML = '';
+            statusCard.style.display = 'none';
+        }
         if (financeCard) financeCard.innerHTML = html;
     };
     const noMemberHtml = `
@@ -2696,15 +2761,7 @@ function renderUserView() {
             </div>` : '';
         const requestStatus = t('user_req_status_tooltip', 'Statuswechsel beantragen');
 
-        if (statusCard) {
-            statusCard.style.display = 'block';
-            statusCard.innerHTML = `
-                <div class="user-hero-status ${statusClass}" style="${tint}">
-                    <div class="user-finance-hero-title" style="color: ${accent}; font-size: 1.35rem; font-weight: 800; margin-bottom: 5px;">${statusText}</div>
-                    ${subline(' style="font-size: 0.95rem;"')}
-                    ${overdueBox(' style="margin-top: 14px; margin-bottom: 0;"')}
-                </div>`;
-        }
+        if (statusCard) renderHomePaymentStatus(statusCard, p, meta, statusText);
         if (financeCard) {
             financeCard.innerHTML = `
                 <div class="user-finance-hero-card" style="${tint}">
@@ -4769,10 +4826,7 @@ function closeMentoringChatMobile(fromHistory = false, userBack = !fromHistory) 
     const steps = (!fromHistory && mentoringChatHistoryPushed ? 1 : 0) + (returnHome && tabHistoryPushed ? 1 : 0);
     mentoringChatHistoryPushed = false;
     if (returnHome) tabHistoryPushed = false;
-    if (steps > 0) {
-        programmaticBacks++;
-        history.go(-steps);
-    }
+    if (steps > 0) programmaticBack(steps);
     if (returnHome) switchTab(HOME_TAB, 'history');
     // Only a chat that was open changes the unread counts; never pick a new chat while closing
     else if (hadOpenChat) loadMentoringThreads(false, null, false);
@@ -5006,38 +5060,52 @@ async function setMentorStatus(mentorId, status) {
 }
 
 // Home screen teaser for the newest unread conversation (hidden when everything is read)
+// Start page: unread conversations as one card - header with the total, up to three chats, link to all
+const HOME_MENTORING_ROWS = 3;
 function renderHomeMentoringCard() {
     const container = $('user-mentoring-home-card');
     if (!container) return;
     const unread = currentUser && canUseMentoring() ? mentoringThreads.filter(th => (th.unread_count || 0) > 0) : [];
     container.style.display = unread.length ? 'block' : 'none';
-    if (unread.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-    const thread = unread[0];
-    const { name, role } = threadPartner(thread);
-    const time = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    if (unread.length === 0) return void (container.innerHTML = '');
+    const total = unread.reduce((sum, th) => sum + th.unread_count, 0);
+    const today = new Date().toDateString();
+    const when = iso => {
+        const d = iso ? new Date(iso) : null;
+        if (!d || isNaN(d)) return '';
+        return d.toDateString() === today ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    };
+    const rows = unread.slice(0, HOME_MENTORING_ROWS).map(thread => {
+        const { name, role } = threadPartner(thread);
+        // Seekers see their mentor's picture; mentors only know the anonymous alias
+        const photoId = isCurrentUser(thread.mentor) ? null : thread.mentor;
+        return `
+            <button type="button" class="home-msg-row" onclick="window.openMentoringChatDirect('${escapeHtml(thread.id)}', 'home')">
+                ${renderAvatarWrap(photoId, name, { wrapClass: 'home-msg-avatar', imgClass: 'home-msg-avatar-img', initialsClass: 'home-msg-initials' })}
+                <span class="home-msg-text">
+                    <span class="home-msg-name-line">
+                        <span class="home-msg-name">${escapeHtml(name)}</span>
+                        <span class="home-msg-time">${escapeHtml(when(thread.lastMessage?.created || thread.updated))}</span>
+                    </span>
+                    <span class="home-msg-role">${escapeHtml(role)}</span>
+                    <span class="home-msg-snippet-line">
+                        <span class="home-msg-snippet">${escapeHtml(thread.last_message || t('mentoring_start_conversation_desc', 'Neue vertrauliche Nachricht'))}</span>
+                        <span class="home-msg-count">${formatBadgeCount(thread.unread_count)}</span>
+                    </span>
+                </span>
+            </button>`;
+    }).join('');
+    const more = unread.length - HOME_MENTORING_ROWS;
     container.innerHTML = `
-        <div class="home-mentoring-card home-mentoring-card-unread" onclick="window.openMentoringChatDirect('${escapeHtml(thread.id)}', 'home')" role="button" tabindex="0">
-            <div class="home-mentoring-top-row">
-                <div class="home-mentoring-sender-info">
-                    <span class="home-mentoring-pulse-dot"></span>
-                    <span class="home-mentoring-sender-name">${escapeHtml(name)}</span>
-                    <span class="home-mentoring-role-pill">${escapeHtml(role)}</span>
-                </div>
-                ${time ? `<span class="home-mentoring-time">${escapeHtml(time)}</span>` : ''}
+        <div class="home-msg-card">
+            <div class="home-msg-head">
+                <span class="home-msg-icon">${svgIcon('chat', 18)}</span>
+                <span class="home-msg-title">${t('home_messages_title', 'Neue Nachrichten')}</span>
+                <span class="home-msg-total">${formatBadgeCount(total)}</span>
+                <button type="button" class="home-msg-all" onclick="window.switchTab('mentoring')">${t('home_messages_all', 'Alle')}${svgIcon('chevronRight', 14, 2.5)}</button>
             </div>
-            <div class="home-mentoring-snippet-box">
-                <div class="home-mentoring-snippet">"${escapeHtml(thread.last_message || t('mentoring_start_conversation_desc', 'Neue vertrauliche Nachricht'))}"</div>
-                <div class="home-mentoring-arrow" aria-hidden="true">
-                    ${svgIcon('chevronRight', 18, 2.5)}
-                </div>
-            </div>
-            ${unread.length > 1 ? `
-            <div class="home-mentoring-extra-bar">
-                <span>+${unread.length - 1} ${t('home_mentoring_more_unread', 'weitere ungelesene Unterhaltungen')}</span>
-            </div>` : ''}
+            <div class="home-msg-list">${rows}</div>
+            ${more > 0 ? `<div class="home-msg-more">+${more} ${t('home_mentoring_more_unread', 'weitere ungelesene Unterhaltungen')}</div>` : ''}
         </div>`;
 }
 
@@ -5237,15 +5305,129 @@ function renderHomeDutiesCard() {
     const openRequests = currentUser && Array.isArray(myDutyRequests) ? myDutyRequests.filter(req => req && !(req.eventDate && req.eventDate < todayStr)) : [];
     const dutyEvents = currentUser ? appEvents.filter(ev => ev && ev.status !== 'cancelled' && !isEventPast(ev, todayStr) && Array.isArray(ev.duties) && ev.duties.some(d => d && isMyDuty(d))) : [];
     dutyEvents.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
-    container.style.display = openRequests.length || dutyEvents.length ? 'block' : 'none';
-    container.innerHTML = (openRequests.length ? `<div class="events-requests-banner" style="margin-bottom: 20px;">${dutyRequestBanner(openRequests, true)}</div>` : '')
-        + (dutyEvents.length ? `
-            <div class="home-duties-freestanding-wrap" style="margin-top: 16px;">
-                <h2 class="home-duties-freestanding-title">Deine Dienste</h2>
-                <div class="events-feed-list">
-                    ${dutyEvents.map(ev => renderEventCard(ev, 'home-duty-card-')).join('')}
+    const requests = $('home-duty-requests');
+    if (requests) {
+        requests.style.display = openRequests.length ? 'block' : 'none';
+        requests.innerHTML = openRequests.length ? `<div class="events-requests-banner">${dutyRequestBanner(openRequests, true)}</div>` : '';
+    }
+    renderHomeUpcoming();
+    // Own duties get their own section below the "next" row (commitments, not offers)
+    container.style.display = dutyEvents.length ? 'block' : 'none';
+    container.innerHTML = dutyEvents.length ? `
+        <div class="home-section-head"><h2>${t('home_your_duties', 'Deine Dienste')}</h2></div>
+        <div class="events-feed-list">
+            ${dutyEvents.map(ev => renderEventCard(ev, 'home-duty-card-')).join('')}
+        </div>` : '';
+}
+
+// --- Start page: greeting, "Als Nächstes" row, compact payment state ---
+function renderHomeGreeting() {
+    const hour = new Date().getHours();
+    const hello = hour < 11 ? t('home_greeting_morning', 'Guten Morgen') : hour < 18 ? t('home_greeting_day', 'Hallo') : t('home_greeting_evening', 'Guten Abend');
+    const first = (currentUser?.firstName || fullName(currentUser) || currentUser?.name || '').trim().split(/\s+/)[0];
+    setText('home-greeting-title', first ? `${hello}, ${first} 👋` : `${hello} 👋`);
+    setText('home-greeting-date', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }));
+}
+
+const HOME_UPCOMING_COUNT = 5;
+
+// "Heute", "Morgen", the weekday within a week, else "17. Okt."
+function homeDayLabel(dateStr, todayStr) {
+    if (dateStr <= todayStr) return t('home_today', 'Heute');
+    const [y, m, d] = splitDate(dateStr);
+    const date = new Date(y, m - 1, d);
+    const [ty, tm, td] = splitDate(todayStr);
+    const days = Math.round((date - new Date(ty, tm - 1, td)) / 86400000);
+    if (days === 1) return t('home_tomorrow', 'Morgen');
+    if (days < 7) return date.toLocaleDateString([], { weekday: 'long' });
+    return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// Next appointments and events (also invitations to register) as swipeable cards; returns the shown events
+function renderHomeUpcoming() {
+    const container = $('home-upcoming');
+    if (!container) return [];
+    const todayStr = getTodayStr();
+    const startOf = ev => (ev.date < todayStr ? todayStr : ev.date);
+    const upcoming = currentUser ? appEvents
+        .filter(ev => ev && ev.date && ev.status !== 'cancelled' && !isEventPast(ev, todayStr))
+        .sort((a, b) => startOf(a).localeCompare(startOf(b)) || (a.startTime || '').localeCompare(b.startTime || ''))
+        .slice(0, HOME_UPCOMING_COUNT) : [];
+    container.style.display = currentUser ? 'block' : 'none';
+    if (!upcoming.length) {
+        container.innerHTML = `
+            <div class="home-section-head"><h2>${t('home_next', 'Als Nächstes')}</h2></div>
+            <div class="home-next-empty">${t('home_next_empty', 'Gerade steht nichts an – genieß die freie Zeit!')} 🌿</div>`;
+        return [];
+    }
+    const cards = upcoming.map(ev => {
+        const id = escapeHtml(ev.id);
+        const isMultiDay = ev.endDate && ev.endDate !== ev.date;
+        const isEvent = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
+        const cat = ev.isPinned && isEvent ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
+        const image = eventImage(ev);
+        const day = homeDayLabel(startOf(ev), todayStr);
+        const time = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (ev.startTime ? ev.startTime : t('home_all_day', 'Ganztägig'));
+        const { myDuty, isRegistered, isWaitlist } = getEventCardStatusInfo(ev);
+        const chip = myDuty ? `<span class="home-next-chip chip-duty">${cardIcon('user')}${escapeHtml(myDuty.roleName || 'Dienst')}</span>`
+            : isRegistered ? `<span class="home-next-chip chip-registered">${cardIcon('check')}${t('home_registered', 'Angemeldet')}</span>`
+            : isWaitlist ? `<span class="home-next-chip chip-waitlist">${t('home_waitlist', 'Warteliste')}</span>`
+            : ev.requiresRegistration && !ev.isFull ? `<span class="home-next-chip chip-open">${t('home_register_open', 'Anmeldung offen')}</span>`
+            : '';
+        return `
+            <div class="home-next-card ${cat}" role="button" tabindex="0" onclick="window.openEventDetailModal('${id}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.openEventDetailModal('${id}');}">
+                <div class="home-next-cover">
+                    ${image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy">` : `<div class="home-next-fallback">${svgIcon(isEvent ? 'calendar' : 'clock', 22)}</div>`}
+                    <span class="home-next-day${day === t('home_today', 'Heute') ? ' is-today' : ''}">${escapeHtml(day)}</span>
                 </div>
-            </div>` : '');
+                <div class="home-next-body">
+                    <div class="home-next-when">${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(time)}</span></div>
+                    <div class="home-next-title">${escapeHtml(ev.title)}</div>
+                    ${ev.location ? `<div class="home-next-where">${cardIcon('location')}<span>${escapeHtml(ev.location)}</span></div>` : ''}
+                    ${chip}
+                </div>
+            </div>`;
+    }).join('');
+    container.innerHTML = `
+        <div class="home-section-head">
+            <h2>${t('home_next', 'Als Nächstes')}</h2>
+            <button type="button" class="home-section-link" onclick="window.switchTab('events'); window.switchEventsSubTab('termine')">${t('home_messages_all', 'Alle')}${svgIcon('chevronRight', 14, 2.5)}</button>
+        </div>
+        <div class="home-next-scroller">${cards}</div>`;
+    return upcoming;
+}
+
+// Nothing when all is paid; a slim amber line when a payment is due soon; a clear red card with the open amount
+// when a payment is overdue (moved up)
+function renderHomePaymentStatus(container, p, meta, statusText) {
+    const state = meta.isOverdue ? 'overdue' : meta.isSoonDue ? 'soon' : 'ok';
+    if (state === 'ok') {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+    const title = state === 'overdue' ? statusText
+        : standingOrderCovers(meta) ? t('user_standing_order_active', 'Dauerauftrag aktiv')
+        : `${t('user_paid_until', 'Bezahlt bis')} ${escapeHtml(paidUntilText(personPaidUntil(p)))}`;
+    const sub = state === 'overdue' ? `${euro(p._overdueAmount || 0)} ${t('home_fee_open', 'offen')}`
+        : state === 'soon' ? statusText : t('home_fee_ok', 'Mitgliedsbeitrag');
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div class="home-pay home-pay-${state}" role="button" tabindex="0" onclick="window.switchTab('user-finances')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.switchTab('user-finances');}">
+            <span class="home-pay-icon">${svgIcon(state === 'ok' ? 'check' : 'alert', 18, 2.5)}</span>
+            <span class="home-pay-text">
+                <span class="home-pay-title">${title}</span>
+                <span class="home-pay-sub">${sub}</span>
+            </span>
+            ${state === 'overdue' ? `<span class="home-pay-action">${t('home_fee_details', 'Ansehen')}</span>` : svgIcon('chevronRight', 16, 2.5)}
+        </div>`;
+    // Overdue comes first after the greeting, otherwise it closes the page
+    const home = $('user-overview');
+    if (!home) return;
+    if (state === 'overdue') home.insertBefore(container, $('home-duty-requests'));
+    else home.appendChild(container);
 }
 
 function refreshDetailEvent(openDuties) {
@@ -5317,13 +5499,26 @@ function getFilteredEvents(todayStr) {
     });
 }
 
+// "Termine": a multi-day event gets one entry per remaining day (from today on), each with its own day
+function expandEventDays(list, todayStr) {
+    return list.flatMap(ev => {
+        if (!ev.date || !ev.endDate || ev.endDate <= ev.date) return [ev];
+        const days = [];
+        const [y, m, d] = splitDate(ev.date > todayStr ? ev.date : todayStr);
+        for (let date = new Date(y, m - 1, d); toDateStr(date) <= ev.endDate && days.length < 366; date.setDate(date.getDate() + 1)) {
+            days.push({ ...ev, _day: toDateStr(date) });
+        }
+        return days;
+    });
+}
+
 function renderEvents() {
     const container = $('events-list-container');
     if (!container) return;
     const todayStr = getTodayStr();
     const isEventsTab = currentEventsSubTab === 'events';
     const filtered = getFilteredEvents(todayStr);
-    const upcoming = isEventsTab ? filtered.filter(ev => !isEventPast(ev, todayStr)) : filtered;
+    const upcoming = isEventsTab ? filtered.filter(ev => !isEventPast(ev, todayStr)) : expandEventDays(filtered, todayStr);
     const past = isEventsTab ? filtered.filter(ev => isEventPast(ev, todayStr)) : [];
     const listClass = isEventsTab ? 'events-cards-grid' : 'events-feed-list';
 
@@ -5362,8 +5557,8 @@ function renderEvents() {
         return;
     }
 
-    // Pinned highlights first, then chronologically
-    upcoming.sort((a, b) => Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned)) || (a.date || '').localeCompare(b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
+    // Events tab: pinned highlights first; Termine: purely by day
+    upcoming.sort((a, b) => (isEventsTab ? Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned)) : 0) || (a._day || a.date || '').localeCompare(b._day || b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
     const group = (title, items, render, extraClass = '') => `
         <div class="events-month-group${extraClass}">
             <div class="events-month-header">
@@ -5374,7 +5569,7 @@ function renderEvents() {
                 ${items.map(render).join('')}
             </div>
         </div>`;
-    const byMonth = (list, render) => [...groupBy(list, ev => (ev.date ? ev.date.substring(0, 7) : 'Ohne Datum'))].map(([key, items]) => {
+    const byMonth = (list, render) => [...groupBy(list, ev => ((ev._day || ev.date) ? (ev._day || ev.date).substring(0, 7) : 'Ohne Datum'))].map(([key, items]) => {
         const [y, m] = key.split('-').map(Number);
         return group(escapeHtml(key.includes('-') ? `${MONTH_NAMES[m - 1]} ${y}` : key), items, render);
     }).join('');
@@ -5382,7 +5577,7 @@ function renderEvents() {
     const pinned = upcoming.filter(ev => ev.isPinned);
     container.innerHTML = (isEventsTab
         ? (pinned.length ? group('Highlights', pinned, ctCard, ' events-highlights-group') : '') + byMonth(upcoming.filter(ev => !ev.isPinned), ctCard)
-        : byMonth(upcoming, ev => renderEventCard(ev))) + pastSection;
+        : byMonth(upcoming, ev => renderEventCard(ev, undefined, ev._day))) + pastSection;
 }
 
 const statusBadge = (cls, content, title = '') => `<span class="event-card-status ${cls}"${title ? ` title="${title}"` : ''}>${content}</span>`;
@@ -5393,12 +5588,14 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
     const isPinned = Boolean(ev.isPinned);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
     const timeDisplay = !isMultiDay ? eventTimeRange(ev) : '';
-    const { myDuty, myRequestedDuty, isWaitlist } = getEventCardStatusInfo(ev);
+    const { myDuty, myRequestedDuty, isRegistered, isWaitlist } = getEventCardStatusInfo(ev);
     const status = isPast ? statusBadge('status-past', '⌛ Vorbei')
         : myDuty ? statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(myDuty.roleName || 'Dienst')}</span>`)
         : myRequestedDuty ? statusBadge('status-requested', `${cardIcon('clock')}<span>Anfrage offen</span>`)
         : isWaitlist ? statusBadge('status-waitlist', '<span>Warteliste</span>')
         : ev.requiresRegistration && ev.isFull && !ev.myRegistration ? statusBadge('status-full', '<span>Ausgebucht</span>') : '';
+    // Own registration sits next to the title (below the picture), independent of the picture's status label
+    const registeredBadge = isRegistered && !isPast ? statusBadge('status-registered', `${cardIcon('check')}<span>Angemeldet</span>`, 'Du bist angemeldet') : '';
     const regCount = ev.registeredCount || 0;
     const max = ev.maxParticipants || 0;
     const footerBadges = !ev.requiresRegistration ? '<span class="ct-footer-pill-muted">Ohne Anmeldung</span>'
@@ -5418,7 +5615,10 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                 <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>${status}</div>
             </div>
             <div class="ct-event-card-body">
-                <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
+                <div class="ct-event-card-title-row">
+                    <div class="ct-event-card-title">${escapeHtml(ev.title)}</div>
+                    ${registeredBadge}
+                </div>
                 <div class="ct-event-card-meta">
                     ${isMultiDay ? metaRow('calendar', formatEventDateSpanShort(ev.date, ev.endDate), ' multiday-row') : ''}
                     ${timeDisplay ? metaRow('clock', timeDisplay) : ''}
@@ -5426,7 +5626,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                 </div>
                 <div class="ct-event-card-footer">
                     <div>${footerBadges}</div>
-                    <div class="ct-details-btn"><span>Details</span>${cardIcon('chevronRight')}</div>
+                    <div class="ct-details-btn" title="Details" aria-hidden="true">${svgIcon('chevronRight', 18, 2.5)}</div>
                 </div>
             </div>
         </div>`;
@@ -5434,11 +5634,12 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
 
 // Compact list card used for appointments and on the home screen: calendar leaf, title, one "when" line,
 // location and at most one status badge; the category colour shows as leaf strip and left accent
-function renderEventCard(ev, idPrefix = 'event-card-') {
+// day: the calendar day this card stands for (multi-day events get one card per day in "Termine")
+function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
     const timeDisplay = eventTimeRange(ev);
     const todayStr = getTodayStr();
-    const isToday = ev.date === todayStr;
-    const isPast = ev.date && ev.date < todayStr;
+    const isToday = day === todayStr;
+    const isPast = isEventPast(ev, todayStr);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
     const isEvent = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
     const isPinned = isEvent && Boolean(ev.isPinned);
@@ -5461,8 +5662,8 @@ function renderEventCard(ev, idPrefix = 'event-card-') {
     const category = isPinned ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
     const categoryLabel = isPinned ? 'Großevent' : isEvent ? 'Event' : 'Termin';
     return `
-        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}" title="${categoryLabel}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
-            ${eventCalendarLeaf(ev.date)}
+        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" title="${categoryLabel}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
+            ${eventCalendarLeaf(day)}
             <div class="event-card-body">
                 <div class="event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="event-card-when">
@@ -5625,11 +5826,23 @@ async function openEventDetailModal(eventId) {
     }
     show('detail-modal-organizer-pill', !!creator, 'inline-flex');
 
+    // Target groups: a text line under the organizer instead of tags on the picture
     const tags = $('detail-modal-tags');
     if (tags) {
-        tags.innerHTML = Array.isArray(ev.targetGroups) ? ev.targetGroups.map(g => `<span class="event-tag event-tag-group">${escapeHtml(g)}</span>`).join(' ') : '';
-        tags.style.display = tags.innerHTML ? 'flex' : 'none';
+        tags.innerHTML = '';
+        tags.style.display = 'none';
     }
+    const groupNames = (Array.isArray(ev.targetGroups) ? ev.targetGroups : []).map(g => findGroup(g)?.name || g).filter(Boolean);
+    const groupsText = $('detail-modal-groups-text');
+    if (groupsText) {
+        const quoted = groupNames.map(name => `<strong>„${escapeHtml(name)}“</strong>`);
+        const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} ${t('detail_groups_and', 'und')} ${quoted[quoted.length - 1]}` : quoted.join('');
+        const isEventType = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
+        const kind = isEventType ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Termin');
+        groupsText.innerHTML = quoted.length === 1 ? `${kind} ${t('detail_groups_for_one', 'für die Gruppe')} ${list}`
+            : `${kind} ${t('detail_groups_for_many', 'für die Gruppen')} ${list}`;
+    }
+    show('detail-modal-groups-line', groupNames.length > 0, 'flex');
 
     const description = ev.description?.trim();
     const descCard = $('detail-modal-desc-card');
@@ -6224,6 +6437,7 @@ function openNewEventDetailModal(defaultType) {
     if (coverImg) coverImg.src = '';
     setText('detail-modal-title', type === 'event' ? 'Neues Event' : 'Neuer Termin');
     show('detail-modal-organizer-pill', false);
+    show('detail-modal-groups-line', false);
     const tags = $('detail-modal-tags');
     if (tags) {
         tags.innerHTML = '';
@@ -6251,6 +6465,8 @@ function setDetailEditType(type) {
         : 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.');
     show('detail-edit-pinned-wrap', canManage && !isTermin, 'flex');
     show('detail-edit-recurring-toggle-wrap', canManage && isTermin && !currentDetailEvent, 'inline-flex');
+    const kind = isTermin ? 'Termin' : 'Event';
+    setText('detail-edit-heading', currentDetailEvent ? `${kind} bearbeiten` : (isTermin ? 'Neuer Termin' : 'Neues Event'));
 }
 
 function toggleDetailMultiDay(isMultiDay) {
@@ -6276,7 +6492,8 @@ function populateDetailEditTargetGroups(selectedGroups = []) {
             const name = g.name || g.id;
             return `
                 <button type="button" class="detail-group-chip ${selectedGroups.includes(name) || selectedGroups.includes(g.id) ? 'is-selected' : ''}" data-group="${escapeHtml(name)}" onclick="this.classList.toggle('is-selected')">
-                    <span>👥 ${escapeHtml(name)}</span>
+                    <svg class="detail-group-chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span>${escapeHtml(name)}</span>
                 </button>`;
         }).join('');
 }
