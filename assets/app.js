@@ -45,26 +45,33 @@ function escapeHtml(text) {
     return text ? String(text).replace(/[&<>"']/g, m => HTML_ESCAPES[m]) : '';
 }
 
-const numberFormatter = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const currencyFormatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const dateFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-const monthYearFormatter = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' });
-const dateTimeFormatter = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-const WEEKDAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+// Formatters follow the UI language (uiLocale(), set once the locale file is loaded)
+const intlCache = new Map();
+function intlFormatter(Ctor, options) {
+    const key = Ctor.name + uiLocale() + JSON.stringify(options);
+    if (!intlCache.has(key)) intlCache.set(key, new Ctor(uiLocale(), options));
+    return intlCache.get(key);
+}
+const localeFormatter = (Ctor, options) => ({ format: value => intlFormatter(Ctor, options).format(value) });
+const numberFormatter = localeFormatter(Intl.NumberFormat, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const currencyFormatter = localeFormatter(Intl.NumberFormat, { style: 'currency', currency: 'EUR' });
+const dateFormatter = localeFormatter(Intl.DateTimeFormat, { day: '2-digit', month: '2-digit', year: 'numeric' });
+const monthYearFormatter = localeFormatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric' });
+const dateTimeFormatter = localeFormatter(Intl.DateTimeFormat, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 function formatCurrency(amount) {
     const num = parseFloat(amount);
-    return isNaN(num) ? '0,00' : numberFormatter.format(num);
+    return numberFormatter.format(isNaN(num) ? 0 : num);
 }
-const euro = amount => `${formatCurrency(amount)} €`;
+// Amount with the euro sign where the language puts it ("50,00 €" / "€50.00")
+const euro = amount => { const num = parseFloat(amount); return currencyFormatter.format(isNaN(num) ? 0 : num); };
 
 function formatDateFast(dateInput) {
     if (!dateInput) return '';
     const str = String(dateInput);
-    if (str.length === 10 && str[4] === '-' && str[7] === '-') return `${str.slice(8, 10)}.${str.slice(5, 7)}.${str.slice(0, 4)}`;
+    if (str.length === 10 && str[4] === '-' && str[7] === '-') return [str.slice(8, 10), str.slice(5, 7), str.slice(0, 4)].join(uiLang === 'en' ? '/' : '.');
     const d = new Date(dateInput);
-    return Number.isNaN(d.getTime()) ? 'Kein Datum' : dateFormatter.format(d);
+    return Number.isNaN(d.getTime()) ? t('no_date', 'Kein Datum') : dateFormatter.format(d);
 }
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -104,7 +111,7 @@ function debounce(fn, wait) {
  * Runs an action and reports a failure (alert, or a toast with `toast`): the message is a string or a function of
  * the error. `button` shows the loading state on a button meanwhile. Resolves to true on success.
  */
-async function attempt(action, failure, { toast = null, button = null, loading = 'Speichert...' } = {}) {
+async function attempt(action, failure, { toast = null, button = null, loading = t('setup_btn_saving', 'Speichert...') } = {}) {
     if (button) setButtonLoading(button, true, loading);
     try {
         await action();
@@ -120,7 +127,7 @@ async function attempt(action, failure, { toast = null, button = null, loading =
     }
 }
 
-function setButtonLoading(btnId, isLoading, loadingText = 'Laden...') {
+function setButtonLoading(btnId, isLoading, loadingText = t('btn_loading', 'Laden...')) {
     const btn = $(btnId);
     if (!btn) return;
     if (isLoading) {
@@ -262,9 +269,9 @@ function renderPendingFiles(kind) {
         const isImage = file.type && file.type.startsWith('image/');
         if (isImage && !file.previewUrl) file.previewUrl = URL.createObjectURL(file);
         const preview = isImage
-            ? `<img src="${file.previewUrl}" style="${STYLE.thumb}" alt="Beleg">`
+            ? `<img src="${file.previewUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Beleg')}">`
             : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);">${svgIcon('file', 20)}</div>`;
-        return fileRow(preview, file.name, iconButton(`${remove}(${index})`, 'Entfernen'));
+        return fileRow(preview, file.name, iconButton(`${remove}(${index})`, t('btn_remove', 'Entfernen')));
     }).join('');
 }
 function resetPendingFiles(kind) {
@@ -293,12 +300,16 @@ async function uploadAll(files, name, date) {
 let currentLang = localStorage.getItem('app_lang') || 'system';
 localStorage.setItem('app_lang', currentLang);
 let translations = {};
+let uiLang = 'de';
+const uiLocale = () => (uiLang === 'en' ? 'en-GB' : 'de-DE');
 
 async function loadLanguage(lang) {
     try {
         const browserLang = (navigator.language || navigator.userLanguage || 'de').toLowerCase();
         const fetchLang = lang === 'system' ? (browserLang.startsWith('de') ? 'de' : 'en') : lang;
         translations = await (await fetch(`./assets/locales/${fetchLang}.json`)).json();
+        uiLang = fetchLang;
+        document.documentElement.lang = fetchLang;
         currentLang = lang;
         localStorage.setItem('app_lang', lang);
         applyTranslations();
@@ -350,7 +361,8 @@ function applyTranslations() {
         'data-i18n': (el, text) => { if (text.includes('<')) el.innerHTML = text; else el.textContent = text; },
         'data-i18n-placeholder': (el, text) => el.setAttribute('placeholder', text),
         'data-i18n-aria-label': (el, text) => el.setAttribute('aria-label', text),
-        'data-i18n-title': (el, text) => el.setAttribute('title', text)
+        'data-i18n-title': (el, text) => el.setAttribute('title', text),
+        'data-i18n-alt': (el, text) => el.setAttribute('alt', text)
     };
     for (const [attr, apply] of Object.entries(setters)) {
         document.querySelectorAll(`[${attr}]`).forEach(el => {
@@ -378,15 +390,9 @@ async function changeAppLanguage(lang) {
 
 loadLanguage(currentLang);
 
-// --- Toasts & dialogs (with automatic translation of legacy German messages) ---
-const TOAST_KEYS = {
-    'Zahlung aktualisiert': 'toast_updated', 'Spende aktualisiert': 'toast_updated', 'Ausgabe aktualisiert': 'toast_updated', 'Status geändert': 'toast_updated',
-    'Zahlung erfolgreich gesendet': 'toast_saved', 'Anfrage erfolgreich gesendet': 'toast_saved', 'Code kopiert': 'toast_saved', 'Profilbild gespeichert': 'toast_saved',
-    'Toast erfolgreich': 'toast_saved', 'Zahlung gebucht': 'toast_saved', 'Spende gebucht': 'toast_saved', 'Ausgabe gebucht': 'toast_saved', 'Person hinzugefügt': 'toast_saved'
-};
+// --- Toasts & dialogs (callers pass already translated texts via t()) ---
 let toastTimeout;
 function showToast(msg, type = 'success') {
-    const key = TOAST_KEYS[String(msg).trim().replace(/[!.]/g, '')] || msg;
     let toast = $('toast');
     if (!toast) {
         toast = document.createElement('div');
@@ -396,25 +402,15 @@ function showToast(msg, type = 'success') {
         document.body.appendChild(toast);
     }
     toast.className = `toast toast-${type} show`;
-    toast.innerHTML = `${type === 'success' ? '✅' : '⚠️'} ${translations[key] || msg}`;
+    toast.innerHTML = `${type === 'success' ? '✅' : '⚠️'} ${msg}`;
     clearTimeout(toastTimeout);
     toastTimeout = setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
-const ALERT_KEYS = {
-    'Bitte alle Felder ausfüllen': 'alert_fill_fields', 'Ungültiger Betrag': 'alert_invalid_amount', 'Ungültiges Datum': 'alert_invalid_date',
-    'Bitte ein Datum angeben': 'alert_invalid_date', 'Bitte Datum wählen': 'alert_invalid_date', 'Bitte eine Person auswählen': 'modal_person_name',
-    'Bitte geben Sie Ihr altes Passwort ein': 'old_password',
-    ...Object.fromEntries(['Fehler beim Laden der Daten. Bitte Seite neu laden', 'Person nicht gefunden', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen',
-        'Kein Personenprofil gefunden', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen', 'Neuer Code konnte nicht gespeichert werden',
-        'Fehler beim Speichern', 'Fehler beim Löschen', 'Fehler beim Löschen des Eintrags', 'Neues Passwort muss mindestens 6 Zeichen lang sein',
-        'Kein Benutzer angemeldet'].map(msg => [msg, 'toast_error']))
-};
+// Empty messages (e.g. an error without text) are not shown
 const nativeAlert = window.alert.bind(window);
 window.alert = msg => {
-    if (!msg) return;
-    const key = ALERT_KEYS[String(msg).trim().replace(/\.$/, '')] || String(msg).trim().replace(/\.$/, '');
-    nativeAlert(translations[key] || msg);
+    if (msg) nativeAlert(msg);
 };
 
 function confirmAction(options) {
@@ -451,7 +447,7 @@ async function fetchWithAuth(url, options = {}) {
     try {
         token = await auth.currentUser.getIdToken();
     } catch (tokenError) {
-        throw new Error('Authentifizierung fehlgeschlagen. Bitte erneut anmelden. (' + (tokenError?.code || tokenError?.message || 'Unbekannter Fehler') + ')');
+        throw new Error(t('error_auth_failed', 'Authentifizierung fehlgeschlagen. Bitte erneut anmelden.') + ' (' + (tokenError?.code || tokenError?.message || t('error_unknown', 'Unbekannter Fehler')) + ')');
     }
     const headers = { ...(options.headers || {}), Authorization: `Bearer ${token}` };
     if (typeof options.body === 'string' && !headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
@@ -644,7 +640,7 @@ function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, cont
                         ${subtitle ? `<div class="modal-subtitle">${subtitle}</div>` : ''}
                     </div>
                 </div>
-                <button type="button" class="btn-close-enhanced" onclick="closeModal('${id}')" aria-label="Schließen">✕</button>
+                <button type="button" class="btn-close-enhanced" onclick="closeModal('${id}')" aria-label="${t('btn_close', 'Schließen')}">✕</button>
             </div>
             <div class="modal-body-enhanced">${contentHtml || bodyHtml || ''}</div>
             ${footerHtml ? `<div class="modal-footer-enhanced">${footerHtml}</div>` : ''}
@@ -661,10 +657,10 @@ function showReceiptImageModal(title, imageUrl, filename) {
         subtitle: filename || '',
         icon: '📎',
         maxWidth: '520px',
-        contentHtml: `<div style="text-align: center;"><img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 1px solid var(--border);" alt="Beleg"></div>`,
+        contentHtml: `<div style="text-align: center;"><img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 1px solid var(--border);" alt="${t('receipt', 'Beleg')}"></div>`,
         footerHtml: `
             <a href="${imageUrl}" download="${filename || 'beleg'}" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📥 ${t('download_btn', 'Herunterladen')}</a>
-            <button type="button" class="btn btn-secondary" onclick="closeModal('receipt-preview-modal')">${t('btn_cancel', 'Schließen')}</button>`
+            <button type="button" class="btn btn-secondary" onclick="closeModal('receipt-preview-modal')">${t('btn_close', 'Schließen')}</button>`
     });
 }
 
@@ -723,7 +719,7 @@ function togglePassword(inputId, btn) {
     const reveal = input.type === 'password';
     input.type = reveal ? 'text' : 'password';
     btn.innerHTML = svgIcon(reveal ? 'eyeOff' : 'eye', 20);
-    btn.setAttribute('aria-label', reveal ? 'Passwort verbergen' : 'Passwort anzeigen');
+    btn.setAttribute('aria-label', reveal ? t('password_hide', 'Passwort verbergen') : t('password_show', 'Passwort anzeigen'));
 }
 
 Object.assign(window, {
@@ -1240,10 +1236,10 @@ async function bootstrapSuperAdmin(user) {
 
 onAuthStateChanged(auth, async user => {
     if (user) {
-        showAuthLoader('Profil wird geladen...');
+        showAuthLoader(t('auth_loading_profile', 'Profil wird geladen...'));
         localStorage.setItem('agora-is-logged-in', 'true');
         const profile = await fetchUserProfile(user.uid, 2);
-        if (!profile) setLoadingMessage('Profil nicht gefunden, bitte Admin kontaktieren.');
+        if (!profile) setLoadingMessage(t('auth_profile_not_found', 'Profil nicht gefunden, bitte Admin kontaktieren.'));
         // The signed-in account over the stored profile, like refreshCurrentUser did. Only /auth/me (opening the app)
         // carries the computed fields (mentor status); after a fresh login loadData still asks it
         const { getIdToken, ...account } = user;
@@ -1292,17 +1288,17 @@ function showAuthError(msg) {
 async function attemptLogin() {
     const email = inputValue('login-email');
     const pass = inputValue('login-password');
-    setButtonLoading('btn-login', true, 'Anmelden...');
+    setButtonLoading('btn-login', true, t('auth_logging_in', 'Anmelden...'));
     if (!email || !pass) {
-        showAuthError('Bitte E-Mail und Passwort eingeben.');
+        showAuthError(t('auth_enter_credentials', 'Bitte E-Mail und Passwort eingeben.'));
     } else {
         try {
             show('auth-error', false);
             await signInWithEmailAndPassword(auth, email, pass);
-            showAuthLoader('Profil wird geladen...');
+            showAuthLoader(t('auth_loading_profile', 'Profil wird geladen...'));
         } catch (error) {
             console.error(error);
-            showAuthError('Login fehlgeschlagen: ' + error.message);
+            showAuthError(t('auth_login_failed', 'Login fehlgeschlagen: ') + error.message);
         }
     }
     setButtonLoading('btn-login', false);
@@ -1310,17 +1306,17 @@ async function attemptLogin() {
 
 async function attemptRegister() {
     const [code, email, first, last, p1, p2] = ['reg-code', 'reg-email', 'reg-firstname', 'reg-lastname', 'reg-pass1', 'reg-pass2'].map(inputValue);
-    const validationError = (!code || !email || !first || !last || !p1 || !p2) ? 'Bitte alle Felder ausfüllen.'
-        : p1.length < 6 ? 'Passwort muss mindestens 6 Zeichen lang sein.'
-        : p1 !== p2 ? 'Passwörter stimmen nicht überein.' : null;
+    const validationError = (!code || !email || !first || !last || !p1 || !p2) ? t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')
+        : p1.length < 6 ? t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.')
+        : p1 !== p2 ? t('setup_err_password_match', 'Die Passwörter stimmen nicht überein.') : null;
     if (validationError) return showAuthError(validationError);
     try {
         show('auth-error', false);
-        showAuthLoader('Profil wird initialisiert...');
+        showAuthLoader(t('auth_initializing_profile', 'Profil wird initialisiert...'));
         await createUserWithEmailAndPassword(auth, email, p1, { inviteCode: code, firstName: first, lastName: last, name: `${first} ${last}`.trim() });
     } catch (error) {
         console.error(error);
-        showAuthError(error.message?.includes('Ungültiger Registrierungscode') ? 'Ungültiger Registrierungscode.' : 'Registrierung fehlgeschlagen: ' + error.message);
+        showAuthError(error.message?.includes('Ungültiger Registrierungscode') ? t('auth_invalid_code', 'Ungültiger Registrierungscode.') : t('auth_register_failed', 'Registrierung fehlgeschlagen: ') + error.message);
         show('loading-overlay', false);
         $('login-modal').classList.add('show');
     }
@@ -1669,12 +1665,12 @@ async function confirmProfileCrop() {
     const { x, y, scaleX, scaleY } = profileCropper.region();
     const size = Math.round(profileCropper.cropW * Math.min(scaleX, scaleY));
     const blob = await cropToJpeg(profileCropper.img, [x, y, size, size], 256, 256, 0.85);
-    if (!blob) return showToast('Fehler beim Verarbeiten des Bildes.', 'error');
-    setButtonLoading('btn-confirm-crop', true, 'Speichern...');
+    if (!blob) return showToast(t('toast_image_processing_failed', 'Fehler beim Verarbeiten des Bildes.'), 'error');
+    setButtonLoading('btn-confirm-crop', true, t('btn_saving', 'Speichern...'));
     try {
-        await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), 'Upload fehlgeschlagen');
+        await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), t('toast_upload_failed_short', 'Upload fehlgeschlagen'));
         closeModal('profile-crop-modal');
-        showToast('Profilbild gespeichert!', 'success');
+        showToast(t('toast_profile_pic_saved', 'Profilbild gespeichert!'), 'success');
         // Pictures are cached by the browser for a few minutes: replace the own entry right away
         const uid = currentUid();
         profilePicCache.delete(uid);
@@ -1682,7 +1678,7 @@ async function confirmProfileCrop() {
         await loadCurrentProfilePicture();
     } catch (e) {
         console.error('Profile upload error:', e);
-        showToast('Fehler beim Hochladen: ' + e.message, 'error');
+        showToast(t('toast_upload_failed', 'Fehler beim Hochladen: ') + e.message, 'error');
     } finally {
         setButtonLoading('btn-confirm-crop', false, null);
     }
@@ -1800,12 +1796,12 @@ async function submitQuickAddGroup() {
     const name = input?.value.trim();
     if (!name) return;
     try {
-        await apiJson('/admin/groups', 'POST', { name, permissions: [] }, 'Fehler beim Erstellen der Gruppe');
+        await apiJson('/admin/groups', 'POST', { name, permissions: [] }, t('admin_group_create_failed', 'Fehler beim Erstellen der Gruppe'));
         input.value = '';
         showToast(t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
         await refreshGroupsAndUsers(false);
     } catch (err) {
-        alert(err.message || 'Fehler beim Erstellen der Gruppe');
+        alert(err.message || t('admin_group_create_failed', 'Fehler beim Erstellen der Gruppe'));
     }
 }
 
@@ -1827,8 +1823,8 @@ function openGroupModal(group) {
     if (list) {
         const active = group?.permissions || [];
         list.innerHTML = systemPermissions.length
-            ? systemPermissions.map(p => checkItem('nc-permission', 'group-permission-cb', p.id, active.includes(p.id), p.name, escapeHtml(p.description || ''))).join('')
-            : '<div style="color: var(--text-secondary); font-size: 0.85rem;">Keine Berechtigungs-Definitionen gefunden.</div>';
+            ? systemPermissions.map(p => checkItem('nc-permission', 'group-permission-cb', p.id, active.includes(p.id), t(`perm_${p.id}`, p.name), escapeHtml(t(`perm_${p.id}_desc`, p.description || '')))).join('')
+            : `<div style="color: var(--text-secondary); font-size: 0.85rem;">${t('admin_no_permissions', 'Keine Berechtigungs-Definitionen gefunden.')}</div>`;
     }
     openModal('manage-group-modal');
 }
@@ -1836,42 +1832,42 @@ function openGroupModal(group) {
 async function submitSaveGroup() {
     const id = inputValue('manage-group-id');
     const name = inputValue('manage-group-name').trim();
-    if (!name) return alert(t('alert_fill_fields', 'Bitte Gruppennamen eingeben.'));
+    if (!name) return alert(t('admin_group_name_required', 'Bitte Gruppennamen eingeben.'));
     await attempt(async () => {
         const permissions = checkedValues('#manage-group-permissions-list .group-permission-cb');
-        await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, 'Fehler beim Speichern der Gruppe');
+        await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, t('admin_group_save_failed', 'Fehler beim Speichern der Gruppe'));
         closeModal('manage-group-modal');
         showToast(id ? t('toast_group_updated', 'Gruppe erfolgreich aktualisiert') : t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
         await refreshGroupsAndUsers();
-    }, err => err.message || 'Fehler beim Speichern der Gruppe');
+    }, err => err.message || t('admin_group_save_failed', 'Fehler beim Speichern der Gruppe'));
 }
 
 async function deleteCurrentGroup() {
     const id = inputValue('manage-group-id');
     if (!id || !confirmAction(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) return;
     await attempt(async () => {
-        await apiJson(`/admin/groups/${id}`, 'DELETE', undefined, 'Fehler beim Löschen der Gruppe');
+        await apiJson(`/admin/groups/${id}`, 'DELETE', undefined, t('admin_group_delete_failed', 'Fehler beim Löschen der Gruppe'));
         if (activeGroupFilter === id) activeGroupFilter = null;
         closeModal('manage-group-modal');
         showToast(t('toast_group_deleted', 'Gruppe erfolgreich gelöscht'), 'success');
         await refreshGroupsAndUsers();
-    }, err => err.message || 'Fehler beim Löschen der Gruppe');
+    }, err => err.message || t('admin_group_delete_failed', 'Fehler beim Löschen der Gruppe'));
 }
 
 function openAssignGroupModal(uid) {
     const user = users.find(u => u.uid === uid);
     if (!user) return;
     setValue('assign-group-uid', uid);
-    setText('assign-group-user-display', `${fullName(user) || user.email || 'Benutzer'} (${user.email || 'Kein Login'})`);
+    setText('assign-group-user-display', `${fullName(user) || user.email || t('admin_user_fallback', 'Benutzer')} (${user.email || t('admin_no_login', 'Kein Login')})`);
     const list = $('assign-group-checklist');
     if (!list) return;
     const userGroups = Array.isArray(user.groups) ? user.groups : [];
     list.innerHTML = groupList().length
         ? systemGroups.map(g => {
             const perms = Array.isArray(g.permissions) ? g.permissions : [];
-            return checkItem('nc-group-check', 'user-group-assign-cb', g.id, userGroups.includes(g.id) || userGroups.includes(g.name), g.name, perms.length > 0 ? `${perms.length} Berechtigungen` : 'Standard-Zugriff');
+            return checkItem('nc-group-check', 'user-group-assign-cb', g.id, userGroups.includes(g.id) || userGroups.includes(g.name), g.name, perms.length > 0 ? t('admin_group_permission_count', '{count} Berechtigungen', { count: perms.length }) : t('admin_group_default_access', 'Standard-Zugriff'));
         }).join('')
-        : '<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">Keine Gruppen vorhanden. Erstellen Sie zuerst eine Gruppe.</div>';
+        : `<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">${t('admin_no_groups', 'Keine Gruppen vorhanden. Erstellen Sie zuerst eine Gruppe.')}</div>`;
     openModal('assign-group-modal');
 }
 
@@ -1880,7 +1876,7 @@ async function submitAssignGroups() {
     if (!uid) return;
     const groups = checkedValues('#assign-group-checklist .user-group-assign-cb');
     await attempt(async () => {
-        await apiJson(`/admin/users/${uid}/groups`, 'PUT', { groups }, 'Fehler beim Zuweisen der Gruppen');
+        await apiJson(`/admin/users/${uid}/groups`, 'PUT', { groups }, t('admin_groups_assign_failed', 'Fehler beim Zuweisen der Gruppen'));
         const localUser = users.find(u => u.uid === uid);
         if (localUser) {
             localUser.groups = groups;
@@ -1889,7 +1885,7 @@ async function submitAssignGroups() {
         closeModal('assign-group-modal');
         showToast(t('toast_user_groups_updated', 'Benutzergruppen erfolgreich aktualisiert'), 'success');
         await refreshGroupsAndUsers(currentUser?.uid === uid);
-    }, err => err.message || 'Fehler beim Zuweisen der Gruppen');
+    }, err => err.message || t('admin_groups_assign_failed', 'Fehler beim Zuweisen der Gruppen'));
 }
 
 async function reloadUsersData() {
@@ -1925,7 +1921,7 @@ function switchSysSettingsTab(tabName) {
 }
 
 function renderAccountRow(u) {
-    const name = fullName(u) || 'Unbekannt';
+    const name = fullName(u) || t('status_unknown', 'Unbekannt');
     const uid = escapeHtml(u.uid);
     const isOwner = u.owner === true || u.superAdmin === true;
     const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
@@ -1936,7 +1932,7 @@ function renderAccountRow(u) {
         : (Array.isArray(u.groups) ? u.groups.map(gid => findGroup(gid) || { id: gid, name: gid, permissions: [] }) : []);
     const groupBadges = groups.length > 0
         ? groups.map(g => `<span class="nc-badge-group" style="margin: 2px;">${escapeHtml(g.name)}</span>`).join(' ')
-        : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('modal_assign_group_title', 'Zuweisen')}</span>`;
+        : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('admin_assign_short', 'Zuweisen')}</span>`;
     const pays = u.pays !== false;
     return `
         <tr data-uid="${uid}">
@@ -1989,7 +1985,7 @@ function renderAccountsTab() {
     if (!tbody || !isSuperAdminUser()) return;
     const emptyRow = text => `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">${text}</td></tr>`;
     if (!users || users.length === 0) {
-        tbody.innerHTML = emptyRow('Keine Benutzer gefunden.');
+        tbody.innerHTML = emptyRow(t('admin_no_users', 'Keine Benutzer gefunden.'));
         return;
     }
     const activeGroup = activeGroupFilter ? findGroup(activeGroupFilter) : null;
@@ -2005,17 +2001,17 @@ function renderAccountsTab() {
         banner.style.display = activeGroup ? 'flex' : 'none';
         if (activeGroup) {
             setText('nc-active-group-name', activeGroup.name);
-            setText('nc-active-group-count', `(${filtered.length} Benutzer)`);
+            setText('nc-active-group-count', t('admin_group_user_count', '({count} Benutzer)', { count: filtered.length }));
         }
     }
-    tbody.innerHTML = filtered.length ? filtered.map(renderAccountRow).join('') : emptyRow('Keine passenden Benutzer gefunden.');
+    tbody.innerHTML = filtered.length ? filtered.map(renderAccountRow).join('') : emptyRow(t('admin_no_matching_users', 'Keine passenden Benutzer gefunden.'));
 }
 
 async function saveUserSetting(uid, field, payload, applyLocal, successMsg, errorMsg, logMsg) {
     if (!isSuperAdminUser()) return;
     try {
         const res = await api(`/admin/users/${uid}/${field}`, 'PUT', payload);
-        if (!res.ok) throw new Error((await res.text()) || 'Speichern fehlgeschlagen');
+        if (!res.ok) throw new Error((await res.text()) || t('toast_save_failed', 'Speichern fehlgeschlagen'));
         applyLocal(users.find(u => u.uid === uid));
         renderAccountsTab();
         if (field !== 'admin') renderPeople();
@@ -2034,11 +2030,11 @@ const updateUserMemberSince = (uid, memberSince) => saveUserSetting(uid, 'member
         linked.memberSince = linked.originalMemberSince = memberSince;
         if (linked.data) linked.data.memberSince = linked.data.originalMemberSince = memberSince;
     }
-}, t('toast_member_since_updated', 'Mitgliedsdatum aktualisiert'), 'Mitgliedsdatum konnte nicht gespeichert werden', 'Fehler beim Speichern des Mitgliedsdatums:');
+}, t('toast_member_since_updated', 'Mitgliedsdatum aktualisiert'), t('toast_member_since_failed', 'Mitgliedsdatum konnte nicht gespeichert werden'), 'Fehler beim Speichern des Mitgliedsdatums:');
 
 const toggleUserSystemAdmin = (uid, isAdmin) => saveUserSetting(uid, 'admin', { admin: !!isAdmin }, localUser => {
     if (localUser) localUser.admin = !!isAdmin;
-}, t('toast_admin_updated', 'System-Admin Rechte aktualisiert'), 'Benutzerrechte konnten nicht gespeichert werden', 'Fehler beim Speichern der Admin-Rolle:');
+}, t('toast_admin_updated', 'System-Admin Rechte aktualisiert'), t('toast_user_rights_failed', 'Benutzerrechte konnten nicht gespeichert werden'), 'Fehler beim Speichern der Admin-Rolle:');
 
 const toggleUserPays = (uid, pays) => saveUserSetting(uid, 'pays', { pays: !!pays }, localUser => {
     if (localUser) localUser.pays = !!pays;
@@ -2047,7 +2043,7 @@ const toggleUserPays = (uid, pays) => saveUserSetting(uid, 'pays', { pays: !!pay
         linked.pays = !!pays;
         if (linked.data) linked.data.pays = !!pays;
     }
-}, t('toast_pays_updated', 'Zahlungsstatus aktualisiert'), 'Beitragsstatus konnte nicht gespeichert werden', 'Fehler beim Speichern des Beitragsstatus:');
+}, t('toast_pays_updated', 'Zahlungsstatus aktualisiert'), t('toast_pays_failed', 'Beitragsstatus konnte nicht gespeichert werden'), 'Fehler beim Speichern des Beitragsstatus:');
 
 function openCreateUserModal() {
     ['new-user-first-name', 'new-user-last-name', 'new-user-email', 'new-user-password'].forEach(id => setValue(id, ''));
@@ -2061,7 +2057,7 @@ function openCreateUserModal() {
 async function submitCreateUser() {
     const [firstName, lastName, email] = ['new-user-first-name', 'new-user-last-name', 'new-user-email'].map(id => inputValue(id).trim());
     const password = inputValue('new-user-password');
-    if (!firstName || !lastName) return alert(t('alert_fill_fields', 'Bitte Vor- und Nachnamen ausfüllen.'));
+    if (!firstName || !lastName) return alert(t('admin_user_name_required', 'Bitte Vor- und Nachnamen ausfüllen.'));
     if (password && password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
     await attempt(async () => {
         await apiJson('/admin/users', 'POST', {
@@ -2071,11 +2067,11 @@ async function submitCreateUser() {
             status: inputValue('new-user-status') || 'vollverdiener',
             memberSince: inputValue('new-user-start') || getTodayStr(),
             groups: ['Standard']
-        }, 'Erstellen fehlgeschlagen');
+        }, t('admin_user_create_failed_short', 'Erstellen fehlgeschlagen'));
         await loadData();
         closeModal('create-user-modal');
         showToast(t('toast_user_created', 'Benutzer erfolgreich erstellt'));
-    }, err => err.message || 'Fehler beim Erstellen des Benutzers');
+    }, err => err.message || t('admin_user_create_failed', 'Fehler beim Erstellen des Benutzers'));
 }
 
 function openResetPasswordModal(uid, name) {
@@ -2089,21 +2085,21 @@ async function submitResetPassword() {
     const password = inputValue('reset-password-new');
     if (password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
     await attempt(async () => {
-        await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, 'Passwort-Zurücksetzen fehlgeschlagen');
+        await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, t('admin_password_reset_failed_short', 'Passwort-Zurücksetzen fehlgeschlagen'));
         closeModal('reset-password-modal');
         showToast(t('toast_password_reset', 'Passwort erfolgreich geändert'));
-    }, err => err.message || 'Fehler beim Zurücksetzen des Passworts');
+    }, err => err.message || t('admin_password_reset_failed', 'Fehler beim Zurücksetzen des Passworts'));
 }
 
 async function deleteUserAccount(uid) {
     if (!confirmAction(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
     await attempt(async () => {
-        await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, 'Löschen fehlgeschlagen');
+        await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, t('toast_delete_failed_short', 'Löschen fehlgeschlagen'));
         users = users.filter(u => u.uid !== uid);
         renderAccountsTab();
         renderUnlinkedUsers();
         showToast(t('toast_user_deleted', 'Benutzer erfolgreich gelöscht'));
-    }, err => err.message || 'Fehler beim Löschen des Benutzers');
+    }, err => err.message || t('admin_user_delete_failed', 'Fehler beim Löschen des Benutzers'));
 }
 
 // --- System, AI & branding configuration ---
@@ -2131,14 +2127,14 @@ async function loadAdvancedSystemConfig() {
         $('super-admin-smtp-secure').checked = !!data.smtp?.secure;
         advancedConfigLoaded = true;
         await loadAiConfig();
-    }, 'Erweiterte Konfiguration konnte nicht geladen werden', { toast: 'error' });
+    }, t('toast_config_load_failed', 'Erweiterte Konfiguration konnte nicht geladen werden'), { toast: 'error' });
 }
 
 async function saveAdvancedSystemConfig() {
     if (!isSuperAdminUser()) return;
     await attempt(async () => {
         const appName = inputValue('super-admin-app-name').trim() || advancedConfigAppName || config.appName;
-        if (!appName) throw new Error('App-Name konnte nicht ermittelt werden. Dies kann auf fehlende Konfigurationsdaten hinweisen. Bitte Seite neu laden.');
+        if (!appName) throw new Error(t('admin_app_name_missing', 'App-Name konnte nicht ermittelt werden. Dies kann auf fehlende Konfigurationsdaten hinweisen. Bitte Seite neu laden.'));
         const payload = { appName, smtp: null };
         const host = inputValue('super-admin-smtp-host').trim();
         if (host) {
@@ -2150,13 +2146,13 @@ async function saveAdvancedSystemConfig() {
                 user: inputValue('super-admin-smtp-user').trim(),
                 pass: inputValue('super-admin-smtp-pass')
             };
-            if (!payload.smtp.port || Number.isNaN(payload.smtp.port)) throw new Error('SMTP Port ist ungültig.');
+            if (!payload.smtp.port || Number.isNaN(payload.smtp.port)) throw new Error(t('admin_smtp_port_invalid', 'SMTP Port ist ungültig.'));
         }
         const res = await api('/admin/system-config', 'PUT', payload);
         if (!res.ok) throw new Error(await readErrorText(res));
         advancedConfigAppName = appName;
         showToast(t('toast_config_saved', 'System-Konfiguration gespeichert'));
-    }, err => t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
+    }, err => t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('error_unknown', 'Unbekannter Fehler')));
 }
 
 const AI_FIELDS = { baseUrl: 'super-admin-ai-base-url', apiKey: 'super-admin-ai-api-key', model: 'super-admin-ai-model' };
@@ -2190,7 +2186,7 @@ async function saveAiConfig() {
         aiEnabled = payload.enabled;
         updateAiNavVisibility();
         showToast(t('toast_ai_saved', 'KI-Einstellungen gespeichert'));
-    }, err => t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('setup_err_unknown', 'Unbekannter Fehler')));
+    }, err => t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('error_unknown', 'Unbekannter Fehler')));
 }
 
 async function uploadChurchLogo() {
@@ -2205,7 +2201,7 @@ async function uploadChurchLogo() {
         fileInput.value = '';
         showToast(t('toast_logo_updated', 'Logo aktualisiert'));
     } catch (err) {
-        const errMsg = err.message || err.code || 'Unbekannter Fehler';
+        const errMsg = err.message || err.code || t('error_unknown', 'Unbekannter Fehler');
         console.error('Fehler beim Logo-Upload:', errMsg, err);
         alert(t('alert_logo_update_failed', 'Logo konnte nicht aktualisiert werden: ') + errMsg);
         showToast(t('toast_logo_update_failed', 'Logo konnte nicht aktualisiert werden'), 'error');
@@ -2391,15 +2387,15 @@ const quotedNote = note => note ? `<br><small style="color: var(--text-secondary
 
 function renderRequestDetails(req, statusLabels) {
     const data = req.data;
-    if (req.type === 'payment') return `${euro(data.amount)} am ${formatDateFast(data.date)}${quotedNote(data.note)}`;
-    if (req.type === 'status') return `Neu: <strong>${escapeHtml(statusLabels[data.newStatus] || data.newStatus)}</strong> ab ${formatDateFast(data.date)}`;
-    if (req.type === 'standing_order') return `${euro(data.amount)} / Monat<br>Start: ${formatDateFast(data.date)}${quotedNote(data.note)}`;
+    if (req.type === 'payment') return t('request_detail_payment', '{amount} am {date}', { amount: euro(data.amount), date: formatDateFast(data.date) }) + quotedNote(data.note);
+    if (req.type === 'status') return t('request_detail_status', 'Neu: <strong>{status}</strong> ab {date}', { status: escapeHtml(statusLabels[data.newStatus] || data.newStatus), date: formatDateFast(data.date) });
+    if (req.type === 'standing_order') return t('request_detail_standing_order', '{amount} / Monat<br>Start: {date}', { amount: euro(data.amount), date: formatDateFast(data.date) }) + quotedNote(data.note);
     if (req.type !== 'expense') return '';
     const id = escapeHtml(req.id);
-    return `${euro(data.amount)} für "${escapeHtml(data.description)}" am ${formatDateFast(data.date)}` + (data.receipt ? `<div id="receipt-container-${id}" style="margin-top:10px;">
+    return t('request_detail_expense', '{amount} für "{description}" am {date}', { amount: euro(data.amount), description: escapeHtml(data.description), date: formatDateFast(data.date) }) + (data.receipt ? `<div id="receipt-container-${id}" style="margin-top:10px;">
         <button class="btn btn-small" style="background: transparent; border: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 6px;" data-receipt="${escapeHtml(data.receipt)}" data-id="${id}" onclick="viewRequestReceipt(this.dataset.receipt, 'receipt-container-' + this.dataset.id)">
             ${svgIcon('image')}
-            Beleg anzeigen
+            ${t('request_show_receipt', 'Beleg anzeigen')}
         </button>
     </div>` : '');
 }
@@ -2426,19 +2422,19 @@ function renderAdminRequests() {
                 <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; align-items:center;">
                     <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text);">
                         ${type.icon ? svgIcon(type.icon, 18) : ''}
-                        <span>${type.label}</span>
+                        <span>${t(`request_type_${req.type}`, type.label)}</span>
                     </div>
                     <span style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; background: var(--surface-alt); padding: 4px 8px; border-radius: 12px;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
                 </div>
                 <div style="margin-bottom:16px; font-size: 0.95rem; color: var(--text); line-height: 1.5;">${renderRequestDetails(req, statusLabels)}</div>
                 ${canApprove ? `
                 <div style="display:flex; gap:10px;">
-                    ${actionBtn('btn-primary', '', 'approveRequest', 'check', 'Genehmigen', req.id)}
-                    ${actionBtn('', 'background: transparent; color: var(--text-secondary); border: 1px solid var(--border); ', 'rejectRequest', 'x', 'Ablehnen', req.id)}
+                    ${actionBtn('btn-primary', '', 'approveRequest', 'check', t('request_btn_approve', 'Genehmigen'), req.id)}
+                    ${actionBtn('', 'background: transparent; color: var(--text-secondary); border: 1px solid var(--border); ', 'rejectRequest', 'x', t('request_btn_reject', 'Ablehnen'), req.id)}
                 </div>` : ''}
             </div>`;
     };
-    const grouped = groupBy(pending, req => req.personName || 'Unbekannt');
+    const grouped = groupBy(pending, req => req.personName || t('status_unknown', 'Unbekannt'));
     const groupBlocks = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([personName, items]) => `
         <div style="margin-top: 16px;">
             <div style="font-weight: 600; margin-bottom: 10px; color: var(--text); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
@@ -2451,7 +2447,7 @@ function renderAdminRequests() {
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="display: flex; align-items: center; gap: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; color: var(--text-secondary);">
                 ${svgIcon('download', 18)}
-                Offene Anfragen (${pending.length})
+                ${t('requests_open_count', 'Offene Anfragen ({count})', { count: pending.length })}
             </div>
             <div class="card-body" style="padding-top: 10px;">${groupBlocks}</div>
         </div>`;
@@ -2496,7 +2492,7 @@ async function assignUserToPerson(uid) {
     await attempt(async () => {
         await update(ref(db, 'people/' + select.value), { uid });
         person.uid = uid;
-        showToast('Zuordnung gespeichert');
+        showToast(t('toast_assignment_saved', 'Zuordnung gespeichert'));
         renderUnlinkedUsers();
         renderPeople();
     }, t('unlinked_alert_failed', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen.'));
@@ -2522,7 +2518,7 @@ function editRecordedPaymentByIndex(index) {
 
     currentEditedPayment = { personId, targetIndex, type, paymentId };
     const isExpense = type === 'expense';
-    setText('edit-payment-person', ({ donation: '[Spende] ', expense: '[Ausgabe] ' }[type] || '') + (tx.personName || tx.who || 'Unbekannt'));
+    setText('edit-payment-person', ({ donation: `[${t('report_type_donation', 'Spende')}] `, expense: `[${t('report_type_expense', 'Ausgabe')}] ` }[type] || '') + (tx.personName || tx.who || t('status_unknown', 'Unbekannt')));
     setValue('edit-payment-amount', String(payment.amount ?? ''));
     setValue('edit-payment-date', payment.date || '');
     setValue('edit-payment-desc', payment.description || '');
@@ -2550,7 +2546,7 @@ async function saveEditedPayment() {
     const saveBtn = document.querySelector('#edit-payment-modal button.btn-primary');
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.innerText = 'Speichert...';
+        saveBtn.innerText = t('setup_btn_saving', 'Speichert...');
     }
     const { type, personId, paymentId, targetIndex } = currentEditedPayment;
     try {
@@ -2562,7 +2558,7 @@ async function saveEditedPayment() {
                 else console.warn('saveEditedPayment: fallback payment match not found, mapping all', currentEditedPayment);
                 return { ...draft, payments, totalPaid: sumAmounts(payments) };
             });
-            showToast('Zahlung aktualisiert');
+            showToast(t('toast_payment_updated', 'Zahlung aktualisiert'));
         } else if (type === 'expense') {
             for (const file of $('edit-payment-new-receipt')?.files || []) {
                 try {
@@ -2575,10 +2571,10 @@ async function saveEditedPayment() {
             }
             const receipt = currentEditedReceipts.length > 0 ? JSON.stringify(currentEditedReceipts) : '';
             await mutateCollection('expenses', list => replaceById(list, paymentId, { amount, date, description, issuer, receipt }));
-            showToast('Ausgabe aktualisiert');
+            showToast(t('toast_expense_updated', 'Ausgabe aktualisiert'));
         } else {
             await mutateCollection('donations', list => replaceById(list, paymentId, { amount, date, description }));
-            showToast('Spende aktualisiert');
+            showToast(t('toast_donation_updated', 'Spende aktualisiert'));
         }
         closeModal('edit-payment-modal');
         currentEditedPayment = null;
@@ -2586,11 +2582,11 @@ async function saveEditedPayment() {
         refreshFinanceViews();
     } catch (err) {
         console.error('Fehler beim Bearbeiten:', err);
-        showToast('Eintrag konnte nicht aktualisiert werden', 'error');
+        showToast(t('toast_update_failed', 'Eintrag konnte nicht aktualisiert werden'), 'error');
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.innerText = 'Speichern';
+            saveBtn.innerText = t('btn_save', 'Speichern');
         }
     }
 }
@@ -2606,7 +2602,7 @@ async function renderEditReceiptsList() {
     const listEl = $('edit-payment-receipts-list');
     if (!listEl) return;
     if (currentEditedReceipts.length === 0) {
-        listEl.innerHTML = '<div style="color:var(--text-secondary); font-size:0.85rem;">Keine Belege vorhanden.</div>';
+        listEl.innerHTML = `<div style="color:var(--text-secondary); font-size:0.85rem;">${t('no_receipts', 'Keine Belege vorhanden.')}</div>`;
         return;
     }
     listEl.innerHTML = '';
@@ -2615,11 +2611,11 @@ async function renderEditReceiptsList() {
         item.style.cssText = STYLE.fileRow;
         item.innerHTML = fileRowInner('<div class="spinner" style="width:16px; height:16px; border-width:2px; margin:0;"></div>', filename, '', 'color:var(--text-secondary);');
         listEl.appendChild(item);
-        const deleteBtn = iconButton(`deleteEditReceipt('${escapeHtml(filename)}')`, 'Löschen');
+        const deleteBtn = iconButton(`deleteEditReceipt('${escapeHtml(filename)}')`, t('btn_delete', 'Löschen'));
         try {
             const imgUrl = await fetchReceiptImage(filename);
-            item.innerHTML = fileRowInner(`<img src="${imgUrl}" style="${STYLE.thumb}" alt="Beleg">`, filename,
-                `<a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="Herunterladen">${svgIcon('download')}</a>${deleteBtn}`);
+            item.innerHTML = fileRowInner(`<img src="${imgUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Beleg')}">`, filename,
+                `<a href="${imgUrl}" download="${filename}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="${t('download_btn', 'Herunterladen')}">${svgIcon('download')}</a>${deleteBtn}`);
         } catch {
             item.innerHTML = fileRowInner('<span style="font-size:1.25rem;">⚠️</span>', filename, deleteBtn, 'color:var(--text);');
         }
@@ -2645,12 +2641,12 @@ async function confirmDeleteRecordedPayment() {
         } else {
             await mutateCollection(type === 'donation' ? 'donations' : 'expenses', list => list.filter(entry => String(entry.id) !== String(paymentId)));
         }
-        showToast({ payment: 'Zahlung gelöscht', donation: 'Spende gelöscht', expense: 'Ausgabe gelöscht' }[type]);
+        showToast({ payment: t('toast_payment_deleted', 'Zahlung gelöscht'), donation: t('toast_donation_deleted', 'Spende gelöscht'), expense: t('toast_expense_deleted', 'Ausgabe gelöscht') }[type]);
         currentEditedPayment = null;
         refreshFinanceViews();
     } catch (err) {
         console.error('Fehler beim Löschen:', err);
-        showToast('Eintrag konnte nicht gelöscht werden', 'error');
+        showToast(t('toast_delete_failed', 'Eintrag konnte nicht gelöscht werden'), 'error');
     }
 }
 
@@ -2693,7 +2689,7 @@ async function approveRequest(reqId) {
 }
 
 async function rejectRequest(reqId) {
-    const reason = prompt(t('status_btn', 'Grund für Ablehnung') + ':');
+    const reason = prompt(t('request_reject_reason', 'Grund für Ablehnung:'));
     if (reason === null) return;
     await attempt(async () => {
         await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
@@ -2825,7 +2821,7 @@ function renderUserRequests() {
             data.newStatus && `<span>💼 ${escapeHtml(statusLabels[data.newStatus] || data.newStatus)}</span>`,
             data.note && `<span>📝 ${escapeHtml(data.note)}</span>`,
             data.description && `<span>ℹ️ ${escapeHtml(data.description)}</span>`,
-            receiptCount > 0 && `<span>📎 ${receiptCount} ${receiptCount === 1 ? 'Beleg' : 'Belege'}</span>`
+            receiptCount > 0 && `<span>📎 ${receiptCount === 1 ? t('receipt_count_one', '1 Beleg') : t('receipt_count_many', '{count} Belege', { count: receiptCount })}</span>`
         ].filter(Boolean);
         return `
             <div class="user-request-item">
@@ -2887,7 +2883,7 @@ function generateTimelineHTML(person) {
         const date = formatDateFast(ev.dateStr);
         return ev.type === 'status'
             ? line(`${t('timeline_status_change', 'Statusänderung')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Gültig ab')} ${date}`)
-            : line(`${t('timeline_payment', 'Zahlung')}: ${formatCurrency(ev.amount)}€`, `${escapeHtml(ev.description) || t('timeline_no_note', 'Keine Notiz')} • ${date}`);
+            : line(`${t('timeline_payment', 'Zahlung')}: ${euro(ev.amount)}`, `${escapeHtml(ev.description) || t('timeline_no_note', 'Keine Notiz')} • ${date}`);
     }).join('')}</div>`;
 }
 
@@ -2926,8 +2922,8 @@ function renderStandingOrders(p) {
                             </button>` : ''}
                         </div>
                         <div class="so-card-meta-chips">
-                            ${chip('calendar', `Start: ${formatDateFast(so.startDate)}`)}
-                            ${so.endDate ? chip('clock', `Ende: ${formatDateFast(so.endDate)}`, isEnded ? ' ended' : ' ') : ''}
+                            ${chip('calendar', t('so_chip_start', 'Start: {date}', { date: formatDateFast(so.startDate) }))}
+                            ${so.endDate ? chip('clock', t('so_chip_end', 'Ende: {date}', { date: formatDateFast(so.endDate) }), isEnded ? ' ended' : ' ') : ''}
                             ${note && note !== 'Ohne Notiz' && note !== 'No note' ? chip('fileText', escapeHtml(so.note), ' so-note-chip') : ''}
                         </div>
                     </div>`;
@@ -3102,7 +3098,7 @@ async function renderHistoryTab(resetLimit = true) {
             const date = tx.date ? formatDateFast(tx.date) : t('no_date', 'Kein Datum');
             const header = date !== lastDate ? `<div style="margin: ${index === 0 ? '0' : '20px'} 0 8px 10px; font-weight: bold; font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${date}</div>` : '';
             lastDate = date;
-            const receiptBadge = tx.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('modal_expense_receipt', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;">${svgIcon('paperclip', 14, 2.2)}</span>` : '';
+            const receiptBadge = tx.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('report_receipt_attached', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;">${svgIcon('paperclip', 14, 2.2)}</span>` : '';
             const desc = tx.description?.trim() ? `<span class="trans-desc">${escapeHtml(tx.description)}</span>` : '';
             const iconClass = TX_ICONS[tx.type] ? tx.type : 'exp';
             return `${header}
@@ -3117,7 +3113,7 @@ async function renderHistoryTab(resetLimit = true) {
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; margin-left: 12px; flex-shrink: 0;">
-                        <div class="trans-amount ${txColor(tx)}" style="font-size: 1.1rem;">${txSign(tx)}${formatCurrency(tx.amount)}€</div>
+                        <div class="trans-amount ${txColor(tx)}" style="font-size: 1.1rem;">${txSign(tx)}${euro(tx.amount)}</div>
                     </div>
                 </div>`;
         }).join('');
@@ -3134,7 +3130,7 @@ async function renderHistoryTab(resetLimit = true) {
         container.querySelectorAll('.trans-icon-wrapper[data-uid]').forEach(wrapper => {
             getProfilePicUrl(wrapper.dataset.uid).then(url => {
                 if (!url) return;
-                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profil'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`;
+                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profilbild'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`;
                 wrapper.style.background = 'transparent';
                 wrapper.style.color = 'inherit';
             });
@@ -3188,11 +3184,11 @@ async function showTransactionDetails(id, type) {
         </div>
         <div class="modal-section-card" style="gap:8px;">
             <div class="modal-section-header">
-                <span>ℹ️</span> <span>${escapeHtml(t('modal_section_info', 'Transaktionsdetails'))}</span>
+                <span>ℹ️</span> <span>${escapeHtml(t('details_section_info', 'Transaktionsdetails'))}</span>
             </div>
             <div style="display:flex; flex-direction:column; gap:8px; font-size:0.86rem;">
                 ${detailRow(`📅 ${escapeHtml(t('modal_date', 'Datum'))}`, tx.date ? formatDateFast(tx.date) : '-')}
-                ${who ? detailRow(`👤 ${escapeHtml(t('modal_person_name', 'Person'))}`, escapeHtml(who)) : ''}
+                ${who ? detailRow(`👤 ${escapeHtml(t('details_person', 'Person'))}`, escapeHtml(who)) : ''}
                 ${tx.issuer ? detailRow(`🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}`, escapeHtml(tx.issuer)) : ''}
                 ${description ? `
                 <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
@@ -3203,18 +3199,18 @@ async function showTransactionDetails(id, type) {
         </div>
         <div id="receipt-container" style="margin-top:10px;"></div>`;
 
-    const noReceipts = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'Kein Beleg vorhanden.')}</div>`;
+    const noReceipts = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'Keine Belege vorhanden.')}</div>`;
     if (!tx.receipt) {
         $('receipt-container').innerHTML = noReceipts;
         return;
     }
     await renderReceiptsInto($('receipt-container'), tx.receipt, {
         holder: content,
-        loading: `<div class="spinner" style="margin:20px auto;"></div><div style="text-align:center">${t('loading_receipts', 'Lade Belege...')}</div>`,
+        loading: `<div class="spinner" style="margin:20px auto;"></div><div style="text-align:center">${t('loading_receipts', 'Lade Beleg(e)...')}</div>`,
         header: `<div style="font-weight:600; margin-bottom:10px;">${t('details_receipts', 'Belege')}</div>`,
         listStyle: 'display:flex; flex-direction:column; gap:15px;',
         empty: noReceipts,
-        error: `<div style="color:var(--danger); text-align:center;">${t('error_loading_receipts', 'Belege konnten nicht geladen werden.')}</div>`
+        error: `<div style="color:var(--danger); text-align:center;">${t('error_loading_receipts', 'Beleg(e) konnte(n) nicht geladen werden.')}</div>`
     });
 }
 
@@ -3222,10 +3218,10 @@ function viewRequestReceipt(receiptField, containerId) {
     const container = $(containerId);
     if (!container) return;
     renderReceiptsInto(container, receiptField, {
-        loading: '<div class="spinner" style="margin:10px auto;"></div><div style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">Lade Beleg(e)...</div>',
+        loading: `<div class="spinner" style="margin:10px auto;"></div><div style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">${t('loading_receipts', 'Lade Beleg(e)...')}</div>`,
         listStyle: 'display:flex; flex-direction:column; gap:15px; margin-top:10px;',
-        empty: '<div style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">Kein Beleg vorhanden.</div>',
-        error: '<div style="color:var(--danger); font-size:0.8rem; margin-top:10px;">Fehler beim Laden des Belegs.</div>'
+        empty: `<div style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">${t('no_receipts', 'Keine Belege vorhanden.')}</div>`,
+        error: `<div style="color:var(--danger); font-size:0.8rem; margin-top:10px;">${t('error_loading_receipts', 'Beleg(e) konnte(n) nicht geladen werden.')}</div>`
     });
 }
 
@@ -3275,7 +3271,7 @@ async function openExportReportModal() {
                             <input type="checkbox" id="chk-report-${key}" value="${key}" onclick="event.stopPropagation(); window.toggleManualTransactionSelection('${key}')">
                             <div class="report-checklist-info">
                                 <span style="font-weight: 600;">${escapeHtml(tx.who)}</span>
-                                <span class="report-checklist-meta">${tx.date ? formatDateFast(tx.date) : ''} &bull; <span class="${txColor(tx)}">${txSign(tx)}${formatCurrency(tx.amount)}€</span></span>
+                                <span class="report-checklist-meta">${tx.date ? formatDateFast(tx.date) : ''} &bull; <span class="${txColor(tx)}">${txSign(tx)}${euro(tx.amount)}</span></span>
                             </div>
                         </div>`;
                 }).join('');
@@ -3284,7 +3280,7 @@ async function openExportReportModal() {
         onReportTypeChange();
     } catch (err) {
         console.error('Fehler beim Laden der Berichtstransaktionen:', err);
-        if (preview) preview.innerHTML = reportPlaceholder('<div class="report-placeholder-icon">⚠️</div>', t('alert_error_loading_data', 'Fehler beim Laden der Daten.'), ' style="color: var(--danger);"');
+        if (preview) preview.innerHTML = reportPlaceholder('<div class="report-placeholder-icon">⚠️</div>', t('alert_error_loading_data', 'Fehler beim Laden der Daten. Bitte Seite neu laden.'), ' style="color: var(--danger);"');
     }
 }
 
@@ -3313,7 +3309,7 @@ const inDateRange = (tx, from, to) => {
 function selectReportTransactions(type) {
     if (type === 'annual') {
         const year = String(inputValue('report-year-select'));
-        return { filtered: allReportTransactions.filter(tx => (tx.date || '').slice(0, 4) === year), description: `${t('report_year_filter', 'Year:')} ${year}` };
+        return { filtered: allReportTransactions.filter(tx => (tx.date || '').slice(0, 4) === year), description: `${t('report_year_filter', 'Jahr:')} ${year}` };
     }
     if (type === 'custom') {
         const from = inputValue('report-date-from');
@@ -3321,11 +3317,11 @@ function selectReportTransactions(type) {
         const [fromText, toText] = [from, to].map(d => (d ? formatDateFast(d) : ''));
         return {
             filtered: allReportTransactions.filter(tx => inDateRange(tx, from, to)),
-            description: fromText && toText ? `${fromText} - ${toText}` : fromText ? `Ab ${fromText}` : toText ? `Bis ${toText}` : 'Alle Buchungen'
+            description: fromText && toText ? `${fromText} - ${toText}` : fromText ? t('report_from_date', 'Ab {date}', { date: fromText }) : toText ? t('report_until_date', 'Bis {date}', { date: toText }) : t('report_all_transactions', 'Alle Buchungen')
         };
     }
     if (type === 'manual') {
-        return { filtered: allReportTransactions.filter((tx, idx) => selectedManualTransactionIds.has(reportKey(tx, idx))), description: t('report_manual_selection', 'Manual Selection') };
+        return { filtered: allReportTransactions.filter((tx, idx) => selectedManualTransactionIds.has(reportKey(tx, idx))), description: t('report_manual_selection', 'Manuelle Auswahl') };
     }
     const personId = inputValue('report-person-select');
     const person = findPerson(personId);
@@ -3363,7 +3359,7 @@ function renderReportRows(filtered, tier) {
                     <td colspan="3">${notes ? `<div class="preview-notes">"${escapeHtml(notes)}"</div>` : ''}${tags.length ? `<div>${tags.map(tag => `<span class="preview-tags-badge">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}${tx.receipt ? `
                         <div class="preview-attachment-indicator">
                             ${svgIcon('upload', 12, 2.5, 'style="margin-right: 2px;"')}
-                            <span>${t('report_receipt_attached', 'Receipt attached')}</span>
+                            <span>${t('report_receipt_attached', 'Beleg vorhanden')}</span>
                         </div>` : ''}</td>
                 </tr>`;
         }
@@ -3391,7 +3387,7 @@ function updateReportPreview() {
             <div class="preview-stat-value ${cls}">${value}</div>
         </div>`;
     const overdue = person?._overdueAmount || 0;
-    const thirdCard = type !== 'person' ? statCard(t('report_balance', 'Balance'), `balance ${net >= 0 ? 'income' : 'expense'}`, `${net >= 0 ? '+' : ''}${euro(net)}`)
+    const thirdCard = type !== 'person' ? statCard(t('report_balance', 'Saldo'), `balance ${net >= 0 ? 'income' : 'expense'}`, `${net >= 0 ? '+' : ''}${euro(net)}`)
         : overdue > 0 ? statCard(t('report_outstanding_till_today', 'Ausstehend (bis heute)'), 'expense', euro(overdue))
         : statCard(t('status_label', 'Status'), 'income', t('report_status_good', 'Kein Rückstand'));
     preview.innerHTML = `
@@ -3401,14 +3397,14 @@ function updateReportPreview() {
                 <span>${escapeHtml(APP_NAME)}</span>
             </div>
             <div class="preview-meta">
-                <div>${t('report_created_on', 'Created on:')} ${formatDateFast(getTodayStr())}</div>
+                <div>${t('report_created_on', 'Erstellt am:')} ${formatDateFast(getTodayStr())}</div>
                 <div style="font-weight: 600; margin-top: 2px;">${description}</div>
             </div>
         </div>
         <div class="preview-title-block">
-            <h2>${t('report_financial_report', 'Financial Report')}</h2>
+            <h2>${t('report_financial_report', 'Finanzbericht')}</h2>
             <div style="font-size: 0.9rem; color: #718096; margin-top: 5px;">
-                ${t('report_summary', 'Summary of income and expenses')}
+                ${t('report_summary', 'Zusammenfassung der Einnahmen und Ausgaben')}
             </div>
         </div>
         <div class="preview-stats-grid">
@@ -3418,7 +3414,7 @@ function updateReportPreview() {
         </div>
         ${tier === 'compact' ? '' : `
         <table class="preview-table">
-            <thead><tr><th>${t('report_table_date', 'Date')}</th><th>${t('report_table_type', 'Type')}</th><th>${t('report_table_desc', 'Description / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Amount')}</th></tr></thead>
+            <thead><tr><th>${t('report_table_date', 'Datum')}</th><th>${t('report_table_type', 'Typ')}</th><th>${t('report_table_desc', 'Beschreibung / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Betrag')}</th></tr></thead>
             <tbody>${renderReportRows(filtered, tier)}</tbody>
         </table>`}`;
     requestAnimationFrame(resizeReportPreview);
@@ -3427,11 +3423,11 @@ function updateReportPreview() {
 async function downloadReportPdf() {
     const element = $('report-print-preview');
     if (!element) return;
-    setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generating...'));
+    setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generiere...'));
     await loadScriptOnce(HTML2PDF_SRC).catch(() => {});
     if (typeof html2pdf === 'undefined') {
         setButtonLoading('btn-download-pdf', false, null);
-        return alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
+        return alert(t('report_pdf_lib_error', 'PDF-Bibliothek konnte nicht geladen werden.'));
     }
     // Render an unscaled off-screen A4-width clone to avoid a blank first page
     const printContainer = document.createElement('div');
@@ -3446,7 +3442,7 @@ async function downloadReportPdf() {
     };
     html2pdf().set({
         margin: 0,
-        filename: `${APP_NAME.replace(/[^a-zA-Z0-9]/g, '_')}_Finanzbericht_${getTodayStr()}.pdf`,
+        filename: `${APP_NAME.replace(/[^a-zA-Z0-9]/g, '_')}_${t('report_file_name', 'Finanzbericht')}_${getTodayStr()}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -3454,7 +3450,7 @@ async function downloadReportPdf() {
     }).from(clone).save().then(done).catch(err => {
         console.error('PDF generation failed:', err);
         done();
-        alert(t('report_pdf_error', 'Failed to generate PDF.'));
+        alert(t('report_pdf_error', 'Fehler beim Erstellen der PDF-Datei.'));
     });
 }
 
@@ -3479,7 +3475,7 @@ function openPaymentModal(id) {
 
 async function addPayment() {
     if (!validateRequired(['payment-amount', 'payment-date'])) return;
-    setButtonLoading('btn-add-payment', true, 'Buche...');
+    setButtonLoading('btn-add-payment', true, t('btn_booking', 'Buche...'));
     const amount = parseAmount(inputValue('payment-amount'));
     const date = inputValue('payment-date');
     const note = inputValue('payment-desc');
@@ -3494,7 +3490,7 @@ async function addPayment() {
         if (currentUser && !currentUser.admin) renderUserView();
         else refreshFinanceViews();
         $('payment-is-standing-order').checked = false;
-        setText('payment-date-label', 'Datum');
+        setText('payment-date-label', t('modal_date', 'Datum'));
         showToast(t('toast_payment_booked', 'Zahlung gebucht'));
     } catch (err) {
         console.error('Fehler beim Speichern der Zahlung:', err);
@@ -3508,7 +3504,7 @@ async function addDonation() {
     if (!validateRequired(['donation-amount', 'donation-date', 'donation-name'])) return;
     const amount = parseAmount(inputValue('donation-amount'));
     if (isNaN(amount)) return;
-    setButtonLoading('btn-add-donation', true, 'Speichert...');
+    setButtonLoading('btn-add-donation', true, t('setup_btn_saving', 'Speichert...'));
     try {
         const donation = { amount, name: inputValue('donation-name'), date: inputValue('donation-date'), description: inputValue('donation-desc').trim(), id: Date.now() };
         await mutateCollection('donations', list => [...list, donation]);
@@ -3530,11 +3526,11 @@ async function addExpense() {
     const amount = parseAmount(inputValue('expense-amount'));
     if (isNaN(amount)) return;
     const [issuer, date, description] = ['expense-issuer', 'expense-date', 'expense-desc'].map(inputValue);
-    setButtonLoading('btn-add-expense', true, 'Speichert...');
+    setButtonLoading('btn-add-expense', true, t('setup_btn_saving', 'Speichert...'));
     try {
         let receipt = null;
         if (pendingUploads.expense.files.length > 0) {
-            setButtonLoading('btn-add-expense', true, 'Lade hoch...');
+            setButtonLoading('btn-add-expense', true, t('btn_uploading', 'Lade hoch...'));
             try {
                 receipt = await uploadAll(pendingUploads.expense.files, issuer, date);
             } catch (err) {
@@ -3610,7 +3606,7 @@ async function deleteStandingOrderCompletely() {
 function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
     const memberSince = person.originalMemberSince || person.memberSince || changeDateStr;
     const changeDate = new Date(changeDateStr);
-    if (changeDate < new Date(memberSince)) throw new Error('Änderungsdatum liegt vor Beginn der Mitgliedschaft.');
+    if (changeDate < new Date(memberSince)) throw new Error(t('status_change_before_member_since', 'Änderungsdatum liegt vor Beginn der Mitgliedschaft.'));
     if (changeDateStr <= memberSince) return { ...person, status: newStatus, statusHistory: [{ status: newStatus, startDate: memberSince }] };
 
     const history = safeList(person.statusHistory)
@@ -3653,34 +3649,45 @@ async function saveStatusChange() {
 async function sendStatusEmail(personId) {
     if (!canManageFinances()) return;
     const person = findPerson(personId);
-    if (!person) return showToast('Person nicht gefunden', 'error');
+    if (!person) return showToast(t('alert_person_not_found', 'Person nicht gefunden.'), 'error');
     const email = person.uid && users.find(u => u.uid === person.uid)?.email;
-    if (!email) return showToast('Keine E-Mail-Adresse für diese Person hinterlegt', 'error');
+    if (!email) return showToast(t('toast_no_email', 'Keine E-Mail-Adresse für diese Person hinterlegt'), 'error');
 
     const meta = person._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
     const readableStatus = getStatusLabels(false)[person._currentStatus || person.status] || person._currentStatus || person.status;
     const paidUntil = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
-    const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : 'Nie';
+    const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
     const today = new Date();
     const overdueMonths = paidUntil ? Math.max(0, (today.getFullYear() * 12 + today.getMonth()) - (paidUntil.getFullYear() * 12 + paidUntil.getMonth())) : 0;
-    const monthStr = overdueMonths === 1 ? 'einen Monat' : `${overdueMonths} Monate`;
+    const monthStr = overdueMonths === 1 ? t('email_status_one_month', 'einen Monat') : t('email_status_n_months', '{count} Monate', { count: overdueMonths });
     const openAmount = euro(person._overdueAmount || 0);
     const box = (color, border, inner) => `<div style="background-color: ${color}; border-left: 4px solid ${border}; padding: 15px; border-radius: 8px; margin-bottom: 25px;">${inner}</div>`;
     const okParagraph = text => `<p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">${text}</p>`;
     let customMessage;
     let customHtml;
     if (meta.isActiveStandingOrder) {
-        customMessage = 'Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!';
+        customMessage = t('email_status_standing_order', 'Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!');
         customHtml = box('#F0FDF4', '#22C55E', okParagraph(customMessage));
     } else if (meta.isOverdue) {
-        customMessage = `Das bedeutet, dass dein Beitrag aktuell für ${monthStr} überfällig ist.\nInsgesamt beläuft sich der offene Betrag auf ${openAmount}.`;
-        customHtml = box('#FEF2F2', '#EF4444', `<p style="margin: 0 0 5px 0; color: #B91C1C; font-size: 16px;">Das bedeutet, dass dein Beitrag aktuell für <strong>${monthStr}</strong> überfällig ist.</p><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">Insgesamt beläuft sich der offene Betrag auf ${openAmount}.</p>`);
+        const overdueText = months => t('email_status_overdue', 'Das bedeutet, dass dein Beitrag aktuell für {months} überfällig ist.', { months });
+        const amountText = t('email_status_open_amount', 'Insgesamt beläuft sich der offene Betrag auf {amount}.', { amount: openAmount });
+        customMessage = `${overdueText(monthStr)}\n${amountText}`;
+        customHtml = box('#FEF2F2', '#EF4444', `<p style="margin: 0 0 5px 0; color: #B91C1C; font-size: 16px;">${overdueText(`<strong>${escapeHtml(monthStr)}</strong>`)}</p><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">${escapeHtml(amountText)}</p>`);
     } else {
-        customMessage = 'Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!';
+        customMessage = t('email_status_ok', 'Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!');
         customHtml = box('#F0FDF4', '#22C55E', okParagraph(customMessage));
     }
     const paragraph = (margin, content, extra = ' line-height: 1.5;') => `<p style="margin: ${margin}; font-size: 16px;${extra}">${content}</p>`;
-    const text = `Hallo ${person.name},\n\nwir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.\n\nDein Beitragstarif ist derzeit auf '${readableStatus}' eingestellt.\nNach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich ${paidUntilLabel} bezahlt.\n\n${customMessage}\n\nBei Fragen kannst du dich jederzeit gerne melden.\n\nLiebe Grüße,\ndein ${APP_NAME} Team`;
+    const mail = {
+        greeting: name => t('email_status_greeting', 'Hallo {name},', { name }),
+        intro: t('email_status_intro', 'wir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.'),
+        tier: status => t('email_status_tier', 'Dein Beitragstarif ist derzeit auf {status} eingestellt.', { status }),
+        paidUntil: date => t('email_status_paid_until', 'Nach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich {date} bezahlt.', { date }),
+        questions: t('email_status_questions', 'Bei Fragen kannst du dich jederzeit gerne melden.'),
+        regards: t('email_status_regards', 'Liebe Grüße,'),
+        signature: app => t('email_status_signature', 'dein {app} Team', { app })
+    };
+    const text = `${mail.greeting(person.name)}\n\n${mail.intro}\n\n${mail.tier(`'${readableStatus}'`)}\n${mail.paidUntil(paidUntilLabel)}\n\n${customMessage}\n\n${mail.questions}\n\n${mail.regards}\n${mail.signature(APP_NAME)}`;
     const html = `
         <div style="font-family: sans-serif; color: #2D3748; background-color: #F8FAFC; padding: 40px 20px;">
             <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -3688,27 +3695,27 @@ async function sendStatusEmail(personId) {
                     <h1 style="margin: 0; color: #14B8A6; font-size: 24px; font-weight: 600;">${escapeHtml(APP_NAME)}</h1>
                 </div>
                 <div style="padding: 40px 30px;">
-                    <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 20px; font-weight: 600; color: #1A202C;">Hallo ${escapeHtml(person.name)},</h2>
-                    ${paragraph('0 0 15px 0', 'wir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.')}
-                    ${paragraph('0 0 15px 0', `Dein Beitragstarif ist derzeit auf <strong style="color: #14B8A6;">${escapeHtml(readableStatus)}</strong> eingestellt.`)}
-                    ${paragraph('0 0 25px 0', `Nach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich <strong style="color: #4A5568;">${escapeHtml(paidUntilLabel)}</strong> bezahlt.`)}
+                    <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 20px; font-weight: 600; color: #1A202C;">${mail.greeting(escapeHtml(person.name))}</h2>
+                    ${paragraph('0 0 15px 0', escapeHtml(mail.intro))}
+                    ${paragraph('0 0 15px 0', mail.tier(`<strong style="color: #14B8A6;">${escapeHtml(readableStatus)}</strong>`))}
+                    ${paragraph('0 0 25px 0', mail.paidUntil(`<strong style="color: #4A5568;">${escapeHtml(paidUntilLabel)}</strong>`))}
                     ${customHtml}
-                    ${paragraph('0 0 5px 0', 'Bei Fragen kannst du dich jederzeit gerne melden.', ' color: #4A5568;')}
+                    ${paragraph('0 0 5px 0', escapeHtml(mail.questions), ' color: #4A5568;')}
                     <br>
-                    ${paragraph('0 0 5px 0', 'Liebe Grüße,', ' color: #4A5568;')}
-                    ${paragraph('0', `dein ${escapeHtml(APP_NAME)} Team`, ' font-weight: 600; color: #2D3748;')}
+                    ${paragraph('0 0 5px 0', escapeHtml(mail.regards), ' color: #4A5568;')}
+                    ${paragraph('0', mail.signature(escapeHtml(APP_NAME)), ' font-weight: 600; color: #2D3748;')}
                 </div>
             </div>
         </div>`;
     await attempt(async () => {
-        const res = await api('/send-email', 'POST', { to: email, subject: `Dein Kassenstatus - ${APP_NAME}`, text, html });
+        const res = await api('/send-email', 'POST', { to: email, subject: t('email_status_subject', 'Dein Kassenstatus - {app}', { app: APP_NAME }), text, html });
         if (res.ok) {
-            showToast('Status-E-Mail gesendet');
+            showToast(t('toast_email_sent', 'Status-E-Mail gesendet'));
         } else {
-            showToast('Fehler beim Senden der E-Mail', 'error');
+            showToast(t('toast_email_failed', 'Fehler beim Senden der E-Mail'), 'error');
             console.error('Email API response not ok:', await res.text());
         }
-    }, 'Fehler beim Senden der E-Mail', { toast: 'error' });
+    }, t('toast_email_failed', 'Fehler beim Senden der E-Mail'), { toast: 'error' });
 }
 
 // --- Member requests (payment, status change, expense) ---
@@ -3724,7 +3731,7 @@ const amountField = () => `
     <div class="form-group">
         <div class="hero-amount-wrapper">
             <span class="hero-amount-prefix">€</span>
-            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="0,00">
+            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="${t('amount_placeholder', '0,00')}">
         </div>
     </div>`;
 const requestDateInput = () => `<input type="date" id="req-date" class="form-input" value="${getTodayStr()}">`;
@@ -3733,7 +3740,7 @@ const REQUEST_FORMS = {
     payment: {
         badge: ['badge-donation', '💳'],
         title: () => [t('user_req_payment_title', 'Zahlung melden'), t('user_req_payment_subtitle', 'Beitrag & Einzahlung an Admin melden')],
-        body: () => modalSection('💶', t('modal_section_amount', 'Zahlungsbetrag'), amountField())
+        body: () => modalSection('💶', t('req_section_payment_amount', 'Zahlungsbetrag'), amountField())
             + modalSection('⚙️', t('modal_section_payment_type', 'Zahlungsart & Datum'), `
                 <div class="modal-switch-row">
                     <label class="switch">
@@ -3746,7 +3753,7 @@ const REQUEST_FORMS = {
                     <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Datum')}</label>
                     ${requestDateInput()}
                 </div>`)
-            + modalSection('📝', t('modal_note', 'Notiz / Verwendungszweck'), `
+            + modalSection('📝', t('req_section_note', 'Notiz / Verwendungszweck'), `
                 <div class="form-group">
                     <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
                 </div>`)
@@ -3764,7 +3771,7 @@ const REQUEST_FORMS = {
                         ${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`).join('')}
                     </select>
                 </div>`)
-                + modalSection('📅', t('modal_valid_from', 'Gültigkeitsdatum'), `
+                + modalSection('📅', t('modal_valid_from', 'Gültig ab'), `
                 <div class="form-group">
                     ${requestDateInput()}
                     <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px; line-height:1.35;">
@@ -3779,14 +3786,14 @@ const REQUEST_FORMS = {
         body: () => modalSection('💶', t('modal_section_amount', 'Ausgabenbetrag'), amountField())
             + modalSection('ℹ️', t('modal_section_info', 'Angaben zur Ausgabe'), `
                 <div class="form-group">
-                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung / Wofür?')}</label>
-                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Verwendungszweck')}">
+                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung')}</label>
+                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Wofür?')}">
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
                     ${requestDateInput()}
                 </div>`)
-            + modalSection('📎', t('modal_expense_receipt', 'Beleg anhängen'), `
+            + modalSection('📎', t('modal_expense_receipt', 'Beleg'), `
                 <div class="file-upload-dropzone">
                     <div class="file-upload-icon">📁</div>
                     <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
@@ -3867,7 +3874,7 @@ async function submitUserRequest() {
     if (request.type === 'expense') {
         const files = pendingUploads.req.files.length > 0 ? pendingUploads.req.files : Array.from($('req-receipt')?.files || []);
         if (files.length > 0) {
-            setButtonLoading('btn-submit-request', true, 'Lade hoch...');
+            setButtonLoading('btn-submit-request', true, t('btn_uploading', 'Lade hoch...'));
             try {
                 request.data.receipt = await uploadAll(files, personName, date);
             } catch (err) {
@@ -3877,7 +3884,7 @@ async function submitUserRequest() {
         }
     }
     const newReq = { id: newId(), type: request.type, userId: currentUser.uid || currentUser.id, personId, personName, data: request.data, status: 'pending', timestamp: Date.now() };
-    setButtonLoading('btn-submit-request', true, 'Sende...');
+    setButtonLoading('btn-submit-request', true, t('btn_sending', 'Sende...'));
     try {
         await set(ref(db, 'requests/' + newReq.id), newReq);
         closeModal('user-request-modal');
@@ -3891,7 +3898,7 @@ async function submitUserRequest() {
         api('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Fehler beim Senden der Admin-Info über Backend', e));
     } catch (err) {
         console.error('Fehler beim Senden der Anfrage:', err);
-        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen: ') + (err.message || ''));
+        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen.') + (err.message ? ` ${err.message}` : ''));
     } finally {
         setButtonLoading('btn-submit-request', false);
     }
@@ -4003,8 +4010,8 @@ function clearAiChat() {
             <div class="ai-chat-welcome-icon">
                 ${svgIcon('chat', 32)}
             </div>
-            <div class="ai-chat-welcome-text">KI-Assistent bereit</div>
-            <div class="ai-chat-welcome-sub">${canViewFinances() ? 'Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.' : 'Stelle Fragen zur Gemeinde, Mitgliedern oder zur App-Nutzung.'}</div>
+            <div class="ai-chat-welcome-text">${t('ai_chat_ready', 'KI-Assistent bereit')}</div>
+            <div class="ai-chat-welcome-sub">${canViewFinances() ? t('ai_chat_welcome_sub', 'Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.') : t('ai_chat_welcome_sub_member', 'Stelle Fragen zur Gemeinde, Mitgliedern oder zur App-Nutzung.')}</div>
         </div>`;
 }
 
@@ -4069,7 +4076,7 @@ function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
     bubble.replaceChildren();
     if (thinking) {
         const details = createEl('details', 'ai-thinking');
-        details.append(createEl('summary', 'ai-thinking-summary', 'Denkprozess anzeigen'), createEl('pre', 'ai-thinking-content', thinking));
+        details.append(createEl('summary', 'ai-thinking-summary', t('ai_thinking_show', 'Denkprozess anzeigen')), createEl('pre', 'ai-thinking-content', thinking));
         details.open = wasOpen;
         bubble.appendChild(details);
     }
@@ -4339,10 +4346,10 @@ async function sendAiMessage() {
         try {
             token = await auth.currentUser.getIdToken();
         } catch {
-            throw new Error('Authentifizierung fehlgeschlagen');
+            throw new Error(t('error_auth_failed_short', 'Authentifizierung fehlgeschlagen'));
         }
         const messages = sanitizeAiMessages(aiMessages);
-        if (messages.length === 0) throw new Error('Keine gültige Nachricht vorhanden');
+        if (messages.length === 0) throw new Error(t('ai_no_valid_message', 'Keine gültige Nachricht vorhanden'));
         const res = await fetch(`${API}/ai/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -4382,7 +4389,7 @@ async function sendAiMessage() {
     } catch (err) {
         typingEl.remove();
         console.error('KI-Chat Fehler:', err);
-        const message = `Fehler: ${err.message || 'Unbekannter Fehler'}`;
+        const message = t('ai_error', 'Fehler: {message}', { message: err.message || t('error_unknown', 'Unbekannter Fehler') });
         if (bubble) bubble.textContent = message;
         else bubble = appendAiMessage('assistant', message);
         bubble?.classList.add('ai-chat-bubble-error');
@@ -4552,7 +4559,7 @@ function mentorCardAction(m, name, isSelf, isFull) {
     if (existing) {
         const closed = existing.status === 'closed';
         return `
-            <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect('${escapeHtml(existing.id)}', 'find')" title="${closed ? t('mentoring_btn_open_closed_chat', 'Abgeschlossenes Gespräch anzeigen') : t('mentoring_btn_open_chat', 'Laufendes Gespräch öffnen')}">
+            <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect('${escapeHtml(existing.id)}', 'find')" title="${closed ? t('mentoring_btn_open_closed_chat_title', 'Abgeschlossenes Gespräch anzeigen') : t('mentoring_btn_open_chat_title', 'Laufendes Gespräch öffnen')}">
                 ${closed ? t('mentoring_btn_open_closed_chat', '📁 Zum Gespräch') : t('mentoring_btn_open_chat', '💬 Zum Gespräch')}
             </button>`;
     }
@@ -4640,11 +4647,11 @@ async function submitMentorContact(e) {
         if (!res.ok) {
             if (data.threadId) {
                 closeModal('mentor-contact-modal');
-                showToast(data.error || t('mentoring_toast_existing_active', 'Bestehendes Gespräch geöffnet.'), 'info');
+                showToast(data.error || t('mentoring_toast_existing_opened', 'Bestehendes Gespräch geöffnet.'), 'info');
                 openMentoringChatDirect(data.threadId);
                 return;
             }
-            throw new Error(data.error || data.message || t('mentoring_req_error', 'Fehler beim Erstellen der Anfrage.'));
+            throw new Error(data.error || data.message || t('mentoring_req_error', 'Fehler beim Senden der Anfrage.'));
         }
         closeModal('mentor-contact-modal');
         showToast(t('mentoring_toast_req_sent', 'Vertrauliche Anfrage erfolgreich gesendet!'), 'success');
@@ -4666,7 +4673,7 @@ function renderThreadItem(thread) {
     const unread = thread.unread_count || 0;
     const closedLabel = t('mentoring_sub_closed', 'Gespräch beendet');
     const lastMsg = thread.last_message || (isClosed ? closedLabel : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
-    const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
     const avatar = isMentor
         ? `<div class="mentoring-thread-avatar mentee-avatar" title="${escapeHtml(name)}">${svgIcon('shield', 20)}</div>`
         : `<div class="mentoring-thread-avatar mentor-avatar" title="${escapeHtml(name)}">
@@ -4677,7 +4684,7 @@ function renderThreadItem(thread) {
         <div class="mentoring-thread-item ${activeMentoringThreadId === thread.id ? 'active' : ''} ${unread > 0 ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread('${escapeHtml(thread.id)}')">
             <div class="mentoring-thread-avatar-wrap">
                 ${avatar}
-                <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? closedLabel : 'Aktiv'}"></span>
+                <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? closedLabel : t('status_active', 'Aktiv')}"></span>
             </div>
             <div class="mentoring-thread-info">
                 <div class="mentoring-thread-top">
@@ -4866,10 +4873,10 @@ async function loadMentoringMessages(threadId, isPoll = false) {
         }
         messagesEl.innerHTML = messages.map(m => {
             const isMe = isCurrentUser(m.sender);
-            const time = m.created ? new Date(m.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            const time = m.created ? new Date(m.created).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }) : '';
             return `
                 <div class="mentoring-message ${isMe ? 'outgoing msg-mine' : 'incoming msg-other'}">
-                    ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_mentor', 'Gesprächspartner'))}</div>` : ''}
+                    ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_generic', 'Gesprächspartner'))}</div>` : ''}
                     <div class="mentoring-message-bubble">${escapeHtml(m.message || m.text || '')}</div>
                     <div class="mentoring-message-time">${escapeHtml(time)}</div>
                 </div>`;
@@ -4890,19 +4897,19 @@ async function sendMentoringMessage() {
     const pending = createEl('div', 'mentoring-message outgoing msg-mine');
     pending.innerHTML = `
         <div class="mentoring-message-bubble">${escapeHtml(text)}</div>
-        <div class="mentoring-message-time">${escapeHtml(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))} • ${t('mentoring_sending_optimistic', 'Wird gesendet…')}</div>`;
+        <div class="mentoring-message-time">${escapeHtml(new Date().toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }))} • ${t('mentoring_sending_optimistic', 'Wird gesendet…')}</div>`;
     messagesEl.appendChild(pending);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     input.value = '';
     autoResizeMentoringInput(input);
     try {
-        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/messages`, 'POST', { message: text, text }, t('mentoring_send_error', 'Fehler beim Senden.'));
+        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/messages`, 'POST', { message: text, text }, t('mentoring_send_error', 'Fehler beim Senden'));
         await loadMentoringMessages(activeMentoringThreadId);
         loadMentoringThreads(false);
     } catch (err) {
         const time = pending.querySelector('.mentoring-message-time');
-        if (time) time.innerHTML = `<span style="color:#ef4444;">${t('mentoring_send_error', '⚠️ Fehler beim Senden')}</span>`;
-        alert(err.message || t('mentoring_send_error', 'Nachricht konnte nicht gesendet werden.'));
+        if (time) time.innerHTML = `<span style="color:#ef4444;">⚠️ ${t('mentoring_send_error', 'Fehler beim Senden')}</span>`;
+        alert(err.message || t('mentoring_send_failed', 'Nachricht konnte nicht gesendet werden.'));
     }
 }
 
@@ -4927,7 +4934,7 @@ async function withActiveThread(action) {
 
 // 'blocked' closes the chat so that only the blocker can reopen it (Google Play UGC policy)
 async function setThreadStatus(thread, status, toast) {
-    await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status }, t('mentoring_status_error', 'Fehler beim Ändern des Status.'));
+    await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status }, t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
     Object.assign(thread, status === 'blocked' ? { status: 'closed', blocked: true, blockedByMe: true } : { status });
     openMentoringThread(thread.id);
     loadMentoringThreads();
@@ -4939,7 +4946,7 @@ const reportCurrentThread = () => withActiveThread(async thread => {
     const reason = window.prompt(t('mentoring_report_reason', 'Warum meldest du dieses Gespräch? Die letzten Nachrichten deines Gegenübers werden an die Administratoren gesendet.'), '');
     if (reason === null) return;
     const partnerRole = thread.myRole === 'mentor' ? 'mentee' : 'mentor';
-    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || '(keine Nachrichten)';
+    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || t('mentoring_report_no_messages', '(keine Nachrichten)');
     await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
     showToast(t('report_sent', 'Gemeldet – danke!'), 'info');
 });
@@ -4971,10 +4978,10 @@ async function submitMentorApplication(e) {
     e?.preventDefault?.();
     const bio = inputValue('mentor-app-bio').trim();
     const max_mentees = $('mentor-app-max') ? parseInt(inputValue('mentor-app-max'), 10) : 3;
-    if (!bio) return alert(t('mentor_app_error_no_bio', 'Bitte gib eine persönliche Vorstellung ein, was du über dich sagst und dich beschreibt.'));
+    if (!bio) return alert(t('mentor_app_error_no_bio', 'Bitte gib eine kurze persönliche Vorstellung ein.'));
     const isUpdate = !!myMentorProfile;
     try {
-        const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees }, t('mentor_app_error_generic', 'Fehler beim Einreichen der Bewerbung.'));
+        const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees }, t('mentor_app_error_generic', 'Fehler bei der Bewerbung.'));
         myMentorProfile = data.mentor || myMentorProfile;
         closeModal('mentor-application-modal');
         showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentoren-Profil aktualisiert!') : t('mentor_app_toast_submitted', 'Bewerbung erfolgreich eingereicht! Die Leitung wird sie prüfen.'), 'success');
@@ -5011,7 +5018,7 @@ async function loadMentoringReviewList() {
             const status = m.status || 'pending';
             const [bg, color, labelKey, labelFallback] = MENTOR_STATUS_STYLES[status] || MENTOR_STATUS_STYLES.pending;
             const email = escapeHtml(m.email || m.userEmail || '');
-            const dateStr = m.created ? new Date(m.created).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+            const dateStr = m.created ? new Date(m.created).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }) : '';
             const statusButton = (target, cls, style, key, fallback) => status === target ? '' : `
                 <button type="button" class="btn ${cls} btn-small"${style} onclick="window.setMentorStatus('${escapeHtml(m.id)}', '${target}')">
                     ${t(key, fallback)}
@@ -5037,7 +5044,7 @@ async function loadMentoringReviewList() {
                     </div>
                     <div style="background:var(--surface-alt); padding:12px 14px; border-radius:8px; font-size:0.92rem; line-height:1.5;">
                         <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${t('mentoring_review_bio_label', 'Über sich / Selbstbeschreibung:')}</div>
-                        ${escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Personenbeschreibung hinterlegt.'))}
+                        ${escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Beschreibung vorhanden.'))}
                     </div>
                 </div>`;
         }).join('');
@@ -5050,7 +5057,7 @@ async function setMentorStatus(mentorId, status) {
     const action = status === 'approved' ? t('mentoring_action_approve', 'genehmigen') : t('mentoring_action_reject', 'ablehnen');
     if (!confirmAction(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action }))) return;
     try {
-        await apiJson(`/mentoring/manage/${mentorId}/status`, 'POST', { status }, t('mentoring_status_error', 'Status konnte nicht geändert werden.'));
+        await apiJson(`/mentoring/manage/${mentorId}/status`, 'POST', { status }, t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
         showToast(status === 'approved' ? t('mentoring_toast_approved', 'Bewerbung erfolgreich freigegeben!') : t('mentoring_toast_rejected', 'Bewerbung erfolgreich abgelehnt!'), 'success');
         loadMentoringReviewList();
         loadMentoringData();
@@ -5073,7 +5080,7 @@ function renderHomeMentoringCard() {
     const when = iso => {
         const d = iso ? new Date(iso) : null;
         if (!d || isNaN(d)) return '';
-        return d.toDateString() === today ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+        return d.toDateString() === today ? d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' });
     };
     const rows = unread.slice(0, HOME_MENTORING_ROWS).map(thread => {
         const { name, role } = threadPartner(thread);
@@ -5089,7 +5096,7 @@ function renderHomeMentoringCard() {
                     </span>
                     <span class="home-msg-role">${escapeHtml(role)}</span>
                     <span class="home-msg-snippet-line">
-                        <span class="home-msg-snippet">${escapeHtml(thread.last_message || t('mentoring_start_conversation_desc', 'Neue vertrauliche Nachricht'))}</span>
+                        <span class="home-msg-snippet">${escapeHtml(thread.last_message || t('home_mentoring_new_message', 'Neue vertrauliche Nachricht'))}</span>
                         <span class="home-msg-count">${formatBadgeCount(thread.unread_count)}</span>
                     </span>
                 </span>
@@ -5139,7 +5146,11 @@ let eventCandidatesCache = null;
 let eventGroupsCache = null;
 let showPastEvents = false;
 
-const WEEKDAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const WEEKDAY_SHORT_BY_LANG = {
+    de: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+    en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+};
+const weekdayShort = index => (WEEKDAY_SHORT_BY_LANG[uiLang] || WEEKDAY_SHORT_BY_LANG.de)[index] || '';
 const splitDate = dateStr => dateStr.split('-').map(Number);
 
 function isEventPast(ev, todayStr = getTodayStr()) {
@@ -5170,19 +5181,24 @@ function getEventCardStatusInfo(ev) {
     };
 }
 
-const MONTH_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const MONTH_SHORT_BY_LANG = {
+    de: ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'],
+    en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+};
+const monthShort = index => (MONTH_SHORT_BY_LANG[uiLang] || MONTH_SHORT_BY_LANG.de)[index] || '';
 
 function eventDateParts(dateStr) {
     if (!dateStr) return { dayNum: '--', weekdayStr: '', monthStr: '' };
     const [y, m, d] = splitDate(dateStr);
-    return { dayNum: String(d), weekdayStr: WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()] || '', monthStr: MONTH_SHORT[m - 1] || '' };
+    return { dayNum: String(d), weekdayStr: weekdayShort(new Date(y, m - 1, d).getDay()), monthStr: monthShort(m - 1) };
 }
 
 // "17.–19. Okt." / "30. Sep. – 2. Okt." for list cards (the year is in the month header)
 function formatEventDateSpanShort(startDate, endDate) {
     const [, m1, d1] = splitDate(startDate);
     const [, m2, d2] = splitDate(endDate);
-    const month = m => `${MONTH_SHORT[m - 1]}.`;
+    if (uiLang === 'en') return m1 === m2 ? `${d1}–${d2} ${monthShort(m1 - 1)}` : `${d1} ${monthShort(m1 - 1)} – ${d2} ${monthShort(m2 - 1)}`;
+    const month = m => `${monthShort(m - 1)}.`;
     return m1 === m2 ? `${d1}.–${d2}. ${month(m1)}` : `${d1}. ${month(m1)} – ${d2}. ${month(m2)}`;
 }
 
@@ -5200,21 +5216,30 @@ function eventCalendarLeaf(dateStr, cls = '') {
 function formatEventDate(dateStr) {
     if (!dateStr) return '';
     const [y, m, d] = splitDate(dateStr);
-    return `${WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()]}, ${d}. ${MONTH_NAMES[m - 1]} ${y}`;
+    return intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(y, m - 1, d));
 }
 
 function formatEventDateSpanCompact(startDate, endDate) {
     if (!startDate) return '--';
     const months = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sept.', 'Okt.', 'Nov.', 'Dez.'];
     const [y1, m1, d1] = splitDate(startDate);
-    if (!endDate || endDate === startDate) return `${WEEKDAY_SHORT[new Date(y1, m1 - 1, d1).getDay()]}., ${d1}. ${months[m1 - 1]} ${y1}`;
+    if (uiLang === 'en') {
+        if (!endDate || endDate === startDate) return `${weekdayShort(new Date(y1, m1 - 1, d1).getDay())}, ${d1} ${monthShort(m1 - 1)} ${y1}`;
+        const [y2, m2, d2] = splitDate(endDate);
+        if (y1 === y2 && m1 === m2) return `${d1} – ${d2} ${monthShort(m1 - 1)} ${y1}`;
+        if (y1 === y2) return `${d1} ${monthShort(m1 - 1)} – ${d2} ${monthShort(m2 - 1)} ${y1}`;
+        return `${d1} ${monthShort(m1 - 1)} ${y1} – ${d2} ${monthShort(m2 - 1)} ${y2}`;
+    }
+    if (!endDate || endDate === startDate) return `${weekdayShort(new Date(y1, m1 - 1, d1).getDay())}., ${d1}. ${months[m1 - 1]} ${y1}`;
     const [y2, m2, d2] = splitDate(endDate);
     if (y1 === y2 && m1 === m2) return `${d1}. – ${d2}. ${months[m1 - 1]} ${y1}`;
     if (y1 === y2) return `${d1}. ${months[m1 - 1]} – ${d2}. ${months[m2 - 1]} ${y1}`;
     return `${d1}.${m1}.${y1} – ${d2}.${m2}.${y2}`;
 }
 
-const eventTimeRange = (ev, withUhr = true) => ev.startTime ? (ev.endTime ? `${ev.startTime} – ${ev.endTime}${withUhr ? ' Uhr' : ''}` : (withUhr ? `ab ${ev.startTime} Uhr` : ev.startTime)) : '';
+const eventTimeRange = (ev, withUhr = true) => ev.startTime ? (ev.endTime
+    ? (withUhr ? t('events_time_range', '{start} – {end} Uhr', { start: ev.startTime, end: ev.endTime }) : `${ev.startTime} – ${ev.endTime}`)
+    : (withUhr ? t('events_time_from', 'ab {start} Uhr', { start: ev.startTime }) : ev.startTime)) : '';
 const eventImage = ev => {
     const raw = ev ? (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '') : '';
     return typeof raw === 'string' ? raw.trim() : '';
@@ -5256,31 +5281,31 @@ function dutyRequestBanner(list, onHome) {
             <div class="events-requests-banner-header">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="events-requests-bell">📬</span>
-                    <strong style="font-size:0.95rem; color:var(--text);">Offene Dienstanfragen an dich (${list.length})</strong>
+                    <strong style="font-size:0.95rem; color:var(--text);">${t('duty_requests_title', 'Offene Dienstanfragen an dich ({count})', { count: list.length })}</strong>
                 </div>
-                <span class="events-requests-badge">Rückmeldung erbeten</span>
+                <span class="events-requests-badge">${t('duty_requests_badge', 'Rückmeldung erbeten')}</span>
             </div>
             <div class="events-requests-list">
                 ${list.map(req => {
                     const id = escapeHtml(req.id);
                     return `
                     <div class="events-request-card" id="${onHome ? 'home-' : ''}duty-request-${id}">
-                        <div class="events-request-info"${onHome ? ` onclick="window.openEventDetailModal('${escapeHtml(req.eventId)}')" role="button" tabindex="0" style="cursor:pointer;" title="Termin-Details anzeigen"` : ''}>
-                            <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || 'Event')}</div>
+                        <div class="events-request-info"${onHome ? ` onclick="window.openEventDetailModal('${escapeHtml(req.eventId)}')" role="button" tabindex="0" style="cursor:pointer;" title="${t('duty_requests_show_details', 'Termin-Details anzeigen')}"` : ''}>
+                            <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || t('detail_groups_event', 'Event'))}</div>
                             <div class="events-request-event-sub">
-                                <span>${escapeHtml(formatEventDate(req.eventDate))}${req.eventStartTime ? ` um ${escapeHtml(req.eventStartTime)} Uhr` : ''}</span>
+                                <span>${escapeHtml(formatEventDate(req.eventDate))}${req.eventStartTime ? ` ${t('duty_requests_at_time', 'um {time} Uhr', { time: escapeHtml(req.eventStartTime) })}` : ''}</span>
                             </div>
                             <div class="events-request-role">
                                 🛠️ <strong>${escapeHtml(req.roleName)}</strong>
-                                <span style="color:var(--text-secondary); font-size:0.8rem;">(${req.section ? `Bereich: ${escapeHtml(req.section)} • ` : ''}Angefragt von ${escapeHtml(req.requestedByName || 'Team')})</span>
+                                <span style="color:var(--text-secondary); font-size:0.8rem;">(${req.section ? `${t('duty_requests_section', 'Bereich: {section}', { section: escapeHtml(req.section) })} • ` : ''}${t('duty_requests_requested_by', 'Angefragt von {name}', { name: escapeHtml(req.requestedByName || t('duty_requests_team', 'Team')) })})</span>
                             </div>
                         </div>
                         <div class="events-request-actions">
                             <button type="button" class="btn btn-success btn-small" onclick="${stop}window.respondToDutyRequest('${id}', 'accept')">
-                                ✅ Zusagen
+                                ✅ ${t('duty_btn_accept', 'Zusagen')}
                             </button>
                             <button type="button" class="btn btn-ghost btn-small text-danger" onclick="${stop}window.respondToDutyRequest('${id}', 'decline')">
-                                ❌ Ablehnen
+                                ❌ ${t('request_btn_reject', 'Ablehnen')}
                             </button>
                         </div>
                     </div>`;
@@ -5326,7 +5351,7 @@ function renderHomeGreeting() {
     const hello = hour < 11 ? t('home_greeting_morning', 'Guten Morgen') : hour < 18 ? t('home_greeting_day', 'Hallo') : t('home_greeting_evening', 'Guten Abend');
     const first = (currentUser?.firstName || fullName(currentUser) || currentUser?.name || '').trim().split(/\s+/)[0];
     setText('home-greeting-title', first ? `${hello}, ${first} 👋` : `${hello} 👋`);
-    setText('home-greeting-date', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }));
+    setText('home-greeting-date', new Date().toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' }));
 }
 
 const HOME_UPCOMING_COUNT = 5;
@@ -5339,8 +5364,8 @@ function homeDayLabel(dateStr, todayStr) {
     const [ty, tm, td] = splitDate(todayStr);
     const days = Math.round((date - new Date(ty, tm - 1, td)) / 86400000);
     if (days === 1) return t('home_tomorrow', 'Morgen');
-    if (days < 7) return date.toLocaleDateString([], { weekday: 'long' });
-    return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+    if (days < 7) return date.toLocaleDateString(uiLocale(), { weekday: 'long' });
+    return date.toLocaleDateString(uiLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 // Next appointments and events (also invitations to register) as swipeable cards; returns the shown events
@@ -5369,7 +5394,7 @@ function renderHomeUpcoming() {
         const day = homeDayLabel(startOf(ev), todayStr);
         const time = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (ev.startTime ? ev.startTime : t('home_all_day', 'Ganztägig'));
         const { myDuty, isRegistered, isWaitlist } = getEventCardStatusInfo(ev);
-        const chip = myDuty ? `<span class="home-next-chip chip-duty">${cardIcon('user')}${escapeHtml(myDuty.roleName || 'Dienst')}</span>`
+        const chip = myDuty ? `<span class="home-next-chip chip-duty">${cardIcon('user')}${escapeHtml(myDuty.roleName || t('events_duty', 'Dienst'))}</span>`
             : isRegistered ? `<span class="home-next-chip chip-registered">${cardIcon('check')}${t('home_registered', 'Angemeldet')}</span>`
             : isWaitlist ? `<span class="home-next-chip chip-waitlist">${t('home_waitlist', 'Warteliste')}</span>`
             : ev.requiresRegistration && !ev.isFull ? `<span class="home-next-chip chip-open">${t('home_register_open', 'Anmeldung offen')}</span>`
@@ -5438,7 +5463,7 @@ function refreshDetailEvent(openDuties) {
 }
 
 // Runs an event API call, reports the outcome as toast, reloads events and refreshes the open detail modal.
-async function eventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = 'Verbindungsfehler', before, after = () => refreshDetailEvent(true) }) {
+async function eventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Verbindungsfehler'), before, after = () => refreshDetailEvent(true) }) {
     try {
         const res = await api(path, method, body);
         const data = await res.json().catch(() => ({}));
@@ -5453,9 +5478,9 @@ async function eventAction(path, method, body, { success, successType = 'success
 }
 
 const respondToDutyRequest = (dutyId, action) => eventAction(`/events/duties/${dutyId}/respond`, 'POST', { action }, {
-    success: action === 'accept' ? 'Dienst zugesagt! Du bist jetzt für dieses Event eingeteilt.' : 'Dienstanfrage abgelehnt.',
+    success: action === 'accept' ? t('duty_toast_accepted', 'Dienst zugesagt! Du bist jetzt für dieses Event eingeteilt.') : t('duty_toast_declined', 'Dienstanfrage abgelehnt.'),
     successType: action === 'accept' ? 'success' : 'info',
-    error: 'Fehler beim Antworten auf die Dienstanfrage',
+    error: t('duty_respond_error', 'Fehler beim Antworten auf die Dienstanfrage'),
     after: () => refreshDetailEvent(false)
 });
 
@@ -5527,15 +5552,15 @@ function renderEvents() {
         <div class="events-past-toggle-wrap">
             <button type="button" class="events-past-toggle-btn" onclick="window.toggleShowPastEvents()">
                 <span style="font-size: 0.72rem;">${showPastEvents ? '▲' : '▼'}</span>
-                <span>Abgelaufene Events ${showPastEvents ? 'verbergen' : 'anzeigen'} (${past.length})</span>
+                <span>${showPastEvents ? t('events_past_hide', 'Abgelaufene Events verbergen ({count})', { count: past.length }) : t('events_past_show', 'Abgelaufene Events anzeigen ({count})', { count: past.length })}</span>
             </button>
             ${showPastEvents ? `
                 <div style="width: 100%; margin-top: 22px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
                         <span style="font-size: 0.84rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
-                            Abgelaufene Events (${past.length})
+                            ${t('events_past_title', 'Abgelaufene Events ({count})', { count: past.length })}
                         </span>
-                        <span style="font-size: 0.76rem; color: var(--text-secondary);">Versteckt bis zur manuellen Löschung</span>
+                        <span style="font-size: 0.76rem; color: var(--text-secondary);">${t('events_past_hint', 'Versteckt bis zur manuellen Löschung')}</span>
                     </div>
                     <div class="events-cards-grid">
                         ${past.map(ev => renderChurchtoolsEventCard(ev, true)).join('')}
@@ -5547,10 +5572,10 @@ function renderEvents() {
         container.innerHTML = `
             <div class="card" style="padding: 48px 20px; text-align: center; color: var(--text-secondary); border-radius: 16px;">
                 <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
-                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? 'Keine anstehenden Events gefunden' : 'Keine passenden Termine gefunden'}</div>
-                <div style="font-size: 0.88rem; margin-bottom: 14px;">Versuche die Filter zurückzusetzen oder erstelle einen neuen Eintrag.</div>
+                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? t('events_empty_events', 'Keine anstehenden Events gefunden') : t('events_empty_termine', 'Keine passenden Termine gefunden')}</div>
+                <div style="font-size: 0.88rem; margin-bottom: 14px;">${t('events_empty_hint', 'Versuche die Filter zurückzusetzen oder erstelle einen neuen Eintrag.')}</div>
                 <div>
-                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">${isEventsTab ? '+ Neues Event' : '+ Neuer Termin'}</button>
+                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">+ ${isEventsTab ? t('events_btn_new', 'Neues Event') : t('events_new_termin', 'Neuer Termin')}</button>
                 </div>
             </div>
             ${pastSection}`;
@@ -5569,14 +5594,14 @@ function renderEvents() {
                 ${items.map(render).join('')}
             </div>
         </div>`;
-    const byMonth = (list, render) => [...groupBy(list, ev => ((ev._day || ev.date) ? (ev._day || ev.date).substring(0, 7) : 'Ohne Datum'))].map(([key, items]) => {
+    const byMonth = (list, render) => [...groupBy(list, ev => ((ev._day || ev.date) ? (ev._day || ev.date).substring(0, 7) : t('events_no_date', 'Ohne Datum')))].map(([key, items]) => {
         const [y, m] = key.split('-').map(Number);
-        return group(escapeHtml(key.includes('-') ? `${MONTH_NAMES[m - 1]} ${y}` : key), items, render);
+        return group(escapeHtml(key.includes('-') ? monthYearFormatter.format(new Date(y, m - 1, 1)) : key), items, render);
     }).join('');
     const ctCard = ev => renderChurchtoolsEventCard(ev, false);
     const pinned = upcoming.filter(ev => ev.isPinned);
     container.innerHTML = (isEventsTab
-        ? (pinned.length ? group('Highlights', pinned, ctCard, ' events-highlights-group') : '') + byMonth(upcoming.filter(ev => !ev.isPinned), ctCard)
+        ? (pinned.length ? group(t('events_tab_pinned', 'Highlights'), pinned, ctCard, ' events-highlights-group') : '') + byMonth(upcoming.filter(ev => !ev.isPinned), ctCard)
         : byMonth(upcoming, ev => renderEventCard(ev, undefined, ev._day))) + pastSection;
 }
 
@@ -5589,21 +5614,21 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
     const timeDisplay = !isMultiDay ? eventTimeRange(ev) : '';
     const { myDuty, myRequestedDuty, isRegistered, isWaitlist } = getEventCardStatusInfo(ev);
-    const status = isPast ? statusBadge('status-past', '⌛ Vorbei')
-        : myDuty ? statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(myDuty.roleName || 'Dienst')}</span>`)
-        : myRequestedDuty ? statusBadge('status-requested', `${cardIcon('clock')}<span>Anfrage offen</span>`)
-        : isWaitlist ? statusBadge('status-waitlist', '<span>Warteliste</span>')
-        : ev.requiresRegistration && ev.isFull && !ev.myRegistration ? statusBadge('status-full', '<span>Ausgebucht</span>') : '';
+    const status = isPast ? statusBadge('status-past', `⌛ ${t('events_status_past', 'Vorbei')}`)
+        : myDuty ? statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(myDuty.roleName || t('events_duty', 'Dienst'))}</span>`)
+        : myRequestedDuty ? statusBadge('status-requested', `${cardIcon('clock')}<span>${t('events_status_request_open', 'Anfrage offen')}</span>`)
+        : isWaitlist ? statusBadge('status-waitlist', `<span>${t('home_waitlist', 'Warteliste')}</span>`)
+        : ev.requiresRegistration && ev.isFull && !ev.myRegistration ? statusBadge('status-full', `<span>${t('events_status_full', 'Ausgebucht')}</span>`) : '';
     // Own registration sits next to the title (below the picture), independent of the picture's status label
-    const registeredBadge = isRegistered && !isPast ? statusBadge('status-registered', `${cardIcon('check')}<span>Angemeldet</span>`, 'Du bist angemeldet') : '';
+    const registeredBadge = isRegistered && !isPast ? statusBadge('status-registered', `${cardIcon('check')}<span>${t('home_registered', 'Angemeldet')}</span>`, t('events_reg_you_are_registered', 'Du bist angemeldet')) : '';
     const regCount = ev.registeredCount || 0;
     const max = ev.maxParticipants || 0;
-    const footerBadges = !ev.requiresRegistration ? '<span class="ct-footer-pill-muted">Ohne Anmeldung</span>'
+    const footerBadges = !ev.requiresRegistration ? `<span class="ct-footer-pill-muted">${t('events_no_registration', 'Ohne Anmeldung')}</span>`
         : max > 0 ? `
-            <div class="ct-capacity-wrap" title="${regCount} von ${max} Plätzen belegt">
-                <span class="ct-capacity-text">${regCount}/${max} Plätze</span>
+            <div class="ct-capacity-wrap" title="${t('events_capacity_taken', '{count} von {max} Plätzen belegt', { count: regCount, max })}">
+                <span class="ct-capacity-text">${t('events_capacity_short', '{count}/{max} Plätze', { count: regCount, max })}</span>
                 <div class="ct-capacity-track"><div class="ct-capacity-bar" style="width:${Math.min(100, Math.round((regCount / max) * 100))}%;"></div></div>
-            </div>` : `<span class="ct-footer-pill">${regCount} angemeldet</span>`;
+            </div>` : `<span class="ct-footer-pill">${t('events_registered_count', '{count} angemeldet', { count: regCount })}</span>`;
     const metaRow = (icon, text, extra = '') => `<div class="ct-event-card-meta-row${extra}">${cardIcon(icon)}<span>${escapeHtml(text)}</span></div>`;
     return `
         <div class="churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}" id="event-card-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
@@ -5612,7 +5637,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                     ? `<img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">`
                     : `<div class="ct-event-card-fallback-cover"><div class="ct-fallback-icon-wrap">${cardIcon('calendar')}</div></div>`}
                 ${eventCalendarLeaf(ev.date, `ct-event-card-date-badge ${isPinned ? 'cat-pinned' : 'cat-event'}`)}
-                <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? 'Großevent' : 'Event'}</span>${status}</div>
+                <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? t('events_major_event', 'Großevent') : t('detail_groups_event', 'Event')}</span>${status}</div>
             </div>
             <div class="ct-event-card-body">
                 <div class="ct-event-card-title-row">
@@ -5626,7 +5651,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                 </div>
                 <div class="ct-event-card-footer">
                     <div>${footerBadges}</div>
-                    <div class="ct-details-btn" title="Details" aria-hidden="true">${svgIcon('chevronRight', 18, 2.5)}</div>
+                    <div class="ct-details-btn" title="${t('modal_details_title', 'Details')}" aria-hidden="true">${svgIcon('chevronRight', 18, 2.5)}</div>
                 </div>
             </div>
         </div>`;
@@ -5647,27 +5672,27 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
     let status = '';
     if (myDuty) {
         const viaGroup = myDuty.assignedGroup && userInGroup(currentUser, myDuty.assignedGroup) && !isCurrentUser(myDuty.assignedUser);
-        const label = viaGroup ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || 'Dienst') : (myDuty.roleName || 'Dienst');
-        status = statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(label)}</span>`, 'Eingeteilter Dienst');
+        const label = viaGroup ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || t('events_duty', 'Dienst')) : (myDuty.roleName || t('events_duty', 'Dienst'));
+        status = statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(label)}</span>`, t('events_status_assigned_duty', 'Eingeteilter Dienst'));
     } else if (myRequestedDuty) {
-        status = statusBadge('status-requested', `${cardIcon('clock')}<span>Anfrage offen</span>`, 'Dienstanfrage offen');
+        status = statusBadge('status-requested', `${cardIcon('clock')}<span>${t('events_status_request_open', 'Anfrage offen')}</span>`, t('events_status_duty_request_open', 'Dienstanfrage offen'));
     } else if (isWaitlist) {
-        status = statusBadge('status-waitlist', `${cardIcon('alert')}<span>Warteliste</span>`, 'Auf der Warteliste');
+        status = statusBadge('status-waitlist', `${cardIcon('alert')}<span>${t('home_waitlist', 'Warteliste')}</span>`, t('events_status_on_waitlist', 'Auf der Warteliste'));
     } else if (!isRegistered && openDutiesCount > 0 && ev.canAccessDutyPlan) {
-        status = statusBadge('status-open-duties', `<span>${openDutiesCount} ${openDutiesCount === 1 ? 'Dienst frei' : 'Dienste frei'}</span>`, `${openDutiesCount} offene Dienste`);
+        status = statusBadge('status-open-duties', `<span>${openDutiesCount === 1 ? t('events_duty_free_one', '1 Dienst frei') : t('events_duty_free_many', '{count} Dienste frei', { count: openDutiesCount })}</span>`, t('events_duties_open_title', '{count} offene Dienste', { count: openDutiesCount }));
     } else if (!isRegistered && ev.requiresRegistration && ev.isFull) {
-        status = statusBadge('status-full', '<span>Ausgebucht</span>');
+        status = statusBadge('status-full', `<span>${t('events_status_full', 'Ausgebucht')}</span>`);
     }
-    const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || 'Ganztägig');
+    const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || t('home_all_day', 'Ganztägig'));
     const category = isPinned ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
-    const categoryLabel = isPinned ? 'Großevent' : isEvent ? 'Event' : 'Termin';
+    const categoryLabel = isPinned ? t('events_major_event', 'Großevent') : isEvent ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Termin');
     return `
         <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" title="${categoryLabel}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
             ${eventCalendarLeaf(day)}
             <div class="event-card-body">
                 <div class="event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="event-card-when">
-                    ${isToday ? '<span class="event-card-today">Heute</span>' : ''}
+                    ${isToday ? `<span class="event-card-today">${t('home_today', 'Heute')}</span>` : ''}
                     ${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(when)}</span>
                 </div>
                 ${ev.location ? `<div class="event-card-where">${cardIcon('location')}<span>${escapeHtml(ev.location)}</span></div>` : ''}
@@ -5722,7 +5747,7 @@ function setTextWithTitle(id, text) {
 }
 
 function setDescriptionToggle(expanded) {
-    setText('detail-desc-toggle-text', expanded ? 'Weniger anzeigen' : 'Mehr anzeigen');
+    setText('detail-desc-toggle-text', expanded ? t('events_show_less', 'Weniger anzeigen') : t('events_show_more', 'Mehr anzeigen'));
     const icon = $('detail-desc-toggle-icon');
     if (icon) icon.style.transform = `rotate(${expanded ? 180 : 0}deg)`;
 }
@@ -5744,9 +5769,9 @@ function renderRegistrationSection(ev) {
     const min = ev.minParticipants || 0;
     const free = Math.max(0, max - count);
     const meta = [
-        max > 0 ? `${count} von ${max} Plätzen belegt` : `${count} angemeldet`,
-        max > 0 ? (free > 0 ? `${free} frei` : 'ausgebucht') : '',
-        min > 0 ? `mind. ${min}` : ''
+        max > 0 ? t('events_capacity_taken', '{count} von {max} Plätzen belegt', { count, max }) : t('events_registered_count', '{count} angemeldet', { count }),
+        max > 0 ? (free > 0 ? t('events_capacity_free', '{count} frei', { count: free }) : t('events_capacity_full', 'ausgebucht')) : '',
+        min > 0 ? t('events_capacity_min', 'mind. {count}', { count: min }) : ''
     ].filter(Boolean).join(' · ');
     setText('detail-modal-reg-meta', meta);
     const capacity = $('detail-modal-capacity-info');
@@ -5764,11 +5789,11 @@ function renderRegistrationSection(ev) {
         </div>`;
     const leave = (current, label) => `<button type="button" class="event-reg-status-action" onclick="${toggle(current)}">${label}</button>`;
     $('detail-modal-reg-action-wrap').innerHTML = isEventPast(ev)
-        ? banner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? 'Du warst angemeldet' : 'Die Anmeldung ist beendet', 'Das Event ist vorbei.')
-        : status === 'registered' ? banner('is-registered', 'check', 'Du bist angemeldet', 'Wir freuen uns auf dich!', leave('registered', 'Abmelden'))
-        : status === 'waitlist' ? banner('is-waitlist', 'clock', 'Du stehst auf der Warteliste', 'Du rückst nach, sobald ein Platz frei wird.', leave('waitlist', 'Verlassen'))
-        : ev.isFull ? `<button type="button" class="btn btn-secondary btn-block" onclick="${toggle('none')}">${svgIcon('clock', 15, 2)}<span>Auf die Warteliste setzen</span></button>`
-        : `<button type="button" class="btn btn-primary btn-block" onclick="${toggle('none')}">${svgIcon('check', 15, 2.5)}<span>Verbindlich anmelden</span></button>`;
+        ? banner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? t('events_reg_was_registered', 'Du warst angemeldet') : t('events_reg_closed', 'Die Anmeldung ist beendet'), t('events_reg_event_over', 'Das Event ist vorbei.'))
+        : status === 'registered' ? banner('is-registered', 'check', t('events_reg_you_are_registered', 'Du bist angemeldet'), t('events_reg_looking_forward', 'Wir freuen uns auf dich!'), leave('registered', t('events_reg_unregister', 'Abmelden')))
+        : status === 'waitlist' ? banner('is-waitlist', 'clock', t('events_reg_on_waitlist', 'Du stehst auf der Warteliste'), t('events_reg_waitlist_hint', 'Du rückst nach, sobald ein Platz frei wird.'), leave('waitlist', t('events_reg_leave', 'Verlassen')))
+        : ev.isFull ? `<button type="button" class="btn btn-secondary btn-block" onclick="${toggle('none')}">${svgIcon('clock', 15, 2)}<span>${t('events_reg_join_waitlist', 'Auf die Warteliste setzen')}</span></button>`
+        : `<button type="button" class="btn btn-primary btn-block" onclick="${toggle('none')}">${svgIcon('check', 15, 2.5)}<span>${t('events_reg_register', 'Verbindlich anmelden')}</span></button>`;
     const attendees = $('detail-modal-attendees-details');
     if (attendees) attendees.open = false;
     loadEventAttendees(ev.id);
@@ -5791,7 +5816,7 @@ async function openEventDetailModal(eventId) {
 
     const typeIndicator = $('detail-modal-type-indicator');
     if (typeIndicator) {
-        typeIndicator.innerHTML = ev.isPinned ? `${svgIcon('star', 13)}<span>Großevent & Highlight</span>` : '';
+        typeIndicator.innerHTML = ev.isPinned ? `${svgIcon('star', 13)}<span>${t('events_major_event_highlight', 'Großevent & Highlight')}</span>` : '';
         // Keep detail-view-only so the badge hides while editing or creating an event
         typeIndicator.className = `event-detail-type-badge detail-view-only${ev.isPinned ? ' type-pinned' : ''}`;
         typeIndicator.style.display = ev.isPinned ? 'inline-flex' : 'none';
@@ -5804,13 +5829,13 @@ async function openEventDetailModal(eventId) {
     const infoTime = $('detail-modal-info-time');
     if (infoTime) {
         if (isMultiDay) infoTime.textContent = '';
-        else setTextWithTitle('detail-modal-info-time', eventTimeRange(ev) || 'Ganztägig');
+        else setTextWithTitle('detail-modal-info-time', eventTimeRange(ev) || t('home_all_day', 'Ganztägig'));
         infoTime.style.display = isMultiDay ? 'none' : 'inline';
     }
     show('detail-modal-when-sep', !isMultiDay, 'inline');
 
     const location = typeof ev.location === 'string' ? ev.location.trim() : '';
-    setTextWithTitle('detail-modal-info-where', location || 'Keine Angabe');
+    setTextWithTitle('detail-modal-info-where', location || t('events_no_location', 'Keine Angabe'));
     const mapLink = $('detail-modal-map-link');
     if (mapLink) {
         const isPlace = location && !/^(online|zoom|teams|skype|meet|keine angabe)$/i.test(location);
@@ -5821,8 +5846,8 @@ async function openEventDetailModal(eventId) {
     const creator = ev.createdByName?.trim() || '';
     const creatorEl = $('detail-creator-name');
     if (creatorEl) {
-        creatorEl.textContent = ev.createdByName || 'Mitglied';
-        creatorEl.title = creator || 'Mitglied';
+        creatorEl.textContent = ev.createdByName || t('events_member_fallback', 'Mitglied');
+        creatorEl.title = creator || t('events_member_fallback', 'Mitglied');
     }
     show('detail-modal-organizer-pill', !!creator, 'inline-flex');
 
@@ -5835,7 +5860,7 @@ async function openEventDetailModal(eventId) {
     const groupNames = (Array.isArray(ev.targetGroups) ? ev.targetGroups : []).map(g => findGroup(g)?.name || g).filter(Boolean);
     const groupsText = $('detail-modal-groups-text');
     if (groupsText) {
-        const quoted = groupNames.map(name => `<strong>„${escapeHtml(name)}“</strong>`);
+        const quoted = groupNames.map(name => `<strong>${t('detail_groups_quoted', '„{name}“', { name: escapeHtml(name) })}</strong>`);
         const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} ${t('detail_groups_and', 'und')} ${quoted[quoted.length - 1]}` : quoted.join('');
         const isEventType = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
         const kind = isEventType ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Termin');
@@ -5867,8 +5892,8 @@ async function openEventDetailModal(eventId) {
         const duties = Array.isArray(ev.duties) ? ev.duties : [];
         // "2 von 3 besetzt": confirmed people and assigned groups count as filled
         const filled = duties.filter(d => d.status === 'confirmed' || (d.status === 'assigned' && (d.assignedGroup || d.assignedGroupName))).length;
-        const tasks = new Set(duties.map(d => (d.roleName || 'Aufgabe').trim())).size;
-        setText('detail-modal-duties-count', duties.length ? `${filled} von ${duties.length} besetzt · ${tasks} ${tasks === 1 ? 'Aufgabe' : 'Aufgaben'}` : 'Noch keine Aufgaben');
+        const tasks = new Set(duties.map(d => (d.roleName || t('duty_task_fallback', 'Aufgabe')).trim())).size;
+        setText('detail-modal-duties-count', duties.length ? `${t('duty_filled_count', '{filled} von {total} besetzt', { filled, total: duties.length })} · ${tasks === 1 ? t('duty_task_count_one', '1 Aufgabe') : t('duty_task_count_many', '{count} Aufgaben', { count: tasks })}` : t('duty_no_tasks', 'Noch keine Aufgaben'));
         const progress = $('detail-modal-duties-progress');
         if (progress) {
             progress.style.display = duties.length ? 'block' : 'none';
@@ -5901,7 +5926,7 @@ async function loadEventAttendees(eventId) {
         const registered = data.registered || [];
         const waitlist = data.waitlist || [];
         setText('detail-attendees-count', registered.length);
-        setText('detail-attendees-label-text', registered.length ? 'Teilnehmer' : 'Noch niemand angemeldet');
+        setText('detail-attendees-label-text', registered.length ? t('events_attendees', 'Teilnehmer') : t('events_attendees_none', 'Noch niemand angemeldet'));
         show('detail-attendees-count', registered.length > 0, 'inline-flex');
         // Overlapping avatar stack of the first attendees
         const stack = $('detail-attendees-stack');
@@ -5919,22 +5944,22 @@ async function loadEventAttendees(eventId) {
                 ${renderAvatarWrap(att.userId, att.name, { wrapClass: 'event-attendee-avatar' })}
                 <span class="event-attendee-name">${escapeHtml(att.name)}</span>
                 ${canManage ? `
-                <button type="button" class="event-attendee-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="${isWaitlist ? 'Von Warteliste entfernen' : 'Teilnehmer entfernen'}" aria-label="Entfernen">
+                <button type="button" class="event-attendee-remove" onclick="window.removeEventAttendee('${eventId}', '${att.userId}')" title="${isWaitlist ? t('events_attendee_remove_waitlist', 'Von Warteliste entfernen') : t('events_attendee_remove', 'Teilnehmer entfernen')}" aria-label="${t('btn_remove', 'Entfernen')}">
                     ${svgIcon('x', 13, 2.5)}
                 </button>` : ''}
             </div>`;
         itemsEl.innerHTML = registered.map(att => row(att, false)).join('')
-            + (waitlist.length ? `<div class="event-attendees-sub">Warteliste · ${waitlist.length}</div>${waitlist.map(att => row(att, true)).join('')}` : '')
-            || '<div class="event-attendees-empty">Sobald sich jemand anmeldet, erscheint die Person hier.</div>';
+            + (waitlist.length ? `<div class="event-attendees-sub">${t('home_waitlist', 'Warteliste')} · ${waitlist.length}</div>${waitlist.map(att => row(att, true)).join('')}` : '')
+            || `<div class="event-attendees-empty">${t('events_attendees_empty', 'Sobald sich jemand anmeldet, erscheint die Person hier.')}</div>`;
     } catch (err) {
         console.warn('Failed to load event attendees:', err);
     }
 }
 
 async function removeEventAttendee(eventId, userId) {
-    if (!confirmAction('Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?')) return;
+    if (!confirmAction(t('events_attendee_remove_confirm', 'Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?'))) return;
     await eventAction(`/events/${eventId}/attendees/${userId}`, 'DELETE', undefined, {
-        success: 'Teilnehmer entfernt', successType: 'info', error: 'Fehler beim Entfernen des Teilnehmers', useServerError: false,
+        success: t('events_attendee_removed', 'Teilnehmer entfernt'), successType: 'info', error: t('events_attendee_remove_error', 'Fehler beim Entfernen des Teilnehmers'), useServerError: false,
         after: () => loadEventAttendees(eventId)
     });
 }
@@ -5944,10 +5969,10 @@ function renderGroupedDuties(duties, ev) {
     const container = $('detail-modal-duties-sections');
     if (!container) return;
     if (!duties || duties.length === 0) {
-        container.innerHTML = `<div class="duty-rows-empty">${ev.canEdit ? 'Lege Aufgaben an und frage Personen oder Gruppen dafür an.' : 'Für dieses Event sind keine Dienste eingetragen.'}</div>`;
+        container.innerHTML = `<div class="duty-rows-empty">${ev.canEdit ? t('duty_empty_manager', 'Lege Aufgaben an und frage Personen oder Gruppen dafür an.') : t('duty_empty_member', 'Für dieses Event sind keine Dienste eingetragen.')}</div>`;
         return;
     }
-    const grouped = groupBy(duties, d => (d.roleName || 'Aufgabe').trim());
+    const grouped = groupBy(duties, d => (d.roleName || t('duty_task_fallback', 'Aufgabe')).trim());
     container.innerHTML = [...grouped].map(([roleName, roleDuties]) => renderDutyTaskCard(roleName, roleDuties, ev)).join('');
 }
 
@@ -5959,7 +5984,7 @@ function renderDutyTaskCard(roleName, roleDuties, ev) {
     const openSlots = roleDuties.length - assignees.length;
     const chips = assignees.map(d => renderDutyAssigneeItem(d, ev)).join('')
         + (assignees.length === 0 || openSlots > 0
-            ? `<button type="button" class="duty-chip is-open" ${canManage ? `onclick="window.openAssignDutyModalForRole('${encodedRoleName}')"` : 'disabled'}>${svgIcon(canManage ? 'plus' : 'user', 12, 2.5)}<span>${canManage ? 'Offen – zuweisen' : 'Offen'}</span></button>`
+            ? `<button type="button" class="duty-chip is-open" ${canManage ? `onclick="window.openAssignDutyModalForRole('${encodedRoleName}')"` : 'disabled'}>${svgIcon(canManage ? 'plus' : 'user', 12, 2.5)}<span>${canManage ? t('duty_open_assign', 'Offen – zuweisen') : t('duty_open', 'Offen')}</span></button>`
             : '');
     // Requests to me get the answer buttons right in the row
     const myRequest = roleDuties.find(d => d.status === 'requested' && isCurrentUser(d.requestedUser));
@@ -5970,16 +5995,16 @@ function renderDutyTaskCard(roleName, roleDuties, ev) {
                 <span class="duty-row-name">${escapeHtml(roleName)}</span>
                 ${canManage ? `
                 <div class="duty-row-tools">
-                    ${assignees.length > 0 && openSlots === 0 ? `<button type="button" class="duty-tool" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')" title="Person oder Gruppe hinzufügen" aria-label="Person oder Gruppe hinzufügen">${svgIcon('plus', 14, 2.5)}</button>` : ''}
-                    <button type="button" class="duty-tool is-danger" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="Aufgabe löschen" aria-label="Aufgabe löschen">${svgIcon('trash', 14)}</button>
+                    ${assignees.length > 0 && openSlots === 0 ? `<button type="button" class="duty-tool" onclick="window.openAssignDutyModalForRole('${encodedRoleName}')" title="${t('duty_add_assignee', 'Person oder Gruppe hinzufügen')}" aria-label="${t('duty_add_assignee', 'Person oder Gruppe hinzufügen')}">${svgIcon('plus', 14, 2.5)}</button>` : ''}
+                    <button type="button" class="duty-tool is-danger" onclick="window.deleteEntireDutyTask('${encodedRoleName}')" title="${t('duty_delete_task', 'Aufgabe löschen')}" aria-label="${t('duty_delete_task', 'Aufgabe löschen')}">${svgIcon('trash', 14)}</button>
                 </div>` : ''}
             </div>
             <div class="duty-row-people">${chips}</div>
             ${myRequest ? `
             <div class="duty-row-request">
-                <span>Du wurdest angefragt</span>
-                <button type="button" class="btn btn-primary btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(myRequest.id)}', 'accept')">${svgIcon('check', 13, 2.5)}<span>Zusagen</span></button>
-                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(myRequest.id)}', 'decline')">Ablehnen</button>
+                <span>${t('duty_you_were_requested', 'Du wurdest angefragt')}</span>
+                <button type="button" class="btn btn-primary btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(myRequest.id)}', 'accept')">${svgIcon('check', 13, 2.5)}<span>${t('duty_btn_accept', 'Zusagen')}</span></button>
+                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.respondToDutyRequest('${escapeHtml(myRequest.id)}', 'decline')">${t('request_btn_reject', 'Ablehnen')}</button>
             </div>` : ''}
             ${notes}
         </div>`;
@@ -5996,15 +6021,15 @@ function renderDutyAssigneeItem(d, ev) {
         cls = 'is-group';
         avatar = `<span class="duty-chip-icon">${svgIcon('users', 12, 2.5)}</span>`;
         name = d.assignedGroupName || d.assignedGroup;
-        state = 'Gruppe';
+        state = t('duty_state_group', 'Gruppe');
     } else if (d.status === 'requested' || d.status === 'declined') {
         cls = d.status === 'requested' ? 'is-requested' : 'is-declined';
         avatar = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
-        name = isCurrentUser(d.requestedUser) ? 'Du' : (d.requestedUserName || 'Person');
-        state = d.status === 'requested' ? 'angefragt' : 'abgelehnt';
+        name = isCurrentUser(d.requestedUser) ? t('duty_you', 'Du') : (d.requestedUserName || t('details_person', 'Person'));
+        state = d.status === 'requested' ? t('duty_state_requested', 'angefragt') : t('duty_state_declined', 'abgelehnt');
     } else {
         avatar = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
-        name = isCurrentUser(d.assignedUser) ? 'Du' : (d.assignedUserName || 'Eingeteilt');
+        name = isCurrentUser(d.assignedUser) ? t('duty_you', 'Du') : (d.assignedUserName || t('events_duty_status_assigned', 'Eingeteilt'));
         state = '';
     }
     return `
@@ -6012,7 +6037,7 @@ function renderDutyAssigneeItem(d, ev) {
             ${avatar}
             <span class="duty-chip-name">${escapeHtml(name)}</span>
             ${state ? `<span class="duty-chip-state">${state}</span>` : `<span class="duty-chip-check">${svgIcon('check', 11, 3)}</span>`}
-            ${canRemove ? `<button type="button" class="duty-chip-remove" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="Eintrag entfernen" aria-label="Eintrag entfernen">${svgIcon('x', 11, 2.5)}</button>` : ''}
+            ${canRemove ? `<button type="button" class="duty-chip-remove" onclick="window.removeDutyAssignee('${escapeHtml(d.id)}')" title="${t('duty_remove_entry', 'Eintrag entfernen')}" aria-label="${t('duty_remove_entry', 'Eintrag entfernen')}">${svgIcon('x', 11, 2.5)}</button>` : ''}
         </span>`;
 }
 
@@ -6031,12 +6056,12 @@ async function submitAddNewTask() {
     const input = $('duty-new-task-name');
     const roleName = input?.value?.trim();
     if (!roleName) {
-        showToast('Bitte einen Namen für die Aufgabe eingeben', 'warning');
+        showToast(t('duty_task_name_required', 'Bitte einen Namen für die Aufgabe eingeben'), 'warning');
         input?.focus();
         return;
     }
     await eventAction(`/events/${currentDetailEvent.id}/duties`, 'POST', { roleName }, {
-        before: hideAddNewTaskForm, success: `Aufgabe "${roleName}" hinzugefügt!`, error: 'Fehler beim Anlegen der Aufgabe'
+        before: hideAddNewTaskForm, success: t('duty_task_added', 'Aufgabe "{name}" hinzugefügt!', { name: roleName }), error: t('duty_task_add_error', 'Fehler beim Anlegen der Aufgabe')
     });
 }
 
@@ -6044,7 +6069,7 @@ async function submitAddNewTask() {
 function openAssignDutyModalForRole(encodedRoleName) {
     setValue('assign-duty-role-encoded', encodedRoleName);
     setValue('assign-duty-replace-id', '');
-    setText('subtitle-assign-duty', `Aufgabe: ${decodeURIComponent(encodedRoleName)}`);
+    setText('subtitle-assign-duty', t('duty_assign_subtitle', 'Aufgabe: {name}', { name: decodeURIComponent(encodedRoleName) }));
     setValue('assign-duty-search-input', '');
     switchAssignDutyTab('user');
     openModal('assign-duty-modal');
@@ -6055,7 +6080,7 @@ function switchAssignDutyTab(type) {
     $('assign-tab-user')?.classList.toggle('is-active', type === 'user');
     $('assign-tab-group')?.classList.toggle('is-active', type === 'group');
     const search = $('assign-duty-search-input');
-    if (search) search.placeholder = type === 'user' ? 'Person suchen...' : 'Gruppe suchen...';
+    if (search) search.placeholder = type === 'user' ? t('duty_search_person', 'Person suchen...') : t('duty_search_group', 'Gruppe suchen...');
     renderAssignDutyModalList(search ? search.value : '');
 }
 
@@ -6078,17 +6103,17 @@ async function renderAssignDutyModalList(filterText = '') {
     const term = (filterText || '').trim().toLowerCase();
     const matches = text => !term || (text || '').toLowerCase().includes(term);
     const notice = text => `<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">${text}</div>`;
-    listEl.innerHTML = notice('Wird geladen...');
+    listEl.innerHTML = notice(t('loading_short', 'Wird geladen...'));
     await loadEventCandidates();
     if (isUserTab) {
         const matched = (Array.isArray(eventCandidatesCache) ? eventCandidatesCache : []).filter(c => matches(c.name) || (term && matches(c.email)));
-        listEl.innerHTML = matched.length === 0 ? notice('Keine passende Person gefunden.') : matched.map(c => {
-            const name = c.name || c.email || 'Mitglied';
+        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_person', 'Keine passende Person gefunden.')) : matched.map(c => {
+            const name = c.name || c.email || t('events_member_fallback', 'Mitglied');
             return pickerOption({
                 name,
                 subtitle: c.email || '',
                 badgeHtml: renderAvatarWrap(c.id, name, { style: 'width: 36px; height: 36px; font-size: 0.8rem;' }),
-                btnText: 'Anfragen',
+                btnText: t('duty_btn_request', 'Anfragen'),
                 btnClass: 'btn-primary',
                 onclick: `window.selectDutyAssignee({ targetUserId: '${escapeHtml(c.id)}', sendEmail: true })`
             });
@@ -6096,11 +6121,11 @@ async function renderAssignDutyModalList(filterText = '') {
     } else {
         const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0 ? eventGroupsCache : groupList();
         const matched = groups.filter(g => matches(g.name || g.id));
-        listEl.innerHTML = matched.length === 0 ? notice('Keine passende Gruppe gefunden.') : matched.map(g => pickerOption({
+        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_group', 'Keine passende Gruppe gefunden.')) : matched.map(g => pickerOption({
             name: g.name || g.id,
-            subtitle: 'Gruppe fest einteilen',
+            subtitle: t('duty_assign_group_fixed', 'Gruppe fest einteilen'),
             badgeHtml: '<div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>',
-            btnText: 'Zuweisen',
+            btnText: t('admin_assign_short', 'Zuweisen'),
             btnClass: 'btn-secondary',
             onclick: `window.selectDutyAssignee({ targetGroupId: '${escapeHtml(g.id || g.name || g.id)}' })`
         })).join('');
@@ -6120,36 +6145,36 @@ async function assignToDutyRole(eventId, encodedRoleName, assignData, replaceDut
     // Fill an existing open slot of this task before creating a new one
     const slotId = replaceDutyId || (Array.isArray(currentDetailEvent?.duties) ? currentDetailEvent.duties.find(d => (d.roleName || '').trim() === roleName.trim() && d.status === 'open')?.id : null);
     await eventAction(slotId ? `/events/duties/${slotId}/assign` : `/events/${eventId}/duties`, 'POST', slotId ? { ...assignData, sendEmail: true } : { roleName, ...assignData, sendEmail: true }, {
-        success: assignData.targetGroupId ? 'Gruppe erfolgreich eingeteilt!' : 'Dienstanfrage versendet & E-Mail übermittelt!',
-        error: 'Fehler beim Zuweisen'
+        success: assignData.targetGroupId ? t('duty_group_assigned', 'Gruppe erfolgreich eingeteilt!') : t('duty_request_sent', 'Dienstanfrage versendet & E-Mail übermittelt!'),
+        error: t('duty_assign_error', 'Fehler beim Zuweisen')
     });
 }
 
 async function deleteEntireDutyTask(encodedRoleName) {
     if (!currentDetailEvent) return;
     const roleName = decodeURIComponent(encodedRoleName);
-    if (!confirmAction(`Möchtest du die gesamte Aufgabe "${roleName}" mit allen Einträgen wirklich löschen?`)) return;
+    if (!confirmAction(t('duty_delete_task_confirm', 'Möchtest du die gesamte Aufgabe "{name}" mit allen Einträgen wirklich löschen?', { name: roleName }))) return;
     try {
         const duties = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
         if (duties.length === 0) return;
         await Promise.all(duties.map(d => api(`/events/duties/${d.id}`, 'DELETE')));
-        showToast(`Aufgabe "${roleName}" gelöscht`, 'info');
+        showToast(t('duty_task_deleted', 'Aufgabe "{name}" gelöscht', { name: roleName }), 'info');
         await loadEventsData();
         refreshDetailEvent(true);
     } catch {
-        showToast('Fehler beim Löschen der Aufgabe', 'error');
+        showToast(t('duty_task_delete_error', 'Fehler beim Löschen der Aufgabe'), 'error');
     }
 }
 
 async function removeDutyAssignee(dutyId) {
-    if (!dutyId || !confirmAction('Diesen Eintrag wirklich entfernen?')) return;
+    if (!dutyId || !confirmAction(t('duty_remove_entry_confirm', 'Diesen Eintrag wirklich entfernen?'))) return;
     const ev = currentDetailEvent;
     const roleName = ev?.duties?.find(d => d.id === dutyId)?.roleName;
     const isOnlySlot = (ev?.duties?.filter(d => (d.roleName || '').trim() === (roleName || '').trim()) || []).length === 1;
     await eventAction(`/events/duties/${dutyId}`, 'DELETE', undefined, {
         // Keep the task as an empty role so it doesn't vanish with its last entry
         before: async () => { if (isOnlySlot && roleName && ev?.id) await api(`/events/${ev.id}/duties`, 'POST', { roleName }); },
-        success: 'Eintrag entfernt', successType: 'info', error: 'Fehler beim Entfernen'
+        success: t('duty_entry_removed', 'Eintrag entfernt'), successType: 'info', error: t('duty_remove_error', 'Fehler beim Entfernen')
     });
 }
 
@@ -6159,7 +6184,7 @@ async function toggleEventRegistration(eventId, currentStatus) {
     await eventAction(`/events/${eventId}/register`, 'POST', { action: cancel ? 'cancel' : 'register' }, {
         success: data => cancel ? t('events_unregistered_success', 'Erfolgreich abgemeldet') : data.isWaitlist ? t('events_waitlist_success', 'Auf die Warteliste gesetzt') : t('events_registered_success', 'Erfolgreich verbindlich angemeldet!'),
         successType: data => cancel ? 'info' : data.isWaitlist ? 'warning' : 'success',
-        error: 'Aktion fehlgeschlagen',
+        error: t('error_action_failed', 'Aktion fehlgeschlagen'),
         after: () => { if (currentDetailEvent?.id === eventId) openEventDetailModal(eventId); }
     });
 }
@@ -6167,7 +6192,7 @@ async function toggleEventRegistration(eventId, currentStatus) {
 async function deleteEvent(eventId) {
     if (!confirmAction(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
     await eventAction(`/events/${eventId}`, 'DELETE', undefined, {
-        success: t('events_deleted_success', 'Event gelöscht'), error: 'Löschen fehlgeschlagen', networkError: 'Fehler beim Löschen des Events', after: () => {}
+        success: t('events_deleted_success', 'Event gelöscht'), error: t('toast_delete_failed_short', 'Löschen fehlgeschlagen'), networkError: t('events_delete_error', 'Fehler beim Löschen des Events'), after: () => {}
     });
 }
 
@@ -6198,8 +6223,8 @@ async function confirmEventCrop() {
     if (!eventCropper) return;
     const { x, y, scaleX, scaleY } = eventCropper.region();
     const blob = await cropToJpeg(eventCropper.img, [x, y, Math.round(eventCropper.cropW * scaleX), Math.round(eventCropper.cropH * scaleY)], 1280, 720, 0.82);
-    if (!blob) return showToast('Fehler beim Zuschneiden des Bildes.', 'error');
-    setButtonLoading('btn-confirm-event-crop', true, 'Wird gespeichert...');
+    if (!blob) return showToast(t('crop_error', 'Fehler beim Zuschneiden des Bildes.'), 'error');
+    setButtonLoading('btn-confirm-event-crop', true, t('saving_short', 'Wird gespeichert...'));
     try {
         const token = await getToken();
         const res = await fetch(`${API}/events/upload-image`, {
@@ -6208,15 +6233,15 @@ async function confirmEventCrop() {
             body: toFormData({ image: new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' }) })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) return showToast(data.error || 'Upload fehlgeschlagen', 'error');
+        if (!res.ok) return showToast(data.error || t('toast_upload_failed_short', 'Upload fehlgeschlagen'), 'error');
         setValue('detail-edit-image-url', data.url);
         showDetailCover(data.url);
         show('detail-edit-cover-placeholder', false);
         closeModal('event-crop-modal');
-        showToast('Eventbild im 16:9-Format übernommen!', 'success');
+        showToast(t('events_cover_applied', 'Eventbild im 16:9-Format übernommen!'), 'success');
     } catch (e) {
         console.error('Crop upload error:', e);
-        showToast('Fehler beim Speichern des Eventbildes', 'error');
+        showToast(t('events_cover_save_error', 'Fehler beim Speichern des Eventbildes'), 'error');
     } finally {
         setButtonLoading('btn-confirm-event-crop', false, null);
     }
@@ -6247,20 +6272,20 @@ async function loadPersonalCalendarFeedSettings(force = false) {
 
 async function copyPersonalCalendarFeedUrl() {
     navigator.clipboard.writeText(await personalFeedUrl())
-        .then(() => showToast('Kalender-URL in die Zwischenablage kopiert!', 'success'))
-        .catch(() => showToast('Fehler beim Kopieren der Kalender-URL', 'error'));
+        .then(() => showToast(t('calendar_sub_copied', 'Kalender-URL in die Zwischenablage kopiert!'), 'success'))
+        .catch(() => showToast(t('calendar_sub_copy_error', 'Fehler beim Kopieren der Kalender-URL'), 'error'));
 }
 
 async function resetCalendarFeedToken() {
-    if (!confirmAction('Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.')) return;
+    if (!confirmAction(t('calendar_sub_reset_confirm', 'Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.'))) return;
     try {
         const res = await api('/user/calendar-feed/reset', 'POST');
-        if (!res.ok) return showToast('Fehler beim Zurücksetzen des Links', 'error');
+        if (!res.ok) return showToast(t('calendar_sub_reset_error', 'Fehler beim Zurücksetzen des Links'), 'error');
         cachedCalendarFeed = await res.json();
         await loadPersonalCalendarFeedSettings(true);
-        showToast('Neuer Kalender-Link erfolgreich generiert!', 'success');
+        showToast(t('calendar_sub_reset_success', 'Neuer Kalender-Link erfolgreich generiert!'), 'success');
     } catch {
-        showToast('Verbindungsfehler beim Zurücksetzen', 'error');
+        showToast(t('calendar_sub_reset_network_error', 'Verbindungsfehler beim Zurücksetzen'), 'error');
     }
 }
 
@@ -6286,9 +6311,9 @@ async function saveEventSystemSettings() {
     };
     try {
         const res = await api('/events/settings', 'PATCH', payload);
-        showToast(res.ok ? 'Event-Einstellungen erfolgreich gespeichert!' : 'Fehler beim Speichern der Event-Einstellungen', res.ok ? 'success' : 'error');
+        showToast(res.ok ? t('events_settings_saved', 'Event-Einstellungen erfolgreich gespeichert!') : t('events_settings_save_error', 'Fehler beim Speichern der Event-Einstellungen'), res.ok ? 'success' : 'error');
     } catch {
-        showToast('Verbindungsfehler', 'error');
+        showToast(t('error_connection', 'Verbindungsfehler'), 'error');
     }
 }
 
@@ -6350,7 +6375,7 @@ function enterDetailEditMode() {
     populateDetailEditTargetGroups(selectedGroups);
     if (groupList().length === 0) loadSystemGroups().then(() => populateDetailEditTargetGroups(selectedGroups));
     show('detail-modal-action-bar', true, 'flex');
-    setText('detail-btn-save-text', ev ? 'Speichern' : 'Veröffentlichen');
+    setText('detail-btn-save-text', ev ? t('btn_save', 'Speichern') : t('events_btn_publish_short', 'Veröffentlichen'));
 }
 
 function cancelDetailEditMode() {
@@ -6391,24 +6416,24 @@ async function saveDetailEditMode() {
         recurringCount
     };
     if (!title) {
-        showToast('Bitte gib einen Titel ein', 'warning');
+        showToast(t('events_title_required', 'Bitte gib einen Titel ein'), 'warning');
         return $('detail-edit-title')?.focus();
     }
     if (!date) {
-        showToast('Bitte gib ein Datum ein', 'warning');
+        showToast(t('events_date_required', 'Bitte gib ein Datum ein'), 'warning');
         return $('detail-edit-date')?.focus();
     }
-    if (isMultiDay && payload.endDate && payload.endDate < date) return showToast('Das Enddatum darf nicht vor dem Startdatum liegen', 'warning');
+    if (isMultiDay && payload.endDate && payload.endDate < date) return showToast(t('events_end_before_start', 'Das Enddatum darf nicht vor dem Startdatum liegen'), 'warning');
 
     const saveBtn = $('detail-btn-save');
     if (saveBtn) saveBtn.disabled = true;
-    setText('detail-btn-save-text', 'Wird gespeichert...');
+    setText('detail-btn-save-text', t('saving_short', 'Wird gespeichert...'));
     try {
         const eventId = currentDetailEvent ? currentDetailEvent.id : null;
         const res = await api(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload);
         const saved = await res.json().catch(() => ({}));
-        if (!res.ok) return showToast(saved.error || 'Fehler beim Speichern', 'error');
-        showToast(eventId ? 'Erfolgreich aktualisiert!' : (isRecurring ? `${recurringCount} Termine erfolgreich erstellt!` : 'Erfolgreich veröffentlicht!'), 'success');
+        if (!res.ok) return showToast(saved.error || t('alert_save_error', 'Fehler beim Speichern.'), 'error');
+        showToast(eventId ? t('events_updated_success', 'Erfolgreich aktualisiert!') : (isRecurring ? t('events_series_created', '{count} Termine erfolgreich erstellt!', { count: recurringCount }) : t('events_published_success', 'Erfolgreich veröffentlicht!')), 'success');
         detailCard()?.classList.remove('detail-is-editing', 'detail-is-new');
         hideTypeSelector();
         await loadEventsData();
@@ -6417,10 +6442,10 @@ async function saveDetailEditMode() {
         else closeModal('event-detail-modal');
     } catch (err) {
         console.error('saveDetailEditMode error:', err);
-        showToast('Verbindungsfehler beim Speichern', 'error');
+        showToast(t('events_save_network_error', 'Verbindungsfehler beim Speichern'), 'error');
     } finally {
         if (saveBtn) saveBtn.disabled = false;
-        setText('detail-btn-save-text', currentDetailEvent ? 'Speichern' : 'Veröffentlichen');
+        setText('detail-btn-save-text', currentDetailEvent ? t('btn_save', 'Speichern') : t('events_btn_publish_short', 'Veröffentlichen'));
     }
 }
 
@@ -6435,7 +6460,7 @@ function openNewEventDetailModal(defaultType) {
     show('detail-modal-cover-wrap', false);
     const coverImg = $('detail-modal-cover-img');
     if (coverImg) coverImg.src = '';
-    setText('detail-modal-title', type === 'event' ? 'Neues Event' : 'Neuer Termin');
+    setText('detail-modal-title', type === 'event' ? t('events_btn_new', 'Neues Event') : t('events_new_termin', 'Neuer Termin'));
     show('detail-modal-organizer-pill', false);
     show('detail-modal-groups-line', false);
     const tags = $('detail-modal-tags');
@@ -6461,12 +6486,13 @@ function setDetailEditType(type) {
     $('detail-type-card-termin')?.classList.toggle('is-active', isTermin);
     $('detail-type-card-event')?.classList.toggle('is-active', !isTermin);
     setText('detail-type-desc-text', isTermin
-        ? 'Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.'
-        : 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.');
+        ? t('events_type_termin_desc', 'Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.')
+        : t('events_type_event_desc', 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.'));
     show('detail-edit-pinned-wrap', canManage && !isTermin, 'flex');
     show('detail-edit-recurring-toggle-wrap', canManage && isTermin && !currentDetailEvent, 'inline-flex');
-    const kind = isTermin ? 'Termin' : 'Event';
-    setText('detail-edit-heading', currentDetailEvent ? `${kind} bearbeiten` : (isTermin ? 'Neuer Termin' : 'Neues Event'));
+    setText('detail-edit-heading', currentDetailEvent
+        ? (isTermin ? t('events_edit_termin', 'Termin bearbeiten') : t('events_edit_event', 'Event bearbeiten'))
+        : (isTermin ? t('events_new_termin', 'Neuer Termin') : t('events_btn_new', 'Neues Event')));
 }
 
 function toggleDetailMultiDay(isMultiDay) {
@@ -6474,7 +6500,7 @@ function toggleDetailMultiDay(isMultiDay) {
     show('detail-when-time-row', !isMultiDay, 'grid');
     show('detail-multiday-hint', isMultiDay, 'flex');
     const dateLabel = document.querySelector('label[for="detail-edit-date"]');
-    if (dateLabel) dateLabel.textContent = isMultiDay ? 'Startdatum' : 'Datum';
+    if (dateLabel) dateLabel.textContent = isMultiDay ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum');
     if (isMultiDay && !inputValue('detail-edit-end-date') && inputValue('detail-edit-date')) setValue('detail-edit-end-date', inputValue('detail-edit-date'));
 }
 
@@ -6487,7 +6513,7 @@ function populateDetailEditTargetGroups(selectedGroups = []) {
     const container = $('detail-edit-target-groups-container');
     if (!container) return;
     container.innerHTML = groupList().length === 0
-        ? '<span style="font-size:0.78rem; color:var(--text-secondary);">Öffentlich für alle Mitglieder</span>'
+        ? `<span style="font-size:0.78rem; color:var(--text-secondary);">${t('events_public_all_members', 'Öffentlich für alle Mitglieder')}</span>`
         : groupList().map(g => {
             const name = g.name || g.id;
             return `

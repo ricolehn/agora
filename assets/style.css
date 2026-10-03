@@ -9051,3 +9051,191 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
         box-shadow: 0 12px 30px -16px rgba(15, 23, 42, 0.35);
     }
 }
+
+/* ==========================================================
+   beta17: desktop & tablet use the full screen width
+   One page gutter for every tab instead of per-tab column widths (650 / 800 / 900 / 1050 / 1200 px);
+   content is arranged in grids that grow with the screen.
+   ========================================================== */
+@media (min-width: 769px) {
+    :root { --page-gutter: clamp(20px, 2.8vw, 64px); }
+
+    .container {
+        padding-left: var(--page-gutter);
+        padding-right: var(--page-gutter);
+    }
+    .header { padding-left: var(--page-gutter); padding-right: var(--page-gutter); }
+
+    #user-overview,
+    #user-finances,
+    #user-history,
+    #user-requests,
+    #user-settings,
+    #finances,
+    #settings,
+    #super-admin-settings,
+    .events-container,
+    .mentoring-container {
+        max-width: none;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+    }
+    #card-design, #card-rates, #card-invite, #card-security { max-width: none; }
+
+    /* --- Start page: greeting and "Als Nächstes" over the whole width, then duties and messages side by side --- */
+    #user-overview.active {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 28px;
+        align-items: start;
+    }
+    #user-overview > * { grid-column: 1 / -1; min-width: 0; }
+    #user-overview > #user-duties-home-card { grid-column: 1; }
+    #user-overview > #user-mentoring-home-card { grid-column: 2; }
+    /* Alone (no duties or no messages): take the whole width */
+    #user-overview:not(:has(> #user-mentoring-home-card:not([style*="none"]))) > #user-duties-home-card,
+    #user-overview:not(:has(> #user-duties-home-card:not([style*="none"]))) > #user-mentoring-home-card { grid-column: 1 / -1; }
+    .home-greeting { margin-bottom: 26px; }
+    .home-greeting-title { font-size: 2rem; }
+
+    /* Tablets keep the swipeable row, edge to edge within the page gutter */
+    .home-next-scroller { margin: 0 calc(-1 * var(--page-gutter)); padding-left: var(--page-gutter); padding-right: var(--page-gutter); scroll-padding: 0 var(--page-gutter); }
+}
+@media (min-width: 1200px) {
+    /* The row stays one row: five cards share the width when there is room, otherwise it scrolls on to the right */
+    .home-next-card { flex: 0 0 max(236px, calc((100% - 4 * 16px) / 5)); }
+    .home-next-scroller { gap: 16px; }
+    /* Very wide screens: the pictures get wider, not taller */
+    .home-next-cover { max-height: 200px; width: 100%; }
+}
+@media (min-width: 769px) {
+    /* Own duties as cards side by side instead of one stretched row */
+    #user-duties-home-card .events-feed-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 12px 16px;
+    }
+
+    /* --- Member finances: status and requests on the left, history on the right --- */
+    @media (min-width: 1100px) {
+        #user-finances.active {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+            column-gap: 24px;
+            align-items: start;
+        }
+        #user-finances > * { grid-column: 1; min-width: 0; }
+        #user-finances > .card:last-child { grid-column: 2; grid-row: 1 / span 3; }
+    }
+
+    /* --- Settings: the cards of a section stack in balanced columns (no gaps between cards of different height) --- */
+    .settings-grid {
+        columns: 2 440px;
+        column-gap: 20px;
+    }
+    .settings-grid > .card {
+        break-inside: avoid;
+        margin: 0 0 20px;
+        width: 100%;
+    }
+    .settings-section + .settings-section { margin-top: 16px; }
+
+
+    /* --- Termine list: day cards side by side on wide screens --- */
+    @media (min-width: 1280px) {
+        #events .events-feed-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+            gap: 12px 16px;
+        }
+    }
+    .events-cards-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+    /* --- Mentoring: wider conversation list next to the chat --- */
+    .mentoring-container { gap: 20px; }
+
+    /* --- AI chat stays a readable column, a bit wider than before --- */
+    #ai-chat { max-width: 1000px; margin: 0 auto; }
+    #ai-chat .ai-chat-input-styled { max-width: 1000px; }
+}
+
+/* Tablets in landscape and small laptops: a little less gutter, two start page columns only from 900px */
+@media (min-width: 769px) and (max-width: 899px) {
+    #user-overview > #user-duties-home-card,
+    #user-overview > #user-mentoring-home-card { grid-column: 1 / -1; }
+}
+@media (min-width: 1100px) {
+    .mentoring-threads-layout {
+        grid-template-columns: clamp(340px, 26vw, 460px) minmax(0, 1fr);
+        height: clamp(340px, calc(100dvh - var(--mentoring-desktop-chrome)), 980px);
+    }
+}
+
+/* Accounts on tablets and small laptops: groups as a chip row above the table, so the table gets the full width */
+@media (min-width: 769px) and (max-width: 1279px) {
+    .nc-accounts-layout { display: flex; flex-direction: column; gap: 14px; }
+    .nc-groups-sidebar { padding: 12px 14px; border-radius: 14px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+    .nc-groups-header { padding-bottom: 0; border-bottom: none; }
+    .nc-quick-add-group { order: 3; flex: 0 1 280px; }
+    .nc-groups-list {
+        flex: 1 1 100%;
+        order: 2;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-height: none;
+        padding: 0;
+    }
+    .nc-group-item {
+        flex: 0 0 auto;
+        width: auto;
+        padding: 7px 12px;
+        border-radius: 20px;
+        background: var(--surface-alt);
+        border: 1px solid var(--border);
+        gap: 6px;
+    }
+    .nextcloud-table th,
+    .nextcloud-table td { padding: 10px 10px; font-size: 0.86rem; }
+    .nextcloud-table th:first-child,
+    .nextcloud-table td:first-child { padding-left: 16px; }
+}
+
+/* --- beta17: settings sections (General, Administration, Calendar / privacy / account) --- */
+.settings-section + .settings-section { margin-top: 30px; }
+.settings-section-title {
+    margin: 0 0 14px 2px;
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--text);
+}
+.settings-section-more .settings-section-title { color: var(--text-secondary); }
+.settings-card-hint { margin: 0 0 12px; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; }
+/* A section without a visible card (e.g. no administration rights) disappears with its heading */
+.settings-section:not(:has(> .settings-grid > .card:not([style*="display:none"]):not([style*="display: none"]))) { display: none; }
+.settings-section a.btn { text-decoration: none; display: inline-flex; }
+
+/* --- beta17 fix: mentoring on phones is never wider than the screen (larger system font, long names, managers
+   with three sub-tabs): the sub-tab bar scrolls inside itself, the mentor grid cannot be stretched by its content,
+   the card footer wraps instead of pushing the card out to the right --- */
+.mentors-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.mentor-card, .mentor-card-header, .mentor-card-title { min-width: 0; }
+.mentor-card-title h3, .mentor-card-bio { overflow-wrap: anywhere; }
+.mentor-capacity { white-space: nowrap; }
+@media (max-width: 768px) {
+    #mentoring, .mentoring-container { min-width: 0; max-width: 100%; }
+    .mentoring-nav-segments {
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .mentoring-nav-segments::-webkit-scrollbar { display: none; }
+    .mentoring-nav-segment { flex: 1 0 auto; white-space: nowrap; }
+    .mentors-grid { grid-template-columns: minmax(0, 1fr); }
+    .mentor-card-footer { flex-wrap: wrap; }
+    .mentor-card-footer .btn { flex: 1 1 auto; max-width: 100%; white-space: normal; }
+}
