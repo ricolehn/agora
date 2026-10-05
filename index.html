@@ -172,6 +172,9 @@
             <!-- Duty requests waiting for an answer -->
             <div id="home-duty-requests" style="display:none;"></div>
 
+            <!-- Open finance requests for those who decide on them (treasurers, owner) -->
+            <div id="home-finance-requests" style="display:none;"></div>
+
             <!-- Next appointments and events as a swipeable row -->
             <div id="home-upcoming" style="display:none;"></div>
 
@@ -956,19 +959,38 @@
             <!-- 1. Top: Unified Status + Info Hero Card -->
             <div id="user-finances-status-card" style="margin-bottom: 20px;"></div>
 
-            <!-- 2. Middle: Requests List -->
-            <div class="card" style="margin-bottom: 20px;">
-                <div class="card-header user-finances-card-header">
-                    <span data-i18n="user_requests_title">Meine Anfragen</span>
-                    <button class="btn btn-primary btn-small" onclick="openUserRequestModal()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        <span data-i18n="user_new_request">Neue Anfrage</span>
-                    </button>
+            <!-- 2. What members can request: one clear tile per kind, then their own requests -->
+            <section class="req-actions" aria-labelledby="req-actions-title">
+                <h2 id="req-actions-title" class="req-actions-title" data-i18n="req_actions_title">Was möchtest du einreichen?</h2>
+                <div class="req-actions-grid">
+                <button type="button" class="req-action" style="--req-color: #10b981;" onclick="openUserRequestModal('payment')">
+                    <span class="req-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></span>
+                    <span class="req-action-text">
+                        <span class="req-action-title" data-i18n="req_action_payment_title">Zahlung melden</span>
+                        <span class="req-action-desc" data-i18n="req_action_payment_desc">Beitrag überwiesen oder Dauerauftrag eingerichtet</span>
+                    </span>
+                    <svg class="req-action-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <button type="button" class="req-action" style="--req-color: #ef4444;" onclick="openUserRequestModal('expense')">
+                    <span class="req-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg></span>
+                    <span class="req-action-text">
+                        <span class="req-action-title" data-i18n="req_action_expense_title">Auslage erstatten lassen</span>
+                        <span class="req-action-desc" data-i18n="req_action_expense_desc">Etwas für die Gemeinde bezahlt? Mit Beleg einreichen</span>
+                    </span>
+                    <svg class="req-action-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <button type="button" class="req-action" style="--req-color: #6366f1;" onclick="openUserRequestModal('status')">
+                    <span class="req-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span>
+                    <span class="req-action-text">
+                        <span class="req-action-title" data-i18n="req_action_status_title">Status ändern</span>
+                        <span class="req-action-desc" data-i18n="req_action_status_desc">Z. B. Geringverdiener oder eine Pause beantragen</span>
+                    </span>
+                    <svg class="req-action-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
                 </div>
-                <div class="card-body">
-                    <div id="user-requests-list"></div>
-                </div>
-            </div>
+            </section>
+
+            <div id="user-requests-list"></div>
 
             <!-- 3. Bottom: Payment History Timeline -->
             <div class="card">
@@ -1596,6 +1618,45 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 <span data-i18n="modal_end_so_delete_btn">Eintrag ganz löschen</span>
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Open request: all details and the decision (treasurers, owner) -->
+<div id="request-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="reqd-title">
+    <div class="modal-content modal-content-enhanced reqd-content">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div id="reqd-badge" class="reqd-badge"></div>
+                <div>
+                    <div id="reqd-title" class="modal-title-main" data-i18n="user_request_modal_title">Anfrage</div>
+                    <div id="reqd-subtitle" class="modal-subtitle"></div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal('request-detail-modal')" data-i18n-aria-label="btn_close" aria-label="Schließen">&times;</button>
+        </div>
+        <div class="modal-body-enhanced">
+            <div id="reqd-body"></div>
+            <div class="reqd-footer">
+                <div id="reqd-actions" class="reqd-actions">
+                    <button type="button" class="btn btn-secondary" onclick="toggleRejectForm(true)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <span data-i18n="request_btn_reject">Ablehnen</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="approveRequest()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        <span data-i18n="request_btn_approve">Genehmigen</span>
+                    </button>
+                </div>
+                <div id="reqd-reject" class="reqd-reject" style="display:none;">
+                    <label class="form-label" for="reqd-reject-reason" data-i18n="request_reject_reason_label">Grund für die Ablehnung</label>
+                    <input type="text" id="reqd-reject-reason" class="form-input" maxlength="200" data-i18n-placeholder="request_reject_placeholder" placeholder="Optional – das Mitglied sieht ihn" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmRejectRequest();}">
+                    <div class="reqd-actions">
+                        <button type="button" class="btn btn-secondary" onclick="toggleRejectForm(false)" data-i18n="btn_cancel">Abbrechen</button>
+                        <button type="button" class="btn reqd-btn-reject" onclick="confirmRejectRequest()" data-i18n="request_btn_reject_confirm">Anfrage ablehnen</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

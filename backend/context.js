@@ -633,7 +633,12 @@ async function readLogicalPath(targetPath, query, user) {
     // Approved / rejected requests are only shown for 30 days (the daily cleanup deletes them)
     let requests = (await listRequestRecords(context.appConfig, query)).filter((record) => !isExpiredRequest(record));
     if (!user.canViewFinances) {
-      requests = requests.filter((record) => record.userId === user.uid || record.data?.userId === user.uid);
+      // Also by the own person record: approving or rejecting used to overwrite userId with the treasurer's id
+      const ownPeople = new Set((await listPeopleRecords(context.appConfig))
+        .filter((record) => record.uid === user.uid || record.data?.uid === user.uid)
+        .flatMap((record) => [record.personKey, record.data?.id].filter(Boolean).map(String)));
+      requests = requests.filter((record) => record.userId === user.uid || record.data?.userId === user.uid
+        || ownPeople.has(String(record.data?.personId || record.personId || '')));
     }
     return {
       value: objectFromRecords(requests, 'requestKey', (record) => record.data),
@@ -803,7 +808,8 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
     if (!value || typeof value !== 'object') {
       throw Object.assign(new Error('Invalid request payload'), { status: 400 });
     }
-    if (!value.userId) {
+    // A new request belongs to its author; a partial update (approve / reject) must not take it over
+    if (!value.userId && method !== 'patch') {
       value.userId = user.uid;
     }
     const canManageRequests = user.canManageFinances === true;
@@ -821,6 +827,9 @@ async function writeLogicalPath(targetPath, value, user, method = 'set') {
       : value;
     // Remember when the request was approved or rejected (starts the 30-day retention)
     const nextValue = withDecisionTimestamp(existing?.data, mergedValue);
+    // The author of a request never changes, whoever decides on it
+    const author = existing?.data?.userId || existing?.userId;
+    if (author) nextValue.userId = author;
     if (!nextValue.userId) {
       nextValue.userId = user.uid;
     }

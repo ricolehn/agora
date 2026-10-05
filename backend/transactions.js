@@ -54,10 +54,15 @@ async function getPaginatedTransactions(appConfig, page, perPage, search = '') {
   expenses.forEach((e, index) => {
     const expenseData = e.data || e;
     const expId = expenseData.id || e.expenseKey || e.id || `exp_${index}`;
+    // Approved expense requests used to store the requester only as "(Von: Name)" in the description, without issuer
+    const legacy = !expenseData.issuer && typeof expenseData.description === 'string'
+      ? expenseData.description.match(/^(.*?)\s*\(Von: ([^)]+)\)\s*$/)
+      : null;
     all.push({
       ...expenseData,
+      ...(legacy ? { issuer: legacy[2].trim(), description: legacy[1].trim() } : {}),
       id: expId,
-      who: expenseData.issuer || expenseData.who,
+      who: expenseData.issuer || (legacy ? legacy[2].trim() : expenseData.who),
       type: 'exp',
       paymentId: expId,
       payment: expenseData

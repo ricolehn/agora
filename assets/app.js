@@ -218,6 +218,7 @@ const ICONS = {
     clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     location: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+    chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
     refresh: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
@@ -1066,7 +1067,8 @@ async function loadMemberData() {
     const [sData, ownPeople, rSnap] = await Promise.all([
         apiGet('settings').catch(err => (console.warn('Could not fetch settings:', err), null)),
         byField('uid', uid).catch(err => (console.warn('Could not load people:', err), {})),
-        get(query(ref(db, 'requests'), orderByChild('userId'), equalTo(uid))).catch(err => (console.warn('Could not get requests:', err), null))
+        // The server only returns the own requests; no userId filter here (decided requests used to carry the treasurer's id)
+        get(ref(db, 'requests')).catch(err => (console.warn('Could not get requests:', err), null))
     ]);
     settings = sData || settings;
     let peopleList = [];
@@ -1086,7 +1088,7 @@ async function loadMemberData() {
         console.warn('Could not load people:', err);
     }
     people = peopleList.filter(p => !p.isDeleted);
-    requests = (rSnap?.exists() ? safeList(rSnap.val()) : []).filter(r => r.userId === uid);
+    requests = (rSnap?.exists() ? safeList(rSnap.val()) : []).filter(isOwnRequest);
 }
 
 async function loadAdminData() {
@@ -1938,9 +1940,12 @@ function renderAccountRow(u) {
         <tr data-uid="${uid}">
             <td>
                 <div class="nc-user-cell">
-                    <div class="nc-avatar ${getAvatarRingClass(u)}" style="position: relative; overflow: hidden;">
-                        <span style="user-select: none;">${escapeHtml(initials)}</span>
-                        <img src="${API}/profile/picture/${u.uid}" alt="${escapeHtml(name)}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'">
+                    <div class="nc-avatar ${getAvatarRingClass(u)}">
+                        <!-- Inner circle like the other avatars: initials on a soft background, the picture over them -->
+                        <span class="nc-avatar-inner">
+                            <span class="nc-avatar-initials">${escapeHtml(initials)}</span>
+                            <img class="nc-avatar-img" src="${API}/profile/picture/${u.uid}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.remove()">
+                        </span>
                     </div>
                     <div class="nc-user-info">
                         <div class="nc-user-name">
@@ -2383,74 +2388,145 @@ const REQUEST_TYPES = {
     expense: { label: 'Ausgabe', icon: 'receipt' },
     standing_order: { label: 'Dauerauftrag', icon: 'repeat' }
 };
-const quotedNote = note => note ? `<br><small style="color: var(--text-secondary);"><span style="opacity: 0.7;">"</span>${escapeHtml(note)}<span style="opacity: 0.7;">"</span></small>` : '';
+// Own request: by author, or by the own person record (decisions used to overwrite userId with the treasurer's id)
+function isOwnRequest(req) {
+    if (!currentUser || !req) return false;
+    if (req.userId === currentUid()) return true;
+    return people.some(p => p.uid === currentUid() && String(p.id) === String(req.personId));
+}
 
-function renderRequestDetails(req, statusLabels) {
-    const data = req.data;
-    if (req.type === 'payment') return t('request_detail_payment', '{amount} am {date}', { amount: euro(data.amount), date: formatDateFast(data.date) }) + quotedNote(data.note);
-    if (req.type === 'status') return t('request_detail_status', 'Neu: <strong>{status}</strong> ab {date}', { status: escapeHtml(statusLabels[data.newStatus] || data.newStatus), date: formatDateFast(data.date) });
-    if (req.type === 'standing_order') return t('request_detail_standing_order', '{amount} / Monat<br>Start: {date}', { amount: euro(data.amount), date: formatDateFast(data.date) }) + quotedNote(data.note);
-    if (req.type !== 'expense') return '';
-    const id = escapeHtml(req.id);
-    return t('request_detail_expense', '{amount} für "{description}" am {date}', { amount: euro(data.amount), description: escapeHtml(data.description), date: formatDateFast(data.date) }) + (data.receipt ? `<div id="receipt-container-${id}" style="margin-top:10px;">
-        <button class="btn btn-small" style="background: transparent; border: 1px solid var(--border); color: var(--text); display: flex; align-items: center; gap: 6px;" data-receipt="${escapeHtml(data.receipt)}" data-id="${id}" onclick="viewRequestReceipt(this.dataset.receipt, 'receipt-container-' + this.dataset.id)">
-            ${svgIcon('image')}
-            ${t('request_show_receipt', 'Beleg anzeigen')}
-        </button>
-    </div>` : '');
+// --- Open requests: a calm list like "Neue Nachrichten" (start page of treasurers and finances tab); a tap opens
+// the request with all details and the decision ---
+const REQUEST_COLORS = { payment: '#10b981', expense: '#ef4444', status: '#6366f1', standing_order: '#06b6d4' };
+const canApproveRequests = () => canManageFinances() || isOwnerUser();
+const pendingRequests = () => requests.filter(r => r.status === 'pending').sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+const HOME_REQUEST_COUNT = 3;
+let openRequestId = null;
+
+const requestTypeLabel = req => t(`request_type_${req.type}`, (REQUEST_TYPES[req.type] || {}).label || req.type || '');
+const requestPersonUid = req => findPerson(req.personId)?.uid || req.userId || null;
+
+// Amount (or the new status) of a request
+function requestAmount(req, statusLabels = getStatusLabels(false)) {
+    const data = req.data || {};
+    if (req.type === 'status') return escapeHtml(statusLabels[data.newStatus] || data.newStatus || '');
+    if (req.type === 'standing_order') return `${euro(data.amount)} ${t('request_per_month', '/ Monat')}`;
+    return euro(data.amount);
+}
+
+function requestDateLabel(req) {
+    const date = req.data?.date;
+    if (!date) return '';
+    return (req.type === 'status' || req.type === 'standing_order')
+        ? t('request_from_date', 'ab {date}', { date: formatDateFast(date) })
+        : t('request_on_date', 'am {date}', { date: formatDateFast(date) });
+}
+
+function requestRow(req, statusLabels) {
+    const data = req.data || {};
+    const name = req.personName || t('status_unknown', 'Unbekannt');
+    const text = (req.type === 'expense' ? data.description : data.note) || requestDateLabel(req);
+    return `
+        <button type="button" class="home-msg-row req-row" style="--req-color: ${REQUEST_COLORS[req.type] || 'var(--primary)'};" data-id="${escapeHtml(req.id)}" onclick="window.openRequestDetail(this.dataset.id)">
+            ${renderAvatarWrap(requestPersonUid(req), name, { wrapClass: 'home-msg-avatar', imgClass: 'home-msg-avatar-img', initialsClass: 'home-msg-initials' })}
+            <span class="home-msg-text">
+                <span class="home-msg-name-line">
+                    <span class="home-msg-name">${escapeHtml(name)}</span>
+                    <span class="req-row-amount">${requestAmount(req, statusLabels)}</span>
+                </span>
+                <span class="req-row-type"><span class="req-row-dot"></span>${requestTypeLabel(req)}${data.receipt ? ` · ${svgIcon('paperclip', 11)}` : ''}</span>
+                <span class="home-msg-snippet-line"><span class="home-msg-snippet">${escapeHtml(text)}</span></span>
+            </span>
+            ${svgIcon('chevronRight', 16, 2.5, 'class="req-row-chevron"')}
+        </button>`;
+}
+
+function requestsCard(ctx, items, total) {
+    const statusLabels = getStatusLabels(false);
+    const more = total - items.length;
+    return `
+        <div class="home-msg-card req-card">
+            <div class="home-msg-head">
+                <span class="home-msg-icon req-card-icon">${svgIcon('fileText', 18)}</span>
+                <span class="home-msg-title">${t('requests_open_title', 'Offene Anfragen')}</span>
+                <span class="home-msg-total req-card-total">${formatBadgeCount(total)}</span>
+                ${ctx === 'home' ? `<button type="button" class="home-msg-all" onclick="window.switchTab('finances')">${t('home_messages_all', 'Alle')}${svgIcon('chevronRight', 14, 2.5)}</button>` : ''}
+            </div>
+            <div class="home-msg-list">${items.map(req => requestRow(req, statusLabels)).join('')}</div>
+            ${more > 0 ? `<button type="button" class="home-msg-more req-more" onclick="window.switchTab('finances')">${t('requests_more', '+{count} weitere Anfragen', { count: more })}</button>` : ''}
+        </div>`;
 }
 
 function renderAdminRequests() {
     const target = $('admin-requests-inline');
     if (!target) return;
-    const pending = requests.filter(r => r.status === 'pending');
-    if (pending.length === 0) {
-        target.innerHTML = '';
-        return;
+    const pending = pendingRequests();
+    target.innerHTML = pending.length ? requestsCard('fin', pending, pending.length) : '';
+}
+
+// Start page: open requests for those who decide on them (treasurers, owner)
+function renderHomeFinanceRequests() {
+    const target = $('home-finance-requests');
+    if (!target) return;
+    const pending = canApproveRequests() ? pendingRequests() : [];
+    target.style.display = pending.length ? 'block' : 'none';
+    target.innerHTML = pending.length ? requestsCard('home', pending.slice(0, HOME_REQUEST_COUNT), pending.length) : '';
+}
+
+// Detail popup: amount, person, dates, text, receipts and the decision
+function openRequestDetail(reqId) {
+    const req = requests.find(r => r.id === reqId);
+    if (!req) return;
+    openRequestId = reqId;
+    const data = req.data || {};
+    const color = REQUEST_COLORS[req.type] || 'var(--primary)';
+    const type = REQUEST_TYPES[req.type] || { icon: 'file' };
+    const name = req.personName || t('status_unknown', 'Unbekannt');
+    const badge = $('reqd-badge');
+    if (badge) {
+        badge.style.setProperty('--req-color', color);
+        badge.innerHTML = svgIcon(type.icon || 'file', 20, 2.2);
     }
-    const statusLabels = getStatusLabels(false);
-    const canApprove = canManageFinances() || isOwnerUser();
-    const actionBtn = (cls, style, handler, icon, label, id) => `
-        <button class="btn ${cls} btn-small" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; ${style}border-radius: 12px; padding: 8px 0;" data-id="${escapeHtml(id)}" onclick="${handler}(this.dataset.id)">
-            ${svgIcon(icon, 16)}
-            ${label}
-        </button>`;
-    const renderRequest = req => {
-        const type = REQUEST_TYPES[req.type] || { label: '', icon: null };
-        return `
-            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; align-items:center;">
-                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text);">
-                        ${type.icon ? svgIcon(type.icon, 18) : ''}
-                        <span>${t(`request_type_${req.type}`, type.label)}</span>
-                    </div>
-                    <span style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; background: var(--surface-alt); padding: 4px 8px; border-radius: 12px;">${dateTimeFormatter.format(new Date(req.timestamp))}</span>
-                </div>
-                <div style="margin-bottom:16px; font-size: 0.95rem; color: var(--text); line-height: 1.5;">${renderRequestDetails(req, statusLabels)}</div>
-                ${canApprove ? `
-                <div style="display:flex; gap:10px;">
-                    ${actionBtn('btn-primary', '', 'approveRequest', 'check', t('request_btn_approve', 'Genehmigen'), req.id)}
-                    ${actionBtn('', 'background: transparent; color: var(--text-secondary); border: 1px solid var(--border); ', 'rejectRequest', 'x', t('request_btn_reject', 'Ablehnen'), req.id)}
-                </div>` : ''}
-            </div>`;
-    };
-    const grouped = groupBy(pending, req => req.personName || t('status_unknown', 'Unbekannt'));
-    const groupBlocks = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([personName, items]) => `
-        <div style="margin-top: 16px;">
-            <div style="font-weight: 600; margin-bottom: 10px; color: var(--text); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
-                ${svgIcon('person', 16, 2, 'style="color: var(--secondary);"')}
-                ${escapeHtml(personName)}
-            </div>
-            ${items.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).map(renderRequest).join('')}
-        </div>`).join('');
-    target.innerHTML = `
-        <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header" style="display: flex; align-items: center; gap: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; color: var(--text-secondary);">
-                ${svgIcon('download', 18)}
-                ${t('requests_open_count', 'Offene Anfragen ({count})', { count: pending.length })}
-            </div>
-            <div class="card-body" style="padding-top: 10px;">${groupBlocks}</div>
-        </div>`;
+    setText('reqd-title', requestTypeLabel(req));
+    setText('reqd-subtitle', isOwnRequest(req) && !canApproveRequests() ? requestStateLabel(req) : name);
+    const row = (icon, label, value) => value ? `
+        <div class="reqd-row">
+            <span class="reqd-row-icon">${svgIcon(icon, 16)}</span>
+            <span class="reqd-row-label">${label}</span>
+            <span class="reqd-row-value">${value}</span>
+        </div>` : '';
+    const text = req.type === 'expense' ? data.description : data.note;
+    $('reqd-body').innerHTML = `
+        <div class="reqd-hero" style="--req-color: ${color};">
+            <span class="reqd-amount">${requestAmount(req)}</span>
+            <span class="reqd-when">${requestDateLabel(req)}</span>
+        </div>
+        <div class="reqd-rows">
+            ${isOwnRequest(req) && !canApproveRequests() ? '' : row('person', t('request_detail_person', 'Von'), escapeHtml(name))}
+            ${text ? row(req.type === 'expense' ? 'receipt' : 'fileText', req.type === 'expense' ? t('request_detail_purpose', 'Wofür') : t('request_detail_note', 'Notiz'), escapeHtml(text)) : ''}
+            ${req.timestamp ? row('clock', t('request_detail_received', 'Eingegangen'), escapeHtml(dateTimeFormatter.format(new Date(req.timestamp)))) : ''}
+            ${req.status !== 'pending' || !canApproveRequests() ? row('check', t('request_detail_status', 'Status'), `<span class="reqd-state" style="--state-color: ${(USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending)[0]};">${escapeHtml(requestStateLabel(req))}</span>`) : ''}
+            ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Grund'), escapeHtml(req.rejectionReason || t('user_no_reason', 'Keine Begründung'))) : ''}
+        </div>
+        ${data.receipt ? `<div class="reqd-receipts" id="reqd-receipts"></div>` : ''}`;
+    if (data.receipt) viewRequestReceipt(data.receipt, 'reqd-receipts');
+    const canApprove = canApproveRequests() && req.status === 'pending';
+    show('reqd-actions', canApprove, 'grid');
+    show('reqd-reject', false, 'flex');
+    setValue('reqd-reject-reason', '');
+    setRequestBusy(false);
+    openModal('request-detail-modal');
+}
+
+function toggleRejectForm(open) {
+    show('reqd-actions', !open, 'grid');
+    show('reqd-reject', open, 'flex');
+    if (open) $('reqd-reject-reason')?.focus();
+}
+
+// Disables the decision buttons while it is being saved
+function setRequestBusy(busy) {
+    document.querySelectorAll('#request-detail-modal .reqd-footer button').forEach(btn => { btn.disabled = busy; });
 }
 
 function renderUnlinkedUsers() {
@@ -2672,30 +2748,37 @@ const REQUEST_APPLIERS = {
     })
 };
 
-async function approveRequest(reqId) {
+async function approveRequest(reqId = openRequestId) {
     const req = requests.find(r => r.id === reqId);
     if (!req) return;
+    setRequestBusy(true);
     await attempt(async () => {
         if (req.type === 'expense') {
             const { amount, description, date, receipt } = req.data;
-            await mutateCollection('expenses', list => [...list, { id: newId(), amount: parseFloat(amount), description: description + ` (Von: ${req.personName})`, date, receipt }]);
+            // The requester is the issuer of the expense, like for expenses booked by hand
+            await mutateCollection('expenses', list => [...list, { id: newId(), amount: parseFloat(amount), description, issuer: req.personName || '', date, receipt }]);
         } else if (REQUEST_APPLIERS[req.type]) {
             await mutatePerson(req.personId, person => REQUEST_APPLIERS[req.type](person, req.data));
         }
         await update(ref(db, 'requests/' + reqId), { status: 'approved' });
+        closeModal('request-detail-modal');
         await loadData();
         showToast(t('toast_request_approved', 'Anfrage genehmigt'));
     }, t('alert_approve_failed', 'Anfrage konnte nicht genehmigt werden. Bitte erneut versuchen.'));
+    setRequestBusy(false);
 }
 
-async function rejectRequest(reqId) {
-    const reason = prompt(t('request_reject_reason', 'Grund für Ablehnung:'));
-    if (reason === null) return;
+// Rejection with an optional reason typed into the popup (instead of a browser prompt)
+async function confirmRejectRequest(reqId = openRequestId) {
+    const reason = inputValue('reqd-reject-reason').trim();
+    setRequestBusy(true);
     await attempt(async () => {
         await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
+        closeModal('request-detail-modal');
         await loadData();
         showToast(t('toast_request_rejected', 'Anfrage abgelehnt'));
     }, t('alert_reject_failed', 'Anfrage konnte nicht abgelehnt werden. Bitte erneut versuchen.'));
+    setRequestBusy(false);
 }
 
 // --- Member views ---
@@ -2706,6 +2789,7 @@ const standingOrderCovers = meta => meta.isActiveStandingOrder && !meta.isOverdu
 function renderUserView() {
     renderHomeMentoringCard();
     renderHomeDutiesCard();
+    renderHomeFinanceRequests();
     const statusCard = $('user-status-card');
     const financeCard = $('user-finances-status-card');
     const historyEl = $('user-payment-history');
@@ -2786,58 +2870,70 @@ function renderUserView() {
     renderUserRequests();
 }
 
+// Own requests of a member: calm rows like the treasurer list; a tap opens the request (status, reason)
 const USER_REQUEST_STATES = {
-    rejected: ['❌', '#ef444415', 'req_status_rejected', 'Abgelehnt'],
-    approved: ['✅', '#10b98115', 'req_status_approved', 'Genehmigt'],
-    pending: ['⏳', '#f59e0b15', 'req_status_pending', 'In Prüfung']
+    pending: ['#f59e0b', 'req_status_pending', 'In Prüfung'],
+    approved: ['#10b981', 'req_status_approved', 'Genehmigt'],
+    rejected: ['#ef4444', 'req_status_rejected', 'Abgelehnt']
 };
+const requestStateLabel = req => {
+    const [, key, fallback] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
+    return t(key, fallback);
+};
+
+const MY_REQUESTS_SHOWN = 5;
+let showAllMyRequests = false;
+function toggleAllMyRequests() {
+    showAllMyRequests = !showAllMyRequests;
+    renderUserRequests();
+}
 
 function renderUserRequests() {
     const reqList = $('user-requests-list');
     if (!reqList) return;
-    const mine = currentUser ? requests.filter(r => r.userId === currentUser.uid).sort((a, b) => b.timestamp - a.timestamp) : [];
+    const mine = currentUser ? requests.filter(isOwnRequest).sort((a, b) => b.timestamp - a.timestamp) : [];
     if (mine.length === 0) {
         reqList.innerHTML = `
-            <div class="user-requests-empty">
-                <div class="user-requests-empty-title">${t('user_no_requests_title', 'Keine Anfragen vorhanden')}</div>
-                <div class="user-requests-empty-desc">${t('user_no_requests_desc', 'Hier erscheinen deine eingereichten Anfragen.')}</div>
+            <div class="my-req-empty">
+                ${svgIcon('fileText', 22)}
+                <span class="my-req-empty-title">${t('user_no_requests_title', 'Keine Anfragen vorhanden')}</span>
+                <span class="my-req-empty-desc">${t('user_no_requests_hint', 'Oben kannst du eine Zahlung melden, eine Auslage einreichen oder deinen Status ändern.')}</span>
             </div>`;
         return;
     }
     const statusLabels = getStatusLabels(false);
-    const typeIcons = { payment: '💰', status: '🔄', expense: '💸', standing_order: '🔁' };
-    const typeLabels = { payment: t('action_payment', 'Zahlung'), status: t('action_status', 'Status'), expense: t('action_expense', 'Ausgabe'), standing_order: t('modal_standing_order', 'Dauerauftrag') };
-    reqList.innerHTML = mine.map(req => {
-        const [badge, bg, key, fallback] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
+    const shown = showAllMyRequests ? mine : mine.slice(0, MY_REQUESTS_SHOWN);
+    const rows = shown.map(req => {
         const data = req.data || {};
-        let receiptCount = 0;
-        try {
-            const receipts = JSON.parse(data.receipt);
-            if (Array.isArray(receipts)) receiptCount = receipts.length;
-        } catch { /* no receipts */ }
-        const meta = [
-            data.amount && `<span>💶 <strong>${euro(data.amount)}</strong></span>`,
-            data.date && `<span>📅 ${formatDateFast(data.date)}</span>`,
-            data.newStatus && `<span>💼 ${escapeHtml(statusLabels[data.newStatus] || data.newStatus)}</span>`,
-            data.note && `<span>📝 ${escapeHtml(data.note)}</span>`,
-            data.description && `<span>ℹ️ ${escapeHtml(data.description)}</span>`,
-            receiptCount > 0 && `<span>📎 ${receiptCount === 1 ? t('receipt_count_one', '1 Beleg') : t('receipt_count_many', '{count} Belege', { count: receiptCount })}</span>`
-        ].filter(Boolean);
+        const type = REQUEST_TYPES[req.type] || { icon: 'file' };
+        const [stateColor] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
+        const text = req.status === 'rejected'
+            ? t('user_request_reason', 'Grund: {reason}', { reason: req.rejectionReason || t('user_no_reason', 'Keine Begründung') })
+            : (req.type === 'expense' ? data.description : data.note) || requestDateLabel(req);
         return `
-            <div class="user-request-item">
-                <div style="display: flex; justify-content: space-between; align-items: start;">
-                    <div>
-                        <div style="font-size: 1.05rem; font-weight: 700; margin-bottom: 3px;">${typeIcons[req.type] || '📋'} ${typeLabels[req.type] || req.type}</div>
-                        <div style="font-size: 0.8rem; color: var(--text-secondary);">${formatDateFast(req.timestamp)}</div>
-                    </div>
-                    <div style="background: ${bg}; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; white-space: nowrap;">
-                        ${badge} ${t(key, fallback)}
-                    </div>
-                </div>
-                ${meta.length ? `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.85rem; color:var(--text-secondary); background:var(--surface-alt); padding:8px 12px; border-radius:8px;">${meta.join('')}</div>` : ''}
-                ${req.status === 'rejected' ? `<div style="color:var(--danger); font-size:0.85rem; margin-top:8px; padding:10px; background:rgba(239, 68, 68, 0.1); border-radius:8px; border:1px solid rgba(239, 68, 68, 0.2);">⚠️ ${escapeHtml(req.rejectionReason) || t('user_no_reason', 'Keine Begründung')}</div>` : ''}
-            </div>`;
+            <button type="button" class="home-msg-row req-row my-req-row" style="--req-color: ${REQUEST_COLORS[req.type] || 'var(--primary)'}; --state-color: ${stateColor};" data-id="${escapeHtml(req.id)}" onclick="window.openRequestDetail(this.dataset.id)">
+                <span class="my-req-tile">${svgIcon(type.icon || 'file', 18, 2.2)}</span>
+                <span class="home-msg-text">
+                    <span class="home-msg-name-line">
+                        <span class="home-msg-name">${requestTypeLabel(req)}</span>
+                        <span class="req-row-amount">${requestAmount(req, statusLabels)}</span>
+                    </span>
+                    <span class="my-req-state"><span class="req-row-dot"></span>${requestStateLabel(req)}${req.timestamp ? ` · ${formatDateFast(req.timestamp)}` : ''}${data.receipt ? ` · ${svgIcon('paperclip', 11)}` : ''}</span>
+                    <span class="home-msg-snippet-line"><span class="home-msg-snippet${req.status === 'rejected' ? ' my-req-reason' : ''}">${escapeHtml(text)}</span></span>
+                </span>
+                ${svgIcon('chevronRight', 16, 2.5, 'class="req-row-chevron"')}
+            </button>`;
     }).join('');
+    reqList.innerHTML = `
+        <div class="home-msg-card my-req-card">
+            <div class="home-msg-head">
+                <span class="home-msg-icon req-card-icon">${svgIcon('fileText', 18)}</span>
+                <span class="home-msg-title">${t('user_requests_title', 'Meine Anfragen')}</span>
+                <span class="home-msg-total my-req-total">${formatBadgeCount(mine.length)}</span>
+            </div>
+            <div class="home-msg-list">${rows}</div>
+            ${mine.length > MY_REQUESTS_SHOWN ? `<button type="button" class="home-msg-more req-more" onclick="window.toggleAllMyRequests()">${showAllMyRequests ? t('user_requests_show_less', 'Weniger anzeigen') : t('user_requests_show_all', 'Alle {count} anzeigen', { count: mine.length })}</button>` : ''}
+        </div>`;
 }
 
 function renderPeople() {
@@ -3058,6 +3154,16 @@ let transactionTotalItems = 0;
 let transactionSearchQuery = '';
 const TRANSACTIONS_PER_PAGE = 150;
 const TX_ICONS = { pay: 'person', don: 'heart', exp: 'dollar' };
+// Expenses only store the issuer's name: the account behind it, for the profile picture
+function uidForName(name) {
+    const wanted = String(name || '').trim().toLowerCase();
+    if (!wanted) return null;
+    const person = people.find(p => p.uid && String(p.name || '').trim().toLowerCase() === wanted);
+    if (person) return person.uid;
+    const account = (users || []).find(u => String(fullName(u) || '').trim().toLowerCase() === wanted);
+    return account ? (account.uid || account.id) : null;
+}
+const txAvatarUid = tx => (tx.type === 'pay' ? tx.personUid : tx.type === 'exp' ? uidForName(tx.who) : null) || null;
 const txSign = tx => (tx.type === 'exp' ? '-' : '+');
 const txColor = tx => (tx.type === 'exp' ? 'text-danger' : 'text-success');
 
@@ -3104,7 +3210,7 @@ async function renderHistoryTab(resetLimit = true) {
             return `${header}
                 <div class="trans-item" role="button" tabindex="0" data-id="${escapeHtml(tx.id)}" data-type="${escapeHtml(tx.type)}" onclick="showTransactionDetails(this.dataset.id, this.dataset.type)" onkeydown="if(event.key==='Enter'||event.key===' '){showTransactionDetails(this.dataset.id, this.dataset.type)}" style="cursor:pointer;">
                     <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
-                        <div class="trans-icon-wrapper ${iconClass}"${tx.type === 'pay' && tx.personUid ? ` data-uid="${tx.personUid}"` : ''}>
+                        <div class="trans-icon-wrapper ${iconClass}"${txAvatarUid(tx) ? ` data-uid="${escapeHtml(txAvatarUid(tx))}" data-name="${escapeHtml(tx.who || '')}"` : ''}${tx.type === 'exp' ? ' data-badge="exp"' : ''}>
                             ${svgIcon(TX_ICONS[iconClass], 20)}
                         </div>
                         <div class="trans-left" style="flex: 1; min-width: 0;">
@@ -3129,8 +3235,18 @@ async function renderHistoryTab(resetLimit = true) {
         container.innerHTML = html;
         container.querySelectorAll('.trans-icon-wrapper[data-uid]').forEach(wrapper => {
             getProfilePicUrl(wrapper.dataset.uid).then(url => {
-                if (!url) return;
-                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profilbild'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`;
+                const badge = wrapper.dataset.badge === 'exp' ? `<span class="trans-type-badge">${svgIcon('dollar', 10, 2.8)}</span>` : '';
+                if (!url) {
+                    // Known person without a picture: initials instead of the plain icon
+                    if (wrapper.dataset.name) {
+                        wrapper.classList.add('has-initials');
+                        wrapper.innerHTML = `<span class="trans-initials">${escapeHtml(getInitials(wrapper.dataset.name))}</span>${badge}`;
+                    }
+                    return;
+                }
+                // Expenses keep a small red badge on the picture, so they stay recognisable at a glance
+                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profilbild'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`
+                    + badge;
                 wrapper.style.background = 'transparent';
                 wrapper.style.color = 'inherit';
             });
@@ -3972,7 +4088,7 @@ async function fetchReceiptImage(filename) {
 }
 
 Object.assign(window, {
-    assignUserToPerson, saveEditedPayment, deleteEditReceipt, confirmDeleteRecordedPayment, approveRequest, rejectRequest, toggleDetails,
+    assignUserToPerson, saveEditedPayment, deleteEditReceipt, confirmDeleteRecordedPayment, approveRequest, confirmRejectRequest, toggleRejectForm, openRequestDetail, toggleAllMyRequests, toggleDetails,
     showTransactionDetails, viewRequestReceipt, openExportReportModal, toggleManualTransactionSelection, onReportTypeChange, updateReportPreview,
     downloadReportPdf, openPaymentModal, addPayment, addDonation, addExpense, openEndStandingOrderModal, saveStandingOrderEnd,
     deleteStandingOrderCompletely, openChangeStatusModal, saveStatusChange, sendStatusEmail, openUserRequestModal, submitUserRequest,
@@ -5145,6 +5261,10 @@ let myDutyRequests = [];
 let eventCandidatesCache = null;
 let eventGroupsCache = null;
 let showPastEvents = false;
+// "Termine" on desktop: month shown in the calendar next to the list, days with entries and the chosen day
+let termineCalMonth = null;
+let termineCalDays = new Map();
+let termineCalSelected = null;
 
 const WEEKDAY_SHORT_BY_LANG = {
     de: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
@@ -5600,9 +5720,87 @@ function renderEvents() {
     }).join('');
     const ctCard = ev => renderChurchtoolsEventCard(ev, false);
     const pinned = upcoming.filter(ev => ev.isPinned);
-    container.innerHTML = (isEventsTab
-        ? (pinned.length ? group(t('events_tab_pinned', 'Highlights'), pinned, ctCard, ' events-highlights-group') : '') + byMonth(upcoming.filter(ev => !ev.isPinned), ctCard)
-        : byMonth(upcoming, ev => renderEventCard(ev, undefined, ev._day))) + pastSection;
+    if (isEventsTab) {
+        container.innerHTML = (pinned.length ? group(t('events_tab_pinned', 'Highlights'), pinned, ctCard, ' events-highlights-group') : '')
+            + byMonth(upcoming.filter(ev => !ev.isPinned), ctCard) + pastSection;
+        return;
+    }
+    // Termine: one list below each other; on desktop a month calendar on the left jumps to a day
+    termineCalDays = new Map();
+    upcoming.forEach(ev => {
+        const day = ev._day || ev.date;
+        if (!day) return;
+        if (!termineCalDays.has(day)) termineCalDays.set(day, new Set());
+        termineCalDays.get(day).add(eventCategory(ev));
+    });
+    container.innerHTML = `
+        <div class="termine-layout">
+            <aside class="termine-cal" id="termine-cal" aria-label="${t('events_calendar', 'Kalender')}"></aside>
+            <div class="termine-list">${byMonth(upcoming, ev => renderEventCard(ev, undefined, ev._day))}</div>
+        </div>`;
+    renderTermineCalendar();
+}
+
+// Month calendar next to the appointment list (desktop): one dot per category on days with entries
+function renderTermineCalendar() {
+    const target = $('termine-cal');
+    if (!target) return;
+    const todayStr = getTodayStr();
+    const [ty, tm] = splitDate(todayStr);
+    if (!termineCalMonth) termineCalMonth = new Date(ty, tm - 1, 1);
+    const year = termineCalMonth.getFullYear();
+    const month = termineCalMonth.getMonth();
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = Array.from({ length: lead }, () => '<span class="termine-cal-day is-empty"></span>');
+    for (let d = 1; d <= daysInMonth; d++) {
+        const day = toDateStr(new Date(year, month, d));
+        const cats = termineCalDays.get(day);
+        const isPast = day < todayStr;
+        const classes = ['termine-cal-day', cats ? 'has-entries' : '', day === todayStr ? 'is-today' : '', isPast ? 'is-past' : '', day === termineCalSelected ? 'is-selected' : ''].filter(Boolean).join(' ');
+        const dots = cats ? `<span class="termine-cal-dots">${['cat-pinned', 'cat-event', 'cat-termin'].filter(c => cats.has(c)).map(c => `<span class="termine-cal-dot ${c}"></span>`).join('')}</span>` : '';
+        cells.push(`<button type="button" class="${classes}" data-day="${day}" onclick="window.jumpToTermineDay(this.dataset.day)"${isPast ? ' disabled' : ''}><span class="termine-cal-num">${d}</span>${dots}</button>`);
+    }
+    const atCurrentMonth = year === ty && month === tm - 1;
+    const legend = [['cat-termin', t('detail_groups_termin', 'Termin')], ['cat-event', t('detail_groups_event', 'Event')], ['cat-pinned', t('events_major_event', 'Großevent')]]
+        .map(([c, label]) => `<span class="termine-cal-legend-item"><span class="termine-cal-dot ${c}"></span>${label}</span>`).join('');
+    target.innerHTML = `
+        <div class="termine-cal-head">
+            <button type="button" class="termine-cal-nav" onclick="window.shiftTermineMonth(-1)"${atCurrentMonth ? ' disabled' : ''} aria-label="${t('events_calendar_prev', 'Vorheriger Monat')}">${svgIcon('chevronLeft', 18, 2.5)}</button>
+            <span class="termine-cal-title">${escapeHtml(monthYearFormatter.format(termineCalMonth))}</span>
+            <button type="button" class="termine-cal-nav" onclick="window.shiftTermineMonth(1)" aria-label="${t('events_calendar_next', 'Nächster Monat')}">${svgIcon('chevronRight', 18, 2.5)}</button>
+        </div>
+        <div class="termine-cal-grid">
+            ${[1, 2, 3, 4, 5, 6, 0].map(i => `<span class="termine-cal-wd">${weekdayShort(i)}</span>`).join('')}
+            ${cells.join('')}
+        </div>
+        <div class="termine-cal-legend">${legend}</div>`;
+}
+
+function shiftTermineMonth(delta) {
+    termineCalMonth = new Date(termineCalMonth.getFullYear(), termineCalMonth.getMonth() + delta, 1);
+    renderTermineCalendar();
+}
+
+// Scrolls the list to the first appointment on (or after) the chosen day and highlights that day's cards briefly
+function jumpToTermineDay(day) {
+    termineCalSelected = day;
+    renderTermineCalendar();
+    const cards = [...document.querySelectorAll('#events .termine-list .event-card[data-day]')];
+    const first = cards.find(card => card.dataset.day === day) || cards.find(card => card.dataset.day > day);
+    if (!first) return;
+    // Scrolling down hides the header, scrolling up brings it back: keep the card clear of it
+    const scroller = document.querySelector('.container');
+    if (!scroller) return;
+    const distance = first.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    const header = document.querySelector('.header');
+    const offset = distance < 0 ? (header?.offsetHeight || 0) + 20 : 20;
+    scroller.scrollTo({ top: scroller.scrollTop + distance - offset, behavior: 'smooth' });
+    cards.filter(card => card.dataset.day === first.dataset.day).forEach(card => {
+        card.classList.remove('is-jump-target');
+        void card.offsetWidth;
+        card.classList.add('is-jump-target');
+    });
 }
 
 const statusBadge = (cls, content, title = '') => `<span class="event-card-status ${cls}"${title ? ` title="${title}"` : ''}>${content}</span>`;
@@ -5657,6 +5855,12 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
         </div>`;
 }
 
+// Category of an event card: pinned highlight, event or plain appointment (colour of stripe, leaf and calendar dot)
+function eventCategory(ev) {
+    const isEvent = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
+    return isEvent && ev.isPinned ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
+}
+
 // Compact list card used for appointments and on the home screen: calendar leaf, title, one "when" line,
 // location and at most one status badge; the category colour shows as leaf strip and left accent
 // day: the calendar day this card stands for (multi-day events get one card per day in "Termine")
@@ -5666,8 +5870,9 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
     const isToday = day === todayStr;
     const isPast = isEventPast(ev, todayStr);
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
-    const isEvent = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
-    const isPinned = isEvent && Boolean(ev.isPinned);
+    const category = eventCategory(ev);
+    const isEvent = category !== 'cat-termin';
+    const isPinned = category === 'cat-pinned';
     const { myDuty, myRequestedDuty, isRegistered, isWaitlist, openDutiesCount } = getEventCardStatusInfo(ev);
     let status = '';
     if (myDuty) {
@@ -5684,10 +5889,9 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
         status = statusBadge('status-full', `<span>${t('events_status_full', 'Ausgebucht')}</span>`);
     }
     const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || t('home_all_day', 'Ganztägig'));
-    const category = isPinned ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
     const categoryLabel = isPinned ? t('events_major_event', 'Großevent') : isEvent ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Termin');
     return `
-        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" title="${categoryLabel}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
+        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" data-day="${escapeHtml(day || '')}" title="${categoryLabel}" onclick="window.openEventDetailModal('${escapeHtml(ev.id)}')">
             ${eventCalendarLeaf(day)}
             <div class="event-card-body">
                 <div class="event-card-title">${escapeHtml(ev.title)}</div>
@@ -6531,7 +6735,7 @@ function autoResizeDetailTextarea(textarea) {
 }
 
 Object.assign(window, {
-    switchEventsSubTab, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, submitAddNewTask,
+    switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, submitAddNewTask,
     hideAddNewTaskForm, openAssignDutyModalForRole, switchAssignDutyTab, selectDutyAssignee, deleteEntireDutyTask, removeDutyAssignee,
     toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
     enterDetailEditMode, cancelDetailEditMode, saveDetailEditMode, openNewEventDetailModal, setDetailEditType, toggleDetailMultiDay,
