@@ -43,11 +43,12 @@ function wrapUser(user) {
   };
 }
 
-const AUTH_STORAGE_KEY = 'nova_auth_session';
+const AUTH_STORAGE_KEY = 'agora_auth_session';
+const LEGACY_AUTH_STORAGE_KEY = 'nova_auth_session';
 
 function getStoredAuth() {
   try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && parsed.user) {
@@ -63,6 +64,7 @@ function persistAuth(token, user) {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: token || null, user }));
     } else {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
     }
   } catch { /* ignore */ }
 }
@@ -73,11 +75,13 @@ if (initialStored) {
   authState.currentUser = wrapUser(initialStored.user);
 }
 
-function saveAuth(token, user) {
+function saveAuth(token, user, notify = true) {
   authState.token = token || null;
   authState.currentUser = wrapUser(user);
   persistAuth(token, user);
-  notifyAuthListeners();
+  if (notify) {
+    notifyAuthListeners();
+  }
 }
 
 async function apiFetch(url, options = {}) {
@@ -88,7 +92,7 @@ async function apiFetch(url, options = {}) {
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     if (response.status === 401) {
-      if (!url.includes('/api/auth/login') && !url.includes('/api/auth/register')) {
+      if (!url.includes('/api/auth/login') && !url.includes('/api/auth/register') && !url.includes('/api/auth/me')) {
         saveAuth(null, null);
       }
     }
@@ -116,11 +120,11 @@ async function restoreAuthState(retries = 4, delayMs = 1000) {
       const response = await fetch('/api/auth/me', { headers });
       if (response.ok) {
         const data = await response.json();
-        saveAuth(data.token, data.user);
+        saveAuth(data.token, data.user, false);
         return;
       }
       if (response.status === 401) {
-        saveAuth(null, null);
+        saveAuth(null, null, false);
         return;
       }
       if (response.status === 503 || response.status >= 500) {
@@ -138,7 +142,9 @@ async function restoreAuthState(retries = 4, delayMs = 1000) {
   }
 }
 
+let authReadyResolved = false;
 authState.ready = restoreAuthState().then(() => {
+  authReadyResolved = true;
   notifyAuthListeners();
 });
 
@@ -209,14 +215,6 @@ export async function update(reference, value) {
   });
 }
 
-export async function remove(reference) {
-  await apiFetch('/api/db', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: reference.path || '' })
-  });
-}
-
 export async function runTransaction(reference, updater) {
   for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
     const current = await readRaw(reference);
@@ -256,7 +254,9 @@ export function getAuth(app) {
 
 export function onAuthStateChanged(auth, callback) {
   authState.listeners.add(callback);
-  authState.ready.then(() => callback(authState.currentUser));
+  if (authReadyResolved) {
+    callback(authState.currentUser);
+  }
   return () => authState.listeners.delete(callback);
 }
 

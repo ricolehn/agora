@@ -110,3 +110,49 @@ test('overpayment uses only current balance and excludes anticipated standing or
   assert.equal(result._overpayment, 5);
   assert.equal(result._statusMeta.isOverdue, false);
 });
+
+test('returns Alles in Ordnung for up-to-date member without standing order', () => {
+  const now = new Date();
+  const settings = { vollverdiener: 10 };
+
+  const memberSince = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const person = makeBasePerson({
+    memberSince: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1),
+    originalMemberSince: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1),
+    totalPaid: 10,
+    payments: [
+      { id: 'p1', amount: 10, date: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1), description: 'Manual' }
+    ],
+    standingOrders: []
+  });
+
+  const result = preprocessPersonServerSide(person, settings);
+  assert.equal(result._statusMeta.isOverdue, false);
+  assert.equal(result._statusMeta.isActiveStandingOrder, false);
+  assert.equal(result._statusMeta.text, 'Alles in Ordnung');
+});
+
+test('returns Dauerauftrag läuft for up-to-date member with active standing order', () => {
+  const now = new Date();
+  const settings = { vollverdiener: 10 };
+
+  const memberSince = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const person = makeBasePerson({
+    memberSince: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1),
+    originalMemberSince: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1),
+    totalPaid: 10,
+    payments: [
+      { id: 'p1', amount: 10, date: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1), description: 'Manual' }
+    ],
+    standingOrders: [
+      { id: 'so-1', amount: 10, startDate: isoDate(memberSince.getFullYear(), memberSince.getMonth(), 1) }
+    ]
+  });
+
+  const result = preprocessPersonServerSide(person, settings);
+  assert.equal(result._statusMeta.isOverdue, false);
+  assert.equal(result._statusMeta.isActiveStandingOrder, true);
+  assert.equal(result._statusMeta.text, 'Dauerauftrag läuft');
+});

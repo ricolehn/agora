@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konto löschen – Agora</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/assets/public.css">
+</head>
+<body>
+<main class="narrow">
+    <h1>Konto löschen</h1>
+    <p><span class="app-name">Agora</span> · Account deletion</p>
+
+    <h2>So löschst du dein Konto</h2>
+    <ul>
+        <li><strong>In der Android-App:</strong> Einstellungen → „Konto löschen“ → Passwort eingeben → bestätigen.</li>
+        <li><strong>Im Browser:</strong> Anmelden → Einstellungen → „Konto löschen“.</li>
+        <li><strong>Hier auf dieser Seite:</strong> mit dem Formular unten, ganz ohne App.</li>
+    </ul>
+
+    <h2>Was gelöscht wird</h2>
+    <ul>
+        <li>Dein Zugang (Login, E-Mail-Adresse, Name, Einstellungen) und dein Profilbild</li>
+        <li>Deine Anmeldungen zu Terminen; deine Dienste werden wieder freigegeben</li>
+        <li>Deine Mentoring-Gespräche samt Nachrichten und dein Mentoren-Profil</li>
+        <li>Deine Finanz-Anfragen sowie Geräte-Tokens für Push-Benachrichtigungen</li>
+    </ul>
+    <h2>Was aufbewahrt wird</h2>
+    <p>Bereits gebuchte Zahlungen (Betrag, Datum, Name) bleiben beim Verein bzw. der Gemeinde, weil sie für die Buchhaltung gesetzlich aufbewahrt werden müssen. Alle anderen Angaben zu deiner Person in der Mitgliederliste werden entfernt. Die Löschung geschieht sofort.</p>
+
+    <div class="card">
+        <strong>Konto jetzt löschen</strong>
+        <form id="delete-form" autocomplete="on">
+            <label for="email">E-Mail-Adresse</label>
+            <input id="email" type="email" autocomplete="username" required>
+            <label for="password">Passwort</label>
+            <input id="password" type="password" autocomplete="current-password" required>
+            <button id="submit" type="submit">Konto endgültig löschen</button>
+            <div id="msg" class="msg" role="status"></div>
+        </form>
+    </div>
+
+    <p style="margin-top: 24px;">Passwort vergessen oder Fragen? Wende dich an die Administratoren deiner Gemeinde bzw. deines Vereins – sie können dein Konto ebenfalls löschen. <a href="/privacy">Datenschutzerklärung</a></p>
+</main>
+<script src="/assets/public.js"></script>
+<script>
+    const form = document.getElementById('delete-form');
+    const msg = document.getElementById('msg');
+    const submit = document.getElementById('submit');
+    const show = (text, ok) => { msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); };
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!confirm('Dein Konto und deine persönlichen Daten werden endgültig gelöscht. Fortfahren?')) return;
+        submit.disabled = true;
+        show('', true);
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        try {
+            const login = await fetch('/api/auth/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
+            });
+            const auth = await login.json().catch(() => ({}));
+            if (!login.ok || !auth.token) throw new Error('E-Mail-Adresse oder Passwort ist falsch.');
+            const res = await fetch('/api/auth/delete-account', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + auth.token },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Konto konnte nicht gelöscht werden.');
+            form.reset();
+            show('Dein Konto wurde gelöscht.', true);
+        } catch (err) {
+            show(err.message, false);
+        }
+        submit.disabled = false;
+    });
+</script>
+</body>
+</html>

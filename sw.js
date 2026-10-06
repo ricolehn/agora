@@ -1,4 +1,5 @@
-const CACHE_NAME = 'nova-v1.0.7';
+// Bumped: older caches could hold API responses of a previous user, the activate step deletes them
+const CACHE_NAME = 'agora-v1.0.22';
 const URLS_TO_CACHE = [
     './',
     './index.html',
@@ -8,6 +9,8 @@ const URLS_TO_CACHE = [
     './assets/pocketbase-compat.js',
     './manifest.json',
     './assets/icon.png',
+    './assets/icon-notification.png',
+    './assets/badge-monochrome.png',
     './assets/locales/de.json',
     './assets/locales/en.json'
 ];
@@ -29,6 +32,12 @@ self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') {
         return;
     }
+    // API responses carry personal data (account, token, finances, messages): never cache them, network only.
+    // (Also covers the never-ending live-update stream /api/stream.)
+    const url = new URL(event.request.url);
+    if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) {
+        return;
+    }
 
     // Network-first strategy: always try to fetch the latest version from the
     // server so that Docker image updates are visible immediately.  Fall back
@@ -36,10 +45,11 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         fetch(event.request)
             .then(response => {
-                const responseToCache = response.clone();
-                caches.open(CACHE_NAME).then(cache => {
-                    cache.put(event.request, responseToCache);
-                });
+                // Only complete answers of our own files go into the offline cache
+                if (response.ok && url.origin === self.location.origin) {
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
+                }
                 return response;
             })
             .catch(() => {
@@ -71,6 +81,55 @@ self.addEventListener('activate', event => {
         }).then(() => {
             // Take control of all clients immediately
             return self.clients.claim();
+        })
+    );
+});
+
+self.addEventListener('push', event => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch (e) {
+        payload = {
+            title: 'Agora',
+            body: event.data ? event.data.text() : ''
+        };
+    }
+
+    const title = payload.title || 'Agora';
+    const options = {
+        body: payload.body || '',
+        icon: payload.icon || './assets/icon-notification.png',
+        badge: payload.badge || './assets/badge-monochrome.png',
+        tag: payload.tag || 'agora-notification',
+        data: payload.data || {},
+        vibrate: [100, 50, 100],
+        requireInteraction: false
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(title, options)
+    );
+});
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : './';
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            for (let i = 0; i < windowClients.length; i++) {
+                const client = windowClients[i];
+                if ('focus' in client) {
+                    if (targetUrl && 'navigate' in client) {
+                        client.navigate(targetUrl);
+                    }
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow(targetUrl);
+            }
         })
     );
 });

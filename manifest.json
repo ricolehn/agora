@@ -1,11 +1,11 @@
 {
-  "name": "Nova",
-  "short_name": "Nova",
+  "name": "Agora",
+  "short_name": "Agora",
   "description": "Kassenverwaltung für die Jugendarbeit",
   "start_url": "/index.html",
   "display": "standalone",
-  "background_color": "#06b6d4",
-  "theme_color": "#06b6d4",
+  "background_color": "#e6f2fa",
+  "theme_color": "#e6f2fa",
   "orientation": "any",
   "icons": [
     {
@@ -13,6 +13,18 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icon-notification.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/badge-monochrome.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "monochrome"
     }
   ],
   "categories": ["finance", "productivity"],

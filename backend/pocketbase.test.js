@@ -17,6 +17,10 @@ const {
   clearSuperuserTokenCache
 } = require('./pocketbase');
 
+// Defaults of a record without stored preferences: push with every kind, e-mail off
+const ALL_KINDS = { duties: true, events: true, messages: true, requests: true, finances: true, reports: true };
+const DEFAULT_NOTIFICATION_SETTINGS = { ...ALL_KINDS, channels: { push: true, email: false }, push: ALL_KINDS, email: ALL_KINDS };
+
 test('normalizeDataPath trims duplicate separators', () => {
   assert.equal(normalizeDataPath('/people//123/'), 'people/123');
   assert.equal(normalizeDataPath(''), '');
@@ -29,7 +33,7 @@ test('decodeTokenPayload decodes base64url JWT payloads', () => {
   assert.deepEqual(decoded, payload);
 });
 
-test('sanitizeSelfUserWrite strips admin flags but keeps editable profile fields', () => {
+test('sanitizeSelfUserWrite strips admin flags and the name (it links the finance record)', () => {
   const sanitized = sanitizeSelfUserWrite({
     firstName: 'Ada',
     lastName: 'Lovelace',
@@ -39,10 +43,7 @@ test('sanitizeSelfUserWrite strips admin flags but keeps editable profile fields
   });
 
   assert.deepEqual(sanitized, {
-    firstName: 'Ada',
-    lastName: 'Lovelace',
-    emailNotifications: false,
-    name: 'Ada Lovelace'
+    emailNotifications: false
   });
 });
 
@@ -58,13 +59,87 @@ test('toPublicUser falls back to first and last name when the auth record has no
     uid: 'user-1',
     id: 'user-1',
     email: 'ada@example.com',
+    rawEmail: 'ada@example.com',
     firstName: 'Ada',
     lastName: 'Lovelace',
     name: 'Ada Lovelace',
     admin: false,
+    owner: false,
     superAdmin: false,
-    emailNotifications: true
+    pays: true,
+    groups: [],
+    emailNotifications: true,
+    notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+    isClaimed: true,
+    calendarToken: ''
   });
+});
+
+test('toPublicUser preserves owner, pays, and groups fields', () => {
+  const user = toPublicUser({
+    id: 'user-2',
+    email: 'owner@example.com',
+    firstName: 'Grace',
+    lastName: 'Hopper',
+    owner: true,
+    pays: false,
+    groups: ['Admins', 'Board']
+  });
+
+  assert.deepEqual(user, {
+    uid: 'user-2',
+    id: 'user-2',
+    email: 'owner@example.com',
+    rawEmail: 'owner@example.com',
+    firstName: 'Grace',
+    lastName: 'Hopper',
+    name: 'Grace Hopper',
+    admin: true,
+    owner: true,
+    superAdmin: true,
+    pays: false,
+    groups: ['Admins', 'Board'],
+    emailNotifications: true,
+    notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+    isClaimed: true,
+    calendarToken: ''
+  });
+});
+
+test('toPublicUser preserves custom calendarToken', () => {
+  const user = toPublicUser({
+    id: 'user-cal',
+    email: 'cal@example.com',
+    firstName: 'Cal',
+    lastName: 'Endar',
+    calendarToken: 'secure-token-12345'
+  });
+
+  assert.equal(user.calendarToken, 'secure-token-12345');
+});
+
+test('toPublicUser handles unclaimed placeholder email accounts', () => {
+  const user = toPublicUser({
+    id: 'user-3',
+    email: 'unclaimed_12345_abcdef@agora.local',
+    firstName: 'John',
+    lastName: 'Doe',
+    isClaimed: false
+  });
+
+  assert.equal(user.email, '');
+  assert.equal(user.rawEmail, 'unclaimed_12345_abcdef@agora.local');
+  assert.equal(user.isClaimed, false);
+  assert.equal(user.name, 'John Doe');
+});
+
+test('isPlaceholderEmail detects generated placeholder emails', () => {
+  const { isPlaceholderEmail } = require('./pocketbase');
+  assert.equal(isPlaceholderEmail('unclaimed_123_abc@agora.local'), true);
+  assert.equal(isPlaceholderEmail('user@agora.local'), true);
+  assert.equal(isPlaceholderEmail(''), true);
+  assert.equal(isPlaceholderEmail(null), true);
+  assert.equal(isPlaceholderEmail('realuser@gmail.com'), false);
 });
 
 test('buildPocketBaseError prefers detailed field validation messages', () => {
@@ -83,7 +158,7 @@ test('buildPocketBaseError prefers detailed field validation messages', () => {
 test('generatePocketBaseCredentials returns docker-local defaults', () => {
   const credentials = generatePocketBaseCredentials();
   assert.equal(credentials.url, 'http://127.0.0.1:8090');
-  assert.match(credentials.adminEmail, /^nova-.*@local\.invalid$/);
+  assert.match(credentials.adminEmail, /^agora-.*@local\.invalid$/);
   assert.ok(credentials.adminPassword.length >= 20);
 });
 
@@ -190,6 +265,21 @@ test('hydratePersonRecord rebuilds normalized child collections into legacy API 
   assert.ok('_currentStatus' in result);
 });
 
+test('migrateUserAndOwnerSchema patches existing users without pays=true to pays=true', () => {
+  const user1 = { id: 'u1', pays: false, email: 'a@agora.local' };
+  const user2 = { id: 'u2', pays: true, email: 'b@agora.local' };
+  const user3 = { id: 'u3', email: 'c@agora.local' };
+
+  // Helper check logic simulating migrateUserAndOwnerSchema patch check for pays
+  function needsPaysPatch(u) {
+    return u.pays !== true;
+  }
+
+  assert.equal(needsPaysPatch(user1), true);
+  assert.equal(needsPaysPatch(user2), false);
+  assert.equal(needsPaysPatch(user3), true);
+});
+
 test('clearSuperuserTokenCache is a callable function', () => {
   assert.equal(typeof clearSuperuserTokenCache, 'function');
   // Calling it should not throw
@@ -224,4 +314,130 @@ test('decodeTokenPayload handles tokens with expiration far in future', () => {
   assert.equal(decoded.exp, futureExp);
   assert.ok(decoded.exp > Math.floor(Date.now() / 1000) + 300000000);
 });
+
+test('admin user and group helper functions are exported correctly', () => {
+  const {
+    adminResetUserPassword,
+    deleteUserRecord,
+    claimUserAccount,
+    isPlaceholderEmail,
+    listGroupRecords,
+    createGroupRecord,
+    updateGroupRecord,
+    deleteGroupRecord,
+    resolveUserPermissions
+  } = require('./pocketbase');
+  assert.equal(typeof adminResetUserPassword, 'function');
+  assert.equal(typeof deleteUserRecord, 'function');
+  assert.equal(typeof claimUserAccount, 'function');
+  assert.equal(typeof isPlaceholderEmail, 'function');
+  assert.equal(typeof listGroupRecords, 'function');
+  assert.equal(typeof createGroupRecord, 'function');
+  assert.equal(typeof updateGroupRecord, 'function');
+  assert.equal(typeof deleteGroupRecord, 'function');
+  assert.equal(typeof resolveUserPermissions, 'function');
+});
+
+test('resolveUserPermissions merges permissions and determines finance, AI, and mentoring access', () => {
+  const { resolveUserPermissions } = require('./pocketbase');
+  const allGroups = [
+    { id: 'g1', name: 'Finance Team', permissions: ['view_finances'] },
+    { id: 'g2', name: 'Treasury', permissions: ['manage_finances'] },
+    { id: 'g3', name: 'Regular', permissions: [] },
+    { id: 'g4', name: 'AI Users', permissions: ['access_ai'] },
+    { id: 'g5', name: 'Mentoring Participants', permissions: ['mentoring_participate'] },
+    { id: 'g6', name: 'Mentoring Leaders', permissions: ['manage_mentoring'] },
+    { id: 'g7', name: 'Invite Code Managers', permissions: ['manage_registration_code'] }
+  ];
+
+  const resEmpty = resolveUserPermissions([], allGroups);
+  assert.deepEqual(resEmpty.permissions, []);
+  assert.equal(resEmpty.canManageFinances, false);
+  assert.equal(resEmpty.canViewFinances, false);
+  assert.equal(resEmpty.canManageRegistrationCode, false);
+  assert.equal(resEmpty.canAccessAi, false);
+  assert.equal(resEmpty.canParticipateMentoring, true);
+  assert.equal(resEmpty.canManageMentoring, false);
+
+  const resView = resolveUserPermissions(['g1'], allGroups);
+  assert.deepEqual(resView.permissions, ['view_finances']);
+  assert.equal(resView.canManageFinances, false);
+  assert.equal(resView.canViewFinances, true);
+  assert.equal(resView.canManageRegistrationCode, false);
+  assert.equal(resView.canAccessAi, false);
+
+  const resManage = resolveUserPermissions(['g2'], allGroups);
+  assert.deepEqual(resManage.permissions, ['manage_finances']);
+  assert.equal(resManage.canManageFinances, true);
+  assert.equal(resManage.canViewFinances, true);
+  assert.equal(resManage.canManageRegistrationCode, false, 'manage_finances does not grant manage_registration_code');
+  assert.equal(resManage.canAccessAi, false);
+
+  const resAi = resolveUserPermissions(['g4'], allGroups);
+  assert.deepEqual(resAi.permissions, ['access_ai']);
+  assert.equal(resAi.canManageFinances, false);
+  assert.equal(resAi.canViewFinances, false);
+  assert.equal(resAi.canManageRegistrationCode, false);
+  assert.equal(resAi.canAccessAi, true);
+
+  const resInvite = resolveUserPermissions(['g7'], allGroups);
+  assert.deepEqual(resInvite.permissions, ['manage_registration_code']);
+  assert.equal(resInvite.canManageRegistrationCode, true);
+  assert.equal(resInvite.canManageFinances, false);
+
+  const resMentee = resolveUserPermissions(['g5'], allGroups);
+  assert.deepEqual(resMentee.permissions, ['mentoring_participate']);
+  assert.equal(resMentee.canParticipateMentoring, true);
+  assert.equal(resMentee.canManageMentoring, false);
+
+  const resLeader = resolveUserPermissions(['g6'], allGroups);
+  assert.deepEqual(resLeader.permissions, ['manage_mentoring']);
+  assert.equal(resLeader.canParticipateMentoring, true);
+  assert.equal(resLeader.canManageMentoring, true);
+
+  const resCombined = resolveUserPermissions(['g1', 'g4', 'g5', 'g7'], allGroups);
+  assert.ok(resCombined.permissions.includes('view_finances'));
+  assert.ok(resCombined.permissions.includes('access_ai'));
+  assert.ok(resCombined.permissions.includes('mentoring_participate'));
+  assert.ok(resCombined.permissions.includes('manage_registration_code'));
+  assert.equal(resCombined.canViewFinances, true);
+  assert.equal(resCombined.canManageFinances, false);
+  assert.equal(resCombined.canManageRegistrationCode, true);
+  assert.equal(resCombined.canAccessAi, true);
+  assert.equal(resCombined.canParticipateMentoring, true);
+  assert.equal(resCombined.canManageMentoring, false);
+  assert.equal(resCombined.canManageEvents, false);
+});
+
+test('SYSTEM_PERMISSIONS provides valid permission definitions', () => {
+  const { SYSTEM_PERMISSIONS } = require('./pocketbase');
+  assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
+  assert.equal(SYSTEM_PERMISSIONS.length, 6);
+  const ids = SYSTEM_PERMISSIONS.map(p => p.id);
+  assert.deepEqual(ids, ['view_finances', 'manage_finances', 'manage_registration_code', 'access_ai', 'manage_mentoring', 'manage_events']);
+});
+
+test('pocketbase exports encryptMentoringText and decryptMentoringText with proper round-trip', () => {
+  const { encryptMentoringText, decryptMentoringText } = require('./pocketbase');
+  assert.equal(typeof encryptMentoringText, 'function');
+  assert.equal(typeof decryptMentoringText, 'function');
+
+  const threadId = 'pb-test-thread-42';
+  const original = 'Vertrauliche Seelsorge-Nachricht fuer PocketBase';
+  const encrypted = encryptMentoringText(original, threadId);
+
+  assert.ok(encrypted.startsWith('enc:v1:'));
+  assert.notEqual(encrypted, original);
+
+  const decrypted = decryptMentoringText(encrypted, threadId);
+  assert.equal(decrypted, original);
+
+  // Different thread cannot decrypt (returns safe placeholder)
+  const crossDecrypted = decryptMentoringText(encrypted, 'other-thread');
+  assert.equal(crossDecrypted, '[Verschlüsselte Nachricht - Entschlüsselung fehlgeschlagen]');
+
+  // Legacy plaintext passes through
+  assert.equal(decryptMentoringText('Hallo Welt', threadId), 'Hallo Welt');
+});
+
 

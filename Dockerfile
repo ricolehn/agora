@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-ARG POCKETBASE_VERSION=0.36.6
+ARG POCKETBASE_VERSION=0.40.4
 ARG TARGETARCH
 
 WORKDIR /app/backend
@@ -10,7 +10,7 @@ RUN npm install --omit=dev
 
 WORKDIR /app
 
-RUN apk add --no-cache curl unzip && \
+RUN apk add --no-cache curl unzip dos2unix && \
     case "${TARGETARCH:-amd64}" in \
       amd64) pb_arch="amd64" ;; \
       arm64) pb_arch="arm64" ;; \
@@ -29,6 +29,7 @@ COPY --chown=node:node index.html ./html/
 COPY --chown=node:node manifest.json ./html/
 COPY --chown=node:node sw.js ./html/
 COPY --chown=node:node setup.html ./html/
+COPY --chown=node:node account-deletion.html privacy.html ./html/
 
 # Create the directories and assign ownership to the bundled node user (UID 1000)
 RUN mkdir -p /app/data /app/db /app/html-seed && \
@@ -37,7 +38,7 @@ RUN mkdir -p /app/data /app/db /app/html-seed && \
     chown -R node:node /app
 
 COPY --chown=node:node docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
+RUN dos2unix /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
 
