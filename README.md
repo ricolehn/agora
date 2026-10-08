@@ -179,6 +179,27 @@ Agora provisions PocketBase automatically and configures the collections, indexe
 - **The Owner** and **System Admins** can manage user roles and system-wide configuration.
 </details>
 
+## 🧪 Tests
+
+All tests live in `tests/` and use the built-in Node test runner (Node 22+, no extra packages):
+
+| File | Covers |
+| --- | --- |
+| `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
+| `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
+| `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups |
+| `finance.test.js` | standing orders, request retention, derived finance data |
+| `community.test.js` | events, mentoring (capacity, encryption), AI input sanitising |
+| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events |
+| `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
+
+```bash
+cd backend && npm ci
+POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests in api.test.js are skipped
+```
+
+Shared helpers (temporary folders, environment variables) are in `tests/helpers.js`. Every pull request to `develop` runs the suite and a Docker build (`.github/workflows/tests.yml`).
+
 ## 📄 License
 
 This project is licensed under the newest GNU General Public License (GPLv3). See the `LICENSE` file for more details.
