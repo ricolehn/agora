@@ -1,5 +1,6 @@
 const express = require('express');
 const { instanceLanguage, normalizeLanguage, SUPPORTED_LANGUAGES, translate, translator, userLanguage, requestLanguage } = require('../i18n');
+const { cleanCcli } = require('../songbook');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
@@ -146,6 +147,7 @@ router.get('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res
     publicUrl: context.appConfig.publicUrl || '',
     defaultLanguage: instanceLanguage(),
     supportedLanguages: SUPPORTED_LANGUAGES,
+    ccliLicense: context.appConfig.ccliLicense || '',
     smtp: smtpResponse,
     usesPocketBase: true
   });
@@ -192,11 +194,21 @@ router.put('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res
       }
     }
 
+    // CCLI licence number of the church (shown with every song of the songbook)
+    let ccliLicense = context.appConfig.ccliLicense || '';
+    if (req.body?.ccliLicense !== undefined) {
+      ccliLicense = cleanCcli(req.body.ccliLicense);
+      if (ccliLicense === null) {
+        return res.status(400).json({ error: 'The CCLI licence number consists of digits only.' });
+      }
+    }
+
     const newConfig = {
       ...context.appConfig,
       appName,
       publicUrl,
       defaultLanguage,
+      ccliLicense,
       smtp
     };
 

@@ -1053,3 +1053,86 @@ describe('ai', () => {
     assert.equal(sanitized[1].content.length, 5000);
   });
 });
+
+describe('polls', () => {
+  const { buildPoll, castVote, publicPoll, MIN_RESULT_VOTES } = require('../backend/polls');
+
+  const secret = 'x'.repeat(64);
+  const now = 1_800_000_000_000;
+  const day = 24 * 60 * 60 * 1000;
+  const make = (extra = {}) => buildPoll({ title: 'Favourite song?', options: ['A', 'B', 'C'], endsAt: now + day, ...extra }, { uid: 'owner-uid-123', secret, now, id: 'p1' });
+
+  test('a poll needs a question, 2-10 distinct answers and an end in the future', () => {
+    assert.ok(make().poll);
+    assert.ok(make({ title: 'x' }).error);
+    assert.ok(make({ options: ['A'] }).error);
+    assert.ok(make({ options: ['A', 'a'] }).error);
+    assert.ok(make({ endsAt: now - 1 }).error);
+  });
+
+  test('stored data never links an account to an answer', () => {
+    let { poll } = make();
+    ({ poll } = castVote(poll, ['o2'], { uid: 'alice', secret, now }));
+    const stored = JSON.stringify(poll);
+    assert.ok(!stored.includes('alice'));
+    assert.ok(!stored.includes('owner-uid-123'));
+    assert.deepEqual(poll.tallies, { o1: 0, o2: 1, o3: 0 });
+    assert.equal(poll.voters.length, 1);
+    assert.ok(!Object.keys(poll).some((key) => /vote(s)?$/.test(key) && key !== 'voters'));
+  });
+
+  test('one vote per person, only before the end, single choice unless allowed', () => {
+    let { poll } = make();
+    ({ poll } = castVote(poll, ['o1'], { uid: 'alice', secret, now }));
+    assert.equal(castVote(poll, ['o2'], { uid: 'alice', secret, now }).status, 409);
+    assert.equal(castVote(poll, ['o1', 'o2'], { uid: 'bob', secret, now }).status, 400);
+    assert.equal(castVote(poll, ['o1'], { uid: 'bob', secret, now: now + 2 * day }).status, 400);
+    const multi = make({ multiple: true }).poll;
+    assert.deepEqual(castVote(multi, ['o1', 'o3'], { uid: 'bob', secret, now }).poll.tallies, { o1: 1, o2: 0, o3: 1 });
+  });
+
+  test('members see no creator or participants and results only after the end with enough votes', () => {
+    let { poll } = make();
+    for (const uid of ['a', 'b']) ({ poll } = castVote(poll, ['o1'], { uid, secret, now }));
+    const running = publicPoll(poll, { uid: 'a', secret, now });
+    assert.equal(running.hasVoted, true);
+    assert.equal(running.results, null);
+    assert.equal(running.creator, undefined);
+    assert.equal(running.voters, undefined);
+    assert.equal(publicPoll(poll, { uid: 'owner-uid-123', secret, now }).isMine, true);
+    const endedFew = publicPoll(poll, { uid: 'a', secret, now: now + 2 * day });
+    assert.equal(endedFew.results, null);
+    assert.equal(endedFew.tooFewVotes, true);
+    ({ poll } = castVote(poll, ['o3'], { uid: 'c', secret, now }));
+    const ended = publicPoll(poll, { uid: 'a', secret, now: now + 2 * day });
+    assert.equal(ended.results.participants, MIN_RESULT_VOTES);
+    assert.deepEqual(ended.results.counts, { o1: 2, o2: 0, o3: 1 });
+  });
+});
+
+describe('songbook', () => {
+  const { buildSong, cleanCcli, canManageSongbook } = require('../backend/songbook');
+
+  test('a song needs a title and text; CCLI numbers are digits', () => {
+    assert.ok(buildSong({ title: 'Amazing Grace', content: '[G]Amazing [C]grace, how [G]sweet the sound' }).song);
+    assert.ok(buildSong({ title: '', content: 'x' }).error);
+    assert.ok(buildSong({ title: 'x', content: '  ' }).error);
+    assert.ok(buildSong({ title: 'x', content: 'y', ccli: '12a' }).error);
+    assert.equal(cleanCcli(' 12 34 '), '1234');
+    assert.equal(cleanCcli(''), '');
+  });
+
+  test('editing keeps id and creation time', () => {
+    const { song } = buildSong({ title: 'A', content: 'x' }, { now: 1, id: 's1' });
+    const { song: edited } = buildSong({ title: 'B', content: 'y' }, { existing: song, now: 2 });
+    assert.equal(edited.id, 's1');
+    assert.equal(edited.createdAt, 1);
+    assert.equal(edited.updatedAt, 2);
+    assert.equal(edited.title, 'B');
+  });
+
+  test('only the manage_songbook permission edits', () => {
+    assert.equal(canManageSongbook({ admin: true, permissions: [] }), false);
+    assert.equal(canManageSongbook({ permissions: ['manage_songbook'] }), true);
+  });
+});

@@ -30,6 +30,8 @@ const mentoringRouter = require('./routes/mentoring');
 const financeRouter = require('./routes/finance');
 const aiRouter = require('./routes/ai');
 const systemRouter = require('./routes/system');
+const pollsRouter = require('./routes/polls');
+const songbookRouter = require('./routes/songbook');
 
 const app = express();
 app.set('trust proxy', resolveTrustProxySetting());
@@ -133,6 +135,8 @@ app.use(mentoringRouter);
 app.use(financeRouter);
 app.use(aiRouter);
 app.use(systemRouter);
+app.use(pollsRouter);
+app.use(songbookRouter);
 
 app.get('*', pageRateLimit, (req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/data/')) {

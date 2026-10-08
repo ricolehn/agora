@@ -426,6 +426,34 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.ok(mentee);
   });
 
+  test('songbook: only the songbook permission edits, every member reads', async () => {
+    const song = { title: 'Amazing Grace', content: '[G]Amazing [C]grace, how [G]sweet the sound' };
+    assert.equal((await call('max', 'POST', '/api/songs', song)).status, 403);
+    const created = await ok(call('owner', 'POST', '/api/songs', song));
+    assert.ok(created.id);
+    assert.equal((await call('max', 'PUT', `/api/songs/${created.id}`, { ...song, title: 'Hack' })).status, 403);
+    assert.equal((await call('max', 'DELETE', `/api/songs/${created.id}`)).status, 403);
+    const list = await ok(call('max', 'GET', '/api/songs'));
+    assert.ok(list.songs.some((s) => s.id === created.id && s.title === 'Amazing Grace'));
+    assert.equal((await call('owner', 'POST', '/api/songs', { title: '', content: 'x' })).status, 400);
+    await ok(call('owner', 'DELETE', `/api/songs/${created.id}`));
+  });
+
+  test('polls: one vote per person, nobody sees who voted what, only the creator (or an admin) ends it', async () => {
+    const poll = await ok(call('max', 'POST', '/api/polls', { title: 'Favourite day?', options: ['Saturday', 'Sunday'], endsAt: Date.now() + 86400000 }));
+    assert.ok(poll.id && poll.isMine);
+    const [first] = poll.options;
+    await ok(call('mia', 'POST', `/api/polls/${poll.id}/vote`, { optionIds: [first.id] }));
+    assert.equal((await call('mia', 'POST', `/api/polls/${poll.id}/vote`, { optionIds: [first.id] })).status, 409);
+    const listed = await ok(call('treasurer', 'GET', '/api/polls'));
+    const text = JSON.stringify(listed);
+    for (const who of ['max', 'mia']) assert.ok(!text.includes(uids[who]), `${who} is not visible`);
+    assert.equal((await call('mia', 'POST', `/api/polls/${poll.id}/close`)).status, 403);
+    assert.equal((await call('mia', 'DELETE', `/api/polls/${poll.id}`)).status, 403);
+    await ok(call('max', 'POST', `/api/polls/${poll.id}/close`));
+    await ok(call('owner', 'DELETE', `/api/polls/${poll.id}`));
+  });
+
   test('malformed input gets a client error, never a crash', async () => {
     const raw = (method, url, body, type = 'application/json') => fetch(base + url, {
       method, body, headers: { 'Content-Type': type, Authorization: `Bearer ${tokens.max}` }

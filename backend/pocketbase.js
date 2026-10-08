@@ -1702,7 +1702,8 @@ const SYSTEM_PERMISSIONS = [
   { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
   { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
   { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
-  { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' }
+  { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
+  { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {

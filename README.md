@@ -17,6 +17,10 @@ Agora is a web-based financial management application for small groups, clubs, o
 - **Payments & Standing Orders:** Record recurring and one-time payments efficiently.
 - **Donations:** Separate tracking for general donations.
 - **Expenses:** Log expenses with optional receipt uploads.
+- **Extras hub:** one place for the additional offers – AI assistant, songbook and anonymous polls (tiles appear only for those who may use them).
+- **Songbook:** songs with chords (`[G]` inline, `# Chorus` headings), transpose, font size and auto-scroll; the church's CCLI licence number is set in the System configuration. Editing needs the `manage_songbook` permission.
+- **Anonymous polls:** every member can ask; votes are only counted (nothing links an account to an answer, not even on the server), results appear after the end and only with at least three votes.
+- **Settings menu:** the settings are a menu of pages (profile, notifications, appearance & language, password, calendar, fees, account) like the apps.
 
 ## 🚀 Running the Application
 
@@ -210,7 +214,7 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
 | `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
 | `finance.test.js` | standing orders, request retention, derived finance data |
-| `community.test.js` | events, mentoring (capacity, encryption), AI input sanitising |
+| `community.test.js` | events, mentoring (capacity, encryption), AI input sanitising, polls, songbook |
 | `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events |
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
 

@@ -222,6 +222,14 @@ const ICONS = {
     chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+    play: '<polygon points="6 4 20 12 6 20 6 4"/>',
+    pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+    grid: '<rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect>',
+    palette: '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.1 0 5.6-2.5 5.6-5.6C21.8 6 17.4 2 12 2z"/>',
+    sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
+    music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    poll: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-3"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     bellOff: '<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
     clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
@@ -786,7 +794,7 @@ function queueRemoteUpdate(scope) {
     if (!remoteUpdateTimer) remoteUpdateTimer = setTimeout(flushRemoteUpdates, REMOTE_UPDATE_DELAY_MS);
 }
 
-const REMOTE_LOADERS = { events: () => loadEventsData(), mentoring: () => refreshMentoringFromRemote() };
+const REMOTE_LOADERS = { events: () => loadEventsData(), mentoring: () => refreshMentoringFromRemote(), polls: () => (currentActiveTab === 'polls' ? loadPolls() : null), songs: () => (currentActiveTab === 'songbook' ? loadSongs() : null) };
 
 async function flushRemoteUpdates() {
     remoteUpdateTimer = null;
@@ -866,15 +874,646 @@ function updateNavVisibility() {
 }
 
 function updateAiNavVisibility() {
-    const visible = aiEnabled && canAccessAi();
-    show('admin-ai-nav-btn-bottom', visible);
-    show('admin-ai-nav-btn-desktop', visible);
+    renderHub();
+}
+
+// --- Apps hub: one permanent nav entry for further apps; the AI chat is one of them (with the rights) ---
+const HUB_APPS = [
+    { key: 'ai', icon: 'sparkles', color: '#7c3aed', title: ['hub_ai_title', 'AI assistant'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
+        visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
+    { key: 'songbook', icon: 'music', color: '#0891b2', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
+    { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'], open: () => switchTab('polls') }
+];
+
+function renderHub() {
+    const target = $('hub-apps');
+    if (!target) return;
+    target.innerHTML = HUB_APPS.filter(app => !app.visible || app.visible()).map(app => `
+        <button type="button" class="hub-app${app.soon ? ' is-soon' : ''}" style="--app-color: ${app.color};" ${app.soon ? 'disabled aria-disabled="true"' : `onclick="window.openHubApp('${app.key}')"`}>
+            <span class="hub-app-icon">${svgIcon(app.icon, 24, 2)}</span>
+            <span class="hub-app-text">
+                <span class="hub-app-title">${t(...app.title)}</span>
+                <span class="hub-app-desc">${t(...app.desc)}</span>
+            </span>
+            ${app.soon ? `<span class="hub-app-soon">${t('hub_soon', 'Coming soon')}</span>` : svgIcon('chevronRight', 18, 2.5, 'class="hub-app-chevron"')}
+        </button>`).join('');
+}
+
+function openHubApp(key) {
+    HUB_APPS.find(app => app.key === key && !app.soon)?.open?.();
+}
+
+// --- Anonymous polls: browse running and finished polls, vote anonymously, create your own ---
+let polls = [];
+let pollFilter = 'open';
+let openPollId = null;
+
+async function loadPolls() {
+    try {
+        polls = await apiJson('/polls', 'GET', undefined, t('polls_load_failed', 'Polls could not be loaded'));
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+    renderPolls();
+    if (openPollId && $('poll-detail-modal')?.classList.contains('show')) renderPollDetail();
+}
+
+function setPollFilter(filter) {
+    pollFilter = filter;
+    document.querySelectorAll('.polls-filter-btn').forEach(btn => btn.classList.toggle('is-active', btn.dataset.filter === filter));
+    renderPolls();
+}
+
+function pollTimeLabel(poll) {
+    const end = new Date(poll.endsAt);
+    if (poll.closed) return t('polls_ended_on', 'Ended on {date}', { date: formatDateFast(toDateStr(end)) });
+    const days = Math.ceil((poll.endsAt - Date.now()) / 86400000);
+    const time = end.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+    if (days <= 1) return t('polls_ends_today', 'Ends {when} at {time}', { when: end.toDateString() === new Date().toDateString() ? t('polls_today', 'today') : t('polls_tomorrow', 'tomorrow'), time });
+    return t('polls_ends_in', '{days} days left', { days });
+}
+
+const pollVotes = poll => poll.participants === 1 ? t('polls_votes_one', '1 vote') : t('polls_votes', '{count} votes', { count: poll.participants });
+
+// The answer with the most votes (results only exist after the end)
+function pollLeader(poll) {
+    if (!poll.results) return null;
+    const [id, count] = Object.entries(poll.results.counts).sort((a, b) => b[1] - a[1])[0] || [];
+    const option = poll.options.find(o => o.id === id);
+    return option ? { option, share: Math.round((count / Math.max(1, poll.results.participants)) * 100) } : null;
+}
+
+function renderPolls() {
+    const target = $('polls-list');
+    if (!target) return;
+    const list = polls.filter(p => pollFilter === 'mine' ? p.isMine : pollFilter === 'closed' ? p.closed : !p.closed);
+    if (!list.length) {
+        target.innerHTML = `
+            <div class="polls-empty">
+                <span class="polls-empty-icon">${svgIcon('poll', 26, 1.8)}</span>
+                <span class="polls-empty-title">${pollFilter === 'mine' ? t('polls_empty_mine', 'You have not created a poll yet') : pollFilter === 'closed' ? t('polls_empty_closed', 'No finished polls yet') : t('polls_empty_open', 'No poll is running right now')}</span>
+                <span class="polls-empty-hint">${t('polls_empty_hint', 'Start your own poll with the plus at the bottom right.')}</span>
+            </div>`;
+        return;
+    }
+    // Cards: state and time on top, the question, then the leading answer (finished) or what you can do
+    target.innerHTML = `<div class="polls-cards">${list.map(poll => {
+        const leader = pollLeader(poll);
+        const chip = poll.closed
+            ? `<span class="poll-chip-state">${t('polls_closed', 'Finished')}</span>`
+            : `<span class="poll-chip-state is-live"><span class="poll-live-dot"></span>${t('polls_live', 'Running')}</span>`;
+        const action = poll.closed
+            ? (poll.results ? t('polls_show_result', 'See result') : t('polls_closed', 'Finished'))
+            : poll.hasVoted ? `${svgIcon('check', 14, 3)} ${t('polls_voted', 'Voted')}` : t('polls_vote_now', 'Vote now');
+        const actionClass = poll.closed ? 'is-result' : poll.hasVoted ? 'is-done' : 'is-go';
+        return `
+            <button type="button" class="poll-card" data-id="${escapeHtml(poll.id)}" onclick="window.openPollDetail(this.dataset.id)">
+                <span class="poll-card-top">
+                    ${chip}
+                    <span class="poll-card-time">${escapeHtml(poll.closed ? formatDateFast(toDateStr(new Date(poll.endsAt))) : pollTimeLabel(poll))}</span>
+                </span>
+                <span class="poll-card-title">${escapeHtml(poll.title)}</span>
+                ${poll.description ? `<span class="poll-card-desc">${escapeHtml(poll.description)}</span>` : ''}
+                ${leader ? `
+                <span class="poll-card-leader">
+                    <span class="poll-card-leader-row"><span>${escapeHtml(leader.option.text)}</span><strong>${leader.share}%</strong></span>
+                    <span class="poll-card-track"><span style="width: ${leader.share}%"></span></span>
+                </span>` : ''}
+                <span class="poll-card-footer">
+                    <span class="poll-card-votes">${svgIcon('users', 14, 2)} ${escapeHtml(pollVotes(poll))}${poll.isMine ? ` · ${t('polls_mine_badge', 'Yours')}` : ''}</span>
+                    <span class="poll-card-action ${actionClass}">${action}</span>
+                </span>
+            </button>`;
+    }).join('')}</div>`;
+}
+
+function openPollDetail(id) {
+    openPollId = id;
+    renderPollDetail();
+    openModal('poll-detail-modal');
+}
+
+function renderPollDetail() {
+    const poll = polls.find(p => p.id === openPollId);
+    const body = $('poll-detail-body');
+    if (!poll || !body) return;
+    setText('poll-detail-title', poll.title);
+    setText('poll-detail-meta', `${pollTimeLabel(poll)} · ${pollVotes(poll)}`);
+    const description = poll.description ? `<p class="poll-detail-desc">${escapeHtml(poll.description)}</p>` : '';
+    let main;
+    if (!poll.closed && !poll.hasVoted) {
+        const type = poll.multiple ? 'checkbox' : 'radio';
+        main = `
+            <div class="poll-choices">
+                ${poll.options.map(o => `
+                    <label class="poll-choice">
+                        <input type="${type}" name="poll-choice" value="${escapeHtml(o.id)}">
+                        <span class="poll-choice-mark"></span>
+                        <span class="poll-choice-text">${escapeHtml(o.text)}</span>
+                    </label>`).join('')}
+            </div>
+            ${poll.multiple ? `<p class="poll-hint">${t('polls_multiple_hint', 'Several answers possible.')}</p>` : ''}
+            <p class="poll-anon-note">${svgIcon('shield', 14, 2)} ${t('polls_anon_note', 'Your choice is only counted – nobody can see what you chose.')}</p>
+            <button type="button" id="poll-vote-btn" class="btn btn-primary poll-vote-btn" onclick="window.votePoll()">${t('polls_vote_btn', 'Vote anonymously')}</button>`;
+    } else if (!poll.closed) {
+        main = `
+            <div class="poll-state-box is-voted">
+                ${svgIcon('check', 20, 2.6)}
+                <span>${t('polls_voted_wait', 'You have voted. The result appears on {date}.', { date: formatDateFast(toDateStr(new Date(poll.endsAt))) })}</span>
+            </div>
+            <ul class="poll-option-list">${poll.options.map(o => `<li>${escapeHtml(o.text)}</li>`).join('')}</ul>`;
+    } else if (poll.results) {
+        const total = Math.max(1, poll.results.participants);
+        const max = Math.max(...Object.values(poll.results.counts));
+        main = `
+            <div class="poll-results">
+                ${[...poll.options].sort((a, b) => (poll.results.counts[b.id] || 0) - (poll.results.counts[a.id] || 0)).map(o => {
+                    const count = poll.results.counts[o.id] || 0;
+                    const share = Math.round((count / total) * 100);
+                    return `
+                        <div class="poll-result${count === max && count > 0 ? ' is-top' : ''}">
+                            <span class="poll-result-bar" style="width: ${share}%"></span>
+                            <span class="poll-result-text">${escapeHtml(o.text)}</span>
+                            <span class="poll-result-value">${share}% · ${count}</span>
+                        </div>`;
+                }).join('')}
+            </div>
+            ${poll.multiple ? `<p class="poll-hint">${t('polls_multiple_result_hint', 'Multiple choice: share of participants who chose the answer.')}</p>` : ''}`;
+    } else {
+        main = `
+            <div class="poll-state-box">
+                ${svgIcon('shield', 20, 2)}
+                <span>${t('polls_too_few', 'Too few votes: with fewer than three votes the result stays secret so nobody can draw conclusions.')}</span>
+            </div>`;
+    }
+    const manage = poll.isMine || isSuperAdminUser();
+    const actions = manage ? `
+        <div class="poll-manage">
+            ${!poll.closed ? `<button type="button" class="btn btn-secondary btn-small" onclick="window.closePoll()">${t('polls_end_now', 'End now')}</button>` : ''}
+            <button type="button" class="btn btn-small poll-delete-btn" onclick="window.deletePoll()">${t('polls_delete', 'Delete')}</button>
+        </div>` : '';
+    body.innerHTML = description + main + actions;
+}
+
+async function votePoll() {
+    const optionIds = [...document.querySelectorAll('#poll-detail-body input[name="poll-choice"]:checked')].map(i => i.value);
+    if (!optionIds.length) return showToast(t('polls_choose', 'Please choose an answer.'), 'error');
+    const btn = $('poll-vote-btn');
+    if (btn) btn.disabled = true;
+    try {
+        const updated = await apiJson(`/polls/${encodeURIComponent(openPollId)}/vote`, 'POST', { optionIds });
+        polls = polls.map(p => p.id === updated.id ? updated : p);
+        renderPolls();
+        renderPollDetail();
+        showToast(t('polls_vote_saved', 'Your vote was counted anonymously.'));
+    } catch (err) {
+        showToast(err.message, 'error');
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function closePoll() {
+    if (!confirmAction(t('polls_end_confirm', 'End the poll now? Nobody can vote afterwards.'))) return;
+    try {
+        const updated = await apiJson(`/polls/${encodeURIComponent(openPollId)}/close`, 'POST');
+        polls = polls.map(p => p.id === updated.id ? updated : p);
+        renderPolls();
+        renderPollDetail();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function deletePoll() {
+    if (!confirmAction(t('polls_delete_confirm', 'Delete the poll for good?'))) return;
+    try {
+        await apiJson(`/polls/${encodeURIComponent(openPollId)}`, 'DELETE');
+        polls = polls.filter(p => p.id !== openPollId);
+        closeModal('poll-detail-modal');
+        renderPolls();
+        showToast(t('polls_deleted', 'Poll deleted'));
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// --- Songbook: songs with chords ("[G]Amazing [C]grace", "# Chorus"), transposable, with auto-scroll ---
+let songs = [];
+let songbookCanManage = false;
+let songbookLicense = '';
+let openSongId = null;
+let editSongId = null;
+const songView = { chords: true, steps: 0, size: 0, scrolling: false, speed: 1, frame: null, last: 0 };
+const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
+const NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTES_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+const NOTE_INDEX = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11, H: 11 };
+
+async function loadSongs() {
+    try {
+        const data = await apiJson('/songs', 'GET', undefined, t('songbook_load_failed', 'Songbook could not be loaded'));
+        songs = data.songs || [];
+        songbookCanManage = data.canManage === true;
+        songbookLicense = data.ccliLicense || '';
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+    updateFabVisibility();
+    renderSongs();
+    if (openSongId && $('song-view-modal')?.classList.contains('show')) renderSongView();
+}
+
+function renderSongs() {
+    const target = $('songbook-list');
+    if (!target) return;
+    const query = inputValue('songbook-search').trim().toLowerCase();
+    const list = songs.filter(s => !query || [s.title, s.artist, s.content].some(v => (v || '').toLowerCase().includes(query)));
+    setText('songbook-license', songbookLicense ? t('songbook_license', 'CCLI licence {number}', { number: songbookLicense }) : '');
+    if (!list.length) {
+        target.innerHTML = `
+            <div class="polls-empty">
+                <span class="polls-empty-icon songbook-empty-icon">${svgIcon('music', 26, 1.8)}</span>
+                <span class="polls-empty-title">${query ? t('songbook_no_match', 'No song found') : t('songbook_empty', 'No songs in the songbook yet')}</span>
+                ${songbookCanManage && !query ? `<span class="polls-empty-hint">${t('songbook_empty_hint', 'Add the first song with the plus at the bottom right.')}</span>` : ''}
+            </div>`;
+        return;
+    }
+    // Alphabetical list in one card, a letter above each new initial
+    let letter = '';
+    const rows = list.map(song => {
+        const initial = (song.title[0] || '#').toUpperCase();
+        const head = initial !== letter ? `<div class="song-letter">${escapeHtml(initial)}</div>` : '';
+        letter = initial;
+        const meta = [song.artist, song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : ''].filter(Boolean).join(' · ');
+        return `${head}
+            <button type="button" class="song-row" data-id="${escapeHtml(song.id)}" onclick="window.openSong(this.dataset.id)">
+                <span class="song-row-icon">${svgIcon('music', 18, 2)}</span>
+                <span class="song-row-text">
+                    <span class="song-row-title">${escapeHtml(song.title)}</span>
+                    ${meta ? `<span class="song-row-meta">${escapeHtml(meta)}</span>` : ''}
+                </span>
+                ${svgIcon('chevronRight', 16, 2.5, 'class="song-row-chevron"')}
+            </button>`;
+    }).join('');
+    target.innerHTML = `<div class="song-list">${rows}</div>`;
+}
+
+// German songbooks write H for B: keep the notation the song uses
+function transposeChord(chord, steps, useFlats, german) {
+    if (!steps) return chord;
+    return chord.replace(/([A-H])(#|b)?/g, (match, root, accidental) => {
+        if (!(root in NOTE_INDEX)) return match;
+        const index = (NOTE_INDEX[root] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0) + steps + 120) % 12;
+        const note = (useFlats ? NOTES_FLAT : NOTES_SHARP)[index];
+        return german && note === 'B' ? 'H' : german && note === 'Bb' ? 'B' : note;
+    });
+}
+
+function renderSongContent(content, { steps = 0, chords = true } = {}) {
+    const chordTokens = [...content.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+    const useFlats = chordTokens.some(c => /^[A-H]b/.test(c));
+    const german = chordTokens.some(c => /^H/.test(c));
+    const lines = content.split('\n');
+    return lines.map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return '<div class="song-gap"></div>';
+        const section = trimmed.match(/^#+\s*(.+)$/) || trimmed.match(/^\{(?:c|comment|start_of_\w+)\s*:?\s*(.*)\}$/i);
+        if (section) return `<div class="song-section">${escapeHtml(section[1] || '')}</div>`;
+        if (trimmed.startsWith('>')) return `<div class="song-note">${escapeHtml(trimmed.replace(/^>\s*/, ''))}</div>`;
+        if (/^\{.*\}$/.test(trimmed)) return '';
+        if (!line.includes('[') || !chords) return `<div class="song-line"><span class="song-lyric">${escapeHtml(line.replace(/\[[^\]]*\]/g, ''))}</span></div>`;
+        // Chord above the syllable it stands in front of
+        const segments = [];
+        let pending = null;
+        for (const part of line.split(/(\[[^\]]+\])/)) {
+            if (!part) continue;
+            const chord = part.match(/^\[([^\]]+)\]$/);
+            if (chord) {
+                if (pending !== null) segments.push({ chord: pending, text: '' });
+                pending = transposeChord(chord[1], steps, useFlats, german);
+            } else {
+                segments.push({ chord: pending, text: part });
+                pending = null;
+            }
+        }
+        if (pending !== null) segments.push({ chord: pending, text: '' });
+        return `<div class="song-line has-chords">${segments.map(seg => `<span class="song-seg"><span class="song-chord">${seg.chord ? escapeHtml(seg.chord) : '&nbsp;'}</span><span class="song-lyric">${seg.text ? escapeHtml(seg.text) : '&nbsp;'}</span></span>`).join('')}</div>`;
+    }).join('');
+}
+
+function openSong(id) {
+    openSongId = id;
+    Object.assign(songView, { steps: 0, scrolling: false });
+    stopSongScroll();
+    renderSongView();
+    openModal('song-view-modal');
+    $('song-view-body')?.scrollTo({ top: 0 });
+}
+
+function renderSongView() {
+    const song = songs.find(s => s.id === openSongId);
+    if (!song) return;
+    setText('song-view-title', song.title);
+    setText('song-view-sub', song.artist || '');
+    const key = song.key ? transposeChord(song.key, songView.steps, /b/.test(song.key), /^H/.test(song.key)) : '';
+    setText('song-key', key || (songView.steps ? `${songView.steps > 0 ? '+' : ''}${songView.steps}` : t('songbook_key_label', 'Key')));
+    $('song-chords-btn')?.classList.toggle('is-active', songView.chords);
+    show('song-edit-btn', songbookCanManage, 'inline-flex');
+    const body = $('song-view-body');
+    if (body) {
+        body.style.setProperty('--song-step', String(songView.size));
+        body.innerHTML = renderSongContent(song.content, { steps: songView.steps, chords: songView.chords }) + '<div class="song-end"></div>';
+    }
+    // CCLI notes always at the bottom right
+    const ccli = [
+        songbookLicense ? t('songbook_license', 'CCLI licence {number}', { number: songbookLicense }) : '',
+        song.ccli ? t('songbook_ccli_song_short', 'CCLI song {number}', { number: song.ccli }) : '',
+        song.copyright ? `© ${song.copyright.replace(/^©\s*/, '')}` : ''
+    ].filter(Boolean);
+    const ccliBox = $('song-view-ccli');
+    if (ccliBox) {
+        ccliBox.innerHTML = ccli.map(line => `<span>${escapeHtml(line)}</span>`).join('');
+        ccliBox.style.display = ccli.length ? '' : 'none';
+    }
+}
+
+function closeSong() {
+    stopSongScroll();
+    closeModal('song-view-modal');
+}
+
+function toggleSongChords() {
+    songView.chords = !songView.chords;
+    renderSongView();
+}
+
+function transposeSong(delta) {
+    songView.steps = ((songView.steps + delta + 18) % 12) - 6;
+    renderSongView();
+}
+
+function sizeSong(delta) {
+    songView.size = Math.max(-2, Math.min(5, songView.size + delta));
+    renderSongView();
+}
+
+// Auto-scroll for playing: a steady glide, any touch or wheel stops it
+function songScrollStep(time) {
+    const body = $('song-view-body');
+    if (!songView.scrolling || !body) return;
+    // scrollTop drops fractions: keep the exact position, take over when the reader scrolled by hand
+    if (songView.pos === null || Math.abs(body.scrollTop - songView.pos) > 2) songView.pos = body.scrollTop;
+    if (songView.last) songView.pos += ((time - songView.last) / 1000) * 22 * songView.speed;
+    body.scrollTop = songView.pos;
+    songView.last = time;
+    if (body.scrollTop + body.clientHeight >= body.scrollHeight - 1) return stopSongScroll();
+    songView.frame = requestAnimationFrame(songScrollStep);
+}
+
+function toggleSongScroll() {
+    if (songView.scrolling) return stopSongScroll();
+    songView.scrolling = true;
+    songView.last = 0;
+    songView.pos = null;
+    $('song-scroll-btn')?.classList.add('is-active');
+    $('song-scroll-btn').innerHTML = svgIcon('pause', 16, 2.4);
+    songView.frame = requestAnimationFrame(songScrollStep);
+}
+
+function stopSongScroll() {
+    songView.scrolling = false;
+    if (songView.frame) cancelAnimationFrame(songView.frame);
+    songView.frame = null;
+    const btn = $('song-scroll-btn');
+    if (btn) {
+        btn.classList.remove('is-active');
+        btn.innerHTML = svgIcon('play', 16, 2.4);
+    }
+}
+
+function cycleSongSpeed() {
+    songView.speed = SONG_SPEEDS[(SONG_SPEEDS.indexOf(songView.speed) + 1) % SONG_SPEEDS.length];
+    setText('song-speed-btn', `${songView.speed.toLocaleString(uiLocale())}×`);
+}
+
+// --- Song editor (page like "New poll") ---
+function openSongEditor(song = null) {
+    editSongId = song?.id || null;
+    setText('song-edit-title', song ? t('songbook_edit', 'Edit song') : t('songbook_new', 'New song'));
+    setValue('song-edit-name', song?.title || '');
+    setValue('song-edit-artist', song?.artist || '');
+    setValue('song-edit-key', song?.key || '');
+    setValue('song-edit-ccli', song?.ccli || '');
+    setValue('song-edit-copyright', song?.copyright || '');
+    setValue('song-edit-content', song?.content || '');
+    show('song-delete-btn', !!song, 'inline-flex');
+    previewSongEdit();
+    openModal('song-edit-modal');
+}
+
+function editOpenSong() {
+    const song = songs.find(s => s.id === openSongId);
+    if (song) openSongEditor(song);
+}
+
+const previewSongEdit = debounce(() => {
+    const target = $('song-edit-preview');
+    if (target) target.innerHTML = renderSongContent(inputValue('song-edit-content')) || `<span class="song-edit-empty">${t('songbook_preview_empty', 'The song appears here as it will be shown.')}</span>`;
+}, 150);
+
+async function saveSong() {
+    const payload = {
+        title: inputValue('song-edit-name'),
+        artist: inputValue('song-edit-artist'),
+        key: inputValue('song-edit-key'),
+        ccli: inputValue('song-edit-ccli'),
+        copyright: inputValue('song-edit-copyright'),
+        content: $('song-edit-content')?.value || ''
+    };
+    const btn = $('song-save-btn');
+    if (btn) btn.disabled = true;
+    try {
+        const saved = editSongId
+            ? await apiJson(`/songs/${encodeURIComponent(editSongId)}`, 'PUT', payload)
+            : await apiJson('/songs', 'POST', payload);
+        songs = [...songs.filter(s => s.id !== saved.id), saved].sort((a, b) => a.title.localeCompare(b.title, 'de'));
+        closeModal('song-edit-modal');
+        renderSongs();
+        if (openSongId === saved.id) renderSongView();
+        showToast(t('songbook_saved', 'Song saved'));
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function deleteSong() {
+    if (!editSongId || !confirmAction(t('songbook_delete_confirm', 'Delete the song for good?'))) return;
+    try {
+        await apiJson(`/songs/${encodeURIComponent(editSongId)}`, 'DELETE');
+        songs = songs.filter(s => s.id !== editSongId);
+        closeModal('song-edit-modal');
+        if (openSongId === editSongId) closeSong();
+        renderSongs();
+        showToast(t('songbook_deleted', 'Song deleted'));
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// --- Create a poll ---
+function renderPollOptionInputs(values) {
+    const target = $('poll-options');
+    if (!target) return;
+    target.innerHTML = values.map((value, i) => `
+        <div class="poll-option-input">
+            <input type="text" class="poll-editor-input" maxlength="100" value="${escapeHtml(value)}" placeholder="${escapeHtml(t('polls_option_ph', 'Answer {n}', { n: i + 1 }))}">
+            ${values.length > 2 ? `<button type="button" class="poll-option-remove" onclick="window.removePollOption(${i})" aria-label="${escapeHtml(t('btn_remove', 'Remove'))}">${svgIcon('x', 16, 2.5)}</button>` : ''}
+        </div>`).join('');
+    show('poll-add-option', values.length < 10, 'inline-flex');
+}
+
+const currentPollOptions = () => [...document.querySelectorAll('#poll-options input')].map(i => i.value);
+const addPollOption = () => renderPollOptionInputs([...currentPollOptions(), '']);
+const removePollOption = index => renderPollOptionInputs(currentPollOptions().filter((_, i) => i !== index));
+
+function setPollDuration(days) {
+    const end = new Date(Date.now() + days * 86400000);
+    setValue('poll-end-date', toDateStr(end));
+    setValue('poll-end-time', `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`);
+    document.querySelectorAll('.poll-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.days === String(days)));
+}
+
+function openCreatePoll() {
+    setValue('poll-question', '');
+    setValue('poll-description', '');
+    const multiple = $('poll-multiple');
+    if (multiple) multiple.checked = false;
+    renderPollOptionInputs(['', '']);
+    setPollDuration(7);
+    openModal('poll-create-modal');
+}
+
+async function submitPoll() {
+    const date = inputValue('poll-end-date');
+    const time = inputValue('poll-end-time') || '23:59';
+    const endsAt = date ? new Date(`${date}T${time}`).getTime() : NaN;
+    const payload = {
+        title: inputValue('poll-question'),
+        description: inputValue('poll-description'),
+        options: currentPollOptions().map(v => v.trim()).filter(Boolean),
+        multiple: isChecked('poll-multiple'),
+        endsAt
+    };
+    const btn = $('poll-submit');
+    if (btn) btn.disabled = true;
+    try {
+        const created = await apiJson('/polls', 'POST', payload);
+        polls = [created, ...polls];
+        closeModal('poll-create-modal');
+        setPollFilter('open');
+        showToast(t('polls_created', 'Poll started'));
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+// --- Settings as a menu with sub-pages (like the Android app); the registration code stays on top ---
+const SETTINGS_PAGES = [
+    { key: 'profile' },
+    { key: 'notifications', icon: 'bell', color: '#f59e0b', title: ['notif_channels_title', 'Notifications'] },
+    { key: 'appearance', icon: 'palette', color: '#8b5cf6', title: ['settings_appearance', 'Appearance & language'], desc: ['settings_appearance_desc', 'Theme and language'] },
+    { key: 'password', icon: 'lock', color: '#64748b', title: ['change_password_title', 'Change Password'], desc: ['settings_password_desc', 'Set a new password'] },
+    { key: 'calendar', icon: 'calendar', color: '#0891b2', title: ['calendar_sub_title', 'Calendar Subscription'], desc: ['settings_calendar_desc', 'Your appointments in your own calendar'] },
+    { key: 'fees', icon: 'coin', color: '#10b981', title: ['rates_title', 'Monthly Fees'], desc: ['settings_fees_desc', 'Monthly fees per status'] },
+    { key: 'account', icon: 'shield', color: '#0ea5e9', title: ['settings_account_title', 'Account & privacy'], desc: ['settings_account_desc', 'Privacy, delete account'] }
+];
+
+function setupSettingsNav(root) {
+    if (!root || root.querySelector('.settings-nav')) return;
+    root.classList.add('settings-paged');
+    const nav = document.createElement('div');
+    nav.className = 'settings-nav';
+    nav.innerHTML = `
+        <div class="settings-nav-head">
+            <button type="button" class="settings-back-btn" onclick="window.closeSettingsPage()" aria-label="${escapeHtml(t('btn_back', 'Back'))}">${svgIcon('chevronLeft', 20, 2.5)}</button>
+            <h2 class="settings-nav-title"></h2>
+        </div>
+        <div class="settings-nav-top"></div>
+        <div class="settings-menu"></div>`;
+    root.prepend(nav);
+    // The registration code stays visible on top of the menu
+    const invite = root.querySelector('.premium-invite-card');
+    if (invite) nav.querySelector('.settings-nav-top').appendChild(invite);
+}
+
+// A page is offered when one of its parts is not hidden by the rights (inline display: none)
+const settingsPageAvailable = (root, key) => [...root.querySelectorAll(`[data-settings-page~="${key}"]`)].some(el => el.style.display !== 'none');
+
+function notificationSummary() {
+    const { push, email } = readNotificationSettings().channels;
+    return push && email ? t('notif_summary_both', 'Push and e-mail') : push ? t('notif_summary_push', 'Push only')
+        : email ? t('notif_summary_email', 'E-mail only') : t('notif_summary_off', 'Off');
+}
+
+function renderSettingsMenu(root) {
+    const menu = root?.querySelector('.settings-menu');
+    if (!menu || !currentUser) return;
+    const name = fullName(currentUser) || currentUser.email || '';
+    const rows = SETTINGS_PAGES.filter(page => settingsPageAvailable(root, page.key)).map(page => {
+        if (page.key === 'profile') return `
+            <button type="button" class="settings-row" onclick="window.openSettingsPage('profile')">
+                ${renderAvatarWrap(currentUid(), name, { wrapClass: 'settings-row-avatar', imgClass: 'settings-row-avatar-img', initialsClass: 'settings-row-initials' })}
+                <span class="settings-row-text"><span class="settings-row-title">${escapeHtml(name)}</span><span class="settings-row-desc">${escapeHtml(currentUser.email || '')}</span></span>
+                ${svgIcon('chevronRight', 18, 2.5, 'class="settings-row-chevron"')}
+            </button>`;
+        const desc = page.key === 'notifications' ? notificationSummary() : t(...page.desc);
+        return `
+            <button type="button" class="settings-row" style="--row-color: ${page.color};" onclick="window.openSettingsPage('${page.key}')">
+                <span class="settings-row-icon">${svgIcon(page.icon, 20, 2)}</span>
+                <span class="settings-row-text"><span class="settings-row-title">${t(...page.title)}</span><span class="settings-row-desc">${escapeHtml(desc)}</span></span>
+                ${svgIcon('chevronRight', 18, 2.5, 'class="settings-row-chevron"')}
+            </button>`;
+    }).join('');
+    menu.innerHTML = `
+        <div class="settings-menu-card">${rows}</div>
+        <div class="settings-menu-card">
+            <button type="button" class="settings-row is-danger" onclick="window.logout()">
+                <span class="settings-row-icon">${svgIcon('logout', 20, 2)}</span>
+                <span class="settings-row-text"><span class="settings-row-title">${t('logout', 'Log Out')}</span></span>
+            </button>
+        </div>`;
+}
+
+const settingsRoot = () => $(currentActiveTab === 'settings' ? 'settings' : 'user-settings');
+
+function openSettingsPage(key) {
+    const root = settingsRoot();
+    const page = SETTINGS_PAGES.find(p => p.key === key);
+    if (!root || !page) return;
+    root.dataset.page = key;
+    root.querySelector('.settings-nav-title').textContent = page.title ? t(...page.title) : t('settings_profile', 'Profile');
+    document.querySelector('.container')?.scrollTo({ top: 0 });
+}
+
+function closeSettingsPage() {
+    const root = settingsRoot();
+    if (!root) return;
+    delete root.dataset.page;
+    renderSettingsMenu(root);
+    document.querySelector('.container')?.scrollTo({ top: 0 });
 }
 
 function updateFabVisibility() {
     const financesFab = currentActiveTab === 'finances' && canManageFinances();
     const eventsFab = currentActiveTab === 'events' && !!currentUser;
-    const visible = financesFab || eventsFab;
+    // Polls: the same "+" opens the create page directly (one action, no menu)
+    const pollsFab = currentActiveTab === 'polls' && !!currentUser;
+    const songbookFab = currentActiveTab === 'songbook' && songbookCanManage;
+    const visible = financesFab || eventsFab || pollsFab || songbookFab;
     show('fab-finances-items', financesFab, 'block');
     show('fab-events-items', eventsFab, 'block');
     const desktopFab = $('desktop-fab');
@@ -964,7 +1603,15 @@ function switchTab(tabName, source) {
     // The owner runs the instance and cannot delete their account (the server refuses it too)
     if (tabName === 'settings' || tabName === 'user-settings') {
         for (const id of ['card-delete-account-admin', 'card-delete-account-user']) show(id, !isOwnerUser(), 'block');
+        const root = $(tabName);
+        setupSettingsNav(root);
+        delete root.dataset.page;
+        renderSettingsMenu(root);
     }
+    if (tabName === 'hub') renderHub();
+    if (tabName === 'polls') loadPolls();
+    if (tabName === 'songbook') loadSongs();
+    updateFabVisibility();
     if (tabName !== 'mentoring') {
         mentoringChatReturnHome = false;
         closeMentoringChatMobile(true);
@@ -997,7 +1644,8 @@ function switchTab(tabName, source) {
     }
 
     document.querySelectorAll('#desktop-nav [data-tab], #bottom-nav [data-tab], .desktop-nav [data-tab], .bottom-nav [data-tab]').forEach(el => {
-        const active = el.dataset.tab === tabName;
+        // Apps inside "Extras" keep its nav entry highlighted
+        const active = el.dataset.tab === tabName || (['ai-chat', 'polls', 'songbook'].includes(tabName) && el.dataset.tab === 'hub');
         el.classList.toggle('active', active);
         el.setAttribute('aria-selected', String(active));
     });
@@ -1038,6 +1686,14 @@ document.addEventListener('click', e => {
 });
 
 function toggleFab() {
+    if (currentActiveTab === 'polls') {
+        openCreatePoll();
+        return;
+    }
+    if (currentActiveTab === 'songbook') {
+        openSongEditor();
+        return;
+    }
     if (currentActiveTab === 'events' && !canManageEvents()) {
         openNewEventDetailModal('event');
         return;
@@ -1529,6 +2185,7 @@ async function saveNotificationSettings(settings) {
     const previous = { notificationSettings: currentUser.notificationSettings, emailNotifications: currentUser.emailNotifications };
     Object.assign(currentUser, { notificationSettings, emailNotifications });
     renderNotificationSettings();
+    renderSettingsMenu(settingsRoot());
     const saved = await attempt(async () => {
         await update(ref(db, 'users/' + currentUser.uid), { notificationSettings, emailNotifications });
         showToast(t('notification_settings_saved', 'Notification settings saved'));
@@ -1829,7 +2486,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, openHubApp, setPollFilter, openPollDetail, votePoll, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, openSong, closeSong, toggleSongChords, transposeSong, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
@@ -1855,7 +2512,8 @@ const DEFAULT_PERMISSIONS = [
     { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
     { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
     { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
-    { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' }
+    { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
+    { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' }
 ];
 
 // Several views ask for the groups during one refresh: they share the request that is already running
@@ -2267,6 +2925,7 @@ async function loadAdvancedSystemConfig() {
         setValue('super-admin-app-name', data.appName || '');
         setValue('super-admin-public-url', data.publicUrl || '');
         setValue('super-admin-default-language', data.defaultLanguage || BASE_LANGUAGE);
+        setValue('super-admin-ccli', data.ccliLicense || '');
         SMTP_FIELDS.forEach(key => setValue(`super-admin-smtp-${key}`, data.smtp?.[key] || ''));
         $('super-admin-smtp-secure').checked = !!data.smtp?.secure;
         advancedConfigLoaded = true;
@@ -2281,7 +2940,9 @@ async function saveAdvancedSystemConfig() {
         if (!appName) throw new Error(t('admin_app_name_missing', 'The app name could not be determined. Configuration data may be missing. Please reload the page.'));
         const publicUrl = inputValue('super-admin-public-url').trim().replace(/\/+$/, '');
         if (publicUrl && !/^https?:\/\/[^\s/]+/i.test(publicUrl)) throw new Error(t('admin_public_url_invalid', 'The public address has to start with https://.'));
-        const payload = { appName, publicUrl, defaultLanguage: inputValue('super-admin-default-language') || BASE_LANGUAGE, smtp: null };
+        const ccliLicense = inputValue('super-admin-ccli').replace(/\s+/g, '');
+        if (ccliLicense && !/^\d{1,12}$/.test(ccliLicense)) throw new Error(t('admin_ccli_invalid', 'The CCLI licence number consists of digits only.'));
+        const payload = { appName, publicUrl, defaultLanguage: inputValue('super-admin-default-language') || BASE_LANGUAGE, ccliLicense, smtp: null };
         const host = inputValue('super-admin-smtp-host').trim();
         if (host) {
             const port = inputValue('super-admin-smtp-port').trim();
