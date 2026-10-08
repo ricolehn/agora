@@ -1,4 +1,5 @@
 // Push to the members of a group when the group is assigned to a duty in an event's duty roster.
+const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
 const { listUserRecords, listGroupRecords } = require('./pocketbase');
 const { wantsNotification } = require('./notificationPrefs');
 
@@ -23,14 +24,16 @@ function groupDutyRecipients(users, groupId, groupName, excludeUserId) {
     .map(u => u.id);
 }
 
-function buildGroupDutyPush({ groupName, event, duty }) {
-  const dutyName = duty?.roleName || duty?.section || 'Dienst';
-  const parts = String(event?.date || '').split('-');
-  const date = parts.length === 3 ? ` am ${parts[2]}.${parts[1]}.` : '';
-  const time = event?.startTime ? ` um ${event.startTime} Uhr` : '';
+/** Push for one group member, in [lang] (English source texts, see i18n.js). */
+function buildGroupDutyPush({ groupName, event, duty }, lang = BASE_LANGUAGE) {
+  const tr = translator(lang);
+  const dutyName = duty?.roleName || duty?.section || tr('Duty');
+  const { formatEventMoment } = require('./context');
   return {
-    title: `Dienst für ${groupName}: ${dutyName}`,
-    body: `Deine Gruppe „${groupName}“ ist bei „${event?.title || 'Event'}“${date}${time} für „${dutyName}“ eingeteilt.`,
+    title: tr('Duty for {group}: {duty}', { group: groupName, duty: dutyName }),
+    body: tr('Your group "{group}" is assigned to "{duty}" at "{event}" ({when}).', {
+      group: groupName, duty: dutyName, event: event?.title || 'Event', when: formatEventMoment(event, lang)
+    }),
     data: { url: '/#events', eventId: event?.id || '' },
     tag: `agora-duty-${duty?.id || ''}`
   };
@@ -48,19 +51,22 @@ async function notifyGroupDutyAssigned({ appConfig, groupId, event, duty, assign
     const groupName = group?.name || groupId;
     const recipients = groupDutyRecipients(users, group?.id || groupId, groupName, assignedBy);
     if (!recipients.length) return;
-    const push = buildGroupDutyPush({ groupName, event, duty });
     const { notifyUsers } = require('./notify');
+    const { formatEventMoment } = require('./context');
     await notifyUsers(appConfig, users.filter(u => recipients.includes(u.id)), 'duties', {
       origin,
-      push,
-      email: {
-        subject: push.title,
-        heading: push.title,
-        lines: [push.body],
-        rows: [['Event', event?.title || 'Event'], ...(event?.date ? [['Datum', event.date.split('-').reverse().join('.') + (event.startTime ? `, ${event.startTime} Uhr` : '')]] : []), ...(event?.location ? [['Ort', event.location]] : [])],
-        actionLabel: 'Dienstplan ansehen',
-        path: '/#events',
-        accent: '#6366f1'
+      push: (tr, user) => buildGroupDutyPush({ groupName, event, duty }, userLanguage(user)),
+      email: (tr, user) => {
+        const push = buildGroupDutyPush({ groupName, event, duty }, userLanguage(user));
+        return {
+          subject: push.title,
+          heading: push.title,
+          lines: [push.body],
+          rows: [[tr('Event'), event?.title || 'Event'], ...(event?.date ? [[tr('Date'), formatEventMoment(event, userLanguage(user))]] : []), ...(event?.location ? [[tr('Location'), event.location]] : [])],
+          actionLabel: tr('View the duty roster'),
+          path: '/#events',
+          accent: '#6366f1'
+        };
       }
     });
   } catch (err) {

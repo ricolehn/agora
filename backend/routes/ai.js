@@ -50,10 +50,10 @@ router.put('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, re
     const newBaseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : current.baseUrl;
     const keepsKey = typeof body.apiKey !== 'string' || body.apiKey === '***';
     if (current.apiKey && keepsKey && (newBaseUrl || '') !== (current.baseUrl || '')) {
-      return res.status(400).json({ error: 'Bei einer neuen API-Adresse bitte den API-Key erneut eingeben.' });
+      return res.status(400).json({ error: 'Please enter the API key again for a new API address.' });
     }
     if (newBaseUrl && !/^https?:\/\//i.test(newBaseUrl)) {
-      return res.status(400).json({ error: 'Die API-Adresse muss mit http:// oder https:// beginnen.' });
+      return res.status(400).json({ error: 'The API address must start with http:// or https://.' });
     }
     await setAiSettings(context.appConfig, body);
     broadcastDataUpdate();

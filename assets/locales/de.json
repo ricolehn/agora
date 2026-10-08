@@ -64,7 +64,7 @@
   "notif_channels_title": "Benachrichtigungen",
   "notif_channels_desc": "Wähle, worüber du benachrichtigt wirst und welche Nachrichten du bekommst.",
   "notif_duties_title": "Dienstanfragen",
-  "notif_duties_desc": "Anfragen für Dienste, Antworten darauf und Dienste deiner Gruppen",
+  "notif_duties_desc": "Anfragen für Dienste, Antworten darauf, Dienste deiner Gruppen und eine Erinnerung 3 Stunden vor deinem Dienst",
   "notif_events_title": "Neue Events & Termine",
   "notif_events_desc": "Neue Veranstaltungen und Termine der Gemeinde",
   "notif_messages_title": "Nachrichten",
@@ -1083,7 +1083,7 @@
   "user_requests_show_all": "Alle {count} anzeigen",
   "user_requests_show_less": "Weniger anzeigen",
   "notif_channel_push_title": "Push",
-  "notif_channel_push_desc": "Direkt aufs Handy oder in den Browser",
+  "notif_channel_push_desc": "In die installierte App (Android-App oder Home-Bildschirm-App)",
   "notif_channel_email_title": "E-Mail",
   "notif_channel_email_desc": "An {email}",
   "notif_channel_email_desc_none": "An deine E-Mail-Adresse",
@@ -1118,5 +1118,9 @@
   "admin_public_url_label": "Öffentliche Adresse (für Links in E-Mails)",
   "admin_public_url_desc": "Unter dieser Adresse ist die App erreichbar. Knöpfe in Benachrichtigungs-E-Mails führen dorthin; leer lassen, wenn E-Mails keine Links enthalten sollen.",
   "admin_public_url_invalid": "Die öffentliche Adresse muss mit https:// beginnen.",
-  "calendar_feed_unavailable": "Der Kalender-Link konnte nicht geladen werden. Bitte später erneut versuchen."
+  "calendar_feed_unavailable": "Der Kalender-Link konnte nicht geladen werden. Bitte später erneut versuchen.",
+  "req_payment_approved_desc": "Zahlung (Genehmigt)",
+  "user_fallback_name": "Benutzer",
+  "admin_default_language_label": "Standardsprache",
+  "admin_default_language_desc": "Sprache von Push-Nachrichten und E-Mails für Mitglieder, deren App noch keine Sprache gemeldet hat. Alle anderen bekommen ihre eigene Sprache."
 }

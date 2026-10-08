@@ -64,7 +64,7 @@
   "notif_channels_title": "Notifications",
   "notif_channels_desc": "Choose how you are notified and which messages you get.",
   "notif_duties_title": "Duty Requests",
-  "notif_duties_desc": "Duty requests, answers to them and duties of your groups",
+  "notif_duties_desc": "Duty requests, answers to them, duties of your groups and a reminder 3 hours before your duty",
   "notif_events_title": "New Events & Appointments",
   "notif_events_desc": "New church events and appointments",
   "notif_messages_title": "Messages",
@@ -1083,7 +1083,7 @@
   "user_requests_show_all": "Show all {count}",
   "user_requests_show_less": "Show less",
   "notif_channel_push_title": "Push",
-  "notif_channel_push_desc": "Straight to your phone or browser",
+  "notif_channel_push_desc": "To the installed app (Android app or home screen app)",
   "notif_channel_email_title": "E-mail",
   "notif_channel_email_desc": "To {email}",
   "notif_channel_email_desc_none": "To your e-mail address",
@@ -1118,5 +1118,9 @@
   "admin_public_url_label": "Public address (for links in e-mails)",
   "admin_public_url_desc": "The address the app is reachable at. Buttons in notification e-mails lead there; leave empty if e-mails should contain no links.",
   "admin_public_url_invalid": "The public address has to start with https://.",
-  "calendar_feed_unavailable": "The calendar link could not be loaded. Please try again later."
+  "calendar_feed_unavailable": "The calendar link could not be loaded. Please try again later.",
+  "req_payment_approved_desc": "Payment (approved)",
+  "user_fallback_name": "User",
+  "admin_default_language_label": "Default language",
+  "admin_default_language_desc": "Language of push messages and e-mails for members whose app has not reported a language yet. Everyone else gets their own language."
 }

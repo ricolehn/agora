@@ -1,4 +1,5 @@
 const express = require('express');
+const { instanceLanguage, normalizeLanguage, SUPPORTED_LANGUAGES, translate, translator, userLanguage, requestLanguage } = require('../i18n');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
@@ -143,6 +144,8 @@ router.get('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res
   res.json({
     appName: context.appConfig.appName,
     publicUrl: context.appConfig.publicUrl || '',
+    defaultLanguage: instanceLanguage(),
+    supportedLanguages: SUPPORTED_LANGUAGES,
     smtp: smtpResponse,
     usesPocketBase: true
   });
@@ -176,7 +179,16 @@ router.put('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res
     if (req.body?.publicUrl !== undefined) {
       publicUrl = normalizePublicUrl(req.body.publicUrl);
       if (publicUrl === null) {
-        return res.status(400).json({ error: 'Die Adresse der App muss mit http:// oder https:// beginnen.' });
+        return res.status(400).json({ error: 'The app address must start with http:// or https://.' });
+      }
+    }
+
+    // Language for members without an own setting (push, e-mail) and for suggested defaults
+    let defaultLanguage = instanceLanguage();
+    if (req.body?.defaultLanguage !== undefined) {
+      defaultLanguage = normalizeLanguage(req.body.defaultLanguage);
+      if (!defaultLanguage) {
+        return res.status(400).json({ error: 'Unsupported language.' });
       }
     }
 
@@ -184,6 +196,7 @@ router.put('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res
       ...context.appConfig,
       appName,
       publicUrl,
+      defaultLanguage,
       smtp
     };
 
@@ -260,7 +273,8 @@ router.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
 });
 
 router.get('/api/admin/permissions', verifyToken, verifyAdmin, (req, res) => {
-  res.json(SYSTEM_PERMISSIONS);
+  const lang = requestLanguage(req);
+  res.json(SYSTEM_PERMISSIONS.map((p) => ({ ...p, name: translate(lang, p.name), description: translate(lang, p.description) })));
 });
 
 router.get('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
@@ -288,11 +302,11 @@ router.get('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
 router.post('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'Gruppenname ist erforderlich.' });
+    if (!name) return res.status(400).json({ error: 'Group name is required.' });
 
     const existingGroups = await listGroupRecords(context.appConfig);
     if (existingGroups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
-      return res.status(400).json({ error: 'Eine Gruppe mit diesem Namen existiert bereits.' });
+      return res.status(400).json({ error: 'A group with this name already exists.' });
     }
 
     const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
@@ -309,7 +323,7 @@ router.put('/api/admin/groups/:id', verifyToken, verifyAdmin, async (req, res) =
   try {
     const { id } = req.params;
     const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
-    if (name !== undefined && !name) return res.status(400).json({ error: 'Gruppenname darf nicht leer sein.' });
+    if (name !== undefined && !name) return res.status(400).json({ error: 'The group name must not be empty.' });
     const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : undefined;
     const group = await updateGroupRecord(context.appConfig, id, { name, permissions });
     broadcastDataUpdate();
@@ -339,7 +353,7 @@ async function blockOwnerChange(req, res, uid) {
   const ownerUid = system?.ownerUid || system?.superAdminUid || null;
   const target = uid === ownerUid ? null : await getUserRecord(context.appConfig, uid).catch(() => null);
   if (uid === ownerUid || target?.owner === true || target?.superAdmin === true) {
-    res.status(403).json({ error: 'Nur der Eigentümer kann den Eigentümer-Account ändern.' });
+    res.status(403).json({ error: 'Only the owner can change the owner account.' });
     return true;
   }
   return false;
@@ -368,11 +382,11 @@ router.post('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
     const normalizedLast = String(lastName || '').trim();
 
     if (!normalizedFirst || !normalizedLast) {
-      return res.status(400).json({ error: 'Vorname und Nachname erforderlich.' });
+      return res.status(400).json({ error: 'First and last name required.' });
     }
 
     if (normalizedPassword && normalizedPassword.length < 6) {
-      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein.' });
+      return res.status(400).json({ error: 'The password must be at least 6 characters long.' });
     }
 
     const hasRealCredentials = Boolean(normalizedEmail && normalizedPassword);
@@ -425,7 +439,7 @@ router.put('/api/admin/users/:uid/admin', verifyToken, verifyAdmin, async (req, 
     const ownerUid = system?.ownerUid || system?.superAdminUid || null;
 
     if (uid === ownerUid && !makeAdmin) {
-      return res.status(400).json({ error: 'Eigentümer kann keine Administratorrechte verlieren.' });
+      return res.status(400).json({ error: 'The owner cannot lose administrator rights.' });
     }
 
     const isTargetOwner = uid === ownerUid;
@@ -460,7 +474,7 @@ router.put('/api/admin/users/:uid/pays', verifyToken, verifyAdmin, async (req, r
         await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
       } else {
                 const user = await getUserRecord(context.appConfig, uid);
-        const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Mitglied') : 'Mitglied';
+        const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
         const today = new Date().toISOString().slice(0, 10);
         const personKey = uid;
         await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, today));
@@ -487,7 +501,7 @@ router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, async
     if (await blockOwnerChange(req, res, uid)) return;
     const memberSince = String(req.body?.memberSince || '').trim();
     if (!memberSince) {
-      return res.status(400).json({ error: 'Datum erforderlich.' });
+      return res.status(400).json({ error: 'Date required.' });
     }
 
     const people = await listPeopleRecords(context.appConfig);
@@ -502,7 +516,7 @@ router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, async
       await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
     } else {
             const user = await getUserRecord(context.appConfig, uid);
-      const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Mitglied') : 'Mitglied';
+      const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
       const personKey = uid;
       await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, memberSince, user?.pays !== false));
     }
@@ -521,14 +535,14 @@ router.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, async (re
     if (await blockOwnerChange(req, res, uid)) return;
     const newPassword = String(req.body?.password || '');
     if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein.' });
+      return res.status(400).json({ error: 'The password must be at least 6 characters long.' });
     }
 
     await adminResetUserPassword(context.appConfig, uid, newPassword);
-    res.json({ success: true, message: 'Passwort erfolgreich geändert.' });
+    res.json({ success: true, message: 'Password changed successfully.' });
   } catch (error) {
     console.error('Failed to reset user password:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Passwort-Zurücksetzen fehlgeschlagen' });
+    res.status(error.status || 500).json({ error: error.message || 'Resetting the password failed' });
   }
 });
 
@@ -539,7 +553,7 @@ router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, async (req, res
     const ownerUid = system?.ownerUid || system?.superAdminUid || null;
 
     if (uid === ownerUid) {
-      return res.status(400).json({ error: 'Der Eigentümer-Account kann nicht gelöscht werden.' });
+      return res.status(400).json({ error: 'The owner account cannot be deleted.' });
     }
 
     // By uid only (matching by name also deleted other members with the same name)
@@ -610,9 +624,10 @@ router.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmi
       const allUsers = await listUserRecords(context.appConfig);
       const recipientUser = allUsers.find(u => u.email && u.email.toLowerCase() === String(to).toLowerCase());
       if (recipientUser) {
+        const tr = translator(userLanguage(recipientUser));
         sendPushToUser(context.appConfig, recipientUser.id, {
-          title: subject || 'Neue Nachricht',
-          body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : 'Du hast eine neue Benachrichtigung erhalten.',
+          title: subject || tr('New message'),
+          body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : tr('You received a new notification.'),
           data: { url: '/' }
         }).catch(e => console.warn('[WebPush] Send-email push error:', e.message));
       }
@@ -652,12 +667,13 @@ router.get('/api/push/vapid-public-key', verifyToken, async (req, res) => {
 
 router.post('/api/push/subscribe', verifyToken, async (req, res) => {
   try {
-    const { subscription, userAgent } = req.body || {};
+    const { subscription, userAgent, installed } = req.body || {};
     if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
       return res.status(400).json({ error: 'Invalid push subscription payload' });
     }
     const currentUid = req.user.uid || req.user.id;
-    await upsertPushSubscription(context.appConfig, currentUid, subscription, userAgent || req.headers['user-agent'] || '');
+    // Only the installed app (PWA) gets pushes, not a browser tab (iOS sends web push to home screen apps only anyway)
+    await upsertPushSubscription(context.appConfig, currentUid, subscription, userAgent || req.headers['user-agent'] || '', installed === true);
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to save push subscription:', error);
@@ -720,7 +736,7 @@ router.post('/api/push/test', verifyToken, async (req, res) => {
     const currentUid = req.user.uid || req.user.id;
     await sendPushToUser(context.appConfig, currentUid, {
       title: `${context.appConfig?.appName || 'Agora'} Test`,
-      body: 'Push-Benachrichtigungen sind erfolgreich eingerichtet!',
+      body: translate(requestLanguage(req), 'Push notifications are set up successfully!'),
       data: { url: '/' }
     });
     res.json({ success: true });

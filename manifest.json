@@ -1,7 +1,8 @@
 {
   "name": "Agora",
   "short_name": "Agora",
-  "description": "Kassenverwaltung für die Jugendarbeit",
+  "description": "Finance management for youth work",
+  "lang": "en",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#e6f2fa",
@@ -27,6 +28,8 @@
       "purpose": "monochrome"
     }
   ],
-  "categories": ["finance", "productivity"],
-  "lang": "de"
+  "categories": [
+    "finance",
+    "productivity"
+  ]
 }

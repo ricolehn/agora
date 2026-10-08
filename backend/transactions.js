@@ -82,7 +82,7 @@ async function getPaginatedTransactions(appConfig, page, perPage, search = '') {
       const who = (t.who || '').toLowerCase();
       const desc = (t.description || '').toLowerCase();
 
-      let formattedDate = 'kein datum';
+      let formattedDate = '';
       if (t.date) {
         const dStr = String(t.date);
         if (dStr.length >= 10 && dStr[4] === '-' && dStr[7] === '-') {

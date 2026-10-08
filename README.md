@@ -38,12 +38,13 @@ docker run -d \
   -p 3000:3000 \
   -v /path/to/your/storage:/app/data \
   -v /path/to/your/cache:/app/db \
+  -e TZ=Europe/Berlin \
   --name agora-app \
   --restart unless-stopped \
   ghcr.io/ricolehn/agora:latest
 ```
 
-*Replace `/path/to/your/storage` and `/path/to/your/cache` with directories on your host machine to ensure your data survives container restarts.*
+*Replace `/path/to/your/storage` and `/path/to/your/cache` with directories on your host machine to ensure your data survives container restarts. Set `TZ` to the time zone of your community: event times are read in it (e.g. for the duty reminders).*
 
 > **Unraid / Permission Note:** Agora starts as root only long enough to prepare bind-mounted `/app/data`, `/app/db`, and `/app/html` directories for the bundled `node` user (UID 1000), then drops back to `node` before starting the app. If your storage backend blocks ownership changes, make sure every mapped host directory is writable by UID 1000, e.g. `chown -R 1000:1000 /path/to/your/storage /path/to/your/cache /path/to/your/frontend`.
 
@@ -56,6 +57,7 @@ docker run -d \
   -p 3000:3000 \
   -v /path/to/your/storage:/app/data \
   -v /path/to/your/cache:/app/db \
+  -e TZ=Europe/Berlin \
   --v /path/to/your/frontend:/app/html \
   --name agora-app \
   --restart unless-stopped \
@@ -80,6 +82,7 @@ docker run -d \
   -p 3000:3000 \
   -v /path/to/your/storage:/app/data \
   -v /path/to/your/cache:/app/db \
+  -e TZ=Europe/Berlin \
   --name agora-app \
   --restart unless-stopped \
   ghcr.io/ricolehn/agora:latest
@@ -111,7 +114,7 @@ PocketBase is provisioned automatically inside the container. Agora stores its r
 
 ## 📱 Android App Push Notifications (Firebase)
 
-Browsers receive notifications via Web Push, which works out of the box. The native Android app receives the same notifications (respecting the same per-user notification settings) via Firebase Cloud Messaging. Every instance uses its **own** Firebase project — the app fetches the Firebase client config from your server at runtime, so nothing app-specific has to be rebuilt:
+The web app receives notifications via Web Push once it is installed (home screen / "Install app"; a plain browser tab never asks and gets none, and iOS only delivers web push to home screen apps anyway), which works out of the box. The native Android app receives the same notifications (respecting the same per-user notification settings) via Firebase Cloud Messaging. Every instance uses its **own** Firebase project — the app fetches the Firebase client config from your server at runtime, so nothing app-specific has to be rebuilt:
 
 1. Create a Firebase project and add an **Android app with the package name `org.agora.app`** (Firebase Console → Project settings → General → Add app).
 2. Download its **`google-services.json`** and place it as `/app/data/google-services.json` (or set `FCM_GOOGLE_SERVICES_FILE` / `FCM_GOOGLE_SERVICES_JSON`). It only contains public identifiers.
@@ -127,6 +130,7 @@ docker run -d \
   -p 3000:3000 \
   -v /path/to/your/storage:/app/data \
   -v /path/to/your/cache:/app/db \
+  -e TZ=Europe/Berlin \
   -v /path/to/firebase-adminsdk.json:/run/secrets/firebase.json:ro \
   -e FCM_SERVICE_ACCOUNT_FILE=/run/secrets/firebase.json \
   --name agora-app \
@@ -147,9 +151,13 @@ Every instance serves two public pages that app stores (e.g. Google Play) ask fo
 - **`/privacy`** – privacy policy describing what Agora stores and which services it uses (push, optional AI provider, e-mail). Review it and add your organisation's contact details if your jurisdiction requires them.
 - **`/account-deletion`** – explains what is deleted and lets members delete their account without the app (e-mail + password).
 
+The same texts live in this repository for the store listing of the Android app, independent of any instance: [PRIVACY.md](PRIVACY.md) and [ACCOUNT_DELETION.md](ACCOUNT_DELETION.md) (linked from Google Play – keep them in sync with `privacy.html` / `account-deletion.html`).
+
 Members can also delete their account in the settings of the web app and the Android app (`POST /api/auth/delete-account`, confirmed with the password). This removes the login, profile picture, registrations, freed duty slots, mentoring profile and conversations, finance requests and push tokens; booked payments stay in the ledger for bookkeeping. The owner account cannot delete itself.
 
 AI replies and mentoring conversations can be reported (`POST /api/reports`); admins get a push notification and can list reports via `GET /api/admin/reports`. Mentoring conversations can be blocked – only the person who blocked can reopen them.
+
+Everyone on a duty (the person who took it, or the members of the assigned group) gets a reminder **3 hours before the event starts** (8:00 on the day for events without a start time), by push and/or e-mail as chosen for duty messages. Event times are read in one time zone for the whole instance: set `TZ` (e.g. `TZ=Europe/Berlin`) for the container; without it (Docker runs in UTC) Agora uses the zone most members' apps report.
 </details>
 
 ## 👑 Owner & User Roles
@@ -178,6 +186,47 @@ Agora provisions PocketBase automatically and configures the collections, indexe
 - **Regular users** can authenticate with PocketBase, read/update their own profile, read shared settings, read the public invite code, view only their linked person/request records, and submit their own requests.
 - **The Owner** and **System Admins** can manage user roles and system-wide configuration.
 </details>
+
+## 🌍 Languages
+
+English is the source language of the code: every text is written in English, and `assets/locales/en.json` (web app) is always complete. Other languages are optional translations: texts nobody has translated yet are simply left empty (or missing) and show in English. The tests only check English; translations never make them fail.
+
+- **Web app:** users get their system language by default (or pick one in the settings); unsupported languages show English.
+- **Server:** error messages are written in English in the code and translated by `backend/locales/<lang>.json` (English text → translation). Push messages and e-mails go out in each member's language: the language their app reported, otherwise the instance's default language (System configuration), otherwise English.
+
+Adding a language (e.g. French):
+
+1. Copy `assets/locales/en.json` to `assets/locales/fr.json`, translate what you can and leave the rest empty (`""`).
+2. Optionally create `backend/locales/fr.json` with `"English text": "texte français"` pairs for server texts.
+3. Add `'fr'` to `SUPPORTED_LANGUAGES` in `assets/app.js` and `setup.html`, and an option to the language selects in `index.html` (the server picks up new catalogs by itself).
+
+## 🧪 Tests
+
+All tests live in `tests/` and use the built-in Node test runner (Node 24, no extra packages):
+
+| File | Covers |
+| --- | --- |
+| `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
+| `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
+| `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
+| `finance.test.js` | standing orders, request retention, derived finance data |
+| `community.test.js` | events, mentoring (capacity, encryption), AI input sanitising |
+| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events |
+| `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
+
+```bash
+cd backend && npm ci
+POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests in api.test.js are skipped
+```
+
+Shared helpers (temporary folders, environment variables, a frozen clock) are in `tests/helpers.js`. Every pull request to `develop` runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
+
+Writing tests that protect without getting in the way:
+
+- **Test contracts, not snapshots.** Assert what must always hold ("the core permissions exist", "a member cannot read this") instead of exact lists, counts or texts that the next feature changes.
+- **Security rules belong in `api.test.js`.** One test per rule, written as "X must never work", checked against the real server. Assert the resulting state (the owner is still admin) rather than one specific status code where several would be correct.
+- **Known attack patterns are tables.** A new bypass for the SVG filter is one new line in `ATTACKS` (platform.test.js).
+- **Every bug fix gets a regression test** that fails without the fix.
 
 ## 📄 License
 

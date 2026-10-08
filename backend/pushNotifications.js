@@ -144,9 +144,11 @@ async function sendWebPushToUser(appConfig, userId, fullPayload) {
   try {
     await getOrInitVapidKeys(appConfig);
     const subs = await listAllRecords('push_subscriptions', pbFilterEquals('user', userId), appConfig);
-    if (!subs || !subs.length) return;
+    // Only the installed app (PWA); subscriptions from before v3.0.1 count again once the app re-syncs them on start
+    const installed = (subs || []).filter(sub => sub.installed === true);
+    if (!installed.length) return;
 
-    await Promise.all(subs.map(sub => sendPushToSubscription(sub, fullPayload, appConfig)));
+    await Promise.all(installed.map(sub => sendPushToSubscription(sub, fullPayload, appConfig)));
   } catch (err) {
     console.warn(`[WebPush] Failed to send push to user ${userId}:`, err.message);
   }

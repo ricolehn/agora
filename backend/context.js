@@ -9,6 +9,7 @@ const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests, repairRequestAuthors } = require('./requestRetention');
 const { wantsNotification, mergeNotificationSettings } = require('./notificationPrefs');
+const { translate, translator, userLanguage, instanceLanguage, normalizeLanguage, BASE_LANGUAGE } = require('./i18n');
 
 const {
   DEFAULT_SETTINGS,
@@ -119,6 +120,13 @@ async function initializeRuntime(config) {
     return;
   }
 
+  // Installations from before the language setting (3.0.1) spoke German: keep that as their default language
+  if (!normalizeLanguage(config.defaultLanguage)) {
+    config = { ...config, defaultLanguage: 'de' };
+    await fs.promises.writeFile(configFile, JSON.stringify(config, null, 2), 'utf8')
+      .catch((err) => console.warn('[Config] Could not store the default language:', err.message));
+  }
+
   await ensurePocketBaseSuperuser(config);
   await ensurePocketBaseSchema(config);
   await upsertStateValue(config, 'settings', await getStateValue(config, 'settings', DEFAULT_SETTINGS));
@@ -176,14 +184,14 @@ const setupRateLimit = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Zu viele Anfragen zur Ersteinrichtung. Bitte versuchen Sie es in wenigen Minuten erneut.' }
+  message: { error: 'Too many setup requests. Please try again in a few minutes.' }
 });
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Zu viele Anmeldeversuche. Bitte warten Sie einen Moment.' }
+  message: { error: 'Too many sign-in attempts. Please wait a moment.' }
 });
 const dbRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -253,7 +261,7 @@ const profileUpload = multer({
 const eventImageUpload = multer({
   storage: eventImageStorage,
   limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: imageFileFilter('Nur Bilddateien (JPG, PNG, WebP, HEIC) sind erlaubt.')
+  fileFilter: imageFileFilter('Only image files (JPG, PNG, WebP, HEIC) are allowed.')
 });
 
 function extractBearerToken(req) {
@@ -406,17 +414,17 @@ function verifyAdmin(req, res, next) {
 
 function verifyAiAccess(req, res, next) {
   if (req.user?.canAccessAi === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('access_ai'))) return next();
-  return res.status(403).json({ error: 'KI-Berechtigung erforderlich' });
+  return res.status(403).json({ error: 'AI permission required' });
 }
 
 function verifyMentoringParticipate(req, res, next) {
   if (req.user) return next();
-  return res.status(401).json({ error: 'Anmeldung erforderlich' });
+  return res.status(401).json({ error: 'Sign-in required' });
 }
 
 function verifyManageMentoring(req, res, next) {
   if (req.user?.canManageMentoring === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('manage_mentoring'))) return next();
-  return res.status(403).json({ error: 'Mentoren-Verwaltungsrechte erforderlich' });
+  return res.status(403).json({ error: 'Mentor management rights required' });
 }
 
 const verifySuperAdmin = verifyAdmin;
@@ -535,7 +543,7 @@ async function readLogicalPath(targetPath, query, user) {
 
   if (root === 'system' && id === 'inviteCode') {
     if (!user.canManageRegistrationCode) {
-      const error = new Error('Registrierungscode-Verwaltungsrechte erforderlich');
+      const error = new Error('Registration code management rights required');
       error.status = 403;
       throw error;
     }
@@ -695,6 +703,7 @@ function toUserValue(record, allGroups = null) {
     canManageMentoring,
     canManageEvents,
     emailNotifications: record.emailNotifications !== false,
+    language: record.language || '',
     isClaimed,
     uid: record.id
   };
@@ -717,14 +726,14 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   }
 
   if (root === 'system' && id === 'inviteCode' && !nested) {
-    if (!user.canManageRegistrationCode) throw Object.assign(new Error('Registrierungscode-Verwaltungsrechte erforderlich'), { status: 403 });
+    if (!user.canManageRegistrationCode) throw Object.assign(new Error('Registration code management rights required'), { status: 403 });
     const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
     await upsertStateValue(context.appConfig, 'system', { ...system, inviteCode: value });
     return;
   }
 
   if ((root === 'donations' || root === 'expenses') && !id) {
-    if (!user.canManageFinances) throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
+    if (!user.canManageFinances) throw Object.assign(new Error('Finance management rights required'), { status: 403 });
     if (root === 'expenses') {
       await syncExpenseRecords(context.appConfig, value || {});
       return;
@@ -797,7 +806,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       const onlyUidUpdate = value && typeof value === 'object' && Object.keys(value).every((key) => key === 'uid');
       const isAllowedLink = existingValue && onlyUidUpdate && requestedUid === user.uid && (!existingValue.uid || existingValue.uid === user.uid) && isOwnFullNameMatch(user, existingValue.name || existing?.name);
       if (!isAllowedLink) {
-        throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
+        throw Object.assign(new Error('Finance management rights required'), { status: 403 });
       }
     }
     // Linking only ever adds the uid to the existing record (a plain set would replace it and drop its payments)
@@ -821,12 +830,12 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     const canManageRequests = user.canManageFinances === true;
     if (!canManageRequests) {
       if (method !== 'set' || String(value.userId) !== String(user.uid)) {
-        throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
+        throw Object.assign(new Error('Finance management rights required'), { status: 403 });
       }
     }
     const existing = await getRequestRecord(context.appConfig, id);
     if (existing && existing.data && !canManageRequests && String(existing.data.userId || existing.userId) !== String(user.uid)) {
-      throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
+      throw Object.assign(new Error('Finance management rights required'), { status: 403 });
     }
     const mergedValue = method === 'patch' && existing?.data && value && typeof value === 'object'
       ? { ...existing.data, ...value }
@@ -840,7 +849,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       nextValue.userId = user.uid;
     }
     if (!canManageRequests && String(nextValue.userId) !== String(user.uid)) {
-      throw Object.assign(new Error('Finanzverwaltungsrechte erforderlich'), { status: 403 });
+      throw Object.assign(new Error('Finance management rights required'), { status: 403 });
     }
     // Only the known kinds of request (the type is shown to treasurers)
     if (!Object.hasOwn(REQUEST_TYPE_LABELS, nextValue.type)) {
@@ -905,14 +914,27 @@ async function verifyOptionalUser(req) {
   }
 }
 
-const REQUEST_TYPE_LABELS = { payment: 'Zahlung', expense: 'Auslage', status: 'Statusänderung', standing_order: 'Dauerauftrag' };
+// The kinds of finance request (English source texts, translated per recipient)
+const REQUEST_TYPE_LABELS = { payment: 'Payment', expense: 'Expense', status: 'Status change', standing_order: 'Standing order' };
+const localeOf = (lang) => (lang === 'de' ? 'de-DE' : 'en-GB');
 
-function requestAmountLabel(request) {
+function requestAmountLabel(request, lang) {
+  const tr = translator(lang);
   const data = request.data || {};
   if (request.type === 'status') return data.newStatus || '';
   const amount = Number.parseFloat(String(data.amount || '0').replace(',', '.'));
-  const text = Number.isFinite(amount) ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : String(data.amount || '');
-  return request.type === 'standing_order' ? `${text} / Monat` : text;
+  const text = Number.isFinite(amount) ? amount.toLocaleString(localeOf(lang), { style: 'currency', currency: 'EUR' }) : String(data.amount || '');
+  return request.type === 'standing_order' ? tr('{amount} / month', { amount: text }) : text;
+}
+
+/** "Sat, 7 Nov 2026, 19:00 – 21:00" in the reader's language (no time zone conversion: event times are local). */
+function formatEventMoment(event, lang) {
+  const [y, m, d] = String(event?.date || '').split('-').map(Number);
+  const date = y && m && d
+    ? new Intl.DateTimeFormat(localeOf(lang), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)))
+    : (event?.date || translate(lang, 'No date'));
+  const start = event?.startTime || event?.time;
+  return start ? `${date}, ${start}${event.endTime ? ` – ${event.endTime}` : ''}` : date;
 }
 
 // Push and e-mail to the member whose request was decided (kind "requests")
@@ -921,26 +943,37 @@ async function notifyRequestDecision(request, origin = '') {
   const author = request.userId ? await getUserRecord(context.appConfig, request.userId).catch(() => null) : null;
   if (!author) return;
   const approved = request.status === 'approved';
-  const type = REQUEST_TYPE_LABELS[request.type] || 'Anfrage';
-  const amount = requestAmountLabel(request);
-  const what = `${type}${amount ? ` über ${amount}` : ''}`;
   const reason = String(request.rejectionReason || '').trim();
+  // Texts in the author's language
+  const texts = (tr) => {
+    const type = tr(REQUEST_TYPE_LABELS[request.type] || 'Request');
+    const amount = requestAmountLabel(request, userLanguage(author));
+    const what = amount ? tr('{type} of {amount}', { type, amount }) : type;
+    return { type, amount, what };
+  };
   await notifyUsers(context.appConfig, [author], 'requests', {
     origin,
-    push: {
-      title: approved ? `Anfrage genehmigt: ${type}` : `Anfrage abgelehnt: ${type}`,
-      body: approved ? `Deine ${what} wurde genehmigt.` : `Deine ${what} wurde abgelehnt.${reason ? ` Grund: ${reason}` : ''}`,
-      data: { url: '/#requests' },
-      tag: `agora-request-${request.id || ''}`
+    push: (tr) => {
+      const { type, what } = texts(tr);
+      return {
+        title: approved ? tr('Request approved: {type}', { type }) : tr('Request rejected: {type}', { type }),
+        body: approved ? tr('Your {what} was approved.', { what }) : tr('Your {what} was rejected.', { what }) + (reason ? ' ' + tr('Reason: {reason}', { reason }) : ''),
+        data: { url: '/#requests' },
+        tag: `agora-request-${request.id || ''}`
+      };
     },
-    email: {
-      subject: approved ? 'Deine Anfrage wurde genehmigt' : 'Deine Anfrage wurde abgelehnt',
-      heading: approved ? 'Deine Anfrage wurde genehmigt' : 'Deine Anfrage wurde abgelehnt',
-      lines: [approved ? `Deine ${what} wurde von der Kasse genehmigt.` : `Deine ${what} wurde von der Kasse abgelehnt.`],
-      rows: [['Art', type], ...(amount ? [['Betrag', amount]] : []), ['Status', approved ? 'Genehmigt' : 'Abgelehnt'], ...(!approved && reason ? [['Grund', reason]] : [])],
-      actionLabel: 'Meine Anfragen ansehen',
-      path: '/#user-finances',
-      accent: approved ? '#059669' : '#dc2626'
+    email: (tr) => {
+      const { type, amount, what } = texts(tr);
+      const title = approved ? tr('Your request was approved') : tr('Your request was rejected');
+      return {
+        subject: title,
+        heading: title,
+        lines: [approved ? tr('Your {what} was approved by the treasury.', { what }) : tr('Your {what} was rejected by the treasury.', { what })],
+        rows: [[tr('Kind'), type], ...(amount ? [[tr('Amount'), amount]] : []), [tr('Status'), approved ? tr('Approved') : tr('Rejected')], ...(!approved && reason ? [[tr('Reason'), reason]] : [])],
+        actionLabel: tr('View my requests'),
+        path: '/#user-finances',
+        accent: approved ? '#059669' : '#dc2626'
+      };
     }
   });
 }
@@ -951,15 +984,18 @@ async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUs
   try {
     const { sendNotificationEmail } = require('./notify');
     const allUsers = await listUserRecords(appConfig);
-    const requester = allUsers.find(u => u.id === requestedByUserId);
-    const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : 'Ein Event-Organisator';
-    const dutyName = duty.roleName || duty.section || 'Dienst';
     const recipient = allUsers.find(u => u.id === recipientUserId);
+    const lang = userLanguage(recipient);
+    const tr = translator(lang);
+    const requester = allUsers.find(u => u.id === requestedByUserId);
+    const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : tr('An event organiser');
+    const dutyName = duty.roleName || duty.section || tr('Duty');
+    const eventTitle = event.title || 'Event';
 
     if (userWantsNotification(recipient, 'duties')) {
       sendPushToUser(appConfig, recipientUserId, {
-        title: `Dienstanfrage: ${dutyName}`,
-        body: `${requesterName} hat dich für "${dutyName}" bei "${event.title || 'Event'}" angefragt.`,
+        title: tr('Duty request: {duty}', { duty: dutyName }),
+        body: tr('{name} asked you to do "{duty}" at "{event}".', { name: requesterName, duty: dutyName, event: eventTitle }),
         data: { url: '/#events' }
       }).catch(err => console.warn('[WebPush] Failed sending duty push:', err.message));
     }
@@ -969,25 +1005,21 @@ async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUs
       return { skipped: true, reason: 'recipient_no_email_or_disabled' };
     }
 
-    const parts = String(event.date || '').split('-');
-    const date = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : (event.date || 'Ohne Datum');
-    const start = event.startTime || event.time;
-    const time = start ? `, ${start}${event.endTime ? ` – ${event.endTime}` : ''} Uhr` : '';
     const sent = await sendNotificationEmail(recipient, {
-      subject: `Dienstanfrage: ${dutyName}`,
-      heading: `Dienstanfrage: ${dutyName}`,
-      lines: [`${requesterName} hat dich für einen Dienst angefragt. Bitte nimm die Anfrage in der App an oder lehne sie ab.`],
+      subject: tr('Duty request: {duty}', { duty: dutyName }),
+      heading: tr('Duty request: {duty}', { duty: dutyName }),
+      lines: [tr('{name} asked you to do a duty. Please accept or decline the request in the app.', { name: requesterName })],
       rows: [
-        ['Dienst', dutyName],
-        ['Event', event.title || 'Event'],
-        ['Datum', `${date}${time}`],
-        ...(event.location ? [['Ort', event.location]] : []),
-        ...(duty.notes ? [['Hinweise', duty.notes]] : [])
+        [tr('Duty'), dutyName],
+        [tr('Event'), eventTitle],
+        [tr('Date'), formatEventMoment(event, lang)],
+        ...(event.location ? [[tr('Location'), event.location]] : []),
+        ...(duty.notes ? [[tr('Notes'), duty.notes]] : [])
       ],
-      actionLabel: 'Anfrage beantworten',
+      actionLabel: tr('Answer the request'),
       path: '/#events',
       accent: '#6366f1'
-    }, origin);
+    }, origin, lang);
     return sent ? { success: true } : { skipped: true, reason: 'smtp_not_configured' };
   } catch (err) {
     console.warn('Could not send duty request email (non-fatal):', err.message);
@@ -1008,9 +1040,13 @@ function userMatchesTargetGroups(user, targetGroups = []) {
   });
 }
 
+// Suggested duties until an instance saves its own list (in the instance's default language)
+const DEFAULT_DUTY_NAMES = ['Bistro team', 'Tech', 'Welcome', 'Host', 'Music / worship'];
 const DEFAULT_EVENT_SETTINGS = {
   allowMemberCreation: true,
-  defaultDuties: ['Bistro-Team', 'Technik', 'Begrüßung', 'Moderation', 'Musik/Lobpreis']
+  get defaultDuties() {
+    return DEFAULT_DUTY_NAMES.map((name) => translate(instanceLanguage(), name));
+  }
 };
 
 function formatIcsDateTime(dateStr, timeStr) {
@@ -1032,7 +1068,8 @@ function escapeIcsText(str) {
     .replace(/\r?\n/g, '\\n');
 }
 
-function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid = null, allDuties = []) {
+function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid = null, allDuties = [], lang = BASE_LANGUAGE) {
+  const tr = translator(lang);
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -1069,7 +1106,7 @@ function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid =
       if (myDuties.length > 0) {
         dutiesInfo = myDuties.map(d => {
           const isReq = d.requestedUser === currentUid && d.assignedUser !== currentUid;
-          return `• ${d.role || 'Dienst'}${isReq ? ' (Anfrage ausstehend)' : ' (Eingeteilt)'}`;
+          return `• ${d.role || tr('Duty')} (${isReq ? tr('request pending') : tr('assigned')})`;
         }).join('\n');
       }
     }
@@ -1078,7 +1115,7 @@ function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid =
 
     let descriptionText = ev.description || '';
     if (dutiesInfo) {
-      descriptionText = `[MEINE DIENSTE]\n${dutiesInfo}\n\n${descriptionText}`.trim();
+      descriptionText = `[${tr('MY DUTIES')}]\n${dutiesInfo}\n\n${descriptionText}`.trim();
     }
     if (descriptionText) lines.push(`DESCRIPTION:${escapeIcsText(descriptionText)}`);
     if (ev.location) lines.push(`LOCATION:${escapeIcsText(ev.location)}`);
@@ -1202,7 +1239,7 @@ async function authenticateCalendarFeed(req, res, next) {
   }
 
   if (!authenticatedUser) {
-    return res.status(401).send('Unauthorized: Ungültiger oder abgelaufener Kalender-Link');
+    return res.status(401).send('Unauthorized: invalid or expired calendar link');
   }
 
   let allGroups = [];
@@ -1217,6 +1254,7 @@ async function authenticateCalendarFeed(req, res, next) {
 }
 
 module.exports = {
+  formatEventMoment,
   context,
   sseClients,
   broadcastDataUpdate,

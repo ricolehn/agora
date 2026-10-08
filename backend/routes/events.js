@@ -18,7 +18,8 @@ const {
   addDaysDriftFree,
   getNextRecurringDate,
   sendDutyRequestNotificationEmail,
-  authenticateCalendarFeed
+  authenticateCalendarFeed,
+  formatEventMoment
 } = require('../context');
 
 const {
@@ -44,6 +45,7 @@ const {
 } = require('../pocketbase');
 
 const { notifyUsers, originOf } = require('../notify');
+const { userLanguage, translate, requestLanguage, instanceLanguage } = require('../i18n');
 const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
 
 const router = express.Router();
@@ -136,7 +138,7 @@ router.get('/api/events', verifyToken, async (req, res) => {
         maxParticipants: typeof ev.maxParticipants === 'number' ? ev.maxParticipants : 0,
         targetGroups: Array.isArray(ev.targetGroups) ? ev.targetGroups : [],
         createdBy: ev.createdBy,
-        createdByName: userMap.get(ev.createdBy) || 'Mitglied',
+        createdByName: userMap.get(ev.createdBy) || translate(requestLanguage(req), 'Member'),
         created: ev.created,
         imageUrl: ev.imageUrl || '',
         duties: evDuties,
@@ -152,7 +154,7 @@ router.get('/api/events', verifyToken, async (req, res) => {
     res.json(formatted);
   } catch (err) {
     console.error('Failed to list events:', err);
-    res.status(500).json({ error: 'Events konnten nicht geladen werden' });
+    res.status(500).json({ error: 'Events could not be loaded' });
   }
 });
 
@@ -181,16 +183,16 @@ router.post('/api/events', verifyToken, async (req, res) => {
     } = req.body || {};
 
     if (!title || !String(title).trim()) {
-      return res.status(400).json({ error: 'Titel ist erforderlich' });
+      return res.status(400).json({ error: 'Title is required' });
     }
     if (!date || !String(date).trim()) {
-      return res.status(400).json({ error: 'Datum ist erforderlich' });
+      return res.status(400).json({ error: 'Date is required' });
     }
 
     const canManageEvents = hasEventPermission(req.user);
     const eventSettings = await getStateValue(context.appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
     if (!eventSettings.allowMemberCreation && !canManageEvents) {
-      return res.status(403).json({ error: 'Die Erstellung von Events ist derzeit nur für die Leitung freigeschaltet' });
+      return res.status(403).json({ error: 'Creating events is currently only enabled for the leadership' });
     }
 
     let finalEventType = 'event';
@@ -278,33 +280,43 @@ router.post('/api/events', verifyToken, async (req, res) => {
 
           if (recipients.length > 0) {
             const isTermin = firstEv.eventType === 'termin';
-            const titlePrefix = isTermin ? 'Neuer Termin' : 'Neues Event';
-            const dateFormatted = firstEv.date ? firstEv.date.split('-').reverse().join('.') : '';
-            const timeInfo = firstEv.startTime ? ` um ${firstEv.startTime} Uhr` : '';
-            const locInfo = firstEv.location ? ` • ${firstEv.location}` : '';
-            const recurringInfo = createdEvents.length > 1 ? ` (${createdEvents.length} Termine)` : '';
-            const pushBody = `Am ${dateFormatted}${timeInfo}${locInfo}${recurringInfo}`.trim();
+            const count = createdEvents.length;
+            // texts in each recipient's language
+            const texts = (tr, user) => {
+              const moment = formatEventMoment(firstEv, userLanguage(user));
+              return {
+                title: isTermin ? tr('New appointment: {title}', { title: firstEv.title }) : tr('New event: {title}', { title: firstEv.title }),
+                moment,
+                repeats: count > 1 ? tr('{count} appointments', { count }) : ''
+              };
+            };
 
             await notifyUsers(context.appConfig, recipients, 'events', {
               origin,
-              push: {
-                title: `${titlePrefix}: ${firstEv.title}`,
-                body: pushBody,
-                data: { url: '/#events', eventId: firstEv.id },
-                tag: `agora-event-${firstEv.id}`
+              push: (tr, user) => {
+                const x = texts(tr, user);
+                return {
+                  title: x.title,
+                  body: [x.moment, firstEv.location, x.repeats].filter(Boolean).join(' • '),
+                  data: { url: '/#events', eventId: firstEv.id },
+                  tag: `agora-event-${firstEv.id}`
+                };
               },
-              email: {
-                subject: `${titlePrefix}: ${firstEv.title}`,
-                heading: `${titlePrefix}: ${firstEv.title}`,
-                lines: [isTermin ? 'Es gibt einen neuen Termin.' : 'Es gibt ein neues Event.'],
-                rows: [
-                  ['Datum', `${dateFormatted}${firstEv.startTime ? `, ${firstEv.startTime} Uhr` : ''}`],
-                  ...(firstEv.location ? [['Ort', firstEv.location]] : []),
-                  ...(createdEvents.length > 1 ? [['Wiederholung', `${createdEvents.length} Termine`]] : [])
-                ],
-                actionLabel: isTermin ? 'Termin ansehen' : 'Event ansehen',
-                path: '/#events',
-                accent: isTermin ? '#475569' : '#0891b2'
+              email: (tr, user) => {
+                const x = texts(tr, user);
+                return {
+                  subject: x.title,
+                  heading: x.title,
+                  lines: [isTermin ? tr('There is a new appointment.') : tr('There is a new event.')],
+                  rows: [
+                    [tr('Date'), x.moment],
+                    ...(firstEv.location ? [[tr('Location'), firstEv.location]] : []),
+                    ...(count > 1 ? [[tr('Repeats'), x.repeats]] : [])
+                  ],
+                  actionLabel: isTermin ? tr('View the appointment') : tr('View the event'),
+                  path: '/#events',
+                  accent: isTermin ? '#475569' : '#0891b2'
+                };
               }
             });
           }
@@ -315,7 +327,7 @@ router.post('/api/events', verifyToken, async (req, res) => {
     }
   } catch (err) {
     console.error('Failed to create event:', err);
-    res.status(500).json({ error: 'Event konnte nicht erstellt werden' });
+    res.status(500).json({ error: 'The event could not be created' });
   }
 });
 
@@ -334,7 +346,7 @@ router.patch('/api/events/settings', verifyToken, async (req, res) => {
   try {
     const canManageEvents = hasEventPermission(req.user);
     if (!canManageEvents) {
-      return res.status(403).json({ error: 'Nur für Administratoren / Leitung' });
+      return res.status(403).json({ error: 'Only for administrators / leadership' });
     }
 
     const current = await getStateValue(context.appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
@@ -350,7 +362,7 @@ router.patch('/api/events/settings', verifyToken, async (req, res) => {
     res.json({ success: true, settings: updated });
   } catch (err) {
     console.error('Failed to update event settings:', err);
-    res.status(500).json({ error: 'Einstellungen konnten nicht gespeichert werden' });
+    res.status(500).json({ error: 'The settings could not be saved' });
   }
 });
 
@@ -359,13 +371,13 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
     const currentUid = req.user.uid || req.user.id;
     const event = await getEventRecord(context.appConfig, req.params.id);
     if (!event) {
-      return res.status(404).json({ error: 'Event nicht gefunden' });
+      return res.status(404).json({ error: 'Event not found' });
     }
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     if (!isCreator && !canManageEvents) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Bearbeiten dieses Events' });
+      return res.status(403).json({ error: 'No permission to edit this event' });
     }
 
     const {
@@ -424,7 +436,7 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
             const previousGroup = existingDuties.find(x => x.id === d.id)?.assignedGroup || '';
             const updatedDuty = await updateEventDuty(context.appConfig, d.id, {
               section: d.section ? String(d.section).trim() : 'Allgemein',
-              roleName: d.roleName ? String(d.roleName).trim() : 'Dienst',
+              roleName: d.roleName ? String(d.roleName).trim() : translate(instanceLanguage(), 'Duty'),
               assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
               assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
               notes: d.notes ? String(d.notes).trim() : ''
@@ -463,7 +475,7 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
     res.json({ success: true, event: updated });
   } catch (err) {
     console.error('Failed to update event:', err);
-    res.status(500).json({ error: 'Event konnte nicht aktualisiert werden' });
+    res.status(500).json({ error: 'The event could not be updated' });
   }
 });
 
@@ -472,13 +484,13 @@ router.delete('/api/events/:id', verifyToken, async (req, res) => {
     const currentUid = req.user.uid || req.user.id;
     const event = await getEventRecord(context.appConfig, req.params.id);
     if (!event) {
-      return res.status(404).json({ error: 'Event nicht gefunden' });
+      return res.status(404).json({ error: 'Event not found' });
     }
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     if (!isCreator && !canManageEvents) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Löschen dieses Events' });
+      return res.status(403).json({ error: 'No permission to delete this event' });
     }
 
     await deleteEventRecord(context.appConfig, event.id);
@@ -486,7 +498,7 @@ router.delete('/api/events/:id', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete event:', err);
-    res.status(500).json({ error: 'Event konnte nicht gelöscht werden' });
+    res.status(500).json({ error: 'The event could not be deleted' });
   }
 });
 
@@ -495,22 +507,22 @@ router.post('/api/events/:id/register', verifyToken, async (req, res) => {
     const currentUid = req.user.uid || req.user.id;
     const event = await getEventRecord(context.appConfig, req.params.id);
     if (!event) {
-      return res.status(404).json({ error: 'Event nicht gefunden' });
+      return res.status(404).json({ error: 'Event not found' });
     }
     if (!event.requiresRegistration) {
-      return res.status(400).json({ error: 'Dieses Event erfordert keine Anmeldung' });
+      return res.status(400).json({ error: 'This event does not require registration' });
     }
 
     const isCreator = event.createdBy === currentUid;
     if (!isCreator && !userMatchesTargetGroups(req.user, event.targetGroups)) {
-      return res.status(403).json({ error: 'Du hast keinen Zugriff auf dieses Event' });
+      return res.status(403).json({ error: 'You do not have access to this event' });
     }
 
     const { action } = req.body || {};
     const todayStr = new Date().toISOString().split('T')[0];
     const eventEndDate = (event.endDate && event.endDate.trim()) ? event.endDate.trim() : (event.date ? event.date.trim() : '');
     if (action !== 'cancel' && eventEndDate && eventEndDate < todayStr) {
-      return res.status(400).json({ error: 'Dieses Event ist bereits vorüber. Eine Anmeldung ist nicht mehr möglich.' });
+      return res.status(400).json({ error: 'This event is already over. Registration is no longer possible.' });
     }
 
     const evRegs = await listEventRegistrations(context.appConfig, pbFilterEquals('event', event.id));
@@ -556,7 +568,7 @@ router.get('/api/events/candidates', verifyToken, async (req, res) => {
     const showEmail = req.user.admin === true || req.user.owner === true || req.user.canManageEvents === true;
     const candidates = users.map(u => ({
       id: u.id,
-      name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || (showEmail ? u.email : '') || 'Mitglied',
+      name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || (showEmail ? u.email : '') || translate(requestLanguage(req), 'Member'),
       email: showEmail ? (u.email || '') : '',
       groups: Array.isArray(u.groups) ? u.groups : []
     }));
@@ -566,7 +578,7 @@ router.get('/api/events/candidates', verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to list candidates:', err);
-    res.status(500).json({ error: 'Kandidaten konnten nicht geladen werden' });
+    res.status(500).json({ error: 'Candidates could not be loaded' });
   }
 });
 
@@ -590,7 +602,7 @@ router.get('/api/events/my-requests', verifyToken, async (req, res) => {
       return {
         id: d.id,
         eventId: d.event,
-        eventTitle: ev.title || 'Termin',
+        eventTitle: ev.title || translate(requestLanguage(req), 'Appointment'),
         eventDate: ev.date || '',
         eventStartTime: ev.startTime || '',
         eventEndTime: ev.endTime || '',
@@ -606,7 +618,7 @@ router.get('/api/events/my-requests', verifyToken, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Failed to get my requests:', err);
-    res.status(500).json({ error: 'Dienstanfragen konnten nicht geladen werden' });
+    res.status(500).json({ error: 'Duty requests could not be loaded' });
   }
 });
 
@@ -615,11 +627,11 @@ router.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
     if (!duty) {
-      return res.status(404).json({ error: 'Dienst nicht gefunden' });
+      return res.status(404).json({ error: 'Duty not found' });
     }
 
     const event = await getEventRecord(context.appConfig, duty.event);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
@@ -629,10 +641,10 @@ router.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     const { notes, status, roleName, section, assignedGroup, assignedUser } = req.body || {};
 
     if (!canManage && !isAssigned) {
-      return res.status(403).json({ error: 'Keine Berechtigung zur Bearbeitung dieses Dienstes' });
+      return res.status(403).json({ error: 'No permission to edit this duty' });
     }
     if (!canManage && (status !== undefined || roleName !== undefined || section !== undefined || assignedGroup !== undefined || assignedUser !== undefined)) {
-      return res.status(403).json({ error: 'Nur Event-Manager oder der Event-Ersteller können diese Felder bearbeiten' });
+      return res.status(403).json({ error: 'Only event managers or the event creator can edit these fields' });
     }
 
     const updates = {};
@@ -652,7 +664,7 @@ router.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     }
   } catch (err) {
     console.error('Failed to update duty:', err);
-    res.status(500).json({ error: 'Dienst konnte nicht aktualisiert werden' });
+    res.status(500).json({ error: 'The duty could not be updated' });
   }
 });
 
@@ -660,18 +672,18 @@ router.post('/api/events/:id/duties', verifyToken, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
     const event = await getEventRecord(context.appConfig, req.params.id);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     const canManage = isCreator || canManageEvents;
     if (!canManage) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Erstellen von Diensten' });
+      return res.status(403).json({ error: 'No permission to create duties' });
     }
 
     const { roleName, section, assignedGroup, targetGroupId, assignedUser, requestedUser, targetUserId, notes, sendEmail } = req.body || {};
     if (!roleName || !String(roleName).trim()) {
-      return res.status(400).json({ error: 'Dienstbezeichnung ist erforderlich' });
+      return res.status(400).json({ error: 'Duty name is required' });
     }
 
     let status = 'open';
@@ -723,7 +735,7 @@ router.post('/api/events/:id/duties', verifyToken, async (req, res) => {
     }
   } catch (err) {
     console.error('Failed to add duty:', err);
-    res.status(500).json({ error: 'Dienst konnte nicht hinzugefügt werden' });
+    res.status(500).json({ error: 'The duty could not be added' });
   }
 });
 
@@ -731,16 +743,16 @@ router.delete('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    if (!duty) return res.status(404).json({ error: 'Duty not found' });
 
     const event = await getEventRecord(context.appConfig, duty.event);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     const canManage = isCreator || canManageEvents;
     if (!canManage) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Löschen dieses Dienstes' });
+      return res.status(403).json({ error: 'No permission to delete this duty' });
     }
 
     await deleteEventDuty(context.appConfig, duty.id);
@@ -748,7 +760,7 @@ router.delete('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete duty:', err);
-    res.status(500).json({ error: 'Dienst konnte nicht gelöscht werden' });
+    res.status(500).json({ error: 'The duty could not be deleted' });
   }
 });
 
@@ -756,21 +768,21 @@ router.post('/api/events/duties/:dutyId/request', verifyToken, async (req, res) 
   try {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    if (!duty) return res.status(404).json({ error: 'Duty not found' });
 
     const event = await getEventRecord(context.appConfig, duty.event);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     const canManage = isCreator || canManageEvents;
     if (!canManage) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Versenden von Dienstanfragen' });
+      return res.status(403).json({ error: 'No permission to send duty requests' });
     }
 
     const { targetUserId, sendEmail } = req.body || {};
     if (!targetUserId || !String(targetUserId).trim()) {
-      return res.status(400).json({ error: 'Bitte wähle eine Person für die Anfrage aus' });
+      return res.status(400).json({ error: 'Please choose a person for the request' });
     }
 
     const updated = await updateEventDuty(context.appConfig, duty.id, {
@@ -797,7 +809,7 @@ router.post('/api/events/duties/:dutyId/request', verifyToken, async (req, res) 
     res.json({ success: true, duty: updated });
   } catch (err) {
     console.error('Failed to request duty:', err);
-    res.status(500).json({ error: 'Anfrage konnte nicht gesendet werden' });
+    res.status(500).json({ error: 'The request could not be sent' });
   }
 });
 
@@ -805,16 +817,16 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) =
   try {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    if (!duty) return res.status(404).json({ error: 'Duty not found' });
 
     const event = await getEventRecord(context.appConfig, duty.event);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     const canManage = isCreator || canManageEvents;
     if (!canManage) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Zuweisen dieses Dienstes' });
+      return res.status(403).json({ error: 'No permission to assign this duty' });
     }
 
     const { targetGroupId, targetUserId, sendEmail } = req.body || {};
@@ -837,7 +849,7 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) =
         status: 'requested'
       };
     } else {
-      return res.status(400).json({ error: 'Bitte wähle eine Gruppe oder Person aus' });
+      return res.status(400).json({ error: 'Please choose a group or person' });
     }
 
     const updated = await updateEventDuty(context.appConfig, duty.id, updates);
@@ -861,7 +873,7 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, async (req, res) =
     }
   } catch (err) {
     console.error('Failed to assign duty:', err);
-    res.status(500).json({ error: 'Dienst konnte nicht zugewiesen werden' });
+    res.status(500).json({ error: 'The duty could not be assigned' });
   }
 });
 
@@ -869,13 +881,13 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
   try {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    if (!duty) return res.status(404).json({ error: 'Duty not found' });
 
     const isTarget = duty.requestedUser === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     const isPlanner = canManageEvents;
     if (!isTarget && !isPlanner) {
-      return res.status(403).json({ error: 'Nur der angefragte Benutzer kann auf diese Anfrage antworten' });
+      return res.status(403).json({ error: 'Only the requested user can answer this request' });
     }
 
     const { action } = req.body || {};
@@ -893,21 +905,32 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
           const requesterUser = allUsers.find(u => u.id === duty.requestedBy);
           if (requesterUser) {
             const responder = allUsers.find(u => u.id === currentUid);
-            const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
-            const dutyName = duty.roleName || duty.section || 'Dienst';
             const event = await getEventRecord(context.appConfig, duty.event);
-            const body = `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) angenommen.`;
+            // texts in the requester's language
+            const texts = (tr) => {
+              const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : tr('A helper');
+              const dutyName = duty.roleName || duty.section || tr('Duty');
+              const eventTitle = event?.title || 'Event';
+              return {
+                responderName, dutyName, eventTitle,
+                title: tr('Duty request accepted: {duty}', { duty: dutyName }),
+                body: tr('{name} accepted the request for "{duty}" ({event}).', { name: responderName, duty: dutyName, event: eventTitle })
+              };
+            };
             notifyUsers(context.appConfig, [requesterUser], 'duties', {
               origin: originOf(req),
-              push: { title: `Dienstanfrage angenommen: ${dutyName}`, body, data: { url: '/#events' } },
-              email: {
-                subject: `Dienstanfrage angenommen: ${dutyName}`,
-                heading: `Dienstanfrage angenommen`,
-                lines: [body],
-                rows: [['Dienst', dutyName], ['Event', event?.title || 'Event'], ['Von', responderName]],
-                actionLabel: 'Dienstplan ansehen',
-                path: '/#events',
-                accent: '#059669'
+              push: (tr) => { const x = texts(tr); return { title: x.title, body: x.body, data: { url: '/#events' } }; },
+              email: (tr) => {
+                const x = texts(tr);
+                return {
+                  subject: x.title,
+                  heading: tr('Duty request accepted'),
+                  lines: [x.body],
+                  rows: [[tr('Duty'), x.dutyName], [tr('Event'), x.eventTitle], [tr('From'), x.responderName]],
+                  actionLabel: tr('View the duty roster'),
+                  path: '/#events',
+                  accent: '#059669'
+                };
               }
             }).catch(e => console.warn('[Notify] Duty accept:', e.message));
           }
@@ -915,7 +938,7 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
       }
 
       broadcastDataUpdate('events');
-      return res.json({ success: true, duty: updated, message: 'Dienstanfrage angenommen' });
+      return res.json({ success: true, duty: updated, message: 'Duty request accepted' });
     } else if (action === 'decline') {
       const updated = await updateEventDuty(context.appConfig, duty.id, {
         requestedUser: duty.requestedUser || currentUid,
@@ -929,21 +952,32 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
           const requesterUser = allUsers.find(u => u.id === duty.requestedBy);
           if (requesterUser) {
             const responder = allUsers.find(u => u.id === currentUid);
-            const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : 'Ein Helfer';
-            const dutyName = duty.roleName || duty.section || 'Dienst';
             const event = await getEventRecord(context.appConfig, duty.event);
-            const body = `${responderName} hat die Anfrage für "${dutyName}" (${event?.title || 'Event'}) abgelehnt.`;
+            // texts in the requester's language
+            const texts = (tr) => {
+              const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : tr('A helper');
+              const dutyName = duty.roleName || duty.section || tr('Duty');
+              const eventTitle = event?.title || 'Event';
+              return {
+                responderName, dutyName, eventTitle,
+                title: tr('Duty request declined: {duty}', { duty: dutyName }),
+                body: tr('{name} declined the request for "{duty}" ({event}).', { name: responderName, duty: dutyName, event: eventTitle })
+              };
+            };
             notifyUsers(context.appConfig, [requesterUser], 'duties', {
               origin: originOf(req),
-              push: { title: `Dienstanfrage abgelehnt: ${dutyName}`, body, data: { url: '/#events' } },
-              email: {
-                subject: `Dienstanfrage abgelehnt: ${dutyName}`,
-                heading: `Dienstanfrage abgelehnt`,
-                lines: [body],
-                rows: [['Dienst', dutyName], ['Event', event?.title || 'Event'], ['Von', responderName]],
-                actionLabel: 'Dienstplan ansehen',
-                path: '/#events',
-                accent: '#dc2626'
+              push: (tr) => { const x = texts(tr); return { title: x.title, body: x.body, data: { url: '/#events' } }; },
+              email: (tr) => {
+                const x = texts(tr);
+                return {
+                  subject: x.title,
+                  heading: tr('Duty request declined'),
+                  lines: [x.body],
+                  rows: [[tr('Duty'), x.dutyName], [tr('Event'), x.eventTitle], [tr('From'), x.responderName]],
+                  actionLabel: tr('View the duty roster'),
+                  path: '/#events',
+                  accent: '#dc2626'
+                };
               }
             }).catch(e => console.warn('[Notify] Duty decline:', e.message));
           }
@@ -951,13 +985,13 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
       }
 
       broadcastDataUpdate('events');
-      return res.json({ success: true, duty: updated, message: 'Dienstanfrage abgelehnt' });
+      return res.json({ success: true, duty: updated, message: 'Duty request declined' });
     } else {
-      return res.status(400).json({ error: 'Ungültige Aktion' });
+      return res.status(400).json({ error: 'Invalid action' });
     }
   } catch (err) {
     console.error('Failed to respond to duty request:', err);
-    res.status(500).json({ error: 'Antwort konnte nicht übermittelt werden' });
+    res.status(500).json({ error: 'The answer could not be sent' });
   }
 });
 
@@ -965,16 +999,16 @@ router.post('/api/events/duties/:dutyId/cancel-request', verifyToken, async (req
   try {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    if (!duty) return res.status(404).json({ error: 'Duty not found' });
 
     const event = await getEventRecord(context.appConfig, duty.event);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     const canCancel = isCreator || duty.requestedBy === currentUid || canManageEvents;
     if (!canCancel) {
-      return res.status(403).json({ error: 'Keine Berechtigung zum Zurückziehen der Anfrage' });
+      return res.status(403).json({ error: 'No permission to withdraw the request' });
     }
 
     const updated = await updateEventDuty(context.appConfig, duty.id, {
@@ -987,7 +1021,7 @@ router.post('/api/events/duties/:dutyId/cancel-request', verifyToken, async (req
     res.json({ success: true, duty: updated });
   } catch (err) {
     console.error('Failed to cancel request:', err);
-    res.status(500).json({ error: 'Anfrage konnte nicht zurückgezogen werden' });
+    res.status(500).json({ error: 'The request could not be withdrawn' });
   }
 });
 
@@ -995,7 +1029,7 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
   try {
     const currentUid = req.user.uid || req.user.id;
     const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-    if (!duty) return res.status(404).json({ error: 'Dienst nicht gefunden' });
+    if (!duty) return res.status(404).json({ error: 'Duty not found' });
 
     const { action } = req.body || {};
 
@@ -1009,7 +1043,7 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
         canManage = isCreator || canManageEvents;
       }
       if (!isAssigned && !canManage) {
-        return res.status(403).json({ error: 'Du kannst diese Zuweisung nicht aufheben' });
+        return res.status(403).json({ error: 'You cannot remove this assignment' });
       }
       const updated = await updateEventDuty(context.appConfig, duty.id, {
         assignedUser: '',
@@ -1022,7 +1056,7 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
     }
 
     if (duty.assignedUser && duty.assignedUser !== currentUid) {
-      return res.status(409).json({ error: 'Dieser Dienst ist bereits vergeben' });
+      return res.status(409).json({ error: 'This duty is already taken' });
     }
 
     const updated = await updateEventDuty(context.appConfig, duty.id, {
@@ -1035,7 +1069,7 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
     res.json({ success: true, duty: updated });
   } catch (err) {
     console.error('Failed to claim duty:', err);
-    res.status(500).json({ error: 'Dienst konnte nicht übernommen werden' });
+    res.status(500).json({ error: 'The duty could not be taken over' });
   }
 });
 
@@ -1043,11 +1077,11 @@ router.get('/api/events/:id/attendees', verifyToken, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
     const event = await getEventRecord(context.appConfig, req.params.id);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     if (!isCreator && !userMatchesTargetGroups(req.user, event.targetGroups)) {
-      return res.status(403).json({ error: 'Kein Zugriff auf dieses Event' });
+      return res.status(403).json({ error: 'No access to this event' });
     }
 
     const evRegs = await listEventRegistrations(context.appConfig, pbFilterEquals('event', event.id));
@@ -1061,7 +1095,7 @@ router.get('/api/events/:id/attendees', verifyToken, async (req, res) => {
       const item = {
         id: r.id,
         userId: r.user,
-        name: userMap.get(r.user) || 'Mitglied',
+        name: userMap.get(r.user) || translate(requestLanguage(req), 'Member'),
         status: r.status,
         created: r.created
       };
@@ -1082,7 +1116,7 @@ router.get('/api/events/:id/attendees', verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to load attendees:', err);
-    res.status(500).json({ error: 'Teilnehmer konnten nicht geladen werden' });
+    res.status(500).json({ error: 'Participants could not be loaded' });
   }
 });
 
@@ -1090,7 +1124,7 @@ router.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res)
   try {
     const currentUid = req.user.uid || req.user.id;
     const event = await getEventRecord(context.appConfig, req.params.id);
-    if (!event) return res.status(404).json({ error: 'Event nicht gefunden' });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
 
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
@@ -1114,14 +1148,14 @@ router.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res)
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to remove attendee:', err);
-    res.status(500).json({ error: 'Teilnehmer konnte nicht entfernt werden' });
+    res.status(500).json({ error: 'The participant could not be removed' });
   }
 });
 
 router.get('/api/events/:id/export.ics', verifyToken, async (req, res) => {
   try {
     const event = await getEventRecord(context.appConfig, req.params.id);
-    if (!event) return res.status(404).send('Event nicht gefunden');
+    if (!event) return res.status(404).send('Event not found');
 
     const appName = context.appConfig?.appName || 'Agora';
     const icsContent = generateIcsCalendar([event], `${appName} - ${event.title || 'Event'}`);
@@ -1130,7 +1164,7 @@ router.get('/api/events/:id/export.ics', verifyToken, async (req, res) => {
     res.send(icsContent);
   } catch (err) {
     console.error('Failed to export single event ics:', err);
-    res.status(500).send('Fehler beim Exportieren des Termins');
+    res.status(500).send('Exporting the appointment failed');
   }
 });
 
@@ -1154,7 +1188,7 @@ router.get('/api/user/calendar-feed', verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to get user calendar feed:', err);
-    res.status(500).json({ error: 'Kalender-Feed konnte nicht abgerufen werden' });
+    res.status(500).json({ error: 'The calendar feed could not be loaded' });
   }
 });
 
@@ -1173,7 +1207,7 @@ router.post('/api/user/calendar-feed/reset', verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to reset user calendar feed token:', err);
-    res.status(500).json({ error: 'Kalender-Token konnte nicht zurückgesetzt werden' });
+    res.status(500).json({ error: 'The calendar token could not be reset' });
   }
 });
 
@@ -1200,14 +1234,15 @@ router.get('/api/events/calendar.ics', authenticateCalendarFeed, async (req, res
 
     const appName = context.appConfig?.appName || 'Agora';
     const userName = req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
-    const calendarTitle = userName ? `${appName} - ${userName}` : `${appName} Terminkalender`;
-    const icsContent = generateIcsCalendar(visibleEvents, calendarTitle, currentUid, allDuties);
+    const lang = userLanguage(req.user);
+    const calendarTitle = userName ? `${appName} - ${userName}` : translate(lang, '{app} calendar', { app: appName });
+    const icsContent = generateIcsCalendar(visibleEvents, calendarTitle, currentUid, allDuties, lang);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', 'inline; filename="agora-kalender.ics"');
     res.send(icsContent);
   } catch (err) {
     console.error('Failed to export calendar feed:', err);
-    res.status(500).send('Kalender-Feed konnte nicht erstellt werden');
+    res.status(500).send('The calendar feed could not be created');
   }
 });
 
@@ -1215,11 +1250,11 @@ router.post('/api/events/upload-image', protectedActionRateLimit, verifyToken, (
   eventImageUpload.single('image')(req, res, (error) => {
     if (error) {
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'Bilddatei zu groß (max. 25MB)' });
+        return res.status(400).json({ error: 'Image file too large (max. 25 MB)' });
       }
       return res.status(400).json({ error: error.message || 'Upload fehlgeschlagen' });
     }
-    if (!req.file) return res.status(400).json({ error: 'Keine Datei übermittelt.' });
+    if (!req.file) return res.status(400).json({ error: 'No file was sent.' });
     res.json({ filename: req.file.filename, url: `/api/events/images/${req.file.filename}` });
   });
 });
@@ -1249,7 +1284,7 @@ router.get('/api/events/images/:filename', pageRateLimit, async (req, res) => {
     const legacy = insideDir(uploadDir, name);
     if (legacy && fs.existsSync(legacy)) filePath = legacy;
   }
-  if (!filePath) return res.status(404).send('Bild nicht gefunden');
+  if (!filePath) return res.status(404).send('Image not found');
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.sendFile(filePath);
 });

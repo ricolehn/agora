@@ -72,7 +72,7 @@ function formatDateFast(dateInput) {
     // Only real ISO dates take the fast path (dates come from records members write, the result goes into HTML)
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return [str.slice(8, 10), str.slice(5, 7), str.slice(0, 4)].join(uiLang === 'en' ? '/' : '.');
     const d = new Date(dateInput);
-    return Number.isNaN(d.getTime()) ? t('no_date', 'Kein Datum') : dateFormatter.format(d);
+    return Number.isNaN(d.getTime()) ? t('no_date', 'No date') : dateFormatter.format(d);
 }
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -112,7 +112,7 @@ function debounce(fn, wait) {
  * Runs an action and reports a failure (alert, or a toast with `toast`): the message is a string or a function of
  * the error. `button` shows the loading state on a button meanwhile. Resolves to true on success.
  */
-async function attempt(action, failure, { toast = null, button = null, loading = t('setup_btn_saving', 'Speichert...') } = {}) {
+async function attempt(action, failure, { toast = null, button = null, loading = t('setup_btn_saving', 'Saving...') } = {}) {
     if (button) setButtonLoading(button, true, loading);
     try {
         await action();
@@ -128,7 +128,7 @@ async function attempt(action, failure, { toast = null, button = null, loading =
     }
 }
 
-function setButtonLoading(btnId, isLoading, loadingText = t('btn_loading', 'Laden...')) {
+function setButtonLoading(btnId, isLoading, loadingText = t('btn_loading', 'Loading...')) {
     const btn = $(btnId);
     if (!btn) return;
     if (isLoading) {
@@ -274,9 +274,9 @@ function renderPendingFiles(kind) {
         const isImage = file.type && file.type.startsWith('image/');
         if (isImage && !file.previewUrl) file.previewUrl = URL.createObjectURL(file);
         const preview = isImage
-            ? `<img src="${file.previewUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Beleg')}">`
+            ? `<img src="${file.previewUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Receipt')}">`
             : `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary);">${svgIcon('file', 20)}</div>`;
-        return fileRow(preview, file.name, iconButton(`${remove}(${index})`, t('btn_remove', 'Entfernen')));
+        return fileRow(preview, file.name, iconButton(`${remove}(${index})`, t('btn_remove', 'Remove')));
     }).join('');
 }
 function resetPendingFiles(kind) {
@@ -302,25 +302,58 @@ async function uploadAll(files, name, date) {
 }
 
 // --- i18n ---
+// English (en.json) is the source language and always complete. Other languages are translations that may lag
+// behind: missing texts fall back to English. Users get their system language by default ('system').
+const SUPPORTED_LANGUAGES = ['en', 'de'];
+const BASE_LANGUAGE = 'en';
 let currentLang = localStorage.getItem('app_lang') || 'system';
 localStorage.setItem('app_lang', currentLang);
 let translations = {};
-let uiLang = 'de';
-const uiLocale = () => (uiLang === 'en' ? 'en-GB' : 'de-DE');
+let uiLang = BASE_LANGUAGE;
+const uiLocale = () => (uiLang === 'de' ? 'de-DE' : 'en-GB');
+const fetchLocale = async lang => (await fetch(`./assets/locales/${lang}.json`)).json();
+// Untranslated texts are left empty (or missing) in a translation: those keep the English text. A broken
+// translation file only costs its language, never the English base.
+const withTranslation = (base, own) => ({ ...base, ...Object.fromEntries(Object.entries(own || {}).filter(([, text]) => typeof text === 'string' && text.trim())) });
+
+/** The language a setting resolves to: 'system' follows the browser / OS, unsupported languages become English. */
+function resolveLanguage(lang) {
+    const wanted = lang === 'system' ? (navigator.language || navigator.userLanguage || BASE_LANGUAGE) : lang;
+    const short = String(wanted).toLowerCase().split('-')[0];
+    return SUPPORTED_LANGUAGES.includes(short) ? short : BASE_LANGUAGE;
+}
 
 async function loadLanguage(lang) {
     try {
-        const browserLang = (navigator.language || navigator.userLanguage || 'de').toLowerCase();
-        const fetchLang = lang === 'system' ? (browserLang.startsWith('de') ? 'de' : 'en') : lang;
-        translations = await (await fetch(`./assets/locales/${fetchLang}.json`)).json();
-        uiLang = fetchLang;
-        document.documentElement.lang = fetchLang;
+        const resolved = resolveLanguage(lang);
+        const [base, own] = await Promise.all([
+            fetchLocale(BASE_LANGUAGE),
+            resolved === BASE_LANGUAGE ? null : fetchLocale(resolved).catch(e => { console.warn(`Translation ${resolved} not loaded:`, e); return null; })
+        ]);
+        translations = withTranslation(base, own);
+        uiLang = resolved;
+        document.documentElement.lang = resolved;
         currentLang = lang;
         localStorage.setItem('app_lang', lang);
         applyTranslations();
+        syncUserLanguage();
     } catch (e) {
         console.error('Failed to load translation:', e);
     }
+}
+
+// The server writes push messages and e-mails in the language the user's app resolved to; the time zone helps it
+// find the community's zone for duty reminders when the server has no TZ (Docker default UTC)
+function syncUserLanguage() {
+    const uid = currentUser?.uid || currentUser?.id;
+    let timeZone = '';
+    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* old browsers */ }
+    const value = {};
+    if (currentUser?.language !== uiLang) value.language = uiLang;
+    if (timeZone && currentUser?.timeZone !== timeZone) value.timeZone = timeZone;
+    if (!uid || !Object.keys(value).length) return;
+    Object.assign(currentUser, value);
+    api('/db', 'PATCH', { path: `users/${uid}`, value }).catch(e => console.warn('Could not save the language:', e));
 }
 
 function t(key, fallback = '', params = null) {
@@ -329,33 +362,35 @@ function t(key, fallback = '', params = null) {
     return str;
 }
 
+// Keys are the status texts the server computes (backend/derivedData.js). They are fixed protocol values that
+// released apps compare against, so they stay German on the wire; users see them translated.
 const STATUS_TEXT_KEYS = {
-    'Dauerauftrag läuft': ['status_standing_order_active', 'Dauerauftrag läuft'],
-    'Dauerauftrag läuft für den Beitrag': ['status_standing_order_active', 'Dauerauftrag läuft'],
-    'Dauerauftrag aktiv': ['status_standing_order_active', 'Dauerauftrag läuft'],
-    'Alles in Ordnung': ['status_all_ok', 'Alles in Ordnung'],
-    'Zahlung überfällig': ['status_payment_overdue', 'Zahlung überfällig'],
-    'Keine Zahlungen': ['status_no_payments', 'Keine Zahlungen'],
-    'läuft diesen Monat ab': ['status_expires_this_month', 'läuft diesen Monat ab'],
-    'läuft nächsten Monat ab': ['status_expires_next_month', 'läuft nächsten Monat ab']
+    'Dauerauftrag läuft': ['status_standing_order_active', 'Standing order is active'],
+    'Dauerauftrag läuft für den Beitrag': ['status_standing_order_active', 'Standing order is active'],
+    'Dauerauftrag aktiv': ['status_standing_order_active', 'Standing order is active'],
+    'Alles in Ordnung': ['status_all_ok', 'All good'],
+    'Zahlung überfällig': ['status_payment_overdue', 'Payment overdue'],
+    'Keine Zahlungen': ['status_no_payments', 'No payments'],
+    'läuft diesen Monat ab': ['status_expires_this_month', 'expires this month'],
+    'läuft nächsten Monat ab': ['status_expires_next_month', 'expires next month']
 };
 function translateStatusText(text) {
     if (!text) return '';
     const clean = text.trim();
     if (STATUS_TEXT_KEYS[clean]) return t(...STATUS_TEXT_KEYS[clean]);
     const overdue = clean.match(/(\d+)\s+Monat[e]?\s+überfällig/);
-    if (overdue) return overdue[1] === '1' ? t('status_one_month_overdue', '1 Monat überfällig') : t('status_months_overdue', '{months} Monate überfällig', { months: overdue[1] });
+    if (overdue) return overdue[1] === '1' ? t('status_one_month_overdue', '1 month overdue') : t('status_months_overdue', '{months} months overdue', { months: overdue[1] });
     const left = clean.match(/noch\s+(\d+)\s+Monat[e]?/);
-    if (left) return left[1] === '1' ? t('status_one_month_left', 'noch 1 Monat') : t('status_months_left', 'noch {months} Monate', { months: left[1] });
+    if (left) return left[1] === '1' ? t('status_one_month_left', '1 month left') : t('status_months_left', '{months} months left', { months: left[1] });
     return text;
 }
 
 function getStatusLabels(withEmoji = false) {
     const labels = {
-        vollverdiener: t('member_status_full', '💼 Vollverdiener'),
-        geringverdiener: t('member_status_low', '📉 Geringverdiener'),
-        keinverdiener: t('member_status_none', '🎓 Keinverdiener'),
-        pausiert: t('member_status_paused', '⏸️ Pausiert')
+        vollverdiener: t('member_status_full', '💼 Full earner'),
+        geringverdiener: t('member_status_low', '📉 Low earner'),
+        keinverdiener: t('member_status_none', '🎓 Non-earner'),
+        pausiert: t('member_status_paused', '⏸️ Paused')
     };
     if (!withEmoji) for (const k in labels) labels[k] = labels[k].replace(/^[💼📉🎓⏸️\s]+/u, '').trim();
     return labels;
@@ -453,9 +488,9 @@ async function fetchWithAuth(url, options = {}) {
     try {
         token = await auth.currentUser.getIdToken();
     } catch (tokenError) {
-        throw new Error(t('error_auth_failed', 'Authentifizierung fehlgeschlagen. Bitte erneut anmelden.') + ' (' + (tokenError?.code || tokenError?.message || t('error_unknown', 'Unbekannter Fehler')) + ')');
+        throw new Error(t('error_auth_failed', 'Authentication failed. Please sign in again.') + ' (' + (tokenError?.code || tokenError?.message || t('error_unknown', 'Unknown error')) + ')');
     }
-    const headers = { ...(options.headers || {}), Authorization: `Bearer ${token}` };
+    const headers = { 'Accept-Language': uiLang, ...(options.headers || {}), Authorization: `Bearer ${token}` };
     if (typeof options.body === 'string' && !headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
     return fetch(url, { ...options, headers });
 }
@@ -470,7 +505,7 @@ function api(path, method = 'GET', body) {
 async function apiJson(path, method = 'GET', body, fallbackError) {
     const res = await api(path, method, body);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.error || data.message || fallbackError || `HTTP ${res.status}`), { data });
+    if (!res.ok) throw Object.assign(new Error(data.error || data.message || fallbackError || `HTTP ${res.status}`), { data, status: res.status });
     return data;
 }
 
@@ -646,7 +681,7 @@ function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, cont
                         ${subtitle ? `<div class="modal-subtitle">${subtitle}</div>` : ''}
                     </div>
                 </div>
-                <button type="button" class="btn-close-enhanced" onclick="closeModal(${jsArg(id)})" aria-label="${t('btn_close', 'Schließen')}">✕</button>
+                <button type="button" class="btn-close-enhanced" onclick="closeModal(${jsArg(id)})" aria-label="${t('btn_close', 'Close')}">✕</button>
             </div>
             <div class="modal-body-enhanced">${contentHtml || bodyHtml || ''}</div>
             ${footerHtml ? `<div class="modal-footer-enhanced">${footerHtml}</div>` : ''}
@@ -659,25 +694,25 @@ function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, cont
 function showReceiptImageModal(title, imageUrl, filename) {
     return showDynamicModal({
         id: 'receipt-preview-modal',
-        title: title || t('receipt', 'Beleg'),
+        title: title || t('receipt', 'Receipt'),
         subtitle: filename || '',
         icon: '📎',
         maxWidth: '520px',
-        contentHtml: `<div style="text-align: center;"><img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 1px solid var(--border);" alt="${t('receipt', 'Beleg')}"></div>`,
+        contentHtml: `<div style="text-align: center;"><img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; border: 1px solid var(--border);" alt="${t('receipt', 'Receipt')}"></div>`,
         footerHtml: `
-            <a href="${imageUrl}" download="${filename || 'beleg'}" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📥 ${t('download_btn', 'Herunterladen')}</a>
-            <button type="button" class="btn btn-secondary" onclick="closeModal('receipt-preview-modal')">${t('btn_close', 'Schließen')}</button>`
+            <a href="${imageUrl}" download="${filename || 'beleg'}" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📥 ${t('download_btn', 'Download')}</a>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('receipt-preview-modal')">${t('btn_close', 'Close')}</button>`
     });
 }
 
 function renderReceiptPreviewCard(imgUrl, filename, label) {
-    const title = label || t('receipt', 'Beleg');
+    const title = label || t('receipt', 'Receipt');
     return `
         <div style="position:relative; border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-alt);">
             <img src="${imgUrl}" style="width:100%; border-radius:8px; opacity:0; transition:opacity 0.3s ease-in; cursor:pointer;" onload="this.style.opacity=1" onclick="window.showReceiptImageModal(${jsArg(title)}, ${jsArg(imgUrl)}, ${jsArg(filename)})" alt="${escapeHtml(title)}">
             <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
                 <a href="${imgUrl}" download="${escapeHtml(filename)}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;">
-                    ${svgIcon('download')} ${t('download_btn', 'Herunterladen')}
+                    ${svgIcon('download')} ${t('download_btn', 'Download')}
                 </a>
             </div>
         </div>`;
@@ -697,7 +732,7 @@ async function renderReceiptsInto(container, receiptField, { loading, header = '
         const urls = [];
         for (const filename of filenames) urls.push(await fetchReceiptImage(filename));
         container.dataset.blobUrls = JSON.stringify(urls);
-        container.innerHTML = `${header}<div style="${listStyle}">${urls.map((url, i) => renderReceiptPreviewCard(url, filenames[i], t('receipt', 'Beleg'))).join('')}</div>`;
+        container.innerHTML = `${header}<div style="${listStyle}">${urls.map((url, i) => renderReceiptPreviewCard(url, filenames[i], t('receipt', 'Receipt'))).join('')}</div>`;
     } catch (err) {
         console.error(err);
         container.innerHTML = error;
@@ -725,7 +760,7 @@ function togglePassword(inputId, btn) {
     const reveal = input.type === 'password';
     input.type = reveal ? 'text' : 'password';
     btn.innerHTML = svgIcon(reveal ? 'eyeOff' : 'eye', 20);
-    btn.setAttribute('aria-label', reveal ? t('password_hide', 'Passwort verbergen') : t('password_show', 'Passwort anzeigen'));
+    btn.setAttribute('aria-label', reveal ? t('password_hide', 'Hide password') : t('password_show', 'Show password'));
 }
 
 Object.assign(window, {
@@ -1173,7 +1208,7 @@ async function loadData(silent = false, { freshUser = false } = {}) {
         await renderViews(!silent);
     } catch (err) {
         console.error('Ladefehler:', err);
-        alert(t('alert_error_loading_data', 'Fehler beim Laden der Daten. Bitte Seite neu laden.'));
+        alert(t('alert_error_loading_data', 'Failed to load data. Please reload the page.'));
     } finally {
         if (loader && !silent) loader.style.display = 'none';
     }
@@ -1243,10 +1278,10 @@ async function bootstrapSuperAdmin(user) {
 
 onAuthStateChanged(auth, async user => {
     if (user) {
-        showAuthLoader(t('auth_loading_profile', 'Profil wird geladen...'));
+        showAuthLoader(t('auth_loading_profile', 'Loading profile...'));
         localStorage.setItem('agora-is-logged-in', 'true');
         const profile = await fetchUserProfile(user.uid, 2);
-        if (!profile) setLoadingMessage(t('auth_profile_not_found', 'Profil nicht gefunden, bitte Admin kontaktieren.'));
+        if (!profile) setLoadingMessage(t('auth_profile_not_found', 'Profile not found, please contact an admin.'));
         // The signed-in account over the stored profile, like refreshCurrentUser did. Only /auth/me (opening the app)
         // carries the computed fields (mentor status); after a fresh login loadData still asks it
         const { getIdToken, ...account } = user;
@@ -1258,6 +1293,7 @@ onAuthStateChanged(auth, async user => {
         bootstrapSuperAdmin(user);
         loadCurrentProfilePicture();
         ensurePushNotificationSubscription();
+        syncUserLanguage();
     } else {
         localStorage.removeItem('agora-is-logged-in');
         localStorage.removeItem('nova-is-logged-in');
@@ -1295,17 +1331,17 @@ function showAuthError(msg) {
 async function attemptLogin() {
     const email = inputValue('login-email');
     const pass = inputValue('login-password');
-    setButtonLoading('btn-login', true, t('auth_logging_in', 'Anmelden...'));
+    setButtonLoading('btn-login', true, t('auth_logging_in', 'Signing in...'));
     if (!email || !pass) {
-        showAuthError(t('auth_enter_credentials', 'Bitte E-Mail und Passwort eingeben.'));
+        showAuthError(t('auth_enter_credentials', 'Please enter your email and password.'));
     } else {
         try {
             show('auth-error', false);
             await signInWithEmailAndPassword(auth, email, pass);
-            showAuthLoader(t('auth_loading_profile', 'Profil wird geladen...'));
+            showAuthLoader(t('auth_loading_profile', 'Loading profile...'));
         } catch (error) {
             console.error(error);
-            showAuthError(t('auth_login_failed', 'Login fehlgeschlagen: ') + error.message);
+            showAuthError(t('auth_login_failed', 'Login failed: ') + error.message);
         }
     }
     setButtonLoading('btn-login', false);
@@ -1313,17 +1349,17 @@ async function attemptLogin() {
 
 async function attemptRegister() {
     const [code, email, first, last, p1, p2] = ['reg-code', 'reg-email', 'reg-firstname', 'reg-lastname', 'reg-pass1', 'reg-pass2'].map(inputValue);
-    const validationError = (!code || !email || !first || !last || !p1 || !p2) ? t('alert_fill_fields', 'Bitte alle Felder ausfüllen.')
-        : p1.length < 6 ? t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.')
-        : p1 !== p2 ? t('setup_err_password_match', 'Die Passwörter stimmen nicht überein.') : null;
+    const validationError = (!code || !email || !first || !last || !p1 || !p2) ? t('alert_fill_fields', 'Please fill out all fields.')
+        : p1.length < 6 ? t('setup_admin_password_invalid', 'Password must be at least 6 characters long.')
+        : p1 !== p2 ? t('setup_err_password_match', 'Passwords do not match.') : null;
     if (validationError) return showAuthError(validationError);
     try {
         show('auth-error', false);
-        showAuthLoader(t('auth_initializing_profile', 'Profil wird initialisiert...'));
+        showAuthLoader(t('auth_initializing_profile', 'Setting up profile...'));
         await createUserWithEmailAndPassword(auth, email, p1, { inviteCode: code, firstName: first, lastName: last, name: `${first} ${last}`.trim() });
     } catch (error) {
         console.error(error);
-        showAuthError(error.message?.includes('Ungültiger Registrierungscode') ? t('auth_invalid_code', 'Ungültiger Registrierungscode.') : t('auth_register_failed', 'Registrierung fehlgeschlagen: ') + error.message);
+        showAuthError(error.status === 403 ? t('auth_invalid_code', 'Invalid registration code.') : t('auth_register_failed', 'Registration failed: ') + error.message);
         show('loading-overlay', false);
         $('login-modal').classList.add('show');
     }
@@ -1344,17 +1380,17 @@ async function changePassword(isUser = false) {
     const [newId, oldId] = isUser ? ['user-new-password', 'user-old-password'] : ['new-password', 'old-password'];
     const pw = $(newId).value;
     const oldPw = $(oldId).value;
-    if (!oldPw) return alert(t('alert_enter_old_password', 'Bitte geben Sie Ihr altes Passwort ein.'));
-    if (!pw || pw.length < 6) return alert(t('alert_new_password_length', 'Neues Passwort muss mindestens 6 Zeichen lang sein.'));
+    if (!oldPw) return alert(t('alert_enter_old_password', 'Please enter your old password.'));
+    if (!pw || pw.length < 6) return alert(t('alert_new_password_length', 'New password must be at least 6 characters long.'));
     try {
-        if (!auth.currentUser) return alert(t('alert_no_user_logged_in', 'Kein Benutzer angemeldet.'));
+        if (!auth.currentUser) return alert(t('alert_no_user_logged_in', 'No user logged in.'));
         await updatePassword(auth.currentUser, oldPw, pw);
-        showToast(t('toast_password_changed', 'Passwort erfolgreich geändert'));
+        showToast(t('toast_password_changed', 'Password successfully changed'));
         setValue(newId, '');
         setValue(oldId, '');
     } catch (error) {
         console.error(error);
-        alert(t('alert_password_change_failed', 'Fehler beim Ändern des Passworts: ') + error.message);
+        alert(t('alert_password_change_failed', 'Error changing password: ') + error.message);
     }
 }
 
@@ -1362,38 +1398,38 @@ async function changePassword(isUser = false) {
 async function deleteOwnAccount(suffix = '') {
     const input = $(`delete-account-password${suffix}`);
     const password = input?.value || '';
-    if (!password) return alert(t('delete_account_need_password', 'Bitte gib dein Passwort zur Bestätigung ein.'));
-    if (!confirmAction(t('delete_account_confirm', 'Dein Konto und deine persönlichen Daten werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden. Fortfahren?'))) return;
+    if (!password) return alert(t('delete_account_need_password', 'Please enter your password to confirm.'));
+    if (!confirmAction(t('delete_account_confirm', 'Your account and your personal data will be deleted permanently. This cannot be undone. Continue?'))) return;
     try {
-        await apiJson('/auth/delete-account', 'POST', { password }, t('delete_account_failed', 'Konto konnte nicht gelöscht werden.'));
+        await apiJson('/auth/delete-account', 'POST', { password }, t('delete_account_failed', 'The account could not be deleted.'));
         if (input) input.value = '';
-        alert(t('delete_account_done', 'Dein Konto wurde gelöscht.'));
+        alert(t('delete_account_done', 'Your account has been deleted.'));
         await logout();
         location.hash = '';
         location.reload();
     } catch (err) {
-        alert(err.message || t('delete_account_failed', 'Konto konnte nicht gelöscht werden.'));
+        alert(err.message || t('delete_account_failed', 'The account could not be deleted.'));
     }
 }
 
 // --- Registration code ---
 async function generateNewCode() {
-    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
+    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'You don\'t have permission to manage the registration code.'));
     const newCode = String(100000 + (window.crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
     await attempt(async () => {
         await set(ref(db, 'system/inviteCode'), newCode);
         updateInviteCodeDisplay(newCode);
-    }, t('alert_save_code_failed', 'Neuer Code konnte nicht gespeichert werden.'));
+    }, t('alert_save_code_failed', 'New code could not be saved.'));
 }
 
 async function copyInviteCode() {
-    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'Keine Berechtigung zum Verwalten des Registrierungscodes.'));
+    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'You don\'t have permission to manage the registration code.'));
     const code = inputValue('admin-invite-code') || inputValue('user-invite-code');
     if (!code || code === '------') return;
     await attempt(async () => {
         await navigator.clipboard.writeText(code);
-        showToast(t('toast_code_copied', 'Code kopiert!'));
-    }, t('toast_copy_failed', 'Kopieren fehlgeschlagen'));
+        showToast(t('toast_code_copied', 'Code copied!'));
+    }, t('toast_copy_failed', 'Copy failed'));
 }
 
 // --- Notification preferences & web push ---
@@ -1467,16 +1503,16 @@ function renderNotificationSettings() {
     }).join('');
     const html = `
         <div class="notif-head">
-            <div class="notif-head-title">${t('notif_channels_title', 'Benachrichtigungen')}</div>
-            <div class="notif-head-desc">${t('notif_channels_desc', 'Wähle, worüber du benachrichtigt wirst und welche Nachrichten du bekommst.')}</div>
+            <div class="notif-head-title">${t('notif_channels_title', 'Notifications')}</div>
+            <div class="notif-head-desc">${t('notif_channels_desc', 'Choose how you are notified and which messages you get.')}</div>
         </div>
         <div class="notif-channels">
-            ${channelRow('push', 'bell', t('notif_channel_push_title', 'Push-Benachrichtigungen'), t('notif_channel_push_desc', 'Direkt aufs Handy oder in den Browser'))}
-            ${channelRow('email', 'mail', t('notif_channel_email_title', 'E-Mail'), currentUser.email ? t('notif_channel_email_desc', 'An {email}', { email: escapeHtml(currentUser.email) }) : t('notif_channel_email_desc_none', 'An deine E-Mail-Adresse'))}
+            ${channelRow('push', 'bell', t('notif_channel_push_title', 'Push'), t('notif_channel_push_desc', 'To the installed app (Android app or home screen app)'))}
+            ${channelRow('email', 'mail', t('notif_channel_email_title', 'E-mail'), currentUser.email ? t('notif_channel_email_desc', 'To {email}', { email: escapeHtml(currentUser.email) }) : t('notif_channel_email_desc_none', 'To your e-mail address'))}
         </div>
-        ${!push && !email ? `<div class="notif-off">${svgIcon('bellOff', 18)}<span>${t('notif_all_off', 'Du bekommst keine Benachrichtigungen. Schalte oben Push oder E-Mail ein.')}</span></div>` : `
+        ${!push && !email ? `<div class="notif-off">${svgIcon('bellOff', 18)}<span>${t('notif_all_off', 'You get no notifications. Turn on push or e-mail above.')}</span></div>` : `
         <div class="notif-kinds-head">
-            <span class="notif-kinds-title">${t('notif_kinds_title', 'Was möchtest du bekommen?')}</span>
+            <span class="notif-kinds-title">${t('notif_kinds_title', 'What would you like to get?')}</span>
             ${push && email ? `
             <div class="notif-tabs" role="tablist">
                 ${['push', 'email'].map(key => `<button type="button" role="tab" class="notif-tab${channel === key ? ' is-active' : ''}" aria-selected="${channel === key}" onclick="window.setNotificationTab('${key}')">${svgIcon(key === 'push' ? 'bell' : 'mail', 14)}${t(`notif_tab_${key}`)}</button>`).join('')}
@@ -1495,8 +1531,8 @@ async function saveNotificationSettings(settings) {
     renderNotificationSettings();
     const saved = await attempt(async () => {
         await update(ref(db, 'users/' + currentUser.uid), { notificationSettings, emailNotifications });
-        showToast(t('notification_settings_saved', 'Benachrichtigungseinstellungen gespeichert'));
-    }, t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), { toast: 'error' });
+        showToast(t('notification_settings_saved', 'Notification settings saved'));
+    }, t('alert_settings_save_failed', 'Settings could not be saved.'), { toast: 'error' });
     if (!saved) {
         Object.assign(currentUser, previous);
         renderNotificationSettings();
@@ -1525,7 +1561,12 @@ function updateNotificationPreferencesUI() {
     renderNotificationSettings();
 }
 
-const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+// Push only for the installed app (PWA), never in a browser tab: no permission prompt there and no subscription.
+// iOS / iPadOS offer web push to home screen apps only anyway (16.4+).
+const isInstalledApp = () => window.matchMedia?.('(display-mode: standalone)').matches
+    || window.matchMedia?.('(display-mode: fullscreen)').matches
+    || window.navigator.standalone === true;
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && isInstalledApp();
 
 function urlBase64ToUint8Array(base64String) {
     const base64 = (base64String + '='.repeat((4 - (base64String.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
@@ -1577,7 +1618,7 @@ async function ensurePushNotificationSubscription(interactive = false) {
             await fetch(`${API}/push/subscribe`, {
                 method: 'POST',
                 headers: { ...authHeader, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ subscription: subscription.toJSON(), userAgent: navigator.userAgent })
+                body: JSON.stringify({ subscription: subscription.toJSON(), userAgent: navigator.userAgent, installed: true })
             }).catch(e => console.warn('Push sync error:', e));
         }
     } catch (err) {
@@ -1767,12 +1808,12 @@ async function confirmProfileCrop() {
     const { x, y, scaleX, scaleY } = profileCropper.region();
     const size = Math.round(profileCropper.cropW * Math.min(scaleX, scaleY));
     const blob = await cropToJpeg(profileCropper.img, [x, y, size, size], 256, 256, 0.85);
-    if (!blob) return showToast(t('toast_image_processing_failed', 'Fehler beim Verarbeiten des Bildes.'), 'error');
-    setButtonLoading('btn-confirm-crop', true, t('btn_saving', 'Speichern...'));
+    if (!blob) return showToast(t('toast_image_processing_failed', 'Error processing image.'), 'error');
+    setButtonLoading('btn-confirm-crop', true, t('btn_saving', 'Saving...'));
     try {
-        await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), t('toast_upload_failed_short', 'Upload fehlgeschlagen'));
+        await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), t('toast_upload_failed_short', 'Upload failed'));
         closeModal('profile-crop-modal');
-        showToast(t('toast_profile_pic_saved', 'Profilbild gespeichert!'), 'success');
+        showToast(t('toast_profile_pic_saved', 'Profile picture saved!'), 'success');
         // Pictures are cached by the browser for a few minutes: replace the own entry right away
         const uid = currentUid();
         profilePicCache.delete(uid);
@@ -1780,7 +1821,7 @@ async function confirmProfileCrop() {
         await loadCurrentProfilePicture();
     } catch (e) {
         console.error('Profile upload error:', e);
-        showToast(t('toast_upload_failed', 'Fehler beim Hochladen: ') + e.message, 'error');
+        showToast(t('toast_upload_failed', 'Upload failed: ') + e.message, 'error');
     } finally {
         setButtonLoading('btn-confirm-crop', false, null);
     }
@@ -1809,12 +1850,12 @@ let currentSysSettingsTab = 'accounts';
 let accountsSearchQuery = '';
 
 const DEFAULT_PERMISSIONS = [
-    { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
-    { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
-    { id: 'manage_registration_code', name: 'Registrierungscode verwalten', description: 'Erlaubt das Einsehen, Kopieren und Neugenerieren des Registrierungscodes für neue Mitglieder' },
-    { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-    { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
-    { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
+    { id: 'view_finances', name: 'Finance management (read only)', description: 'Allows viewing balances, history, transactions and reports without editing rights' },
+    { id: 'manage_finances', name: 'Finance management (full access)', description: 'Allows recording, editing, booking and deleting payments, donations, expenses and standing orders' },
+    { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
+    { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
+    { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
+    { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' }
 ];
 
 // Several views ask for the groups during one refresh: they share the request that is already running
@@ -1870,11 +1911,11 @@ function renderSystemGroups() {
                 ${actions}
             </div>
         </div>`;
-    listEl.innerHTML = item(activeGroupFilter === null, 'window.filterByGroup(null)', '👥', `<span data-i18n="group_all_users">${t('group_all_users', 'Alle Benutzer')}</span>`, Array.isArray(users) ? users.length : 0)
+    listEl.innerHTML = item(activeGroupFilter === null, 'window.filterByGroup(null)', '👥', `<span data-i18n="group_all_users">${t('group_all_users', 'All Users')}</span>`, Array.isArray(users) ? users.length : 0)
         + groupList().map(g => item(
             activeGroupFilter === g.id || activeGroupFilter === g.name,
             `window.filterByGroup(${jsArg(g.id)})`, '🏷️', `<span>${escapeHtml(g.name)}</span>`, g.memberCount !== undefined ? g.memberCount : 0,
-            `<button type="button" class="nc-group-action-btn" title="${t('modal_manage_group_title', 'Gruppe verwalten')}" onclick="event.stopPropagation(); window.openManageGroupModal(${jsArg(g.id)});">${svgIcon('gear')}</button>`
+            `<button type="button" class="nc-group-action-btn" title="${t('modal_manage_group_title', 'Manage Group')}" onclick="event.stopPropagation(); window.openManageGroupModal(${jsArg(g.id)});">${svgIcon('gear')}</button>`
         )).join('');
 }
 
@@ -1894,12 +1935,12 @@ async function submitQuickAddGroup() {
     const name = input?.value.trim();
     if (!name) return;
     try {
-        await apiJson('/admin/groups', 'POST', { name, permissions: [] }, t('admin_group_create_failed', 'Fehler beim Erstellen der Gruppe'));
+        await apiJson('/admin/groups', 'POST', { name, permissions: [] }, t('admin_group_create_failed', 'Failed to create the group'));
         input.value = '';
-        showToast(t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
+        showToast(t('toast_group_created', 'Group created successfully'), 'success');
         await refreshGroupsAndUsers(false);
     } catch (err) {
-        alert(err.message || t('admin_group_create_failed', 'Fehler beim Erstellen der Gruppe'));
+        alert(err.message || t('admin_group_create_failed', 'Failed to create the group'));
     }
 }
 
@@ -1915,14 +1956,14 @@ const checkItem = (prefix, cbClass, value, checked, name, desc) => `
 function openGroupModal(group) {
     setValue('manage-group-id', group ? group.id : '');
     setValue('manage-group-name', group ? group.name : '');
-    setText('manage-group-modal-title', group ? t('modal_manage_group_title', 'Gruppe verwalten') : t('modal_create_group_title', 'Neue Gruppe erstellen'));
+    setText('manage-group-modal-title', group ? t('modal_manage_group_title', 'Manage Group') : t('modal_create_group_title', 'Create new group'));
     show('btn-delete-group', !!group, 'inline-block');
     const list = $('manage-group-permissions-list');
     if (list) {
         const active = group?.permissions || [];
         list.innerHTML = systemPermissions.length
             ? systemPermissions.map(p => checkItem('nc-permission', 'group-permission-cb', p.id, active.includes(p.id), t(`perm_${p.id}`, p.name), escapeHtml(t(`perm_${p.id}_desc`, p.description || '')))).join('')
-            : `<div style="color: var(--text-secondary); font-size: 0.85rem;">${t('admin_no_permissions', 'Keine Berechtigungs-Definitionen gefunden.')}</div>`;
+            : `<div style="color: var(--text-secondary); font-size: 0.85rem;">${t('admin_no_permissions', 'No permission definitions found.')}</div>`;
     }
     openModal('manage-group-modal');
 }
@@ -1930,42 +1971,42 @@ function openGroupModal(group) {
 async function submitSaveGroup() {
     const id = inputValue('manage-group-id');
     const name = inputValue('manage-group-name').trim();
-    if (!name) return alert(t('admin_group_name_required', 'Bitte Gruppennamen eingeben.'));
+    if (!name) return alert(t('admin_group_name_required', 'Please enter a group name.'));
     await attempt(async () => {
         const permissions = checkedValues('#manage-group-permissions-list .group-permission-cb');
-        await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, t('admin_group_save_failed', 'Fehler beim Speichern der Gruppe'));
+        await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, t('admin_group_save_failed', 'Failed to save the group'));
         closeModal('manage-group-modal');
-        showToast(id ? t('toast_group_updated', 'Gruppe erfolgreich aktualisiert') : t('toast_group_created', 'Gruppe erfolgreich erstellt'), 'success');
+        showToast(id ? t('toast_group_updated', 'Group updated successfully') : t('toast_group_created', 'Group created successfully'), 'success');
         await refreshGroupsAndUsers();
-    }, err => err.message || t('admin_group_save_failed', 'Fehler beim Speichern der Gruppe'));
+    }, err => err.message || t('admin_group_save_failed', 'Failed to save the group'));
 }
 
 async function deleteCurrentGroup() {
     const id = inputValue('manage-group-id');
-    if (!id || !confirmAction(t('confirm_delete_group', 'Möchten Sie die Gruppe wirklich löschen? Die Gruppe wird von allen Benutzern entfernt.'))) return;
+    if (!id || !confirmAction(t('confirm_delete_group', 'Are you sure you want to delete this group? It will be removed from all users.'))) return;
     await attempt(async () => {
-        await apiJson(`/admin/groups/${id}`, 'DELETE', undefined, t('admin_group_delete_failed', 'Fehler beim Löschen der Gruppe'));
+        await apiJson(`/admin/groups/${id}`, 'DELETE', undefined, t('admin_group_delete_failed', 'Failed to delete the group'));
         if (activeGroupFilter === id) activeGroupFilter = null;
         closeModal('manage-group-modal');
-        showToast(t('toast_group_deleted', 'Gruppe erfolgreich gelöscht'), 'success');
+        showToast(t('toast_group_deleted', 'Group deleted successfully'), 'success');
         await refreshGroupsAndUsers();
-    }, err => err.message || t('admin_group_delete_failed', 'Fehler beim Löschen der Gruppe'));
+    }, err => err.message || t('admin_group_delete_failed', 'Failed to delete the group'));
 }
 
 function openAssignGroupModal(uid) {
     const user = users.find(u => u.uid === uid);
     if (!user) return;
     setValue('assign-group-uid', uid);
-    setText('assign-group-user-display', `${fullName(user) || user.email || t('admin_user_fallback', 'Benutzer')} (${user.email || t('admin_no_login', 'Kein Login')})`);
+    setText('assign-group-user-display', `${fullName(user) || user.email || t('admin_user_fallback', 'User')} (${user.email || t('admin_no_login', 'No login')})`);
     const list = $('assign-group-checklist');
     if (!list) return;
     const userGroups = Array.isArray(user.groups) ? user.groups : [];
     list.innerHTML = groupList().length
         ? systemGroups.map(g => {
             const perms = Array.isArray(g.permissions) ? g.permissions : [];
-            return checkItem('nc-group-check', 'user-group-assign-cb', g.id, userGroups.includes(g.id) || userGroups.includes(g.name), g.name, perms.length > 0 ? t('admin_group_permission_count', '{count} Berechtigungen', { count: perms.length }) : t('admin_group_default_access', 'Standard-Zugriff'));
+            return checkItem('nc-group-check', 'user-group-assign-cb', g.id, userGroups.includes(g.id) || userGroups.includes(g.name), g.name, perms.length > 0 ? t('admin_group_permission_count', '{count} permissions', { count: perms.length }) : t('admin_group_default_access', 'Default access'));
         }).join('')
-        : `<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">${t('admin_no_groups', 'Keine Gruppen vorhanden. Erstellen Sie zuerst eine Gruppe.')}</div>`;
+        : `<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 10px 0;">${t('admin_no_groups', 'No groups yet. Create a group first.')}</div>`;
     openModal('assign-group-modal');
 }
 
@@ -1974,16 +2015,16 @@ async function submitAssignGroups() {
     if (!uid) return;
     const groups = checkedValues('#assign-group-checklist .user-group-assign-cb');
     await attempt(async () => {
-        await apiJson(`/admin/users/${uid}/groups`, 'PUT', { groups }, t('admin_groups_assign_failed', 'Fehler beim Zuweisen der Gruppen'));
+        await apiJson(`/admin/users/${uid}/groups`, 'PUT', { groups }, t('admin_groups_assign_failed', 'Failed to assign the groups'));
         const localUser = users.find(u => u.uid === uid);
         if (localUser) {
             localUser.groups = groups;
             localUser.groupObjects = groups.map(gid => findGroup(gid) || { id: gid, name: gid });
         }
         closeModal('assign-group-modal');
-        showToast(t('toast_user_groups_updated', 'Benutzergruppen erfolgreich aktualisiert'), 'success');
+        showToast(t('toast_user_groups_updated', 'User groups updated successfully'), 'success');
         await refreshGroupsAndUsers(currentUser?.uid === uid);
-    }, err => err.message || t('admin_groups_assign_failed', 'Fehler beim Zuweisen der Gruppen'));
+    }, err => err.message || t('admin_groups_assign_failed', 'Failed to assign the groups'));
 }
 
 async function reloadUsersData() {
@@ -2019,7 +2060,7 @@ function switchSysSettingsTab(tabName) {
 }
 
 function renderAccountRow(u) {
-    const name = fullName(u) || t('status_unknown', 'Unbekannt');
+    const name = fullName(u) || t('status_unknown', 'Unknown');
     const uid = escapeHtml(u.uid);
     const isOwner = u.owner === true || u.superAdmin === true;
     const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
@@ -2030,7 +2071,7 @@ function renderAccountRow(u) {
         : (Array.isArray(u.groups) ? u.groups.map(gid => findGroup(gid) || { id: gid, name: gid, permissions: [] }) : []);
     const groupBadges = groups.length > 0
         ? groups.map(g => `<span class="nc-badge-group" style="margin: 2px;">${escapeHtml(g.name)}</span>`).join(' ')
-        : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('admin_assign_short', 'Zuweisen')}</span>`;
+        : `<span class="nc-badge-group" style="opacity:0.6; border-style:dashed; margin: 2px;">+ ${t('admin_assign_short', 'Assign')}</span>`;
     const pays = u.pays !== false;
     return `
         <tr data-uid="${uid}">
@@ -2046,14 +2087,14 @@ function renderAccountRow(u) {
                     <div class="nc-user-info">
                         <div class="nc-user-name">
                             <span>${escapeHtml(name)}</span>
-                            ${isOwner ? `<span class="nc-badge-owner">👑 ${t('badge_owner', 'Eigentümer')}</span>` : ''}
-                            ${u.isClaimed === false ? `<span class="nc-badge-group" style="background: rgba(245, 158, 11, 0.12); color: #d97706; border-color: rgba(245, 158, 11, 0.3); font-size: 0.72rem; padding: 2px 6px;">⏳ ${t('badge_unclaimed', 'Nicht registriert')}</span>` : ''}
+                            ${isOwner ? `<span class="nc-badge-owner">👑 ${t('badge_owner', 'Owner')}</span>` : ''}
+                            ${u.isClaimed === false ? `<span class="nc-badge-group" style="background: rgba(245, 158, 11, 0.12); color: #d97706; border-color: rgba(245, 158, 11, 0.3); font-size: 0.72rem; padding: 2px 6px;">⏳ ${t('badge_unclaimed', 'Not Registered')}</span>` : ''}
                         </div>
                     </div>
                 </div>
             </td>
-            <td style="color: var(--text-secondary); font-size: 0.88rem;">${u.email ? escapeHtml(u.email) : `<span style="opacity: 0.5; font-style: italic;">${t('accounts_no_login', 'Kein Login hinterlegt')}</span>`}</td>
-            <td style="cursor: pointer;" onclick="window.openAssignGroupModal(${jsArg(uid)})" title="${t('modal_assign_group_title', 'Gruppen zuweisen')}">
+            <td style="color: var(--text-secondary); font-size: 0.88rem;">${u.email ? escapeHtml(u.email) : `<span style="opacity: 0.5; font-style: italic;">${t('accounts_no_login', 'No login credentials')}</span>`}</td>
+            <td style="cursor: pointer;" onclick="window.openAssignGroupModal(${jsArg(uid)})" title="${t('modal_assign_group_title', 'Assign Groups')}">
                 ${groupBadges}
             </td>
             <td>
@@ -2061,8 +2102,8 @@ function renderAccountRow(u) {
             </td>
             <td>
                 <select class="nc-select-pays" onchange="window.toggleUserPays(${jsArg(uid)}, this.value === 'yes')">
-                    <option value="yes" ${pays ? 'selected' : ''}>${t('option_yes', 'Ja')}</option>
-                    <option value="no" ${!pays ? 'selected' : ''}>${t('option_no', 'Nein')}</option>
+                    <option value="yes" ${pays ? 'selected' : ''}>${t('option_yes', 'Yes')}</option>
+                    <option value="no" ${!pays ? 'selected' : ''}>${t('option_no', 'No')}</option>
                 </select>
             </td>
             <td>
@@ -2073,8 +2114,8 @@ function renderAccountRow(u) {
             </td>
             <td>
                 <div class="nc-actions-cell">
-                    <button class="nc-icon-btn" title="${t('btn_reset_password', 'Passwort zurücksetzen')}" onclick="window.openResetPasswordModal(${jsArg(uid)}, ${jsArg(name)})">${svgIcon('lock', 15)}</button>
-                    ${!isOwner && u.uid !== currentUser?.uid ? `<button class="nc-icon-btn danger" title="${t('btn_delete', 'Löschen')}" onclick="window.deleteUserAccount(${jsArg(uid)})">${svgIcon('trash', 15)}</button>` : ''}
+                    <button class="nc-icon-btn" title="${t('btn_reset_password', 'Reset Password')}" onclick="window.openResetPasswordModal(${jsArg(uid)}, ${jsArg(name)})">${svgIcon('lock', 15)}</button>
+                    ${!isOwner && u.uid !== currentUser?.uid ? `<button class="nc-icon-btn danger" title="${t('btn_delete', 'Delete')}" onclick="window.deleteUserAccount(${jsArg(uid)})">${svgIcon('trash', 15)}</button>` : ''}
                 </div>
             </td>
         </tr>`;
@@ -2086,7 +2127,7 @@ function renderAccountsTab() {
     if (!tbody || !isSuperAdminUser()) return;
     const emptyRow = text => `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">${text}</td></tr>`;
     if (!users || users.length === 0) {
-        tbody.innerHTML = emptyRow(t('admin_no_users', 'Keine Benutzer gefunden.'));
+        tbody.innerHTML = emptyRow(t('admin_no_users', 'No users found.'));
         return;
     }
     const activeGroup = activeGroupFilter ? findGroup(activeGroupFilter) : null;
@@ -2102,17 +2143,17 @@ function renderAccountsTab() {
         banner.style.display = activeGroup ? 'flex' : 'none';
         if (activeGroup) {
             setText('nc-active-group-name', activeGroup.name);
-            setText('nc-active-group-count', t('admin_group_user_count', '({count} Benutzer)', { count: filtered.length }));
+            setText('nc-active-group-count', t('admin_group_user_count', '({count} users)', { count: filtered.length }));
         }
     }
-    tbody.innerHTML = filtered.length ? filtered.map(renderAccountRow).join('') : emptyRow(t('admin_no_matching_users', 'Keine passenden Benutzer gefunden.'));
+    tbody.innerHTML = filtered.length ? filtered.map(renderAccountRow).join('') : emptyRow(t('admin_no_matching_users', 'No matching users found.'));
 }
 
 async function saveUserSetting(uid, field, payload, applyLocal, successMsg, errorMsg, logMsg) {
     if (!isSuperAdminUser()) return;
     try {
         const res = await api(`/admin/users/${uid}/${field}`, 'PUT', payload);
-        if (!res.ok) throw new Error((await res.text()) || t('toast_save_failed', 'Speichern fehlgeschlagen'));
+        if (!res.ok) throw new Error((await res.text()) || t('toast_save_failed', 'Saving failed'));
         applyLocal(users.find(u => u.uid === uid));
         renderAccountsTab();
         if (field !== 'admin') renderPeople();
@@ -2131,11 +2172,11 @@ const updateUserMemberSince = (uid, memberSince) => saveUserSetting(uid, 'member
         linked.memberSince = linked.originalMemberSince = memberSince;
         if (linked.data) linked.data.memberSince = linked.data.originalMemberSince = memberSince;
     }
-}, t('toast_member_since_updated', 'Mitgliedsdatum aktualisiert'), t('toast_member_since_failed', 'Mitgliedsdatum konnte nicht gespeichert werden'), 'Fehler beim Speichern des Mitgliedsdatums:');
+}, t('toast_member_since_updated', 'Membership date updated'), t('toast_member_since_failed', 'Membership date could not be saved'), 'Saving the membership date failed:');
 
 const toggleUserSystemAdmin = (uid, isAdmin) => saveUserSetting(uid, 'admin', { admin: !!isAdmin }, localUser => {
     if (localUser) localUser.admin = !!isAdmin;
-}, t('toast_admin_updated', 'System-Admin Rechte aktualisiert'), t('toast_user_rights_failed', 'Benutzerrechte konnten nicht gespeichert werden'), 'Fehler beim Speichern der Admin-Rolle:');
+}, t('toast_admin_updated', 'System Admin privileges updated'), t('toast_user_rights_failed', 'Failed to save user rights'), 'Saving the admin role failed:');
 
 const toggleUserPays = (uid, pays) => saveUserSetting(uid, 'pays', { pays: !!pays }, localUser => {
     if (localUser) localUser.pays = !!pays;
@@ -2144,7 +2185,7 @@ const toggleUserPays = (uid, pays) => saveUserSetting(uid, 'pays', { pays: !!pay
         linked.pays = !!pays;
         if (linked.data) linked.data.pays = !!pays;
     }
-}, t('toast_pays_updated', 'Zahlungsstatus aktualisiert'), t('toast_pays_failed', 'Beitragsstatus konnte nicht gespeichert werden'), 'Fehler beim Speichern des Beitragsstatus:');
+}, t('toast_pays_updated', 'Payment status updated'), t('toast_pays_failed', 'Fee status could not be saved'), 'Saving the fee status failed:');
 
 function openCreateUserModal() {
     ['new-user-first-name', 'new-user-last-name', 'new-user-email', 'new-user-password'].forEach(id => setValue(id, ''));
@@ -2158,8 +2199,8 @@ function openCreateUserModal() {
 async function submitCreateUser() {
     const [firstName, lastName, email] = ['new-user-first-name', 'new-user-last-name', 'new-user-email'].map(id => inputValue(id).trim());
     const password = inputValue('new-user-password');
-    if (!firstName || !lastName) return alert(t('admin_user_name_required', 'Bitte Vor- und Nachnamen ausfüllen.'));
-    if (password && password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
+    if (!firstName || !lastName) return alert(t('admin_user_name_required', 'Please enter first and last name.'));
+    if (password && password.length < 6) return alert(t('setup_admin_password_invalid', 'Password must be at least 6 characters long.'));
     await attempt(async () => {
         await apiJson('/admin/users', 'POST', {
             firstName, lastName, email, password,
@@ -2168,11 +2209,11 @@ async function submitCreateUser() {
             status: inputValue('new-user-status') || 'vollverdiener',
             memberSince: inputValue('new-user-start') || getTodayStr(),
             groups: ['Standard']
-        }, t('admin_user_create_failed_short', 'Erstellen fehlgeschlagen'));
+        }, t('admin_user_create_failed_short', 'Creation failed'));
         await loadData();
         closeModal('create-user-modal');
-        showToast(t('toast_user_created', 'Benutzer erfolgreich erstellt'));
-    }, err => err.message || t('admin_user_create_failed', 'Fehler beim Erstellen des Benutzers'));
+        showToast(t('toast_user_created', 'User created successfully'));
+    }, err => err.message || t('admin_user_create_failed', 'Failed to create the user'));
 }
 
 function openResetPasswordModal(uid, name) {
@@ -2184,23 +2225,23 @@ function openResetPasswordModal(uid, name) {
 
 async function submitResetPassword() {
     const password = inputValue('reset-password-new');
-    if (password.length < 6) return alert(t('setup_admin_password_invalid', 'Passwort muss mindestens 6 Zeichen lang sein.'));
+    if (password.length < 6) return alert(t('setup_admin_password_invalid', 'Password must be at least 6 characters long.'));
     await attempt(async () => {
-        await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, t('admin_password_reset_failed_short', 'Passwort-Zurücksetzen fehlgeschlagen'));
+        await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, t('admin_password_reset_failed_short', 'Password reset failed'));
         closeModal('reset-password-modal');
-        showToast(t('toast_password_reset', 'Passwort erfolgreich geändert'));
-    }, err => err.message || t('admin_password_reset_failed', 'Fehler beim Zurücksetzen des Passworts'));
+        showToast(t('toast_password_reset', 'Password changed successfully'));
+    }, err => err.message || t('admin_password_reset_failed', 'Failed to reset the password'));
 }
 
 async function deleteUserAccount(uid) {
-    if (!confirmAction(t('confirm_delete_user', 'Möchten Sie dieses Benutzerkonto wirklich löschen?'))) return;
+    if (!confirmAction(t('confirm_delete_user', 'Are you sure you want to delete this user account?'))) return;
     await attempt(async () => {
-        await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, t('toast_delete_failed_short', 'Löschen fehlgeschlagen'));
+        await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, t('toast_delete_failed_short', 'Deletion failed'));
         users = users.filter(u => u.uid !== uid);
         renderAccountsTab();
         renderUnlinkedUsers();
-        showToast(t('toast_user_deleted', 'Benutzer erfolgreich gelöscht'));
-    }, err => err.message || t('admin_user_delete_failed', 'Fehler beim Löschen des Benutzers'));
+        showToast(t('toast_user_deleted', 'User deleted successfully'));
+    }, err => err.message || t('admin_user_delete_failed', 'Failed to delete the user'));
 }
 
 // --- System, AI & branding configuration ---
@@ -2225,21 +2266,22 @@ async function loadAdvancedSystemConfig() {
         advancedConfigAppName = data.appName || null;
         setValue('super-admin-app-name', data.appName || '');
         setValue('super-admin-public-url', data.publicUrl || '');
+        setValue('super-admin-default-language', data.defaultLanguage || BASE_LANGUAGE);
         SMTP_FIELDS.forEach(key => setValue(`super-admin-smtp-${key}`, data.smtp?.[key] || ''));
         $('super-admin-smtp-secure').checked = !!data.smtp?.secure;
         advancedConfigLoaded = true;
         await loadAiConfig();
-    }, t('toast_config_load_failed', 'Erweiterte Konfiguration konnte nicht geladen werden'), { toast: 'error' });
+    }, t('toast_config_load_failed', 'Advanced configuration could not be loaded'), { toast: 'error' });
 }
 
 async function saveAdvancedSystemConfig() {
     if (!isSuperAdminUser()) return;
     await attempt(async () => {
         const appName = inputValue('super-admin-app-name').trim() || advancedConfigAppName || config.appName;
-        if (!appName) throw new Error(t('admin_app_name_missing', 'App-Name konnte nicht ermittelt werden. Dies kann auf fehlende Konfigurationsdaten hinweisen. Bitte Seite neu laden.'));
+        if (!appName) throw new Error(t('admin_app_name_missing', 'The app name could not be determined. Configuration data may be missing. Please reload the page.'));
         const publicUrl = inputValue('super-admin-public-url').trim().replace(/\/+$/, '');
-        if (publicUrl && !/^https?:\/\/[^\s/]+/i.test(publicUrl)) throw new Error(t('admin_public_url_invalid', 'Die öffentliche Adresse muss mit https:// beginnen.'));
-        const payload = { appName, publicUrl, smtp: null };
+        if (publicUrl && !/^https?:\/\/[^\s/]+/i.test(publicUrl)) throw new Error(t('admin_public_url_invalid', 'The public address has to start with https://.'));
+        const payload = { appName, publicUrl, defaultLanguage: inputValue('super-admin-default-language') || BASE_LANGUAGE, smtp: null };
         const host = inputValue('super-admin-smtp-host').trim();
         if (host) {
             const port = inputValue('super-admin-smtp-port').trim();
@@ -2250,7 +2292,7 @@ async function saveAdvancedSystemConfig() {
                 user: inputValue('super-admin-smtp-user').trim(),
                 pass: inputValue('super-admin-smtp-pass')
             };
-            if (!payload.smtp.port || Number.isNaN(payload.smtp.port)) throw new Error(t('admin_smtp_port_invalid', 'SMTP Port ist ungültig.'));
+            if (!payload.smtp.port || Number.isNaN(payload.smtp.port)) throw new Error(t('admin_smtp_port_invalid', 'The SMTP port is invalid.'));
         }
         const res = await api('/admin/system-config', 'PUT', payload);
         if (!res.ok) throw new Error(await readErrorText(res));
@@ -2259,8 +2301,8 @@ async function saveAdvancedSystemConfig() {
         setText('app-name-header', appName);
         setText('login-app-name', appName);
         document.title = appName;
-        showToast(t('toast_config_saved', 'System-Konfiguration gespeichert'));
-    }, err => t('alert_config_save_failed', 'Erweiterte Konfiguration konnte nicht gespeichert werden: ') + (err.message || t('error_unknown', 'Unbekannter Fehler')));
+        showToast(t('toast_config_saved', 'System configuration saved'));
+    }, err => t('alert_config_save_failed', 'Could not save advanced configuration: ') + (err.message || t('error_unknown', 'Unknown error')));
 }
 
 const AI_FIELDS = { baseUrl: 'super-admin-ai-base-url', apiKey: 'super-admin-ai-api-key', model: 'super-admin-ai-model' };
@@ -2293,26 +2335,26 @@ async function saveAiConfig() {
         await apiJson('/admin/ai-config', 'PUT', payload);
         aiEnabled = payload.enabled;
         updateAiNavVisibility();
-        showToast(t('toast_ai_saved', 'KI-Einstellungen gespeichert'));
-    }, err => t('alert_ai_save_failed', 'KI-Einstellungen konnten nicht gespeichert werden: ') + (err.message || t('error_unknown', 'Unbekannter Fehler')));
+        showToast(t('toast_ai_saved', 'AI settings saved'));
+    }, err => t('alert_ai_save_failed', 'Could not save AI settings: ') + (err.message || t('error_unknown', 'Unknown error')));
 }
 
 async function uploadChurchLogo() {
     if (!isSuperAdminUser()) return;
     const fileInput = $('super-admin-logo-file');
-    if (!fileInput?.files?.length) return alert(t('alert_please_select_svg', 'Bitte eine SVG-Datei auswählen.'));
+    if (!fileInput?.files?.length) return alert(t('alert_please_select_svg', 'Please select an SVG file.'));
     try {
         const res = await api('/admin/logo', 'POST', toFormData({ logo: fileInput.files[0] }));
         if (!res.ok) throw new Error((await readErrorText(res)) || `HTTP ${res.status}`);
         const cacheBust = `?v=${Date.now()}`;
         document.querySelectorAll("img[src*='church-logo.svg']").forEach(img => { img.src = `assets/church-logo.svg${cacheBust}`; });
         fileInput.value = '';
-        showToast(t('toast_logo_updated', 'Logo aktualisiert'));
+        showToast(t('toast_logo_updated', 'Logo updated'));
     } catch (err) {
-        const errMsg = err.message || err.code || t('error_unknown', 'Unbekannter Fehler');
+        const errMsg = err.message || err.code || t('error_unknown', 'Unknown error');
         console.error('Fehler beim Logo-Upload:', errMsg, err);
-        alert(t('alert_logo_update_failed', 'Logo konnte nicht aktualisiert werden: ') + errMsg);
-        showToast(t('toast_logo_update_failed', 'Logo konnte nicht aktualisiert werden'), 'error');
+        alert(t('alert_logo_update_failed', 'Logo could not be updated: ') + errMsg);
+        showToast(t('toast_logo_update_failed', 'Logo could not be updated'), 'error');
     }
 }
 
@@ -2325,8 +2367,8 @@ async function autoSaveRate(fieldId) {
     await attempt(async () => {
         await set(ref(db, 'settings'), settings);
         await renderViews();
-        showToast(t('toast_settings_saved', 'Einstellungen gespeichert'));
-    }, t('alert_settings_save_failed', 'Einstellungen konnten nicht gespeichert werden.'), { toast: 'error' });
+        showToast(t('toast_settings_saved', 'Settings saved'));
+    }, t('alert_settings_save_failed', 'Settings could not be saved.'), { toast: 'error' });
 }
 
 Object.assign(window, {
@@ -2486,10 +2528,10 @@ function renderSuperAdminPaymentEditor() {
 
 // --- Admin: pending requests & unlinked accounts ---
 const REQUEST_TYPES = {
-    payment: { label: 'Zahlung', icon: 'coin' },
-    status: { label: 'Statusänderung', icon: 'history' },
-    expense: { label: 'Ausgabe', icon: 'receipt' },
-    standing_order: { label: 'Dauerauftrag', icon: 'repeat' }
+    payment: { label: 'Payment', icon: 'coin' },
+    status: { label: 'Status change', icon: 'history' },
+    expense: { label: 'Expense', icon: 'receipt' },
+    standing_order: { label: 'Standing order', icon: 'repeat' }
 };
 // Own request: by author, or by the own person record (decisions used to overwrite userId with the treasurer's id)
 function isOwnRequest(req) {
@@ -2514,7 +2556,7 @@ const requestPersonUid = req => findPerson(req.personId)?.uid || req.userId || n
 function requestAmount(req, statusLabels = getStatusLabels(false)) {
     const data = req.data || {};
     if (req.type === 'status') return escapeHtml(statusLabels[data.newStatus] || data.newStatus || '');
-    if (req.type === 'standing_order') return `${euro(data.amount)} ${t('request_per_month', '/ Monat')}`;
+    if (req.type === 'standing_order') return `${euro(data.amount)} ${t('request_per_month', '/ month')}`;
     return euro(data.amount);
 }
 
@@ -2522,13 +2564,13 @@ function requestDateLabel(req) {
     const date = req.data?.date;
     if (!date) return '';
     return (req.type === 'status' || req.type === 'standing_order')
-        ? t('request_from_date', 'ab {date}', { date: formatDateFast(date) })
-        : t('request_on_date', 'am {date}', { date: formatDateFast(date) });
+        ? t('request_from_date', 'from {date}', { date: formatDateFast(date) })
+        : t('request_on_date', 'on {date}', { date: formatDateFast(date) });
 }
 
 function requestRow(req, statusLabels) {
     const data = req.data || {};
-    const name = req.personName || t('status_unknown', 'Unbekannt');
+    const name = req.personName || t('status_unknown', 'Unknown');
     const text = (req.type === 'expense' ? data.description : data.note) || requestDateLabel(req);
     return `
         <button type="button" class="home-msg-row req-row" style="--req-color: ${REQUEST_COLORS[req.type] || 'var(--primary)'};" data-id="${escapeHtml(req.id)}" onclick="window.openRequestDetail(this.dataset.id)">
@@ -2552,12 +2594,12 @@ function requestsCard(ctx, items, total) {
         <div class="home-msg-card req-card">
             <div class="home-msg-head">
                 <span class="home-msg-icon req-card-icon">${svgIcon('fileText', 18)}</span>
-                <span class="home-msg-title">${t('requests_open_title', 'Offene Anfragen')}</span>
+                <span class="home-msg-title">${t('requests_open_title', 'Open requests')}</span>
                 <span class="home-msg-total req-card-total">${formatBadgeCount(total)}</span>
-                ${ctx === 'home' ? `<button type="button" class="home-msg-all" onclick="window.switchTab('finances')">${t('home_messages_all', 'Alle')}${svgIcon('chevronRight', 14, 2.5)}</button>` : ''}
+                ${ctx === 'home' ? `<button type="button" class="home-msg-all" onclick="window.switchTab('finances')">${t('home_messages_all', 'All')}${svgIcon('chevronRight', 14, 2.5)}</button>` : ''}
             </div>
             <div class="home-msg-list">${items.map(req => requestRow(req, statusLabels)).join('')}</div>
-            ${more > 0 ? `<button type="button" class="home-msg-more req-more" onclick="window.switchTab('finances')">${t('requests_more', '+{count} weitere Anfragen', { count: more })}</button>` : ''}
+            ${more > 0 ? `<button type="button" class="home-msg-more req-more" onclick="window.switchTab('finances')">${t('requests_more', '+{count} more requests', { count: more })}</button>` : ''}
         </div>`;
 }
 
@@ -2585,7 +2627,7 @@ function openRequestDetail(reqId) {
     const data = req.data || {};
     const color = REQUEST_COLORS[req.type] || 'var(--primary)';
     const type = REQUEST_TYPES[req.type] || { icon: 'file' };
-    const name = req.personName || t('status_unknown', 'Unbekannt');
+    const name = req.personName || t('status_unknown', 'Unknown');
     const badge = $('reqd-badge');
     if (badge) {
         badge.style.setProperty('--req-color', color);
@@ -2606,11 +2648,11 @@ function openRequestDetail(reqId) {
             <span class="reqd-when">${requestDateLabel(req)}</span>
         </div>
         <div class="reqd-rows">
-            ${isOwnRequest(req) && !canApproveRequests() ? '' : row('person', t('request_detail_person', 'Von'), escapeHtml(name))}
-            ${text ? row(req.type === 'expense' ? 'receipt' : 'fileText', req.type === 'expense' ? t('request_detail_purpose', 'Wofür') : t('request_detail_note', 'Notiz'), escapeHtml(text)) : ''}
-            ${req.timestamp ? row('clock', t('request_detail_received', 'Eingegangen'), escapeHtml(dateTimeFormatter.format(new Date(req.timestamp)))) : ''}
+            ${isOwnRequest(req) && !canApproveRequests() ? '' : row('person', t('request_detail_person', 'From'), escapeHtml(name))}
+            ${text ? row(req.type === 'expense' ? 'receipt' : 'fileText', req.type === 'expense' ? t('request_detail_purpose', 'Purpose') : t('request_detail_note', 'Note'), escapeHtml(text)) : ''}
+            ${req.timestamp ? row('clock', t('request_detail_received', 'Received'), escapeHtml(dateTimeFormatter.format(new Date(req.timestamp)))) : ''}
             ${req.status !== 'pending' || !canApproveRequests() ? row('check', t('request_detail_status', 'Status'), `<span class="reqd-state" style="--state-color: ${(USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending)[0]};">${escapeHtml(requestStateLabel(req))}</span>`) : ''}
-            ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Grund'), escapeHtml(req.rejectionReason || t('user_no_reason', 'Keine Begründung'))) : ''}
+            ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Reason'), escapeHtml(req.rejectionReason || t('user_no_reason', 'No reason given'))) : ''}
         </div>
         ${data.receipt ? `<div class="reqd-receipts" id="reqd-receipts"></div>` : ''}`;
     if (data.receipt) viewRequestReceipt(data.receipt, 'reqd-receipts');
@@ -2645,7 +2687,7 @@ function renderUnlinkedUsers() {
     const options = people.filter(p => !p.uid).map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
     target.innerHTML = `
         <div class="card" style="margin-bottom:20px;">
-            <div class="card-header">${t('unlinked_title', '🧩 Nicht zugeordnete Benutzer ({count})', { count: unlinked.length })}</div>
+            <div class="card-header">${t('unlinked_title', '🧩 Unlinked Users ({count})', { count: unlinked.length })}</div>
             <div class="card-body">
                 ${unlinked.map(u => `
                     <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
@@ -2654,10 +2696,10 @@ function renderUnlinkedUsers() {
                             <div style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(u.email || '')}</div>
                         </div>
                         <select id="link-select-${u.uid}" class="form-select" style="flex:1; min-width:220px;">
-                            <option value="">${t('unlinked_select_person', 'Person auswählen')}</option>
+                            <option value="">${t('unlinked_select_person', 'Select Person')}</option>
                             ${options}
                         </select>
-                        <button class="btn btn-primary btn-small" style="width:auto;" data-uid="${escapeHtml(u.uid)}" onclick="assignUserToPerson(this.dataset.uid)">${t('unlinked_assign_btn', 'Zuordnen')}</button>
+                        <button class="btn btn-primary btn-small" style="width:auto;" data-uid="${escapeHtml(u.uid)}" onclick="assignUserToPerson(this.dataset.uid)">${t('unlinked_assign_btn', 'Assign')}</button>
                     </div>`).join('')}
             </div>
         </div>`;
@@ -2667,15 +2709,15 @@ async function assignUserToPerson(uid) {
     const select = $(`link-select-${uid}`);
     if (!select) return;
     const person = select.value && findPerson(select.value);
-    if (!select.value) return alert(t('unlinked_alert_select_person', 'Bitte eine Person auswählen.'));
-    if (!person) return alert(t('toast_person_not_found', 'Person nicht gefunden.'));
+    if (!select.value) return alert(t('unlinked_alert_select_person', 'Please select a person.'));
+    if (!person) return alert(t('toast_person_not_found', 'Person not found.'));
     await attempt(async () => {
         await update(ref(db, 'people/' + select.value), { uid });
         person.uid = uid;
-        showToast(t('toast_assignment_saved', 'Zuordnung gespeichert'));
+        showToast(t('toast_assignment_saved', 'Assignment saved'));
         renderUnlinkedUsers();
         renderPeople();
-    }, t('unlinked_alert_failed', 'Zuordnung fehlgeschlagen. Bitte erneut versuchen.'));
+    }, t('unlinked_alert_failed', 'Assignment failed. Please try again.'));
 }
 
 // --- Editing & deleting booked entries ---
@@ -2698,7 +2740,7 @@ function editRecordedPaymentByIndex(index) {
 
     currentEditedPayment = { personId, targetIndex, type, paymentId };
     const isExpense = type === 'expense';
-    setText('edit-payment-person', ({ donation: `[${t('report_type_donation', 'Spende')}] `, expense: `[${t('report_type_expense', 'Ausgabe')}] ` }[type] || '') + (tx.personName || tx.who || t('status_unknown', 'Unbekannt')));
+    setText('edit-payment-person', ({ donation: `[${t('report_type_donation', 'Donation')}] `, expense: `[${t('report_type_expense', 'Expense')}] ` }[type] || '') + (tx.personName || tx.who || t('status_unknown', 'Unknown')));
     setValue('edit-payment-amount', String(payment.amount ?? ''));
     setValue('edit-payment-date', payment.date || '');
     setValue('edit-payment-desc', payment.description || '');
@@ -2719,14 +2761,14 @@ async function saveEditedPayment() {
     const date = inputValue('edit-payment-date');
     const description = inputValue('edit-payment-desc').trim();
     const issuer = inputValue('edit-payment-issuer').trim();
-    if (Number.isNaN(amount)) return alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
-    if (!date) return alert(t('alert_please_enter_date', 'Bitte ein Datum angeben.'));
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert(t('alert_invalid_date', 'Ungültiges Datum.'));
+    if (Number.isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount.'));
+    if (!date) return alert(t('alert_please_enter_date', 'Please specify a date.'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert(t('alert_invalid_date', 'Invalid date.'));
 
     const saveBtn = document.querySelector('#edit-payment-modal button.btn-primary');
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.innerText = t('setup_btn_saving', 'Speichert...');
+        saveBtn.innerText = t('setup_btn_saving', 'Saving...');
     }
     const { type, personId, paymentId, targetIndex } = currentEditedPayment;
     try {
@@ -2738,23 +2780,23 @@ async function saveEditedPayment() {
                 else console.warn('saveEditedPayment: fallback payment match not found, mapping all', currentEditedPayment);
                 return { ...draft, payments, totalPaid: sumAmounts(payments) };
             });
-            showToast(t('toast_payment_updated', 'Zahlung aktualisiert'));
+            showToast(t('toast_payment_updated', 'Payment updated'));
         } else if (type === 'expense') {
             for (const file of $('edit-payment-new-receipt')?.files || []) {
                 try {
                     currentEditedReceipts.push(await uploadReceipt(file, issuer || 'Beleg', date));
                 } catch (uploadErr) {
                     console.error('Error uploading new receipt in edit:', uploadErr);
-                    alert(t('alert_upload_error_for', 'Fehler beim Hochladen von: ') + file.name + ' - ' + uploadErr.message);
+                    alert(t('alert_upload_error_for', 'Failed to upload: ') + file.name + ' - ' + uploadErr.message);
                     throw uploadErr;
                 }
             }
             const receipt = currentEditedReceipts.length > 0 ? JSON.stringify(currentEditedReceipts) : '';
             await mutateCollection('expenses', list => replaceById(list, paymentId, { amount, date, description, issuer, receipt }));
-            showToast(t('toast_expense_updated', 'Ausgabe aktualisiert'));
+            showToast(t('toast_expense_updated', 'Expense updated'));
         } else {
             await mutateCollection('donations', list => replaceById(list, paymentId, { amount, date, description }));
-            showToast(t('toast_donation_updated', 'Spende aktualisiert'));
+            showToast(t('toast_donation_updated', 'Donation updated'));
         }
         closeModal('edit-payment-modal');
         currentEditedPayment = null;
@@ -2762,11 +2804,11 @@ async function saveEditedPayment() {
         refreshFinanceViews();
     } catch (err) {
         console.error('Fehler beim Bearbeiten:', err);
-        showToast(t('toast_update_failed', 'Eintrag konnte nicht aktualisiert werden'), 'error');
+        showToast(t('toast_update_failed', 'Entry could not be updated'), 'error');
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.innerText = t('btn_save', 'Speichern');
+            saveBtn.innerText = t('btn_save', 'Save');
         }
     }
 }
@@ -2785,7 +2827,7 @@ async function renderEditReceiptsList() {
     // A newer render (e.g. after deleting a receipt) replaces this one while it still waits for images
     const token = ++receiptsRenderToken;
     if (currentEditedReceipts.length === 0) {
-        listEl.innerHTML = `<div style="color:var(--text-secondary); font-size:0.85rem;">${t('no_receipts', 'Keine Belege vorhanden.')}</div>`;
+        listEl.innerHTML = `<div style="color:var(--text-secondary); font-size:0.85rem;">${t('no_receipts', 'No receipts available.')}</div>`;
         return;
     }
     listEl.innerHTML = '';
@@ -2794,12 +2836,12 @@ async function renderEditReceiptsList() {
         item.style.cssText = STYLE.fileRow;
         item.innerHTML = fileRowInner('<div class="spinner" style="width:16px; height:16px; border-width:2px; margin:0;"></div>', filename, '', 'color:var(--text-secondary);');
         listEl.appendChild(item);
-        const deleteBtn = iconButton(`deleteEditReceipt(${jsArg(filename)})`, t('btn_delete', 'Löschen'));
+        const deleteBtn = iconButton(`deleteEditReceipt(${jsArg(filename)})`, t('btn_delete', 'Delete'));
         try {
             const imgUrl = await fetchReceiptImage(filename);
             if (token !== receiptsRenderToken) return;
-            item.innerHTML = fileRowInner(`<img src="${imgUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Beleg')}">`, filename,
-                `<a href="${imgUrl}" download="${escapeHtml(filename)}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="${t('download_btn', 'Herunterladen')}">${svgIcon('download')}</a>${deleteBtn}`);
+            item.innerHTML = fileRowInner(`<img src="${imgUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Receipt')}">`, filename,
+                `<a href="${imgUrl}" download="${escapeHtml(filename)}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="${t('download_btn', 'Download')}">${svgIcon('download')}</a>${deleteBtn}`);
         } catch {
             if (token !== receiptsRenderToken) return;
             item.innerHTML = fileRowInner('<span style="font-size:1.25rem;">⚠️</span>', filename, deleteBtn, 'color:var(--text);');
@@ -2808,7 +2850,7 @@ async function renderEditReceiptsList() {
 }
 
 function deleteEditReceipt(filename) {
-    if (!confirmAction(t('confirm_delete_receipt', 'Möchtest du diesen Beleg wirklich löschen?'))) return;
+    if (!confirmAction(t('confirm_delete_receipt', 'Are you sure you want to delete this receipt?'))) return;
     currentEditedReceipts = currentEditedReceipts.filter(fn => fn !== filename);
     renderEditReceiptsList();
 }
@@ -2826,12 +2868,12 @@ async function confirmDeleteRecordedPayment() {
         } else {
             await mutateCollection(type === 'donation' ? 'donations' : 'expenses', list => list.filter(entry => String(entry.id) !== String(paymentId)));
         }
-        showToast({ payment: t('toast_payment_deleted', 'Zahlung gelöscht'), donation: t('toast_donation_deleted', 'Spende gelöscht'), expense: t('toast_expense_deleted', 'Ausgabe gelöscht') }[type]);
+        showToast({ payment: t('toast_payment_deleted', 'Payment deleted'), donation: t('toast_donation_deleted', 'Donation deleted'), expense: t('toast_expense_deleted', 'Expense deleted') }[type]);
         currentEditedPayment = null;
         refreshFinanceViews();
     } catch (err) {
         console.error('Fehler beim Löschen:', err);
-        showToast(t('toast_delete_failed', 'Eintrag konnte nicht gelöscht werden'), 'error');
+        showToast(t('toast_delete_failed', 'Entry could not be deleted'), 'error');
     }
 }
 
@@ -2840,7 +2882,7 @@ const newId = () => Date.now().toString();
 const REQUEST_APPLIERS = {
     payment: (person, data) => ({
         ...person,
-        payments: [...person.payments, { id: newId(), amount: parseFloat(data.amount), date: data.date, description: data.note || 'Zahlung (Genehmigt)' }],
+        payments: [...person.payments, { id: newId(), amount: parseFloat(data.amount), date: data.date, description: data.note || t('req_payment_approved_desc', 'Payment (approved)') }],
         totalPaid: (person.totalPaid || 0) + parseFloat(data.amount)
     }),
     status: (person, { date, newStatus }) => {
@@ -2872,8 +2914,8 @@ async function approveRequest(reqId = openRequestId) {
         await update(ref(db, 'requests/' + reqId), { status: 'approved' });
         closeModal('request-detail-modal');
         await loadData();
-        showToast(t('toast_request_approved', 'Anfrage genehmigt'));
-    }, t('alert_approve_failed', 'Anfrage konnte nicht genehmigt werden. Bitte erneut versuchen.'));
+        showToast(t('toast_request_approved', 'Request approved'));
+    }, t('alert_approve_failed', 'Could not approve request. Please try again.'));
     setRequestBusy(false);
 }
 
@@ -2885,13 +2927,13 @@ async function confirmRejectRequest(reqId = openRequestId) {
         await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
         closeModal('request-detail-modal');
         await loadData();
-        showToast(t('toast_request_rejected', 'Anfrage abgelehnt'));
-    }, t('alert_reject_failed', 'Anfrage konnte nicht abgelehnt werden. Bitte erneut versuchen.'));
+        showToast(t('toast_request_rejected', 'Request rejected'));
+    }, t('alert_reject_failed', 'Could not reject request. Please try again.'));
     setRequestBusy(false);
 }
 
 // --- Member views ---
-const paidUntilText = paidUntil => (paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie'));
+const paidUntilText = paidUntil => (paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Never'));
 const personPaidUntil = p => (p._paidUntil ? new Date(p._paidUntil) : null);
 const standingOrderCovers = meta => meta.isActiveStandingOrder && !meta.isOverdue;
 
@@ -2912,7 +2954,7 @@ function renderUserView() {
     };
     const noMemberHtml = `
         <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 16px; border: 1px solid var(--border);">
-            ${t('user_no_member_found', 'Kein Mitgliedseintrag gefunden.<br>Bitte kontaktieren Sie einen Administrator.')}
+            ${t('user_no_member_found', 'No member record found.<br>Please contact an administrator.')}
         </div>`;
 
     if (currentUser && currentUser.pays === false) {
@@ -2920,10 +2962,10 @@ function renderUserView() {
             <div class="user-hero-status user-status-ok" style="border-color: var(--border);">
                 <div style="font-size: 2rem; margin-bottom: 8px;">👤</div>
                 <h2 style="color: var(--text); font-size: 1.25rem; font-weight: 800; margin-bottom: 5px;">
-                    ${t('user_account_non_paying_title', 'Benutzerkonto')}
+                    ${t('user_account_non_paying_title', 'User Account')}
                 </h2>
                 <div style="font-size: 0.95rem; color: var(--text-secondary);">
-                    ${t('user_account_non_paying_desc', 'Aktives Benutzerkonto (Keine Beitragspflicht)')}
+                    ${t('user_account_non_paying_desc', 'Active user account (No contribution required)')}
                 </div>
             </div>`);
         if (historyEl) historyEl.innerHTML = '';
@@ -2931,24 +2973,24 @@ function renderUserView() {
         setCards(noMemberHtml);
         if (historyEl) historyEl.innerHTML = `
             <div style="text-align:center; padding: 20px; color: var(--text-secondary); background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
-                ${t('user_no_history', 'Keine Einträge vorhanden')}
+                ${t('user_no_history', 'No entries yet')}
             </div>`;
     } else {
         const p = findLinkedPerson(currentUser?.uid);
         if (!p) return setCards(noMemberHtml);
-        const meta = p._statusMeta || { text: t('status_unknown', 'Unbekannt'), isOverdue: false, isSoonDue: false };
+        const meta = p._statusMeta || { text: t('status_unknown', 'Unknown'), isOverdue: false, isSoonDue: false };
         const currentStatus = p._currentStatus || p.status;
         const [statusClass, accent, rgb] = meta.isOverdue ? ['user-status-overdue', 'var(--danger)', '239,68,68']
             : meta.isSoonDue ? ['user-status-soon', 'var(--warning)', '245,158,11'] : ['user-status-ok', 'var(--success)', '16,185,129'];
         const tint = `background:rgba(${rgb},0.08); border-color:rgba(${rgb},0.25);`;
         const statusText = escapeHtml(translateStatusText(meta.text));
-        const subline = style => `<div class="user-finance-hero-sub"${style}>${standingOrderCovers(meta) ? t('user_standing_order_active', 'Dauerauftrag aktiv') : `${t('user_paid_until', 'Bezahlt bis')} <strong>${paidUntilText(personPaidUntil(p))}</strong>`}</div>`;
+        const subline = style => `<div class="user-finance-hero-sub"${style}>${standingOrderCovers(meta) ? t('user_standing_order_active', 'Standing order active') : `${t('user_paid_until', 'Paid until')} <strong>${paidUntilText(personPaidUntil(p))}</strong>`}</div>`;
         const overdueBox = style => meta.isOverdue ? `
             <div class="user-finance-overdue-box"${style}>
-                <div class="user-finance-overdue-label">${t('user_open_amount', 'Offener Betrag')}</div>
+                <div class="user-finance-overdue-label">${t('user_open_amount', 'Outstanding amount')}</div>
                 <div class="user-finance-overdue-amount">${euro(p._overdueAmount || 0)}</div>
             </div>` : '';
-        const requestStatus = t('user_req_status_tooltip', 'Statuswechsel beantragen');
+        const requestStatus = t('user_req_status_tooltip', 'Request status change');
 
         if (statusCard) renderHomePaymentStatus(statusCard, p, meta, statusText);
         if (financeCard) {
@@ -2963,7 +3005,7 @@ function renderUserView() {
                     ${overdueBox('')}
                     <div class="user-finance-stat-row">
                         <div class="user-finance-stat">
-                            <div class="user-finance-stat-label">${t('user_monthly_rate', 'Monatsbeitrag')}</div>
+                            <div class="user-finance-stat-label">${t('user_monthly_rate', 'Monthly fee')}</div>
                             <div class="user-finance-stat-value">${euro(settings[currentStatus] || 0)}</div>
                         </div>
                         <div class="user-finance-stat-divider"></div>
@@ -2981,9 +3023,9 @@ function renderUserView() {
 
 // Own requests of a member: calm rows like the treasurer list; a tap opens the request (status, reason)
 const USER_REQUEST_STATES = {
-    pending: ['#f59e0b', 'req_status_pending', 'In Prüfung'],
-    approved: ['#10b981', 'req_status_approved', 'Genehmigt'],
-    rejected: ['#ef4444', 'req_status_rejected', 'Abgelehnt']
+    pending: ['#f59e0b', 'req_status_pending', 'Pending'],
+    approved: ['#10b981', 'req_status_approved', 'Approved'],
+    rejected: ['#ef4444', 'req_status_rejected', 'Rejected']
 };
 const requestStateLabel = req => {
     const [, key, fallback] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
@@ -3005,8 +3047,8 @@ function renderUserRequests() {
         reqList.innerHTML = `
             <div class="my-req-empty">
                 ${svgIcon('fileText', 22)}
-                <span class="my-req-empty-title">${t('user_no_requests_title', 'Keine Anfragen vorhanden')}</span>
-                <span class="my-req-empty-desc">${t('user_no_requests_hint', 'Oben kannst du eine Zahlung melden, eine Auslage einreichen oder deinen Status ändern.')}</span>
+                <span class="my-req-empty-title">${t('user_no_requests_title', 'No requests yet')}</span>
+                <span class="my-req-empty-desc">${t('user_no_requests_hint', 'Above you can report a payment, submit an expense or change your status.')}</span>
             </div>`;
         return;
     }
@@ -3017,7 +3059,7 @@ function renderUserRequests() {
         const type = REQUEST_TYPES[req.type] || { icon: 'file' };
         const [stateColor] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
         const text = req.status === 'rejected'
-            ? t('user_request_reason', 'Grund: {reason}', { reason: req.rejectionReason || t('user_no_reason', 'Keine Begründung') })
+            ? t('user_request_reason', 'Reason: {reason}', { reason: req.rejectionReason || t('user_no_reason', 'No reason given') })
             : (req.type === 'expense' ? data.description : data.note) || requestDateLabel(req);
         return `
             <button type="button" class="home-msg-row req-row my-req-row" style="--req-color: ${REQUEST_COLORS[req.type] || 'var(--primary)'}; --state-color: ${stateColor};" data-id="${escapeHtml(req.id)}" onclick="window.openRequestDetail(this.dataset.id)">
@@ -3037,11 +3079,11 @@ function renderUserRequests() {
         <div class="home-msg-card my-req-card">
             <div class="home-msg-head">
                 <span class="home-msg-icon req-card-icon">${svgIcon('fileText', 18)}</span>
-                <span class="home-msg-title">${t('user_requests_title', 'Meine Anfragen')}</span>
+                <span class="home-msg-title">${t('user_requests_title', 'My Requests')}</span>
                 <span class="home-msg-total my-req-total">${formatBadgeCount(mine.length)}</span>
             </div>
             <div class="home-msg-list">${rows}</div>
-            ${mine.length > MY_REQUESTS_SHOWN ? `<button type="button" class="home-msg-more req-more" onclick="window.toggleAllMyRequests()">${showAllMyRequests ? t('user_requests_show_less', 'Weniger anzeigen') : t('user_requests_show_all', 'Alle {count} anzeigen', { count: mine.length })}</button>` : ''}
+            ${mine.length > MY_REQUESTS_SHOWN ? `<button type="button" class="home-msg-more req-more" onclick="window.toggleAllMyRequests()">${showAllMyRequests ? t('user_requests_show_less', 'Show less') : t('user_requests_show_all', 'Show all {count}', { count: mine.length })}</button>` : ''}
         </div>`;
 }
 
@@ -3061,8 +3103,8 @@ function renderPeople() {
         : '';
     list.innerHTML = `
         <div class="people-grid-container">
-            <div class="people-column overdue-column">${section(overdue, '--danger', 'overdue_header', 'Überfällig')}</div>
-            <div class="people-column valid-column">${section(current, '--success', 'current_members_header', 'Aktuelle Mitglieder')}</div>
+            <div class="people-column overdue-column">${section(overdue, '--danger', 'overdue_header', 'Overdue')}</div>
+            <div class="people-column valid-column">${section(current, '--success', 'current_members_header', 'Current Members')}</div>
         </div>`;
     filterPeopleSync();
 }
@@ -3073,7 +3115,7 @@ function generateTimelineHTML(person) {
     const currentStart = history.length > 0 ? history[history.length - 1].endDate : (person.originalMemberSince || person.memberSince);
     if (currentStart) events.push({ type: 'status', dateStr: currentStart, status: person.status });
     safeList(person.payments).forEach(p => events.push({ type: 'payment', dateStr: p.date, amount: p.amount, description: p.description }));
-    if (events.length === 0) return `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">${t('timeline_no_entries', 'Keine Einträge vorhanden.')}</div>`;
+    if (events.length === 0) return `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">${t('timeline_no_entries', 'No entries found.')}</div>`;
 
     const statusLabels = getStatusLabels(true);
     const line = (title, meta) => `
@@ -3087,8 +3129,8 @@ function generateTimelineHTML(person) {
     return `<div class="timeline">${events.sort((a, b) => b.dateStr.localeCompare(a.dateStr)).map(ev => {
         const date = formatDateFast(ev.dateStr);
         return ev.type === 'status'
-            ? line(`${t('timeline_status_change', 'Statusänderung')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Gültig ab')} ${date}`)
-            : line(`${t('timeline_payment', 'Zahlung')}: ${euro(ev.amount)}`, `${escapeHtml(ev.description) || t('timeline_no_note', 'Keine Notiz')} • ${date}`);
+            ? line(`${t('timeline_status_change', 'Status Change')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Valid from')} ${date}`)
+            : line(`${t('timeline_payment', 'Payment')}: ${euro(ev.amount)}`, `${escapeHtml(ev.description) || t('timeline_no_note', 'No note')} • ${date}`);
     }).join('')}</div>`;
 }
 
@@ -3105,7 +3147,7 @@ function renderStandingOrders(p) {
             <div class="so-section-header">
                 <div class="so-header-title">
                     ${svgIcon('rotate', 13, 2.5)}
-                    <span>${t('modal_standing_order', 'Dauerauftrag')}</span>
+                    <span>${t('modal_standing_order', 'Standing Order')}</span>
                 </div>
             </div>
             <div class="so-items-list">
@@ -3117,18 +3159,18 @@ function renderStandingOrders(p) {
                         <div class="so-card-top">
                             <div class="so-card-amount-wrapper">
                                 <span class="so-amount-val">${euro(so.amount)}</span>
-                                <span class="so-period-label">/ ${t('month', 'Monat')}</span>
-                                <span class="so-status-pill ${isEnded ? 'ended' : 'active'}">${isEnded ? t('status_ended', 'Beendet') : t('status_active', 'Aktiv')}</span>
+                                <span class="so-period-label">/ ${t('month', 'month')}</span>
+                                <span class="so-status-pill ${isEnded ? 'ended' : 'active'}">${isEnded ? t('status_ended', 'Ended') : t('status_active', 'Active')}</span>
                             </div>
                             ${canManageFinances() ? `
-                            <button type="button" class="btn-so-action" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Bearbeiten/Beenden'))}">
+                            <button type="button" class="btn-so-action" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Edit/End'))}">
                                 ${svgIcon('edit', 12)}
-                                <span>${t('btn_manage', 'Verwalten')}</span>
+                                <span>${t('btn_manage', 'Manage')}</span>
                             </button>` : ''}
                         </div>
                         <div class="so-card-meta-chips">
                             ${chip('calendar', t('so_chip_start', 'Start: {date}', { date: formatDateFast(so.startDate) }))}
-                            ${so.endDate ? chip('clock', t('so_chip_end', 'Ende: {date}', { date: formatDateFast(so.endDate) }), isEnded ? ' ended' : ' ') : ''}
+                            ${so.endDate ? chip('clock', t('so_chip_end', 'End: {date}', { date: formatDateFast(so.endDate) }), isEnded ? ' ended' : ' ') : ''}
                             ${note && note !== 'Ohne Notiz' && note !== 'No note' ? chip('fileText', escapeHtml(so.note), ' so-note-chip') : ''}
                         </div>
                     </div>`;
@@ -3180,11 +3222,11 @@ function generatePersonHTML(p) {
                                 <span class="summary-status-badge">${escapeHtml(statusLabels[p.status] || p.status)}</span>
                             </div>
                             <div class="summary-tile">
-                                ${tileLabel('calendar', t('paid_until', 'Bezahlt bis'))}
+                                ${tileLabel('calendar', t('paid_until', 'Paid until'))}
                                 ${standingOrderCovers(meta) ? `
                                     <span class="summary-so-badge">
                                         ${svgIcon('rotate', 11, 2.5)}
-                                        ${t('status_standing_order_active', 'Dauerauftrag läuft')}
+                                        ${t('status_standing_order_active', 'Standing order is active')}
                                     </span>` : `<span class="summary-paid-badge ${pillClass}">${dateText}</span>`}
                             </div>
                         </div>
@@ -3192,7 +3234,7 @@ function generatePersonHTML(p) {
                         <div class="summary-overdue-alert">
                             <div class="overdue-alert-label">
                                 ${svgIcon('alert', 14, 2.5)}
-                                <span>${t('overdue_amount_label', 'Offener Betrag')}</span>
+                                <span>${t('overdue_amount_label', 'Outstanding Amount')}</span>
                             </div>
                             <span class="overdue-alert-val">${euro(p._overdueAmount || 0)}</span>
                         </div>` : ''}
@@ -3200,15 +3242,15 @@ function generatePersonHTML(p) {
                     ${renderStandingOrders(p)}
                     ${canManageFinances() ? `
                     <div class="member-actions-group">
-                        ${memberButton('btn-member-primary', 'openPaymentModal', 'coin', 15, 2.2, t('record_payment_btn', 'Zahlung erfassen'))}
+                        ${memberButton('btn-member-primary', 'openPaymentModal', 'coin', 15, 2.2, t('record_payment_btn', 'Book Payment'))}
                         <div class="member-secondary-actions">
                             ${memberButton('btn-member-secondary', 'openChangeStatusModal', 'refresh', 14, 2, t('status_btn', 'Status'))}
-                            ${memberButton('btn-member-secondary', 'sendStatusEmail', 'mail', 14, 2, t('email_btn', 'E-Mail'))}
+                            ${memberButton('btn-member-secondary', 'sendStatusEmail', 'mail', 14, 2, t('email_btn', 'Email'))}
                         </div>
                     </div>` : ''}
-                    <div class="history-header">${t('history_label', 'Verlauf')}</div>
+                    <div class="history-header">${t('history_label', 'History')}</div>
                     <div id="timeline-${p.id}">
-                        <div style="padding:10px; color:var(--text-secondary); font-size:0.8rem; font-style:italic;">${t('loading_history', 'Lade Verlauf...')}</div>
+                        <div style="padding:10px; color:var(--text-secondary); font-size:0.8rem; font-style:italic;">${t('loading_history', 'Loading history...')}</div>
                     </div>
                 </div>
             </div>
@@ -3305,15 +3347,15 @@ async function renderHistoryTab(resetLimit = true) {
         cachedTransactions = resetLimit ? data.items : [...(cachedTransactions || []), ...data.items];
         transactionTotalItems = data.totalItems;
         if (!cachedTransactions || cachedTransactions.length === 0) {
-            container.innerHTML = emptyNotice(t('no_transactions', 'Keine Buchungen vorhanden.'), 'text-align:center; padding:30px 20px; color:var(--text-secondary);');
+            container.innerHTML = emptyNotice(t('no_transactions', 'No transactions found.'), 'text-align:center; padding:30px 20px; color:var(--text-secondary);');
             return;
         }
         let lastDate = null;
         let html = cachedTransactions.map((tx, index) => {
-            const date = tx.date ? formatDateFast(tx.date) : t('no_date', 'Kein Datum');
+            const date = tx.date ? formatDateFast(tx.date) : t('no_date', 'No date');
             const header = date !== lastDate ? `<div style="margin: ${index === 0 ? '0' : '20px'} 0 8px 10px; font-weight: bold; font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${date}</div>` : '';
             lastDate = date;
-            const receiptBadge = tx.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('report_receipt_attached', 'Beleg vorhanden'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;">${svgIcon('paperclip', 14, 2.2)}</span>` : '';
+            const receiptBadge = tx.receipt ? `<span class="receipt-badge-inline" title="${escapeHtml(t('report_receipt_attached', 'Receipt attached'))}" style="display:inline-flex; align-items:center; vertical-align:-2px; margin-left:6px; color:var(--primary); opacity:0.85; flex-shrink: 0;">${svgIcon('paperclip', 14, 2.2)}</span>` : '';
             const desc = tx.description?.trim() ? `<span class="trans-desc">${escapeHtml(tx.description)}</span>` : '';
             const iconClass = TX_ICONS[tx.type] ? tx.type : 'exp';
             return `${header}
@@ -3335,8 +3377,8 @@ async function renderHistoryTab(resetLimit = true) {
         if (cachedTransactions.length < transactionTotalItems) {
             html += `
                 <div style="text-align:center; padding:20px;">
-                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 12px;">${t('showing_transactions_count', 'Es werden {count} von {total} Buchungen angezeigt.', { count: cachedTransactions.length, total: transactionTotalItems })}</div>
-                    <button class="btn btn-secondary" onclick="loadMoreHistory()">${t('load_more_btn', 'Mehr laden...')}</button>
+                    <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 12px;">${t('showing_transactions_count', 'Showing {count} of {total} transactions.', { count: cachedTransactions.length, total: transactionTotalItems })}</div>
+                    <button class="btn btn-secondary" onclick="loadMoreHistory()">${t('load_more_btn', 'Load more...')}</button>
                 </div>`;
         }
         const scrollContainer = container.parentElement;
@@ -3354,7 +3396,7 @@ async function renderHistoryTab(resetLimit = true) {
                     return;
                 }
                 // Expenses keep a small red badge on the picture, so they stay recognisable at a glance
-                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profilbild'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`
+                wrapper.innerHTML = `<img src="${url}" alt="${escapeHtml(t('profile_pic_title', 'Profile Picture'))}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;">`
                     + badge;
                 wrapper.style.background = 'transparent';
                 wrapper.style.color = 'inherit';
@@ -3363,7 +3405,7 @@ async function renderHistoryTab(resetLimit = true) {
         if (!resetLimit && scrollContainer) scrollContainer.scrollTop = previousScrollTop;
     } catch (err) {
         console.error('Fehler beim Laden der Transaktionen:', err);
-        container.innerHTML = emptyNotice(t('error_loading_transactions', 'Fehler beim Laden der Buchungen.'), 'text-align:center; padding:30px 20px; color:var(--danger);');
+        container.innerHTML = emptyNotice(t('error_loading_transactions', 'Error loading transactions.'), 'text-align:center; padding:30px 20px; color:var(--danger);');
     }
 }
 
@@ -3380,7 +3422,7 @@ const TX_DETAIL_BADGES = {
 
 async function showTransactionDetails(id, type) {
     const tx = cachedTransactions?.find(x => String(x.id) === String(id));
-    const typeName = { exp: t('action_expense', 'Ausgabe'), don: t('btn_add_donation', 'Spende'), pay: t('action_payment', 'Zahlung') }[type];
+    const typeName = { exp: t('action_expense', 'Expense'), don: t('btn_add_donation', 'Donation'), pay: t('action_payment', 'Payment') }[type];
     if (!tx || !typeName) return;
     const who = type === 'don' ? tx.name || tx.who : tx.who;
     openModal('transaction-details-modal');
@@ -3409,33 +3451,33 @@ async function showTransactionDetails(id, type) {
         </div>
         <div class="modal-section-card" style="gap:8px;">
             <div class="modal-section-header">
-                <span>ℹ️</span> <span>${escapeHtml(t('details_section_info', 'Transaktionsdetails'))}</span>
+                <span>ℹ️</span> <span>${escapeHtml(t('details_section_info', 'Transaction details'))}</span>
             </div>
             <div style="display:flex; flex-direction:column; gap:8px; font-size:0.86rem;">
-                ${detailRow(`📅 ${escapeHtml(t('modal_date', 'Datum'))}`, tx.date ? formatDateFast(tx.date) : '-')}
+                ${detailRow(`📅 ${escapeHtml(t('modal_date', 'Date'))}`, tx.date ? formatDateFast(tx.date) : '-')}
                 ${who ? detailRow(`👤 ${escapeHtml(t('details_person', 'Person'))}`, escapeHtml(who)) : ''}
-                ${tx.issuer ? detailRow(`🏛️ ${escapeHtml(t('details_issued_by', 'Ausgestellt von'))}`, escapeHtml(tx.issuer)) : ''}
+                ${tx.issuer ? detailRow(`🏛️ ${escapeHtml(t('details_issued_by', 'Issued by'))}`, escapeHtml(tx.issuer)) : ''}
                 ${description ? `
                 <div style="display:flex; flex-direction:column; gap:4px; padding-top:2px;">
-                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Beschreibung'))}</span>
+                    <span style="color:var(--text-secondary); font-size:0.78rem; font-weight:500;">📝 ${escapeHtml(t('details_description', 'Description'))}</span>
                     <span style="font-weight:500; color:var(--text); background:var(--surface); padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); word-break:break-word; white-space:pre-wrap; font-size:0.84rem;">${escapeHtml(description)}</span>
                 </div>` : ''}
             </div>
         </div>
         <div id="receipt-container" style="margin-top:10px;"></div>`;
 
-    const noReceipts = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'Keine Belege vorhanden.')}</div>`;
+    const noReceipts = `<div style="color:var(--text-secondary); text-align:center; font-size:0.9rem;">${t('no_receipts', 'No receipts available.')}</div>`;
     if (!tx.receipt) {
         $('receipt-container').innerHTML = noReceipts;
         return;
     }
     await renderReceiptsInto($('receipt-container'), tx.receipt, {
         holder: content,
-        loading: `<div class="spinner" style="margin:20px auto;"></div><div style="text-align:center">${t('loading_receipts', 'Lade Beleg(e)...')}</div>`,
-        header: `<div style="font-weight:600; margin-bottom:10px;">${t('details_receipts', 'Belege')}</div>`,
+        loading: `<div class="spinner" style="margin:20px auto;"></div><div style="text-align:center">${t('loading_receipts', 'Loading receipt(s)...')}</div>`,
+        header: `<div style="font-weight:600; margin-bottom:10px;">${t('details_receipts', 'Receipts')}</div>`,
         listStyle: 'display:flex; flex-direction:column; gap:15px;',
         empty: noReceipts,
-        error: `<div style="color:var(--danger); text-align:center;">${t('error_loading_receipts', 'Beleg(e) konnte(n) nicht geladen werden.')}</div>`
+        error: `<div style="color:var(--danger); text-align:center;">${t('error_loading_receipts', 'Receipt(s) could not be loaded.')}</div>`
     });
 }
 
@@ -3443,10 +3485,10 @@ function viewRequestReceipt(receiptField, containerId) {
     const container = $(containerId);
     if (!container) return;
     renderReceiptsInto(container, receiptField, {
-        loading: `<div class="spinner" style="margin:10px auto;"></div><div style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">${t('loading_receipts', 'Lade Beleg(e)...')}</div>`,
+        loading: `<div class="spinner" style="margin:10px auto;"></div><div style="text-align:center; font-size:0.8rem; color:var(--text-secondary);">${t('loading_receipts', 'Loading receipt(s)...')}</div>`,
         listStyle: 'display:flex; flex-direction:column; gap:15px; margin-top:10px;',
-        empty: `<div style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">${t('no_receipts', 'Keine Belege vorhanden.')}</div>`,
-        error: `<div style="color:var(--danger); font-size:0.8rem; margin-top:10px;">${t('error_loading_receipts', 'Beleg(e) konnte(n) nicht geladen werden.')}</div>`
+        empty: `<div style="color:var(--text-secondary); font-size:0.8rem; margin-top:10px;">${t('no_receipts', 'No receipts available.')}</div>`,
+        error: `<div style="color:var(--danger); font-size:0.8rem; margin-top:10px;">${t('error_loading_receipts', 'Receipt(s) could not be loaded.')}</div>`
     });
 }
 
@@ -3462,7 +3504,7 @@ const reportPlaceholder = (icon, text, style = '') => `
 
 async function openExportReportModal() {
     const preview = $('report-print-preview');
-    if (preview) preview.innerHTML = reportPlaceholder('<div class="spinner" style="margin: 0 auto 15px;"></div>', t('loading', 'Lade Daten...'));
+    if (preview) preview.innerHTML = reportPlaceholder('<div class="spinner" style="margin: 0 auto 15px;"></div>', t('loading', 'Loading data...'));
     openModal('export-report-modal');
     try {
         allReportTransactions = [];
@@ -3488,7 +3530,7 @@ async function openExportReportModal() {
         const checklist = $('report-manual-checklist');
         if (checklist) {
             checklist.innerHTML = allReportTransactions.length === 0
-                ? emptyNotice(t('no_transactions', 'Keine Buchungen vorhanden.'))
+                ? emptyNotice(t('no_transactions', 'No transactions found.'))
                 : allReportTransactions.map((tx, idx) => {
                     const key = reportKey(tx, idx);
                     return `
@@ -3505,7 +3547,7 @@ async function openExportReportModal() {
         onReportTypeChange();
     } catch (err) {
         console.error('Fehler beim Laden der Berichtstransaktionen:', err);
-        if (preview) preview.innerHTML = reportPlaceholder('<div class="report-placeholder-icon">⚠️</div>', t('alert_error_loading_data', 'Fehler beim Laden der Daten. Bitte Seite neu laden.'), ' style="color: var(--danger);"');
+        if (preview) preview.innerHTML = reportPlaceholder('<div class="report-placeholder-icon">⚠️</div>', t('alert_error_loading_data', 'Failed to load data. Please reload the page.'), ' style="color: var(--danger);"');
     }
 }
 
@@ -3534,9 +3576,9 @@ function setReportTier(tier) {
 }
 
 const REPORT_TIER_HINTS = {
-    compact: ['report_tier_compact_hint', 'Nur Summen und eine Aufstellung nach Art'],
-    standard: ['report_tier_standard_hint', 'Summen und alle Buchungen'],
-    detailed: ['report_tier_detailed_hint', 'Zusätzlich Notizen, Schlagworte und Belege']
+    compact: ['report_tier_compact_hint', 'Totals and a summary by kind only'],
+    standard: ['report_tier_standard_hint', 'Totals and every booking'],
+    detailed: ['report_tier_detailed_hint', 'Also notes, tags and receipts']
 };
 
 function onReportTypeChange() {
@@ -3558,7 +3600,7 @@ const inDateRange = (tx, from, to) => {
 function selectReportTransactions(type) {
     if (type === 'annual') {
         const year = String(inputValue('report-year-select'));
-        return { filtered: allReportTransactions.filter(tx => (tx.date || '').slice(0, 4) === year), description: `${t('report_year_filter', 'Jahr:')} ${year}` };
+        return { filtered: allReportTransactions.filter(tx => (tx.date || '').slice(0, 4) === year), description: `${t('report_year_filter', 'Year:')} ${year}` };
     }
     if (type === 'custom') {
         const from = inputValue('report-date-from');
@@ -3566,11 +3608,11 @@ function selectReportTransactions(type) {
         const [fromText, toText] = [from, to].map(d => (d ? formatDateFast(d) : ''));
         return {
             filtered: allReportTransactions.filter(tx => inDateRange(tx, from, to)),
-            description: fromText && toText ? `${fromText} - ${toText}` : fromText ? t('report_from_date', 'Ab {date}', { date: fromText }) : toText ? t('report_until_date', 'Bis {date}', { date: toText }) : t('report_all_transactions', 'Alle Buchungen')
+            description: fromText && toText ? `${fromText} - ${toText}` : fromText ? t('report_from_date', 'From {date}', { date: fromText }) : toText ? t('report_until_date', 'Until {date}', { date: toText }) : t('report_all_transactions', 'All transactions')
         };
     }
     if (type === 'manual') {
-        return { filtered: allReportTransactions.filter((tx, idx) => selectedManualTransactionIds.has(reportKey(tx, idx))), description: t('report_manual_selection', 'Manuelle Auswahl') };
+        return { filtered: allReportTransactions.filter((tx, idx) => selectedManualTransactionIds.has(reportKey(tx, idx))), description: t('report_manual_selection', 'Manual Selection') };
     }
     const personId = inputValue('report-person-select');
     const person = findPerson(personId);
@@ -3585,8 +3627,8 @@ function selectReportTransactions(type) {
     return { filtered, person, description: `${name}${from || to ? `: ${from ? formatDateFast(from) : ''} - ${to ? formatDateFast(to) : ''}` : ''}` };
 }
 
-const REPORT_TYPE_LABELS = { pay: ['report_type_membership', 'Beitrag'], don: ['report_type_donation', 'Spende'], exp: ['report_type_expense', 'Ausgabe'] };
-const bookingsCount = count => count === 1 ? t('report_bookings_one', '1 Buchung') : t('report_bookings_count', '{count} Buchungen', { count });
+const REPORT_TYPE_LABELS = { pay: ['report_type_membership', 'Membership fee'], don: ['report_type_donation', 'Donation'], exp: ['report_type_expense', 'Expense'] };
+const bookingsCount = count => count === 1 ? t('report_bookings_one', '1 booking') : t('report_bookings_count', '{count} bookings', { count });
 // Plain colours on the PDF page: html2canvas cannot read color-mix()
 const REPORT_TYPE_COLORS = {
     pay: 'color: #059669; background: #ecfdf5; border-color: #a7f3d0;',
@@ -3616,7 +3658,7 @@ function renderReportRows(filtered, tier) {
                     <td colspan="3">${notes ? `<div class="preview-notes">„${escapeHtml(notes)}“</div>` : ''}${tags.length ? `<div>${tags.map(tag => `<span class="preview-tags-badge">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}${tx.receipt ? `
                         <div class="preview-attachment-indicator">
                             ${svgIcon('paperclip', 12, 2.5)}
-                            <span>${t('report_receipt_attached', 'Beleg vorhanden')}</span>
+                            <span>${t('report_receipt_attached', 'Receipt attached')}</span>
                         </div>` : ''}</td>
                 </tr>`;
         }
@@ -3640,7 +3682,7 @@ function renderReportBreakdown(filtered) {
     }).join('');
     return `
         <table class="preview-table preview-breakdown">
-            <thead><tr><th>${t('report_table_type', 'Art')}</th><th>${t('report_table_count', 'Anzahl')}</th><th style="text-align: right;">${t('report_table_amount', 'Betrag')}</th></tr></thead>
+            <thead><tr><th>${t('report_table_type', 'Kind')}</th><th>${t('report_table_count', 'Count')}</th><th style="text-align: right;">${t('report_table_amount', 'Amount')}</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
 }
@@ -3659,13 +3701,13 @@ function updateReportPreview() {
     const expenses = sumAmounts(filtered.filter(tx => tx.type === 'exp'));
     const net = income - expenses;
     setText('report-footer-summary', filtered.length
-        ? `${bookingsCount(filtered.length)} · ${t('report_balance', 'Saldo')} ${net >= 0 ? '+' : ''}${euro(net)}`
+        ? `${bookingsCount(filtered.length)} · ${t('report_balance', 'Balance')} ${net >= 0 ? '+' : ''}${euro(net)}`
         : '');
     $('btn-download-pdf')?.toggleAttribute('disabled', filtered.length === 0);
     if (filtered.length === 0) {
         preview.innerHTML = reportPlaceholder(`<div class="report-placeholder-icon">${svgIcon('fileText', 40, 1.6)}</div>`, type === 'manual'
-            ? t('report_pick_bookings', 'Kreuze links die Buchungen an, die in den Bericht sollen.')
-            : t('report_no_data', 'Keine Daten im gewählten Zeitraum'));
+            ? t('report_pick_bookings', 'Tick the bookings on the left that should go into the report.')
+            : t('report_no_data', 'No data found for the selected period'));
         requestAnimationFrame(resizeReportPreview);
         return;
     }
@@ -3677,11 +3719,11 @@ function updateReportPreview() {
             ${note ? `<div class="preview-stat-note">${note}</div>` : ''}
         </div>`;
     const overdue = person?._overdueAmount || 0;
-    const thirdCard = type !== 'person' ? statCard(t('report_balance', 'Saldo'), `balance ${net >= 0 ? 'income' : 'expense'}`, `${net >= 0 ? '+' : ''}${euro(net)}`, countOf(filtered))
-        : overdue > 0 ? statCard(t('report_outstanding_till_today', 'Ausstehend (bis heute)'), 'expense', euro(overdue))
-        : statCard(t('status_label', 'Status'), 'income is-text', t('report_status_good', 'Kein Rückstand'));
-    const kindTitle = { annual: t('report_kind_annual', 'Jahresübersicht'), custom: t('report_kind_custom', 'Übersicht für einen Zeitraum'),
-        manual: t('report_kind_manual', 'Ausgewählte Buchungen'), person: t('report_kind_person', 'Übersicht für ein Mitglied') }[type] || '';
+    const thirdCard = type !== 'person' ? statCard(t('report_balance', 'Balance'), `balance ${net >= 0 ? 'income' : 'expense'}`, `${net >= 0 ? '+' : ''}${euro(net)}`, countOf(filtered))
+        : overdue > 0 ? statCard(t('report_outstanding_till_today', 'Outstanding (to date)'), 'expense', euro(overdue))
+        : statCard(t('status_label', 'Status'), 'income is-text', t('report_status_good', 'No arrears'));
+    const kindTitle = { annual: t('report_kind_annual', 'Annual overview'), custom: t('report_kind_custom', 'Overview for a period'),
+        manual: t('report_kind_manual', 'Selected bookings'), person: t('report_kind_person', 'Overview for one member') }[type] || '';
     preview.innerHTML = `
         <div class="pv-band"></div>
         <div class="preview-header">
@@ -3690,29 +3732,29 @@ function updateReportPreview() {
                 <span>${escapeHtml(APP_NAME)}</span>
             </div>
             <div class="preview-meta">
-                <div class="pv-meta-label">${t('report_created_on', 'Erstellt am:')}</div>
+                <div class="pv-meta-label">${t('report_created_on', 'Created on')}</div>
                 <div class="pv-meta-value">${formatDateFast(getTodayStr())}</div>
             </div>
         </div>
         <div class="preview-title-block">
             <div class="pv-kicker">${kindTitle}</div>
-            <h2>${t('report_financial_report', 'Finanzbericht')}</h2>
+            <h2>${t('report_financial_report', 'Financial Report')}</h2>
             <div class="pv-period">${escapeHtml(description)}</div>
         </div>
         <div class="preview-stats-grid">
-            ${statCard(t('nav_income', 'Einnahmen'), 'income', `+${euro(income)}`, countOf(filtered.filter(tx => tx.type !== 'exp')))}
-            ${statCard(t('nav_expenses', 'Ausgaben'), 'expense', `-${euro(expenses)}`, countOf(filtered.filter(tx => tx.type === 'exp')))}
+            ${statCard(t('nav_income', 'Income'), 'income', `+${euro(income)}`, countOf(filtered.filter(tx => tx.type !== 'exp')))}
+            ${statCard(t('nav_expenses', 'Expenses'), 'expense', `-${euro(expenses)}`, countOf(filtered.filter(tx => tx.type === 'exp')))}
             ${thirdCard}
         </div>
-        <div class="pv-section-title">${tier === 'compact' ? t('report_by_kind', 'Nach Art') : t('report_bookings', 'Buchungen')}</div>
+        <div class="pv-section-title">${tier === 'compact' ? t('report_by_kind', 'By kind') : t('report_bookings', 'Bookings')}</div>
         ${tier === 'compact' ? renderReportBreakdown(filtered) : `
         <table class="preview-table">
-            <thead><tr><th>${t('report_table_date', 'Datum')}</th><th>${t('report_table_type', 'Art')}</th><th>${t('report_table_desc', 'Beschreibung / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Betrag')}</th></tr></thead>
+            <thead><tr><th>${t('report_table_date', 'Date')}</th><th>${t('report_table_type', 'Kind')}</th><th>${t('report_table_desc', 'Description / Partner')}</th><th style="text-align: right;">${t('report_table_amount', 'Amount')}</th></tr></thead>
             <tbody>${renderReportRows(filtered, tier)}</tbody>
-            <tfoot><tr><td colspan="3">${t('report_balance', 'Saldo')}</td><td class="amount-cell ${net >= 0 ? 'amount-income' : 'amount-expense'}">${net >= 0 ? '+' : ''}${euro(net)}</td></tr></tfoot>
+            <tfoot><tr><td colspan="3">${t('report_balance', 'Balance')}</td><td class="amount-cell ${net >= 0 ? 'amount-income' : 'amount-expense'}">${net >= 0 ? '+' : ''}${euro(net)}</td></tr></tfoot>
         </table>`}
         <div class="pv-footer">
-            <span>${escapeHtml(APP_NAME)} · ${t('report_financial_report', 'Finanzbericht')}</span>
+            <span>${escapeHtml(APP_NAME)} · ${t('report_financial_report', 'Financial Report')}</span>
             <span>${escapeHtml(description)}</span>
         </div>`;
     requestAnimationFrame(resizeReportPreview);
@@ -3721,11 +3763,11 @@ function updateReportPreview() {
 async function downloadReportPdf() {
     const element = $('report-print-preview');
     if (!element) return;
-    setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generiere...'));
+    setButtonLoading('btn-download-pdf', true, t('report_generating', 'Generating...'));
     await loadScriptOnce(HTML2PDF_SRC).catch(() => {});
     if (typeof html2pdf === 'undefined') {
         setButtonLoading('btn-download-pdf', false, null);
-        return alert(t('report_pdf_lib_error', 'PDF-Bibliothek konnte nicht geladen werden.'));
+        return alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
     }
     // Render an unscaled off-screen A4-width clone to avoid a blank first page
     const printContainer = document.createElement('div');
@@ -3740,7 +3782,7 @@ async function downloadReportPdf() {
     };
     html2pdf().set({
         margin: 0,
-        filename: `${APP_NAME.replace(/[^a-zA-Z0-9]/g, '_')}_${t('report_file_name', 'Finanzbericht')}_${getTodayStr()}.pdf`,
+        filename: `${APP_NAME.replace(/[^a-zA-Z0-9]/g, '_')}_${t('report_file_name', 'Financial_Report')}_${getTodayStr()}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -3748,7 +3790,7 @@ async function downloadReportPdf() {
     }).from(clone).save().then(done).catch(err => {
         console.error('PDF generation failed:', err);
         done();
-        alert(t('report_pdf_error', 'Fehler beim Erstellen der PDF-Datei.'));
+        alert(t('report_pdf_error', 'Failed to generate PDF.'));
     });
 }
 
@@ -3773,12 +3815,12 @@ function openPaymentModal(id) {
 
 // "Dauerauftrag" switches the date label to the start date
 function updatePaymentDateLabel() {
-    setText('payment-date-label', isChecked('payment-is-standing-order') ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum'));
+    setText('payment-date-label', isChecked('payment-is-standing-order') ? t('modal_date_start', 'Start Date') : t('modal_date', 'Date'));
 }
 
 async function addPayment() {
     if (!validateRequired(['payment-amount', 'payment-date'])) return;
-    setButtonLoading('btn-add-payment', true, t('btn_booking', 'Buche...'));
+    setButtonLoading('btn-add-payment', true, t('btn_booking', 'Booking...'));
     const amount = parseAmount(inputValue('payment-amount'));
     const date = inputValue('payment-date');
     const note = inputValue('payment-desc');
@@ -3788,16 +3830,16 @@ async function addPayment() {
         const updated = await mutatePerson(currentPersonId, person => isStandingOrder
             ? { ...person, standingOrders: [...safeList(person.standingOrders), { id: newId(), amount, startDate: date, note, lastAutoPayment: null }] }
             : { ...person, payments: [...person.payments, { amount, date, description: note, id: Date.now() }], totalPaid: (person.totalPaid || 0) + amount });
-        if (!updated) return alert(t('alert_person_not_found', 'Person nicht gefunden.'));
+        if (!updated) return alert(t('alert_person_not_found', 'Person not found.'));
         closeModal('add-payment-modal');
         if (currentUser && !currentUser.admin) renderUserView();
         else refreshFinanceViews();
         $('payment-is-standing-order').checked = false;
-        setText('payment-date-label', t('modal_date', 'Datum'));
-        showToast(t('toast_payment_booked', 'Zahlung gebucht'));
+        setText('payment-date-label', t('modal_date', 'Date'));
+        showToast(t('toast_payment_booked', 'Payment booked'));
     } catch (err) {
         console.error('Fehler beim Speichern der Zahlung:', err);
-        alert(t('alert_save_payment_failed', 'Zahlung konnte nicht gespeichert werden. Bitte erneut versuchen.'));
+        alert(t('alert_save_payment_failed', 'Payment could not be saved. Please try again.'));
     } finally {
         setButtonLoading('btn-add-payment', false);
     }
@@ -3807,7 +3849,7 @@ async function addDonation() {
     if (!validateRequired(['donation-amount', 'donation-date', 'donation-name'])) return;
     const amount = parseAmount(inputValue('donation-amount'));
     if (isNaN(amount)) return;
-    setButtonLoading('btn-add-donation', true, t('setup_btn_saving', 'Speichert...'));
+    setButtonLoading('btn-add-donation', true, t('setup_btn_saving', 'Saving...'));
     try {
         const donation = { amount, name: inputValue('donation-name'), date: inputValue('donation-date'), description: inputValue('donation-desc').trim(), id: Date.now() };
         await mutateCollection('donations', list => [...list, donation]);
@@ -3815,10 +3857,10 @@ async function addDonation() {
         renderStats();
         renderSuperAdminPaymentEditor();
         ['donation-amount', 'donation-name', 'donation-date', 'donation-desc'].forEach(id => setValue(id, ''));
-        showToast(t('toast_donation_saved', 'Spende gespeichert'));
+        showToast(t('toast_donation_saved', 'Donation saved'));
     } catch (err) {
         console.error('Fehler beim Speichern der Spende:', err);
-        alert(t('alert_save_donation_failed', 'Spende konnte nicht gespeichert werden. Bitte erneut versuchen.'));
+        alert(t('alert_save_donation_failed', 'Donation could not be saved. Please try again.'));
     } finally {
         setButtonLoading('btn-add-donation', false);
     }
@@ -3829,16 +3871,16 @@ async function addExpense() {
     const amount = parseAmount(inputValue('expense-amount'));
     if (isNaN(amount)) return;
     const [issuer, date, description] = ['expense-issuer', 'expense-date', 'expense-desc'].map(inputValue);
-    setButtonLoading('btn-add-expense', true, t('setup_btn_saving', 'Speichert...'));
+    setButtonLoading('btn-add-expense', true, t('setup_btn_saving', 'Saving...'));
     try {
         let receipt = null;
         if (pendingUploads.expense.files.length > 0) {
-            setButtonLoading('btn-add-expense', true, t('btn_uploading', 'Lade hoch...'));
+            setButtonLoading('btn-add-expense', true, t('btn_uploading', 'Uploading...'));
             try {
                 receipt = await uploadAll(pendingUploads.expense.files, issuer, date);
             } catch (err) {
                 console.error(err);
-                return alert(t('alert_receipt_upload_error', 'Fehler beim Hochladen des Belegs: ') + err.message);
+                return alert(t('alert_receipt_upload_error', 'Failed to upload receipt: ') + err.message);
             }
         }
         await mutateCollection('expenses', list => [...list, { amount, issuer, description, date, id: Date.now(), receipt }]);
@@ -3847,10 +3889,10 @@ async function addExpense() {
         renderSuperAdminPaymentEditor();
         ['expense-amount', 'expense-issuer', 'expense-desc', 'expense-receipt'].forEach(id => setValue(id, ''));
         resetPendingFiles('expense');
-        showToast(t('toast_expense_saved', 'Ausgabe gespeichert'));
+        showToast(t('toast_expense_saved', 'Expense saved'));
     } catch (err) {
         console.error('Fehler beim Speichern der Ausgabe:', err);
-        alert(t('alert_save_expense_failed', 'Ausgabe konnte nicht gespeichert werden. Bitte erneut versuchen.'));
+        alert(t('alert_save_expense_failed', 'Expense could not be saved. Please try again.'));
     } finally {
         setButtonLoading('btn-add-expense', false);
     }
@@ -3872,7 +3914,7 @@ function openEndStandingOrderModal(personId, soId) {
 async function saveStandingOrderEnd() {
     if (!editingPersonId || !editingSoId) return;
     const endDate = inputValue('end-so-date');
-    if (!endDate) return alert(t('alert_please_choose_date', 'Bitte Datum wählen.'));
+    if (!endDate) return alert(t('alert_please_choose_date', 'Please choose a date.'));
     const isThisOrder = so => String(so.id) === String(editingSoId);
     try {
         await mutatePerson(editingPersonId, person => {
@@ -3887,21 +3929,21 @@ async function saveStandingOrderEnd() {
         });
         await renderViews();
         closeModal('end-standing-order-modal');
-        showToast(t('toast_so_updated', 'Dauerauftrag aktualisiert'));
+        showToast(t('toast_so_updated', 'Standing order updated'));
     } catch (err) {
         console.error('Fehler beim Beenden:', err);
-        alert(t('alert_save_error', 'Fehler beim Speichern.'));
+        alert(t('alert_save_error', 'Error while saving.'));
     }
 }
 
 async function deleteStandingOrderCompletely() {
-    if (!confirmAction(t('confirm_delete_so', 'Dauerauftrag wirklich komplett entfernen? Historie geht verloren.'))) return;
+    if (!confirmAction(t('confirm_delete_so', 'Are you sure you want to remove this standing order completely? History will be lost.'))) return;
     await attempt(async () => {
         await mutatePerson(editingPersonId, person => ({ ...person, standingOrders: safeList(person.standingOrders).filter(so => String(so.id) !== String(editingSoId)) }));
         await renderViews();
         closeModal('end-standing-order-modal');
-        showToast(t('toast_so_deleted', 'Dauerauftrag gelöscht'));
-    }, t('alert_delete_error', 'Fehler beim Löschen.'));
+        showToast(t('toast_so_deleted', 'Standing order deleted'));
+    }, t('alert_delete_error', 'Error while deleting.'));
 }
 
 // --- Member status changes & status e-mail ---
@@ -3909,7 +3951,7 @@ async function deleteStandingOrderCompletely() {
 function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
     const memberSince = person.originalMemberSince || person.memberSince || changeDateStr;
     const changeDate = new Date(changeDateStr);
-    if (changeDate < new Date(memberSince)) throw new Error(t('status_change_before_member_since', 'Änderungsdatum liegt vor Beginn der Mitgliedschaft.'));
+    if (changeDate < new Date(memberSince)) throw new Error(t('status_change_before_member_since', 'The change date is before the start of the membership.'));
     if (changeDateStr <= memberSince) return { ...person, status: newStatus, statusHistory: [{ status: newStatus, startDate: memberSince }] };
 
     const history = safeList(person.statusHistory)
@@ -3936,59 +3978,59 @@ function openChangeStatusModal(id) {
 async function saveStatusChange() {
     if (!currentPersonId) return;
     const changeDate = inputValue('change-status-date');
-    if (!changeDate) return alert(t('alert_please_enter_date', 'Bitte ein Datum angeben.'));
+    if (!changeDate) return alert(t('alert_please_enter_date', 'Please specify a date.'));
     try {
         const updated = await mutatePerson(currentPersonId, person => applyStatusChangeToHistory(person, inputValue('change-status-select'), changeDate));
-        if (!updated) return alert(t('alert_person_not_found', 'Person nicht gefunden.'));
+        if (!updated) return alert(t('alert_person_not_found', 'Person not found.'));
         await renderViews();
         closeModal('change-status-modal');
-        showToast(t('toast_status_changed', 'Status geändert'));
+        showToast(t('toast_status_changed', 'Status changed'));
     } catch (err) {
         console.error('Fehler bei der Statusänderung:', err);
-        alert(t('alert_status_change_failed', 'Statusänderung fehlgeschlagen: ') + err.message);
+        alert(t('alert_status_change_failed', 'Status change failed: ') + err.message);
     }
 }
 
 async function sendStatusEmail(personId) {
     if (!canManageFinances()) return;
     const person = findPerson(personId);
-    if (!person) return showToast(t('alert_person_not_found', 'Person nicht gefunden.'), 'error');
+    if (!person) return showToast(t('alert_person_not_found', 'Person not found.'), 'error');
     const email = person.uid && users.find(u => u.uid === person.uid)?.email;
-    if (!email) return showToast(t('toast_no_email', 'Keine E-Mail-Adresse für diese Person hinterlegt'), 'error');
+    if (!email) return showToast(t('toast_no_email', 'No email address found for this person'), 'error');
 
     const meta = person._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
     const readableStatus = getStatusLabels(false)[person._currentStatus || person.status] || person._currentStatus || person.status;
     const paidUntil = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
-    const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Nie');
+    const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Never');
     const today = new Date();
     const overdueMonths = paidUntil ? Math.max(0, (today.getFullYear() * 12 + today.getMonth()) - (paidUntil.getFullYear() * 12 + paidUntil.getMonth())) : 0;
-    const monthStr = overdueMonths === 1 ? t('email_status_one_month', 'einen Monat') : t('email_status_n_months', '{count} Monate', { count: overdueMonths });
+    const monthStr = overdueMonths === 1 ? t('email_status_one_month', 'one month') : t('email_status_n_months', '{count} months', { count: overdueMonths });
     const openAmount = euro(person._overdueAmount || 0);
     const box = (color, border, inner) => `<div style="background-color: ${color}; border-left: 4px solid ${border}; padding: 15px; border-radius: 8px; margin-bottom: 25px;">${inner}</div>`;
     const okParagraph = text => `<p style="margin: 0; color: #15803D; font-size: 16px; font-weight: 600;">${text}</p>`;
     let customMessage;
     let customHtml;
     if (meta.isActiveStandingOrder) {
-        customMessage = t('email_status_standing_order', 'Wir haben festgestellt, dass dein Dauerauftrag aktiv ist – du musst dich also um nichts weiter kümmern!');
+        customMessage = t('email_status_standing_order', 'Your standing order is active – so there is nothing else you need to do!');
         customHtml = box('#F0FDF4', '#22C55E', okParagraph(customMessage));
     } else if (meta.isOverdue) {
-        const overdueText = months => t('email_status_overdue', 'Das bedeutet, dass dein Beitrag aktuell für {months} überfällig ist.', { months });
-        const amountText = t('email_status_open_amount', 'Insgesamt beläuft sich der offene Betrag auf {amount}.', { amount: openAmount });
+        const overdueText = months => t('email_status_overdue', 'This means your fee is currently overdue for {months}.', { months });
+        const amountText = t('email_status_open_amount', 'The total outstanding amount is {amount}.', { amount: openAmount });
         customMessage = `${overdueText(monthStr)}\n${amountText}`;
         customHtml = box('#FEF2F2', '#EF4444', `<p style="margin: 0 0 5px 0; color: #B91C1C; font-size: 16px;">${overdueText(`<strong>${escapeHtml(monthStr)}</strong>`)}</p><p style="margin: 0; color: #B91C1C; font-size: 16px; font-weight: 600;">${escapeHtml(amountText)}</p>`);
     } else {
-        customMessage = t('email_status_ok', 'Dein Beitragskonto ist damit bestens ausgeglichen. Vielen Dank dafür!');
+        customMessage = t('email_status_ok', 'Your fee account is fully settled. Thank you very much!');
         customHtml = box('#F0FDF4', '#22C55E', okParagraph(customMessage));
     }
     const paragraph = (margin, content, extra = ' line-height: 1.5;') => `<p style="margin: ${margin}; font-size: 16px;${extra}">${content}</p>`;
     const mail = {
-        greeting: name => t('email_status_greeting', 'Hallo {name},', { name }),
-        intro: t('email_status_intro', 'wir möchten dir ein kurzes Update zu deinem aktuellen Status in der Kasse geben.'),
-        tier: status => t('email_status_tier', 'Dein Beitragstarif ist derzeit auf {status} eingestellt.', { status }),
-        paidUntil: date => t('email_status_paid_until', 'Nach unseren Aufzeichnungen hast du deine Beiträge bis einschließlich {date} bezahlt.', { date }),
-        questions: t('email_status_questions', 'Bei Fragen kannst du dich jederzeit gerne melden.'),
-        regards: t('email_status_regards', 'Liebe Grüße,'),
-        signature: app => t('email_status_signature', 'dein {app} Team', { app })
+        greeting: name => t('email_status_greeting', 'Hello {name},', { name }),
+        intro: t('email_status_intro', 'here is a short update on the current status of your membership fees.'),
+        tier: status => t('email_status_tier', 'Your fee category is currently set to {status}.', { status }),
+        paidUntil: date => t('email_status_paid_until', 'According to our records, you have paid your fees up to and including {date}.', { date }),
+        questions: t('email_status_questions', 'If you have any questions, feel free to get in touch at any time.'),
+        regards: t('email_status_regards', 'Kind regards,'),
+        signature: app => t('email_status_signature', 'Your {app} team', { app })
     };
     const text = `${mail.greeting(person.name)}\n\n${mail.intro}\n\n${mail.tier(`'${readableStatus}'`)}\n${mail.paidUntil(paidUntilLabel)}\n\n${customMessage}\n\n${mail.questions}\n\n${mail.regards}\n${mail.signature(APP_NAME)}`;
     const html = `
@@ -4011,14 +4053,14 @@ async function sendStatusEmail(personId) {
             </div>
         </div>`;
     await attempt(async () => {
-        const res = await api('/send-email', 'POST', { to: email, subject: t('email_status_subject', 'Dein Kassenstatus - {app}', { app: APP_NAME }), text, html });
+        const res = await api('/send-email', 'POST', { to: email, subject: t('email_status_subject', 'Your membership fee status - {app}', { app: APP_NAME }), text, html });
         if (res.ok) {
-            showToast(t('toast_email_sent', 'Status-E-Mail gesendet'));
+            showToast(t('toast_email_sent', 'Status email sent'));
         } else {
-            showToast(t('toast_email_failed', 'Fehler beim Senden der E-Mail'), 'error');
+            showToast(t('toast_email_failed', 'Failed to send email'), 'error');
             console.error('Email API response not ok:', await res.text());
         }
-    }, t('toast_email_failed', 'Fehler beim Senden der E-Mail'), { toast: 'error' });
+    }, t('toast_email_failed', 'Failed to send email'), { toast: 'error' });
 }
 
 // --- Member requests (payment, status change, expense) ---
@@ -4034,7 +4076,7 @@ const amountField = () => `
     <div class="form-group">
         <div class="hero-amount-wrapper">
             <span class="hero-amount-prefix">€</span>
-            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="${t('amount_placeholder', '0,00')}">
+            <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="${t('amount_placeholder', '0.00')}">
         </div>
     </div>`;
 const requestDateInput = () => `<input type="date" id="req-date" class="form-input" value="${getTodayStr()}">`;
@@ -4042,64 +4084,64 @@ const requestDateInput = () => `<input type="date" id="req-date" class="form-inp
 const REQUEST_FORMS = {
     payment: {
         badge: ['badge-donation', '💳'],
-        title: () => [t('user_req_payment_title', 'Zahlung melden'), t('user_req_payment_subtitle', 'Beitrag & Einzahlung an Admin melden')],
-        body: () => modalSection('💶', t('req_section_payment_amount', 'Zahlungsbetrag'), amountField())
-            + modalSection('⚙️', t('modal_section_payment_type', 'Zahlungsart & Datum'), `
+        title: () => [t('user_req_payment_title', 'Report payment'), t('user_req_payment_subtitle', 'Report a fee payment or deposit to the admin')],
+        body: () => modalSection('💶', t('req_section_payment_amount', 'Payment amount'), amountField())
+            + modalSection('⚙️', t('modal_section_payment_type', 'Payment type & date'), `
                 <div class="modal-switch-row">
                     <label class="switch">
-                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? ${jsArg(t('modal_date_start', 'Startdatum'))} : ${jsArg(t('modal_date', 'Datum'))}">
+                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? ${jsArg(t('modal_date_start', 'Start Date'))} : ${jsArg(t('modal_date', 'Date'))}">
                         <span class="slider"></span>
                     </label>
-                    <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Dauerauftrag')}</label>
+                    <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Standing Order')}</label>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Datum')}</label>
+                    <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Date')}</label>
                     ${requestDateInput()}
                 </div>`)
-            + modalSection('📝', t('req_section_note', 'Notiz / Verwendungszweck'), `
+            + modalSection('📝', t('req_section_note', 'Note / Reference'), `
                 <div class="form-group">
-                    <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'z.B. Beitrag Mai')}">
+                    <input type="text" id="req-note" class="form-input" placeholder="${t('modal_note_placeholder', 'e.g. May fee')}">
                 </div>`)
     },
     status: {
         badge: ['badge-person', '⚡'],
-        title: () => [t('user_req_status_title', 'Statusänderung beantragen'), t('user_req_status_subtitle', 'Neuen Mitgliedsstatus anfragen')],
+        title: () => [t('user_req_status_title', 'Request status change'), t('user_req_status_subtitle', 'Request a new membership status')],
         body: () => {
             const myPerson = people.length > 0 ? findLinkedPerson(currentUser?.uid) : null;
             const current = myPerson?._currentStatus || myPerson?.status;
             const labels = getStatusLabels(true);
-            return modalSection('💼', t('modal_new_status', 'Neuer Status'), `
+            return modalSection('💼', t('modal_new_status', 'New Status'), `
                 <div class="form-group">
                     <select id="req-status" class="form-select">
                         ${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`).join('')}
                     </select>
                 </div>`)
-                + modalSection('📅', t('modal_valid_from', 'Gültig ab'), `
+                + modalSection('📅', t('modal_valid_from', 'Valid From'), `
                 <div class="form-group">
                     ${requestDateInput()}
                     <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px; line-height:1.35;">
-                        ${t('modal_status_desc', '<strong>Rückwirkend:</strong> Korrigiert die Berechnung ab dem angegebenen Datum.<br><strong>Zukünftig:</strong> Der neue Status gilt ab dem Datum (bisherige Berechnung bleibt).')}
+                        ${t('modal_status_desc', '<strong>Retroactive:</strong> Corrects calculations starting from the specified date.<br><strong>Future:</strong> The new status applies from the specified date (previous calculations remain).')}
                     </div>
                 </div>`);
         }
     },
     expense: {
         badge: ['badge-expense', '🧾'],
-        title: () => [t('user_req_expense_title', 'Ausgabe melden'), t('user_req_expense_subtitle', 'Ausgabe zur Erstattung einreichen')],
-        body: () => modalSection('💶', t('modal_section_amount', 'Ausgabenbetrag'), amountField())
-            + modalSection('ℹ️', t('modal_section_info', 'Angaben zur Ausgabe'), `
+        title: () => [t('user_req_expense_title', 'Report expense'), t('user_req_expense_subtitle', 'Submit expense for reimbursement')],
+        body: () => modalSection('💶', t('modal_section_amount', 'Expense amount'), amountField())
+            + modalSection('ℹ️', t('modal_section_info', 'Expense details'), `
                 <div class="form-group">
-                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Beschreibung')}</label>
-                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'Wofür?')}">
+                    <label class="form-label" for="req-desc">${t('req_desc_label', 'Description')}</label>
+                    <input type="text" id="req-desc" class="form-input" placeholder="${t('modal_expense_what_placeholder', 'What for?')}">
                 </div>
                 <div class="form-group">
-                    <label class="form-label" for="req-date">${t('modal_date', 'Datum')}</label>
+                    <label class="form-label" for="req-date">${t('modal_date', 'Date')}</label>
                     ${requestDateInput()}
                 </div>`)
-            + modalSection('📎', t('modal_expense_receipt', 'Beleg'), `
+            + modalSection('📎', t('modal_expense_receipt', 'Receipt'), `
                 <div class="file-upload-dropzone">
                     <div class="file-upload-icon">📁</div>
-                    <div class="file-upload-text">${t('modal_expense_receipt_text', 'Beleg auswählen oder hierhin ziehen')}</div>
+                    <div class="file-upload-text">${t('modal_expense_receipt_text', 'Select a receipt or drag it here')}</div>
                     <div class="file-upload-subtext">JPG, PNG, HEIC, PDF</div>
                     <input type="file" id="req-receipt" accept="image/*,.heic,.heif,.pdf" multiple onchange="window.handleReqReceiptFiles(this.files)">
                 </div>
@@ -4107,9 +4149,9 @@ const REQUEST_FORMS = {
     }
 };
 const REQUEST_CHOICES = [
-    ['payment', 'rgba(6, 182, 212, 0.12)', 'var(--primary)', '💳', 'user_req_type_payment', 'Einzahlung / Zahlung', 'user_req_type_payment_desc', 'Beitrag oder Einzahlung melden.'],
-    ['status', 'rgba(245, 158, 11, 0.12)', '#f59e0b', '⚡', 'user_req_type_status', 'Statuswechsel', 'user_req_type_status_desc', 'Änderung des Mitgliedsstatus beantragen.'],
-    ['expense', 'rgba(239, 68, 68, 0.12)', 'var(--danger)', '🧾', 'user_req_type_expense', 'Ausgabe', 'user_req_type_expense_desc', 'Ausgabe zur Erstattung einreichen (mit Beleg).']
+    ['payment', 'rgba(6, 182, 212, 0.12)', 'var(--primary)', '💳', 'user_req_type_payment', 'Payment / Deposit', 'user_req_type_payment_desc', 'Report a fee payment or deposit.'],
+    ['status', 'rgba(245, 158, 11, 0.12)', '#f59e0b', '⚡', 'user_req_type_status', 'Status Change', 'user_req_type_status_desc', 'Request a membership status change.'],
+    ['expense', 'rgba(239, 68, 68, 0.12)', 'var(--danger)', '🧾', 'user_req_type_expense', 'Expense', 'user_req_type_expense_desc', 'Submit expense for reimbursement (with receipt).']
 ];
 
 function openUserRequestModal(type) {
@@ -4122,7 +4164,7 @@ function openUserRequestModal(type) {
         badge.className = `modal-icon-badge ${badgeClass}`;
         badge.textContent = badgeIcon;
     }
-    const [title, subtitle] = form ? form.title() : [t('user_request_modal_title', 'Anfrage'), t('user_req_select_subtitle', 'Wähle die Art der Anfrage')];
+    const [title, subtitle] = form ? form.title() : [t('user_request_modal_title', 'Request'), t('user_req_select_subtitle', 'Select request type')];
     if ($('req-modal-title')) $('req-modal-title').innerText = title;
     if ($('req-modal-subtitle')) $('req-modal-subtitle').innerText = subtitle;
     show('req-modal-back-btn', !!form, 'inline-flex');
@@ -4145,7 +4187,7 @@ function openUserRequestModal(type) {
 
 // Validates the open request form; returns { type, data } or null after alerting the user.
 function collectRequestData(date) {
-    const fillFields = () => alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.'));
+    const fillFields = () => alert(t('alert_fill_fields', 'Please fill out all fields.'));
     const invalidAmount = amount => isNaN(parseFloat(amount)) || parseFloat(amount) <= 0;
     if (currentRequestType === 'status') {
         const newStatus = $('req-status') ? inputValue('req-status') : 'vollverdiener';
@@ -4155,12 +4197,12 @@ function collectRequestData(date) {
     if (currentRequestType === 'expense') {
         const description = inputValue('req-desc').trim();
         if (!amount || !description) return fillFields();
-        if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
+        if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Invalid amount.'));
         return { type: 'expense', data: { amount, description, date } };
     }
     if (currentRequestType !== 'payment') return { type: 'payment', data: {} };
     if (!amount) return fillFields();
-    if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Ungültiger Betrag.'));
+    if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Invalid amount.'));
     return { type: isChecked('req-is-standing-order') ? 'standing_order' : 'payment', data: { amount, date, note: inputValue('req-note').trim() } };
 }
 
@@ -4168,30 +4210,30 @@ async function submitUserRequest() {
     if (!currentUser) return;
     const person = people.find(p => p.uid === currentUser.uid) || null;
     const personId = person ? person.id : (currentUser.uid || currentUser.id || 'unknown');
-    const personName = person ? person.name : (fullName(currentUser) || currentUser.name || currentUser.email || 'Benutzer');
+    const personName = person ? person.name : (fullName(currentUser) || currentUser.name || currentUser.email || t('user_fallback_name', 'User'));
     const date = $('req-date') ? inputValue('req-date') : getTodayStr();
-    if (!date) return alert(t('alert_fill_fields', 'Bitte alle Felder ausfüllen.'));
+    if (!date) return alert(t('alert_fill_fields', 'Please fill out all fields.'));
     const request = collectRequestData(date);
     if (!request) return;
 
     if (request.type === 'expense') {
         const files = pendingUploads.req.files.length > 0 ? pendingUploads.req.files : Array.from($('req-receipt')?.files || []);
         if (files.length > 0) {
-            setButtonLoading('btn-submit-request', true, t('btn_uploading', 'Lade hoch...'));
+            setButtonLoading('btn-submit-request', true, t('btn_uploading', 'Uploading...'));
             try {
                 request.data.receipt = await uploadAll(files, personName, date);
             } catch (err) {
-                alert(t('alert_upload_error', 'Fehler beim Hochladen: ') + err.message);
+                alert(t('alert_upload_error', 'Upload failed: ') + err.message);
                 return setButtonLoading('btn-submit-request', false);
             }
         }
     }
     const newReq = { id: newId(), type: request.type, userId: currentUser.uid || currentUser.id, personId, personName, data: request.data, status: 'pending', timestamp: Date.now() };
-    setButtonLoading('btn-submit-request', true, t('btn_sending', 'Sende...'));
+    setButtonLoading('btn-submit-request', true, t('btn_sending', 'Sending...'));
     try {
         await set(ref(db, 'requests/' + newReq.id), newReq);
         closeModal('user-request-modal');
-        showToast(t('toast_request_sent', 'Anfrage erfolgreich gesendet'));
+        showToast(t('toast_request_sent', 'Request successfully sent'));
         // Show the request immediately, then sync with the server
         if (!requests.some(r => r.id === newReq.id)) {
             requests.unshift(newReq);
@@ -4201,7 +4243,7 @@ async function submitUserRequest() {
         api('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Fehler beim Senden der Admin-Info über Backend', e));
     } catch (err) {
         console.error('Fehler beim Senden der Anfrage:', err);
-        alert(t('alert_send_request_failed', 'Anfrage konnte nicht gesendet werden. Bitte erneut versuchen.') + (err.message ? ` ${err.message}` : ''));
+        alert(t('alert_send_request_failed', 'Request could not be sent. Please try again.') + (err.message ? ` ${err.message}` : ''));
     } finally {
         setButtonLoading('btn-submit-request', false);
     }
@@ -4313,8 +4355,8 @@ function clearAiChat() {
             <div class="ai-chat-welcome-icon">
                 ${svgIcon('chat', 32)}
             </div>
-            <div class="ai-chat-welcome-text">${t('ai_chat_ready', 'KI-Assistent bereit')}</div>
-            <div class="ai-chat-welcome-sub">${canViewFinances() ? t('ai_chat_welcome_sub', 'Stelle Fragen zu deinen Mitgliedern, Finanzen oder Einstellungen.') : t('ai_chat_welcome_sub_member', 'Stelle Fragen zur Gemeinde, Mitgliedern oder zur App-Nutzung.')}</div>
+            <div class="ai-chat-welcome-text">${t('ai_chat_ready', 'AI Assistant ready')}</div>
+            <div class="ai-chat-welcome-sub">${canViewFinances() ? t('ai_chat_welcome_sub', 'Ask questions about your members, finances, or settings.') : t('ai_chat_welcome_sub_member', 'Ask questions about the church, members or how to use the app.')}</div>
         </div>`;
 }
 
@@ -4352,14 +4394,14 @@ function addAiReportButton(bubble, answer, prompt) {
     if (!bubble || !answer) return;
     const btn = createEl('button', 'ai-report-btn');
     btn.type = 'button';
-    btn.innerHTML = `${svgIcon('flag', 13)}<span>${escapeHtml(t('ai_report', 'Antwort melden'))}</span>`;
+    btn.innerHTML = `${svgIcon('flag', 13)}<span>${escapeHtml(t('ai_report', 'Report reply'))}</span>`;
     btn.onclick = async () => {
-        const reason = window.prompt(t('ai_report_reason', 'Was ist an dieser Antwort problematisch? (optional)'), '');
+        const reason = window.prompt(t('ai_report_reason', 'What is wrong with this reply? (optional)'), '');
         if (reason === null) return;
         try {
-            await apiJson('/reports', 'POST', { type: 'ai', content: answer, prompt, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
+            await apiJson('/reports', 'POST', { type: 'ai', content: answer, prompt, reason }, t('report_failed', 'Report failed.'));
             btn.disabled = true;
-            btn.querySelector('span').textContent = t('report_sent', 'Gemeldet – danke!');
+            btn.querySelector('span').textContent = t('report_sent', 'Reported – thank you!');
         } catch (err) {
             alert(err.message);
         }
@@ -4379,7 +4421,7 @@ function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
     bubble.replaceChildren();
     if (thinking) {
         const details = createEl('details', 'ai-thinking');
-        details.append(createEl('summary', 'ai-thinking-summary', t('ai_thinking_show', 'Denkprozess anzeigen')), createEl('pre', 'ai-thinking-content', thinking));
+        details.append(createEl('summary', 'ai-thinking-summary', t('ai_thinking_show', 'Show reasoning')), createEl('pre', 'ai-thinking-content', thinking));
         details.open = wasOpen;
         bubble.appendChild(details);
     }
@@ -4649,10 +4691,10 @@ async function sendAiMessage() {
         try {
             token = await auth.currentUser.getIdToken();
         } catch {
-            throw new Error(t('error_auth_failed_short', 'Authentifizierung fehlgeschlagen'));
+            throw new Error(t('error_auth_failed_short', 'Authentication failed'));
         }
         const messages = sanitizeAiMessages(aiMessages);
-        if (messages.length === 0) throw new Error(t('ai_no_valid_message', 'Keine gültige Nachricht vorhanden'));
+        if (messages.length === 0) throw new Error(t('ai_no_valid_message', 'No valid message to send'));
         const res = await fetch(`${API}/ai/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -4692,7 +4734,7 @@ async function sendAiMessage() {
     } catch (err) {
         typingEl.remove();
         console.error('KI-Chat Fehler:', err);
-        const message = t('ai_error', 'Fehler: {message}', { message: err.message || t('error_unknown', 'Unbekannter Fehler') });
+        const message = t('ai_error', 'Error: {message}', { message: err.message || t('error_unknown', 'Unknown error') });
         if (bubble) bubble.textContent = message;
         else bubble = appendAiMessage('assistant', message);
         bubble?.classList.add('ai-chat-bubble-error');
@@ -4742,8 +4784,8 @@ function threadPartner(thread) {
     const isMentor = !!thread && isCurrentUser(thread.mentor);
     return {
         isMentor,
-        name: isMentor ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymer Suchender')) : (thread?.mentor_name || t('mentoring_partner_mentor', 'Mentor')),
-        role: isMentor ? t('mentoring_role_seeker', 'Suchender (anonym)') : t('mentoring_role_mentor', 'Dein Mentor')
+        name: isMentor ? (thread.mentee_alias || t('mentoring_partner_anonymous', 'Anonymous Seeker')) : (thread?.mentor_name || t('mentoring_partner_mentor', 'Mentor')),
+        role: isMentor ? t('mentoring_role_seeker', 'Seeker (anonymous)') : t('mentoring_role_mentor', 'Your Mentor')
     };
 }
 
@@ -4809,9 +4851,9 @@ async function loadMentoringData() {
             myMentorProfile = (await res.json()).mentor || null;
             const applyBtn = $('mentor-apply-btn');
             if (applyBtn) {
-                applyBtn.innerHTML = myMentorProfile?.status === 'approved' ? t('mentoring_my_profile_btn', 'Mein Mentoren-Profil')
-                    : myMentorProfile?.status === 'pending' ? t('mentoring_pending_profile_btn', '⏳ Bewerbung in Prüfung')
-                    : t('mentoring_apply_btn', 'Als Mentor bewerben');
+                applyBtn.innerHTML = myMentorProfile?.status === 'approved' ? t('mentoring_my_profile_btn', 'My Mentor Profile')
+                    : myMentorProfile?.status === 'pending' ? t('mentoring_pending_profile_btn', '⏳ Application in Review')
+                    : t('mentoring_apply_btn', 'Apply as Mentor');
             }
         }
     } catch (err) {
@@ -4841,11 +4883,11 @@ async function loadMentorsList() {
             mentoringMentors = await res.json();
             renderMentorsGrid();
         } else {
-            grid.innerHTML = gridMessage('--text-secondary', t('mentoring_load_error', 'Mentoren konnten nicht geladen werden.'));
+            grid.innerHTML = gridMessage('--text-secondary', t('mentoring_load_error', 'Mentors could not be loaded.'));
         }
     } catch (err) {
         console.warn('Failed to load mentors:', err);
-        grid.innerHTML = gridMessage('--danger', t('mentoring_network_error', 'Netzwerkfehler beim Laden der Mentoren.'));
+        grid.innerHTML = gridMessage('--danger', t('mentoring_network_error', 'Network error while loading mentors.'));
     }
 }
 
@@ -4856,19 +4898,19 @@ function mentorCapacity(m) {
 }
 
 function mentorCardAction(m, name, isSelf, isFull) {
-    if (isSelf) return `<button type="button" class="btn btn-secondary btn-small" onclick="window.openMentorApplicationModal()">${t('mentoring_btn_edit_profile', 'Profil bearbeiten')}</button>`;
+    if (isSelf) return `<button type="button" class="btn btn-secondary btn-small" onclick="window.openMentorApplicationModal()">${t('mentoring_btn_edit_profile', 'Edit Profile')}</button>`;
     const mentorUserId = m.user || m.user_id || m.id;
     const existing = mentoringThreads.find(th => (th.mentor === mentorUserId || th.mentor === m.user || th.mentor === m.id) && th.mentee === currentUid());
     if (existing) {
         const closed = existing.status === 'closed';
         return `
-            <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect(${jsArg(existing.id)}, 'find')" title="${closed ? t('mentoring_btn_open_closed_chat_title', 'Abgeschlossenes Gespräch anzeigen') : t('mentoring_btn_open_chat_title', 'Laufendes Gespräch öffnen')}">
-                ${closed ? t('mentoring_btn_open_closed_chat', '📁 Zum Gespräch') : t('mentoring_btn_open_chat', '💬 Zum Gespräch')}
+            <button type="button" class="btn btn-secondary btn-small" onclick="window.openMentoringChatDirect(${jsArg(existing.id)}, 'find')" title="${closed ? t('mentoring_btn_open_closed_chat_title', 'Show closed conversation') : t('mentoring_btn_open_chat_title', 'Open ongoing conversation')}">
+                ${closed ? t('mentoring_btn_open_closed_chat', '📁 Go to chat') : t('mentoring_btn_open_chat', '💬 Go to chat')}
             </button>`;
     }
     return `
         <button type="button" class="btn btn-mentor-primary btn-small" ${isFull ? 'disabled' : ''} onclick="window.openMentorContactModal(${jsArg(mentorUserId)}, ${jsArg(name)})">
-            ${isFull ? t('mentoring_btn_full', 'Voll belegt') : t('mentoring_btn_contact', 'Anonym kontaktieren')}
+            ${isFull ? t('mentoring_btn_full', 'Fully booked') : t('mentoring_btn_contact', 'Contact anonymously')}
         </button>`;
 }
 
@@ -4884,8 +4926,8 @@ function renderMentorsGrid() {
         grid.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text-secondary);">
                 <div style="font-size: 2.5rem; margin-bottom: 10px;">👥</div>
-                <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 6px;">${t('mentoring_no_mentors_title', 'Derzeit keine Mentoren verfügbar')}</div>
-                <div style="font-size: 0.9rem;">${isManager ? t('mentoring_no_mentors_desc_manager', 'Sobald Bewerbungen freigegeben wurden, erscheinen die Mentoren hier.') : t('mentoring_no_mentors_desc_user', 'Aktuell sind alle Mentoren vollständig ausgelastet oder es liegen keine freigegebenen Profile vor.')}</div>
+                <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 6px;">${t('mentoring_no_mentors_title', 'No mentors currently available')}</div>
+                <div style="font-size: 0.9rem;">${isManager ? t('mentoring_no_mentors_desc_manager', 'Once applications are approved, mentors will appear here.') : t('mentoring_no_mentors_desc_user', 'All mentors are currently fully booked or no approved profiles are available.')}</div>
             </div>`;
         return;
     }
@@ -4905,15 +4947,15 @@ function renderMentorsGrid() {
                     </div>
                     <div class="mentor-card-title">
                         <h3>${escapeHtml(name)}</h3>
-                        <span class="mentor-role-badge">${t('mentoring_verified_badge', 'Geprüfter Mentor')}</span>
+                        <span class="mentor-role-badge">${t('mentoring_verified_badge', 'Verified Mentor')}</span>
                     </div>
                 </div>
-                <div class="mentor-card-bio">${escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Beschreibung vorhanden.'))}</div>
+                <div class="mentor-card-bio">${escapeHtml(m.bio || t('mentoring_no_bio', 'No description provided.'))}</div>
                 <div class="mentor-card-footer">
                     ${isManager || isSelf ? `
-                    <div class="mentor-capacity" title="${t('mentoring_capacity_title', 'Auslastung: Begleitungen')}">
-                        <span>${t('mentoring_capacity_active', '👥 {active} / {max} aktiv', { active, max })}</span>
-                        ${isFull ? `<span class="mentor-badge-full">${t('mentoring_badge_full', 'Ausgelastet')}</span>` : ''}
+                    <div class="mentor-capacity" title="${t('mentoring_capacity_title', 'Capacity: mentoring relationships')}">
+                        <span>${t('mentoring_capacity_active', '👥 {active} / {max} active', { active, max })}</span>
+                        ${isFull ? `<span class="mentor-badge-full">${t('mentoring_badge_full', 'Fully booked')}</span>` : ''}
                     </div>` : ''}
                     ${mentorCardAction(m, name, isSelf, isFull)}
                 </div>
@@ -4925,14 +4967,14 @@ function openMentorContactModal(userId, mentorName) {
     const existing = mentoringThreads.find(th => th.mentor === userId && th.mentee === currentUid());
     if (existing) {
         showToast(existing.status === 'closed'
-            ? t('mentoring_toast_existing_closed', 'Du hast bereits ein früheres Gespräch mit diesem Mentor.')
-            : t('mentoring_toast_existing_active', 'Du hast bereits eine aktive Begleitung mit diesem Mentor.'), 'info');
+            ? t('mentoring_toast_existing_closed', 'You already have a past conversation with this mentor.')
+            : t('mentoring_toast_existing_active', 'You already have an active conversation with this mentor.'), 'info');
         openMentoringChatDirect(existing.id);
         return;
     }
     setValue('mentor-contact-user-id', userId);
     const target = $('mentor-contact-target-name');
-    if (target) target.innerText = t('mentor_contact_modal_subtitle', 'Anfrage an {name}', { name: mentorName });
+    if (target) target.innerText = t('mentor_contact_modal_subtitle', 'Request to {name}', { name: mentorName });
     setValue('mentor-contact-message', '');
     openModal('mentor-contact-modal');
     setTimeout(() => $('mentor-contact-message')?.focus(), 150);
@@ -4942,22 +4984,22 @@ async function submitMentorContact(e) {
     e?.preventDefault?.();
     const mentorId = inputValue('mentor-contact-user-id');
     const message = inputValue('mentor-contact-message').trim();
-    if (!mentorId) return alert(t('mentor_contact_error_no_mentor', 'Kein Mentor ausgewählt.'));
-    if (!message) return alert(t('mentor_contact_error_no_msg', 'Bitte gib eine Erstnachricht für den Mentor ein.'));
+    if (!mentorId) return alert(t('mentor_contact_error_no_mentor', 'No mentor selected.'));
+    if (!message) return alert(t('mentor_contact_error_no_msg', 'Please enter a first message for the mentor.'));
     try {
         const res = await api('/mentoring/threads', 'POST', { mentor: mentorId, mentorId, message, initialMessage: message });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
             if (data.threadId) {
                 closeModal('mentor-contact-modal');
-                showToast(data.error || t('mentoring_toast_existing_opened', 'Bestehendes Gespräch geöffnet.'), 'info');
+                showToast(data.error || t('mentoring_toast_existing_opened', 'Opened the existing conversation.'), 'info');
                 openMentoringChatDirect(data.threadId);
                 return;
             }
-            throw new Error(data.error || data.message || t('mentoring_req_error', 'Fehler beim Senden der Anfrage.'));
+            throw new Error(data.error || data.message || t('mentoring_req_error', 'Failed to send the request.'));
         }
         closeModal('mentor-contact-modal');
-        showToast(t('mentoring_toast_req_sent', 'Vertrauliche Anfrage erfolgreich gesendet!'), 'success');
+        showToast(t('mentoring_toast_req_sent', 'Confidential request sent successfully!'), 'success');
         const threadId = data.threadId || data.thread?.id;
         if (threadId) {
             await loadMentoringThreads(true, threadId);
@@ -4966,7 +5008,7 @@ async function submitMentorContact(e) {
             loadMentoringThreads(true);
         }
     } catch (err) {
-        alert(err.message || t('mentoring_req_error', 'Fehler beim Senden der Anfrage.'));
+        alert(err.message || t('mentoring_req_error', 'Failed to send the request.'));
     }
 }
 
@@ -4974,8 +5016,8 @@ function renderThreadItem(thread) {
     const { isMentor, name, role } = threadPartner(thread);
     const isClosed = thread.status === 'closed';
     const unread = thread.unread_count || 0;
-    const closedLabel = t('mentoring_sub_closed', 'Gespräch beendet');
-    const lastMsg = thread.last_message || (isClosed ? closedLabel : t('mentoring_no_messages_yet', 'Noch keine Nachrichten'));
+    const closedLabel = t('mentoring_sub_closed', 'Conversation ended');
+    const lastMsg = thread.last_message || (isClosed ? closedLabel : t('mentoring_no_messages_yet', 'No messages yet'));
     const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
     const avatar = isMentor
         ? `<div class="mentoring-thread-avatar mentee-avatar" title="${escapeHtml(name)}">${svgIcon('shield', 20)}</div>`
@@ -4987,7 +5029,7 @@ function renderThreadItem(thread) {
         <div class="mentoring-thread-item ${activeMentoringThreadId === thread.id ? 'active' : ''} ${unread > 0 ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread(${jsArg(thread.id)})">
             <div class="mentoring-thread-avatar-wrap">
                 ${avatar}
-                <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? closedLabel : t('status_active', 'Aktiv')}"></span>
+                <span class="mentoring-thread-status-dot ${isClosed ? 'closed' : 'active'}" title="${isClosed ? closedLabel : t('status_active', 'Active')}"></span>
             </div>
             <div class="mentoring-thread-info">
                 <div class="mentoring-thread-top">
@@ -5022,9 +5064,9 @@ async function loadMentoringThreads(shouldSelect = false, selectThreadId = null,
             listEl.innerHTML = `
                 <div class="mentoring-threads-empty">
                     <div class="mentoring-empty-icon">💬</div>
-                    <div class="mentoring-empty-title">${t('mentoring_no_threads_title', 'Keine aktiven Begleitungen')}</div>
-                    <div class="mentoring-empty-desc">${t('mentoring_no_threads_desc', 'Kontaktiere einen Mentor, um ein vertrauliches Gespräch zu beginnen.')}</div>
-                    <button class="btn btn-secondary btn-small" onclick="window.switchMentoringSubTab('find')">${t('mentoring_tab_find', 'Mentoren finden')}</button>
+                    <div class="mentoring-empty-title">${t('mentoring_no_threads_title', 'No active conversations')}</div>
+                    <div class="mentoring-empty-desc">${t('mentoring_no_threads_desc', 'Contact a mentor to start a confidential conversation.')}</div>
+                    <button class="btn btn-secondary btn-small" onclick="window.switchMentoringSubTab('find')">${t('mentoring_tab_find', 'Find Mentors')}</button>
                 </div>`;
             return;
         }
@@ -5096,8 +5138,8 @@ async function openMentoringThread(threadId) {
     if (titleEl) titleEl.innerText = name;
     const subEl = $('mentoring-chat-subtitle');
     if (subEl) {
-        subEl.innerText = isClosed ? t('mentoring_sub_closed', 'Gespräch beendet')
-            : isMentor ? t('mentoring_sub_active_seeker', 'Vertraulich & Anonym') : t('mentoring_sub_active_mentee', 'Dein vertraulicher Mentor');
+        subEl.innerText = isClosed ? t('mentoring_sub_closed', 'Conversation ended')
+            : isMentor ? t('mentoring_sub_active_seeker', 'Confidential & Anonymous') : t('mentoring_sub_active_mentee', 'Your confidential mentor');
     }
     show('mentoring-chat-menu-dropdown', false);
     if ($('mentoring-chat-actions')) {
@@ -5108,8 +5150,8 @@ async function openMentoringThread(threadId) {
     show('mentoring-chat-closed-bar', isClosed, 'flex');
     const closedText = $('mentoring-chat-closed-text');
     if (closedText) closedText.textContent = thread?.blocked
-        ? (thread.blockedByMe ? t('mentoring_chat_blocked_by_me', 'Du hast dieses Gespräch blockiert.') : t('mentoring_chat_blocked', 'Dieses Gespräch wurde blockiert.'))
-        : t('mentoring_chat_closed_info', 'Dieses Gespräch wurde beendet.');
+        ? (thread.blockedByMe ? t('mentoring_chat_blocked_by_me', 'You blocked this conversation.') : t('mentoring_chat_blocked', 'This conversation has been blocked.'))
+        : t('mentoring_chat_closed_info', 'This conversation has ended.');
     show('mentoring-reopen-btn', !thread?.blocked || thread.blockedByMe, 'inline-flex');
 
     await loadMentoringMessages(threadId);
@@ -5148,7 +5190,7 @@ async function loadMentoringMessages(threadId, isPoll = false) {
     try {
         const res = await api(`/mentoring/threads/${threadId}/messages`);
         if (!res.ok) {
-            if (res.status === 403) messagesEl.innerHTML = `<div style="text-align:center; color:var(--danger); margin:auto; padding:20px;">${t('mentoring_access_denied', 'Zugriff verweigert (Geschützte Verbindung).')}</div>`;
+            if (res.status === 403) messagesEl.innerHTML = `<div style="text-align:center; color:var(--danger); margin:auto; padding:20px;">${t('mentoring_access_denied', 'Access denied (Protected connection).')}</div>`;
             return;
         }
         let messages = await res.json();
@@ -5169,8 +5211,8 @@ async function loadMentoringMessages(threadId, isPoll = false) {
             messagesEl.innerHTML = `
                 <div class="mentoring-chat-empty-notice">
                     <div style="font-size:2rem; margin-bottom:8px;">✨</div>
-                    <div style="font-weight:600; margin-bottom:4px;">${t('mentoring_no_messages_yet', 'Noch keine Nachrichten')}</div>
-                    <div style="font-size:0.85rem; color:var(--text-secondary);">${t('mentoring_start_conversation_desc', 'Beginne das Gespräch! Alles was du schreibst, ist absolut vertraulich.')}</div>
+                    <div style="font-weight:600; margin-bottom:4px;">${t('mentoring_no_messages_yet', 'No messages yet')}</div>
+                    <div style="font-size:0.85rem; color:var(--text-secondary);">${t('mentoring_start_conversation_desc', 'Start the conversation! Everything you write is strictly confidential.')}</div>
                 </div>`;
             return;
         }
@@ -5179,7 +5221,7 @@ async function loadMentoringMessages(threadId, isPoll = false) {
             const time = m.created ? new Date(m.created).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }) : '';
             return `
                 <div class="mentoring-message ${isMe ? 'outgoing msg-mine' : 'incoming msg-other'}">
-                    ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_generic', 'Gesprächspartner'))}</div>` : ''}
+                    ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_generic', 'Conversation partner'))}</div>` : ''}
                     <div class="mentoring-message-bubble">${escapeHtml(m.message || m.text || '')}</div>
                     <div class="mentoring-message-time">${escapeHtml(time)}</div>
                 </div>`;
@@ -5200,19 +5242,19 @@ async function sendMentoringMessage() {
     const pending = createEl('div', 'mentoring-message outgoing msg-mine');
     pending.innerHTML = `
         <div class="mentoring-message-bubble">${escapeHtml(text)}</div>
-        <div class="mentoring-message-time">${escapeHtml(new Date().toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }))} • ${t('mentoring_sending_optimistic', 'Wird gesendet…')}</div>`;
+        <div class="mentoring-message-time">${escapeHtml(new Date().toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }))} • ${t('mentoring_sending_optimistic', 'Sending…')}</div>`;
     messagesEl.appendChild(pending);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     input.value = '';
     autoResizeMentoringInput(input);
     try {
-        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/messages`, 'POST', { message: text, text }, t('mentoring_send_error', 'Fehler beim Senden'));
+        await apiJson(`/mentoring/threads/${activeMentoringThreadId}/messages`, 'POST', { message: text, text }, t('mentoring_send_error', 'Failed to send'));
         await loadMentoringMessages(activeMentoringThreadId);
         loadMentoringThreads(false);
     } catch (err) {
         const time = pending.querySelector('.mentoring-message-time');
-        if (time) time.innerHTML = `<span style="color:#ef4444;">⚠️ ${t('mentoring_send_error', 'Fehler beim Senden')}</span>`;
-        alert(err.message || t('mentoring_send_failed', 'Nachricht konnte nicht gesendet werden.'));
+        if (time) time.innerHTML = `<span style="color:#ef4444;">⚠️ ${t('mentoring_send_error', 'Failed to send')}</span>`;
+        alert(err.message || t('mentoring_send_failed', 'The message could not be sent.'));
     }
 }
 
@@ -5231,13 +5273,13 @@ async function withActiveThread(action) {
     try {
         await action(thread);
     } catch (err) {
-        alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
+        alert(err.message || t('mentoring_status_error', 'Failed to update.'));
     }
 }
 
 // 'blocked' closes the chat so that only the blocker can reopen it (Google Play UGC policy)
 async function setThreadStatus(thread, status, toast) {
-    await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status }, t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
+    await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status }, t('mentoring_status_error', 'Failed to update.'));
     Object.assign(thread, status === 'blocked' ? { status: 'closed', blocked: true, blockedByMe: true } : { status });
     openMentoringThread(thread.id);
     loadMentoringThreads();
@@ -5246,17 +5288,17 @@ async function setThreadStatus(thread, status, toast) {
 
 // Report the conversation to the admins with the partner's recent messages
 const reportCurrentThread = () => withActiveThread(async thread => {
-    const reason = window.prompt(t('mentoring_report_reason', 'Warum meldest du dieses Gespräch? Die letzten Nachrichten deines Gegenübers werden an die Administratoren gesendet.'), '');
+    const reason = window.prompt(t('mentoring_report_reason', 'Why are you reporting this conversation? The latest messages of the other person are sent to the administrators.'), '');
     if (reason === null) return;
     const partnerRole = thread.myRole === 'mentor' ? 'mentee' : 'mentor';
-    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || t('mentoring_report_no_messages', '(keine Nachrichten)');
-    await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Meldung fehlgeschlagen.'));
-    showToast(t('report_sent', 'Gemeldet – danke!'), 'info');
+    const content = activeMentoringMessages.filter(m => m.sender_role === partnerRole).slice(-10).map(m => m.text).join('\n---\n') || t('mentoring_report_no_messages', '(no messages)');
+    await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Report failed.'));
+    showToast(t('report_sent', 'Reported – thank you!'), 'info');
 });
 
 const blockCurrentThread = () => withActiveThread(thread => {
-    if (confirmAction(t('mentoring_confirm_block', 'Gegenüber blockieren? Das Gespräch wird geschlossen und nur du kannst es wieder öffnen.'))) {
-        return setThreadStatus(thread, 'blocked', t('mentoring_toast_blocked', 'Gespräch blockiert.'));
+    if (confirmAction(t('mentoring_confirm_block', 'Block this person? The conversation is closed and only you can reopen it.'))) {
+        return setThreadStatus(thread, 'blocked', t('mentoring_toast_blocked', 'Conversation blocked.'));
     }
 });
 
@@ -5264,16 +5306,16 @@ const toggleCloseCurrentThread = forcedStatus => withActiveThread(thread => {
     const status = forcedStatus || (thread.status === 'closed' ? 'active' : 'closed');
     const closing = status === 'closed';
     if (!confirmAction(closing
-        ? t('mentoring_confirm_close', 'Möchtest du diese Begleitung wirklich abschließen? Beide Seiten können keine neuen Nachrichten mehr schreiben, bis sie wiedereröffnet wird.')
-        : t('mentoring_confirm_reopen', 'Möchtest du diese Begleitung wiedereröffnen?'))) return;
-    return setThreadStatus(thread, status, closing ? t('mentoring_toast_closed', 'Gespräch beendet.') : t('mentoring_toast_reopened', 'Gespräch wiedereröffnet.'));
+        ? t('mentoring_confirm_close', 'Do you really want to end this conversation? Neither party can send new messages until it is reopened.')
+        : t('mentoring_confirm_reopen', 'Do you want to reopen this conversation?'))) return;
+    return setThreadStatus(thread, status, closing ? t('mentoring_toast_closed', 'Conversation ended.') : t('mentoring_toast_reopened', 'Conversation reopened.'));
 });
 
 function openMentorApplicationModal() {
     setValue('mentor-app-bio', myMentorProfile ? myMentorProfile.bio || '' : '');
     setValue('mentor-app-max', myMentorProfile ? myMentorProfile.max_mentees || 3 : 3);
     const submitBtn = $('btn-submit-mentor-app');
-    if (submitBtn) submitBtn.innerText = myMentorProfile ? t('mentor_app_btn_update', 'Profil aktualisieren') : t('mentor_app_btn_submit', 'Bewerbung absenden');
+    if (submitBtn) submitBtn.innerText = myMentorProfile ? t('mentor_app_btn_update', 'Update profile') : t('mentor_app_btn_submit', 'Submit application');
     openModal('mentor-application-modal');
 }
 
@@ -5281,23 +5323,23 @@ async function submitMentorApplication(e) {
     e?.preventDefault?.();
     const bio = inputValue('mentor-app-bio').trim();
     const max_mentees = $('mentor-app-max') ? parseInt(inputValue('mentor-app-max'), 10) : 3;
-    if (!bio) return alert(t('mentor_app_error_no_bio', 'Bitte gib eine kurze persönliche Vorstellung ein.'));
+    if (!bio) return alert(t('mentor_app_error_no_bio', 'Please enter a short personal introduction.'));
     const isUpdate = !!myMentorProfile;
     try {
-        const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees }, t('mentor_app_error_generic', 'Fehler bei der Bewerbung.'));
+        const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees }, t('mentor_app_error_generic', 'The application failed.'));
         myMentorProfile = data.mentor || myMentorProfile;
         closeModal('mentor-application-modal');
-        showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentoren-Profil aktualisiert!') : t('mentor_app_toast_submitted', 'Bewerbung erfolgreich eingereicht! Die Leitung wird sie prüfen.'), 'success');
+        showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentor profile updated!') : t('mentor_app_toast_submitted', 'Application submitted successfully! The leadership will review it.'), 'success');
         loadMentoringData();
     } catch (err) {
-        alert(err.message || t('mentor_app_error_generic', 'Fehler bei der Bewerbung.'));
+        alert(err.message || t('mentor_app_error_generic', 'The application failed.'));
     }
 }
 
 const MENTOR_STATUS_STYLES = {
-    pending: ['rgba(234, 179, 8, 0.15)', '#eab308', 'mentoring_filter_pending', 'Ausstehend'],
-    approved: ['rgba(16, 185, 129, 0.15)', '#10b981', 'mentoring_filter_approved', 'Freigegeben'],
-    rejected: ['rgba(239, 68, 68, 0.15)', '#ef4444', 'mentoring_filter_rejected', 'Abgelehnt']
+    pending: ['rgba(234, 179, 8, 0.15)', '#eab308', 'mentoring_filter_pending', 'Pending'],
+    approved: ['rgba(16, 185, 129, 0.15)', '#10b981', 'mentoring_filter_approved', 'Approved'],
+    rejected: ['rgba(239, 68, 68, 0.15)', '#ef4444', 'mentoring_filter_rejected', 'Rejected']
 };
 
 async function loadMentoringReviewList() {
@@ -5305,16 +5347,16 @@ async function loadMentoringReviewList() {
     if (!canManageMentoring() || !listEl) return;
     const statusFilter = $('mentor-review-filter') ? inputValue('mentor-review-filter') : 'pending';
     const notice = (color, text, padding = 20) => `<div style="text-align:center; padding:${padding}px; color:var(${color});">${text}</div>`;
-    listEl.innerHTML = notice('--text-secondary', t('mentoring_review_loading', 'Lade Bewerbungen...'));
+    listEl.innerHTML = notice('--text-secondary', t('mentoring_review_loading', 'Loading applications...'));
     try {
         const res = await api(`/mentoring/mentors?status=${encodeURIComponent(statusFilter)}`);
         if (!res.ok) {
-            listEl.innerHTML = notice('--danger', t('mentoring_review_load_error', 'Fehler beim Laden der Bewerbungen.'));
+            listEl.innerHTML = notice('--danger', t('mentoring_review_load_error', 'Failed to load applications.'));
             return;
         }
         const mentors = await res.json();
         if (!Array.isArray(mentors) || mentors.length === 0) {
-            listEl.innerHTML = notice('--text-secondary', t('mentoring_review_none', 'Keine Bewerbungen mit Status "{status}" vorhanden.', { status: t(`mentoring_filter_${statusFilter}`, statusFilter) }), 30);
+            listEl.innerHTML = notice('--text-secondary', t('mentoring_review_none', 'No applications with status "{status}" found.', { status: t(`mentoring_filter_${statusFilter}`, statusFilter) }), 30);
             return;
         }
         listEl.innerHTML = mentors.map(m => {
@@ -5331,23 +5373,23 @@ async function loadMentoringReviewList() {
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
                         <div>
                             <div style="font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:8px;">
-                                <span>${escapeHtml(m.name || m.mentorName || t('mentoring_applicant_fallback', 'Bewerber'))}</span>
+                                <span>${escapeHtml(m.name || m.mentorName || t('mentoring_applicant_fallback', 'Applicant'))}</span>
                                 <span style="font-size:0.75rem; padding:2px 8px; border-radius:999px; background:${bg}; color:${color}; font-weight:700;">
                                     ${t(labelKey, labelFallback)}
                                 </span>
                             </div>
                             <div style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;">
-                                ${email ? `${email} • ` : ''}${t('mentoring_review_submitted', 'Eingereicht: {date} • Kapazität: max. {max} Mentees', { date: dateStr, max: m.max_mentees || 3 })}
+                                ${email ? `${email} • ` : ''}${t('mentoring_review_submitted', 'Submitted: {date} • Capacity: max. {max} mentees', { date: dateStr, max: m.max_mentees || 3 })}
                             </div>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            ${statusButton('approved', 'btn-primary', '', 'mentoring_btn_approve', '✓ Genehmigen')}
-                            ${statusButton('rejected', 'btn-secondary', ' style="color:var(--danger);"', 'mentoring_btn_reject', '✗ Ablehnen')}
+                            ${statusButton('approved', 'btn-primary', '', 'mentoring_btn_approve', '✓ Approve')}
+                            ${statusButton('rejected', 'btn-secondary', ' style="color:var(--danger);"', 'mentoring_btn_reject', '✗ Reject')}
                         </div>
                     </div>
                     <div style="background:var(--surface-alt); padding:12px 14px; border-radius:8px; font-size:0.92rem; line-height:1.5;">
-                        <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${t('mentoring_review_bio_label', 'Über sich / Selbstbeschreibung:')}</div>
-                        ${escapeHtml(m.bio || t('mentoring_no_bio', 'Keine Beschreibung vorhanden.'))}
+                        <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${t('mentoring_review_bio_label', 'About me / Self-description:')}</div>
+                        ${escapeHtml(m.bio || t('mentoring_no_bio', 'No description provided.'))}
                     </div>
                 </div>`;
         }).join('');
@@ -5357,15 +5399,15 @@ async function loadMentoringReviewList() {
 }
 
 async function setMentorStatus(mentorId, status) {
-    const action = status === 'approved' ? t('mentoring_action_approve', 'genehmigen') : t('mentoring_action_reject', 'ablehnen');
-    if (!confirmAction(t('mentoring_confirm_status', 'Möchtest du diese Bewerbung wirklich {action}?', { action }))) return;
+    const action = status === 'approved' ? t('mentoring_action_approve', 'approve') : t('mentoring_action_reject', 'reject');
+    if (!confirmAction(t('mentoring_confirm_status', 'Are you sure you want to {action} this application?', { action }))) return;
     try {
-        await apiJson(`/mentoring/manage/${mentorId}/status`, 'POST', { status }, t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
-        showToast(status === 'approved' ? t('mentoring_toast_approved', 'Bewerbung erfolgreich freigegeben!') : t('mentoring_toast_rejected', 'Bewerbung erfolgreich abgelehnt!'), 'success');
+        await apiJson(`/mentoring/manage/${mentorId}/status`, 'POST', { status }, t('mentoring_status_error', 'Failed to update.'));
+        showToast(status === 'approved' ? t('mentoring_toast_approved', 'Application approved successfully!') : t('mentoring_toast_rejected', 'Application rejected successfully!'), 'success');
         loadMentoringReviewList();
         loadMentoringData();
     } catch (err) {
-        alert(err.message || t('mentoring_status_error', 'Fehler beim Aktualisieren.'));
+        alert(err.message || t('mentoring_status_error', 'Failed to update.'));
     }
 }
 
@@ -5399,7 +5441,7 @@ function renderHomeMentoringCard() {
                     </span>
                     <span class="home-msg-role">${escapeHtml(role)}</span>
                     <span class="home-msg-snippet-line">
-                        <span class="home-msg-snippet">${escapeHtml(thread.last_message || t('home_mentoring_new_message', 'Neue vertrauliche Nachricht'))}</span>
+                        <span class="home-msg-snippet">${escapeHtml(thread.last_message || t('home_mentoring_new_message', 'New confidential message'))}</span>
                         <span class="home-msg-count">${formatBadgeCount(thread.unread_count)}</span>
                     </span>
                 </span>
@@ -5410,12 +5452,12 @@ function renderHomeMentoringCard() {
         <div class="home-msg-card">
             <div class="home-msg-head">
                 <span class="home-msg-icon">${svgIcon('chat', 18)}</span>
-                <span class="home-msg-title">${t('home_messages_title', 'Neue Nachrichten')}</span>
+                <span class="home-msg-title">${t('home_messages_title', 'New messages')}</span>
                 <span class="home-msg-total">${formatBadgeCount(total)}</span>
-                <button type="button" class="home-msg-all" onclick="window.switchTab('mentoring')">${t('home_messages_all', 'Alle')}${svgIcon('chevronRight', 14, 2.5)}</button>
+                <button type="button" class="home-msg-all" onclick="window.switchTab('mentoring')">${t('home_messages_all', 'All')}${svgIcon('chevronRight', 14, 2.5)}</button>
             </div>
             <div class="home-msg-list">${rows}</div>
-            ${more > 0 ? `<div class="home-msg-more">+${more} ${t('home_mentoring_more_unread', 'weitere ungelesene Unterhaltungen')}</div>` : ''}
+            ${more > 0 ? `<div class="home-msg-more">+${more} ${t('home_mentoring_more_unread', 'more unread conversations')}</div>` : ''}
         </div>`;
 }
 
@@ -5545,8 +5587,8 @@ function formatEventDateSpanCompact(startDate, endDate) {
 }
 
 const eventTimeRange = (ev, withUhr = true) => ev.startTime ? (ev.endTime
-    ? (withUhr ? t('events_time_range', '{start} – {end} Uhr', { start: ev.startTime, end: ev.endTime }) : `${ev.startTime} – ${ev.endTime}`)
-    : (withUhr ? t('events_time_from', 'ab {start} Uhr', { start: ev.startTime }) : ev.startTime)) : '';
+    ? (withUhr ? t('events_time_range', '{start} – {end}', { start: ev.startTime, end: ev.endTime }) : `${ev.startTime} – ${ev.endTime}`)
+    : (withUhr ? t('events_time_from', 'from {start}', { start: ev.startTime }) : ev.startTime)) : '';
 const eventImage = ev => {
     const raw = ev ? (ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '') : '';
     return typeof raw === 'string' ? raw.trim() : '';
@@ -5588,31 +5630,31 @@ function dutyRequestBanner(list, onHome) {
             <div class="events-requests-banner-header">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="events-requests-bell">📬</span>
-                    <strong style="font-size:0.95rem; color:var(--text);">${t('duty_requests_title', 'Offene Dienstanfragen an dich ({count})', { count: list.length })}</strong>
+                    <strong style="font-size:0.95rem; color:var(--text);">${t('duty_requests_title', 'Open duty requests for you ({count})', { count: list.length })}</strong>
                 </div>
-                <span class="events-requests-badge">${t('duty_requests_badge', 'Rückmeldung erbeten')}</span>
+                <span class="events-requests-badge">${t('duty_requests_badge', 'Response requested')}</span>
             </div>
             <div class="events-requests-list">
                 ${list.map(req => {
                     const id = escapeHtml(req.id);
                     return `
                     <div class="events-request-card" id="${onHome ? 'home-' : ''}duty-request-${id}">
-                        <div class="events-request-info"${onHome ? ` onclick="window.openEventDetailModal(${jsArg(req.eventId)})" role="button" tabindex="0" style="cursor:pointer;" title="${t('duty_requests_show_details', 'Termin-Details anzeigen')}"` : ''}>
+                        <div class="events-request-info"${onHome ? ` onclick="window.openEventDetailModal(${jsArg(req.eventId)})" role="button" tabindex="0" style="cursor:pointer;" title="${t('duty_requests_show_details', 'Show appointment details')}"` : ''}>
                             <div class="events-request-event-title">📅 ${escapeHtml(req.eventTitle || t('detail_groups_event', 'Event'))}</div>
                             <div class="events-request-event-sub">
-                                <span>${escapeHtml(formatEventDate(req.eventDate))}${req.eventStartTime ? ` ${t('duty_requests_at_time', 'um {time} Uhr', { time: escapeHtml(req.eventStartTime) })}` : ''}</span>
+                                <span>${escapeHtml(formatEventDate(req.eventDate))}${req.eventStartTime ? ` ${t('duty_requests_at_time', 'at {time}', { time: escapeHtml(req.eventStartTime) })}` : ''}</span>
                             </div>
                             <div class="events-request-role">
                                 🛠️ <strong>${escapeHtml(req.roleName)}</strong>
-                                <span style="color:var(--text-secondary); font-size:0.8rem;">(${req.section ? `${t('duty_requests_section', 'Bereich: {section}', { section: escapeHtml(req.section) })} • ` : ''}${t('duty_requests_requested_by', 'Angefragt von {name}', { name: escapeHtml(req.requestedByName || t('duty_requests_team', 'Team')) })})</span>
+                                <span style="color:var(--text-secondary); font-size:0.8rem;">(${req.section ? `${t('duty_requests_section', 'Area: {section}', { section: escapeHtml(req.section) })} • ` : ''}${t('duty_requests_requested_by', 'Requested by {name}', { name: escapeHtml(req.requestedByName || t('duty_requests_team', 'Team')) })})</span>
                             </div>
                         </div>
                         <div class="events-request-actions">
                             <button type="button" class="btn btn-success btn-small" onclick="${stop}window.respondToDutyRequest(${jsArg(id)}, 'accept')">
-                                ✅ ${t('duty_btn_accept', 'Zusagen')}
+                                ✅ ${t('duty_btn_accept', 'Accept')}
                             </button>
                             <button type="button" class="btn btn-ghost btn-small text-danger" onclick="${stop}window.respondToDutyRequest(${jsArg(id)}, 'decline')">
-                                ❌ ${t('request_btn_reject', 'Ablehnen')}
+                                ❌ ${t('request_btn_reject', 'Reject')}
                             </button>
                         </div>
                     </div>`;
@@ -5646,7 +5688,7 @@ function renderHomeDutiesCard() {
     // Own duties get their own section below the "next" row (commitments, not offers)
     container.style.display = dutyEvents.length ? 'block' : 'none';
     container.innerHTML = dutyEvents.length ? `
-        <div class="home-section-head"><h2>${t('home_your_duties', 'Deine Dienste')}</h2></div>
+        <div class="home-section-head"><h2>${t('home_your_duties', 'Your duties')}</h2></div>
         <div class="events-feed-list">
             ${dutyEvents.map(ev => renderEventCard(ev, 'home-duty-card-')).join('')}
         </div>` : '';
@@ -5655,7 +5697,7 @@ function renderHomeDutiesCard() {
 // --- Start page: greeting, "Als Nächstes" row, compact payment state ---
 function renderHomeGreeting() {
     const hour = new Date().getHours();
-    const hello = hour < 11 ? t('home_greeting_morning', 'Guten Morgen') : hour < 18 ? t('home_greeting_day', 'Hallo') : t('home_greeting_evening', 'Guten Abend');
+    const hello = hour < 11 ? t('home_greeting_morning', 'Good morning') : hour < 18 ? t('home_greeting_day', 'Hello') : t('home_greeting_evening', 'Good evening');
     const first = (currentUser?.firstName || fullName(currentUser) || currentUser?.name || '').trim().split(/\s+/)[0];
     setText('home-greeting-title', first ? `${hello}, ${first} 👋` : `${hello} 👋`);
     setText('home-greeting-date', new Date().toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' }));
@@ -5665,12 +5707,12 @@ const HOME_UPCOMING_COUNT = 5;
 
 // "Heute", "Morgen", the weekday within a week, else "17. Okt."
 function homeDayLabel(dateStr, todayStr) {
-    if (dateStr <= todayStr) return t('home_today', 'Heute');
+    if (dateStr <= todayStr) return t('home_today', 'Today');
     const [y, m, d] = splitDate(dateStr);
     const date = new Date(y, m - 1, d);
     const [ty, tm, td] = splitDate(todayStr);
     const days = Math.round((date - new Date(ty, tm - 1, td)) / 86400000);
-    if (days === 1) return t('home_tomorrow', 'Morgen');
+    if (days === 1) return t('home_tomorrow', 'Tomorrow');
     if (days < 7) return date.toLocaleDateString(uiLocale(), { weekday: 'long' });
     return date.toLocaleDateString(uiLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 }
@@ -5688,8 +5730,8 @@ function renderHomeUpcoming() {
     container.style.display = currentUser ? 'block' : 'none';
     if (!upcoming.length) {
         container.innerHTML = `
-            <div class="home-section-head"><h2>${t('home_next', 'Als Nächstes')}</h2></div>
-            <div class="home-next-empty">${t('home_next_empty', 'Gerade steht nichts an – genieß die freie Zeit!')} 🌿</div>`;
+            <div class="home-section-head"><h2>${t('home_next', 'Coming up')}</h2></div>
+            <div class="home-next-empty">${t('home_next_empty', 'Nothing coming up right now – enjoy the free time!')} 🌿</div>`;
         return [];
     }
     const cards = upcoming.map(ev => {
@@ -5699,19 +5741,19 @@ function renderHomeUpcoming() {
         const cat = ev.isPinned && isEvent ? 'cat-pinned' : isEvent ? 'cat-event' : 'cat-termin';
         const image = eventImage(ev);
         const day = homeDayLabel(startOf(ev), todayStr);
-        const time = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (ev.startTime ? ev.startTime : t('home_all_day', 'Ganztägig'));
+        const time = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (ev.startTime ? ev.startTime : t('home_all_day', 'All day'));
         const { myDuty, isRegistered, isWaitlist } = getEventCardStatusInfo(ev);
-        const chip = myDuty ? `<span class="home-next-chip chip-duty">${cardIcon('user')}${escapeHtml(myDuty.roleName || t('events_duty', 'Dienst'))}</span>`
-            : isRegistered ? `<span class="home-next-chip chip-registered">${cardIcon('check')}${t('home_registered', 'Angemeldet')}</span>`
-            : isWaitlist ? `<span class="home-next-chip chip-waitlist">${t('home_waitlist', 'Warteliste')}</span>`
-            : ev.requiresRegistration && !ev.isFull ? `<span class="home-next-chip chip-open">${t('home_register_open', 'Anmeldung offen')}</span>`
+        const chip = myDuty ? `<span class="home-next-chip chip-duty">${cardIcon('user')}${escapeHtml(myDuty.roleName || t('events_duty', 'Duty'))}</span>`
+            : isRegistered ? `<span class="home-next-chip chip-registered">${cardIcon('check')}${t('home_registered', 'Registered')}</span>`
+            : isWaitlist ? `<span class="home-next-chip chip-waitlist">${t('home_waitlist', 'Waiting list')}</span>`
+            : ev.requiresRegistration && !ev.isFull ? `<span class="home-next-chip chip-open">${t('home_register_open', 'Registration open')}</span>`
             : '';
         return `
             <div class="home-next-card ${cat}" role="button" tabindex="0" onclick="window.openEventDetailModal(${jsArg(id)})"
                  onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.openEventDetailModal('${id}');}">
                 <div class="home-next-cover">
                     ${image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy">` : `<div class="home-next-fallback">${svgIcon(isEvent ? 'calendar' : 'clock', 22)}</div>`}
-                    <span class="home-next-day${day === t('home_today', 'Heute') ? ' is-today' : ''}">${escapeHtml(day)}</span>
+                    <span class="home-next-day${day === t('home_today', 'Today') ? ' is-today' : ''}">${escapeHtml(day)}</span>
                 </div>
                 <div class="home-next-body">
                     <div class="home-next-when">${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(time)}</span></div>
@@ -5723,8 +5765,8 @@ function renderHomeUpcoming() {
     }).join('');
     container.innerHTML = `
         <div class="home-section-head">
-            <h2>${t('home_next', 'Als Nächstes')}</h2>
-            <button type="button" class="home-section-link" onclick="window.switchTab('events'); window.switchEventsSubTab('termine')">${t('home_messages_all', 'Alle')}${svgIcon('chevronRight', 14, 2.5)}</button>
+            <h2>${t('home_next', 'Coming up')}</h2>
+            <button type="button" class="home-section-link" onclick="window.switchTab('events'); window.switchEventsSubTab('termine')">${t('home_messages_all', 'All')}${svgIcon('chevronRight', 14, 2.5)}</button>
         </div>
         <div class="home-next-scroller">${cards}</div>`;
     return upcoming;
@@ -5740,10 +5782,10 @@ function renderHomePaymentStatus(container, p, meta, statusText) {
         return;
     }
     const title = state === 'overdue' ? statusText
-        : standingOrderCovers(meta) ? t('user_standing_order_active', 'Dauerauftrag aktiv')
-        : `${t('user_paid_until', 'Bezahlt bis')} ${escapeHtml(paidUntilText(personPaidUntil(p)))}`;
-    const sub = state === 'overdue' ? `${euro(p._overdueAmount || 0)} ${t('home_fee_open', 'offen')}`
-        : state === 'soon' ? statusText : t('home_fee_ok', 'Mitgliedsbeitrag');
+        : standingOrderCovers(meta) ? t('user_standing_order_active', 'Standing order active')
+        : `${t('user_paid_until', 'Paid until')} ${escapeHtml(paidUntilText(personPaidUntil(p)))}`;
+    const sub = state === 'overdue' ? `${euro(p._overdueAmount || 0)} ${t('home_fee_open', 'open')}`
+        : state === 'soon' ? statusText : t('home_fee_ok', 'Membership fee');
     container.style.display = 'block';
     container.innerHTML = `
         <div class="home-pay home-pay-${state}" role="button" tabindex="0" onclick="window.switchTab('user-finances')"
@@ -5753,7 +5795,7 @@ function renderHomePaymentStatus(container, p, meta, statusText) {
                 <span class="home-pay-title">${title}</span>
                 <span class="home-pay-sub">${sub}</span>
             </span>
-            ${state === 'overdue' ? `<span class="home-pay-action">${t('home_fee_details', 'Ansehen')}</span>` : svgIcon('chevronRight', 16, 2.5)}
+            ${state === 'overdue' ? `<span class="home-pay-action">${t('home_fee_details', 'View')}</span>` : svgIcon('chevronRight', 16, 2.5)}
         </div>`;
     // Overdue comes first after the greeting, otherwise it closes the page
     const home = $('user-overview');
@@ -5770,7 +5812,7 @@ function refreshDetailEvent(openDuties) {
 }
 
 // Runs an event API call, reports the outcome as toast, reloads events and refreshes the open detail modal.
-async function eventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Verbindungsfehler'), before, after = () => refreshDetailEvent(true) }) {
+async function eventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Connection error'), before, after = () => refreshDetailEvent(true) }) {
     try {
         const res = await api(path, method, body);
         const data = await res.json().catch(() => ({}));
@@ -5785,9 +5827,9 @@ async function eventAction(path, method, body, { success, successType = 'success
 }
 
 const respondToDutyRequest = (dutyId, action) => eventAction(`/events/duties/${dutyId}/respond`, 'POST', { action }, {
-    success: action === 'accept' ? t('duty_toast_accepted', 'Dienst zugesagt! Du bist jetzt für dieses Event eingeteilt.') : t('duty_toast_declined', 'Dienstanfrage abgelehnt.'),
+    success: action === 'accept' ? t('duty_toast_accepted', 'Duty accepted! You are now assigned to this event.') : t('duty_toast_declined', 'Duty request declined.'),
     successType: action === 'accept' ? 'success' : 'info',
-    error: t('duty_respond_error', 'Fehler beim Antworten auf die Dienstanfrage'),
+    error: t('duty_respond_error', 'Failed to respond to the duty request'),
     after: () => refreshDetailEvent(false)
 });
 
@@ -5859,15 +5901,15 @@ function renderEvents() {
         <div class="events-past-toggle-wrap">
             <button type="button" class="events-past-toggle-btn" onclick="window.toggleShowPastEvents()">
                 <span style="font-size: 0.72rem;">${showPastEvents ? '▲' : '▼'}</span>
-                <span>${showPastEvents ? t('events_past_hide', 'Abgelaufene Events verbergen ({count})', { count: past.length }) : t('events_past_show', 'Abgelaufene Events anzeigen ({count})', { count: past.length })}</span>
+                <span>${showPastEvents ? t('events_past_hide', 'Hide past events ({count})', { count: past.length }) : t('events_past_show', 'Show past events ({count})', { count: past.length })}</span>
             </button>
             ${showPastEvents ? `
                 <div style="width: 100%; margin-top: 22px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
                         <span style="font-size: 0.84rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
-                            ${t('events_past_title', 'Abgelaufene Events ({count})', { count: past.length })}
+                            ${t('events_past_title', 'Past events ({count})', { count: past.length })}
                         </span>
-                        <span style="font-size: 0.76rem; color: var(--text-secondary);">${t('events_past_hint', 'Versteckt bis zur manuellen Löschung')}</span>
+                        <span style="font-size: 0.76rem; color: var(--text-secondary);">${t('events_past_hint', 'Hidden until deleted manually')}</span>
                     </div>
                     <div class="events-cards-grid">
                         ${past.map(ev => renderChurchtoolsEventCard(ev, true)).join('')}
@@ -5879,10 +5921,10 @@ function renderEvents() {
         container.innerHTML = `
             <div class="card" style="padding: 48px 20px; text-align: center; color: var(--text-secondary); border-radius: 16px;">
                 <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
-                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? t('events_empty_events', 'Keine anstehenden Events gefunden') : t('events_empty_termine', 'Keine passenden Termine gefunden')}</div>
-                <div style="font-size: 0.88rem; margin-bottom: 14px;">${t('events_empty_hint', 'Versuche die Filter zurückzusetzen oder erstelle einen neuen Eintrag.')}</div>
+                <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? t('events_empty_events', 'No upcoming events found') : t('events_empty_termine', 'No matching appointments found')}</div>
+                <div style="font-size: 0.88rem; margin-bottom: 14px;">${t('events_empty_hint', 'Try resetting the filters or create a new entry.')}</div>
                 <div>
-                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">+ ${isEventsTab ? t('events_btn_new', 'Neues Event') : t('events_new_termin', 'Neuer Termin')}</button>
+                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">+ ${isEventsTab ? t('events_btn_new', 'New Event') : t('events_new_termin', 'New Appointment')}</button>
                 </div>
             </div>
             ${pastSection}`;
@@ -5901,7 +5943,7 @@ function renderEvents() {
                 ${items.map(render).join('')}
             </div>
         </div>`;
-    const byMonth = (list, render) => [...groupBy(list, ev => ((ev._day || ev.date) ? (ev._day || ev.date).substring(0, 7) : t('events_no_date', 'Ohne Datum')))].map(([key, items]) => {
+    const byMonth = (list, render) => [...groupBy(list, ev => ((ev._day || ev.date) ? (ev._day || ev.date).substring(0, 7) : t('events_no_date', 'No date')))].map(([key, items]) => {
         const [y, m] = key.split('-').map(Number);
         return group(escapeHtml(key.includes('-') ? monthYearFormatter.format(new Date(y, m - 1, 1)) : key), items, render);
     }).join('');
@@ -5922,7 +5964,7 @@ function renderEvents() {
     });
     container.innerHTML = `
         <div class="termine-layout">
-            <aside class="termine-cal" id="termine-cal" aria-label="${t('events_calendar', 'Kalender')}"></aside>
+            <aside class="termine-cal" id="termine-cal" aria-label="${t('events_calendar', 'Calendar')}"></aside>
             <div class="termine-list">${byMonth(upcoming, ev => renderEventCard(ev, undefined, ev._day))}</div>
         </div>`;
     renderTermineCalendar();
@@ -5949,13 +5991,13 @@ function renderTermineCalendar() {
         cells.push(`<button type="button" class="${classes}" data-day="${day}" onclick="window.jumpToTermineDay(this.dataset.day)"${isPast ? ' disabled' : ''}><span class="termine-cal-num">${d}</span>${dots}</button>`);
     }
     const atCurrentMonth = year === ty && month === tm - 1;
-    const legend = [['cat-termin', t('detail_groups_termin', 'Termin')], ['cat-event', t('detail_groups_event', 'Event')], ['cat-pinned', t('events_major_event', 'Großevent')]]
+    const legend = [['cat-termin', t('detail_groups_termin', 'Appointment')], ['cat-event', t('detail_groups_event', 'Event')], ['cat-pinned', t('events_major_event', 'Major event')]]
         .map(([c, label]) => `<span class="termine-cal-legend-item"><span class="termine-cal-dot ${c}"></span>${label}</span>`).join('');
     target.innerHTML = `
         <div class="termine-cal-head">
-            <button type="button" class="termine-cal-nav" onclick="window.shiftTermineMonth(-1)"${atCurrentMonth ? ' disabled' : ''} aria-label="${t('events_calendar_prev', 'Vorheriger Monat')}">${svgIcon('chevronLeft', 18, 2.5)}</button>
+            <button type="button" class="termine-cal-nav" onclick="window.shiftTermineMonth(-1)"${atCurrentMonth ? ' disabled' : ''} aria-label="${t('events_calendar_prev', 'Previous month')}">${svgIcon('chevronLeft', 18, 2.5)}</button>
             <span class="termine-cal-title">${escapeHtml(monthYearFormatter.format(termineCalMonth))}</span>
-            <button type="button" class="termine-cal-nav" onclick="window.shiftTermineMonth(1)" aria-label="${t('events_calendar_next', 'Nächster Monat')}">${svgIcon('chevronRight', 18, 2.5)}</button>
+            <button type="button" class="termine-cal-nav" onclick="window.shiftTermineMonth(1)" aria-label="${t('events_calendar_next', 'Next month')}">${svgIcon('chevronRight', 18, 2.5)}</button>
         </div>
         <div class="termine-cal-grid">
             ${[1, 2, 3, 4, 5, 6, 0].map(i => `<span class="termine-cal-wd">${weekdayShort(i)}</span>`).join('')}
@@ -5999,21 +6041,21 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
     const isMultiDay = ev.endDate && ev.endDate !== ev.date;
     const timeDisplay = !isMultiDay ? eventTimeRange(ev) : '';
     const { myDuty, myRequestedDuty, isRegistered, isWaitlist } = getEventCardStatusInfo(ev);
-    const status = isPast ? statusBadge('status-past', `⌛ ${t('events_status_past', 'Vorbei')}`)
-        : myDuty ? statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(myDuty.roleName || t('events_duty', 'Dienst'))}</span>`)
-        : myRequestedDuty ? statusBadge('status-requested', `${cardIcon('clock')}<span>${t('events_status_request_open', 'Anfrage offen')}</span>`)
-        : isWaitlist ? statusBadge('status-waitlist', `<span>${t('home_waitlist', 'Warteliste')}</span>`)
-        : ev.requiresRegistration && ev.isFull && !ev.myRegistration ? statusBadge('status-full', `<span>${t('events_status_full', 'Ausgebucht')}</span>`) : '';
+    const status = isPast ? statusBadge('status-past', `⌛ ${t('events_status_past', 'Over')}`)
+        : myDuty ? statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(myDuty.roleName || t('events_duty', 'Duty'))}</span>`)
+        : myRequestedDuty ? statusBadge('status-requested', `${cardIcon('clock')}<span>${t('events_status_request_open', 'Request pending')}</span>`)
+        : isWaitlist ? statusBadge('status-waitlist', `<span>${t('home_waitlist', 'Waiting list')}</span>`)
+        : ev.requiresRegistration && ev.isFull && !ev.myRegistration ? statusBadge('status-full', `<span>${t('events_status_full', 'Fully booked')}</span>`) : '';
     // Own registration sits next to the title (below the picture), independent of the picture's status label
-    const registeredBadge = isRegistered && !isPast ? statusBadge('status-registered', `${cardIcon('check')}<span>${t('home_registered', 'Angemeldet')}</span>`, t('events_reg_you_are_registered', 'Du bist angemeldet')) : '';
+    const registeredBadge = isRegistered && !isPast ? statusBadge('status-registered', `${cardIcon('check')}<span>${t('home_registered', 'Registered')}</span>`, t('events_reg_you_are_registered', 'You are registered')) : '';
     const regCount = ev.registeredCount || 0;
     const max = ev.maxParticipants || 0;
-    const footerBadges = !ev.requiresRegistration ? `<span class="ct-footer-pill-muted">${t('events_no_registration', 'Ohne Anmeldung')}</span>`
+    const footerBadges = !ev.requiresRegistration ? `<span class="ct-footer-pill-muted">${t('events_no_registration', 'No registration')}</span>`
         : max > 0 ? `
-            <div class="ct-capacity-wrap" title="${t('events_capacity_taken', '{count} von {max} Plätzen belegt', { count: regCount, max })}">
-                <span class="ct-capacity-text">${t('events_capacity_short', '{count}/{max} Plätze', { count: regCount, max })}</span>
+            <div class="ct-capacity-wrap" title="${t('events_capacity_taken', '{count} of {max} places taken', { count: regCount, max })}">
+                <span class="ct-capacity-text">${t('events_capacity_short', '{count}/{max} places', { count: regCount, max })}</span>
                 <div class="ct-capacity-track"><div class="ct-capacity-bar" style="width:${Math.min(100, Math.round((regCount / max) * 100))}%;"></div></div>
-            </div>` : `<span class="ct-footer-pill">${t('events_registered_count', '{count} angemeldet', { count: regCount })}</span>`;
+            </div>` : `<span class="ct-footer-pill">${t('events_registered_count', '{count} registered', { count: regCount })}</span>`;
     const metaRow = (icon, text, extra = '') => `<div class="ct-event-card-meta-row${extra}">${cardIcon(icon)}<span>${escapeHtml(text)}</span></div>`;
     return `
         <div class="churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}" id="event-card-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal(${jsArg(ev.id)})">
@@ -6022,7 +6064,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
                     ? `<img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">`
                     : `<div class="ct-event-card-fallback-cover"><div class="ct-fallback-icon-wrap">${cardIcon('calendar')}</div></div>`}
                 ${eventCalendarLeaf(ev.date, `ct-event-card-date-badge ${isPinned ? 'cat-pinned' : 'cat-event'}`)}
-                <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? t('events_major_event', 'Großevent') : t('detail_groups_event', 'Event')}</span>${status}</div>
+                <div class="ct-event-card-badges-floating"><span class="event-card-top-label ${isPinned ? 'label-pinned' : 'label-event'}">${isPinned ? t('events_major_event', 'Major event') : t('detail_groups_event', 'Event')}</span>${status}</div>
             </div>
             <div class="ct-event-card-body">
                 <div class="ct-event-card-title-row">
@@ -6064,26 +6106,26 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
     let status = '';
     if (myDuty) {
         const viaGroup = myDuty.assignedGroup && userInGroup(currentUser, myDuty.assignedGroup) && !isCurrentUser(myDuty.assignedUser);
-        const label = viaGroup ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || t('events_duty', 'Dienst')) : (myDuty.roleName || t('events_duty', 'Dienst'));
-        status = statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(label)}</span>`, t('events_status_assigned_duty', 'Eingeteilter Dienst'));
+        const label = viaGroup ? (myDuty.assignedGroupName || myDuty.assignedGroup || myDuty.roleName || t('events_duty', 'Duty')) : (myDuty.roleName || t('events_duty', 'Duty'));
+        status = statusBadge('status-duty', `${cardIcon('user')}<span>${escapeHtml(label)}</span>`, t('events_status_assigned_duty', 'Assigned duty'));
     } else if (myRequestedDuty) {
-        status = statusBadge('status-requested', `${cardIcon('clock')}<span>${t('events_status_request_open', 'Anfrage offen')}</span>`, t('events_status_duty_request_open', 'Dienstanfrage offen'));
+        status = statusBadge('status-requested', `${cardIcon('clock')}<span>${t('events_status_request_open', 'Request pending')}</span>`, t('events_status_duty_request_open', 'Duty request pending'));
     } else if (isWaitlist) {
-        status = statusBadge('status-waitlist', `${cardIcon('alert')}<span>${t('home_waitlist', 'Warteliste')}</span>`, t('events_status_on_waitlist', 'Auf der Warteliste'));
+        status = statusBadge('status-waitlist', `${cardIcon('alert')}<span>${t('home_waitlist', 'Waiting list')}</span>`, t('events_status_on_waitlist', 'On the waiting list'));
     } else if (!isRegistered && openDutiesCount > 0 && ev.canAccessDutyPlan) {
-        status = statusBadge('status-open-duties', `<span>${openDutiesCount === 1 ? t('events_duty_free_one', '1 Dienst frei') : t('events_duty_free_many', '{count} Dienste frei', { count: openDutiesCount })}</span>`, t('events_duties_open_title', '{count} offene Dienste', { count: openDutiesCount }));
+        status = statusBadge('status-open-duties', `<span>${openDutiesCount === 1 ? t('events_duty_free_one', '1 duty open') : t('events_duty_free_many', '{count} duties open', { count: openDutiesCount })}</span>`, t('events_duties_open_title', '{count} open duties', { count: openDutiesCount }));
     } else if (!isRegistered && ev.requiresRegistration && ev.isFull) {
-        status = statusBadge('status-full', `<span>${t('events_status_full', 'Ausgebucht')}</span>`);
+        status = statusBadge('status-full', `<span>${t('events_status_full', 'Fully booked')}</span>`);
     }
-    const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || t('home_all_day', 'Ganztägig'));
-    const categoryLabel = isPinned ? t('events_major_event', 'Großevent') : isEvent ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Termin');
+    const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || t('home_all_day', 'All day'));
+    const categoryLabel = isPinned ? t('events_major_event', 'Major event') : isEvent ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Appointment');
     return `
         <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" data-day="${escapeHtml(day || '')}" title="${categoryLabel}" onclick="window.openEventDetailModal(${jsArg(ev.id)})">
             ${eventCalendarLeaf(day)}
             <div class="event-card-body">
                 <div class="event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="event-card-when">
-                    ${isToday ? `<span class="event-card-today">${t('home_today', 'Heute')}</span>` : ''}
+                    ${isToday ? `<span class="event-card-today">${t('home_today', 'Today')}</span>` : ''}
                     ${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(when)}</span>
                 </div>
                 ${ev.location ? `<div class="event-card-where">${cardIcon('location')}<span>${escapeHtml(ev.location)}</span></div>` : ''}
@@ -6138,7 +6180,7 @@ function setTextWithTitle(id, text) {
 }
 
 function setDescriptionToggle(expanded) {
-    setText('detail-desc-toggle-text', expanded ? t('events_show_less', 'Weniger anzeigen') : t('events_show_more', 'Mehr anzeigen'));
+    setText('detail-desc-toggle-text', expanded ? t('events_show_less', 'Show less') : t('events_show_more', 'Show more'));
     const icon = $('detail-desc-toggle-icon');
     if (icon) icon.style.transform = `rotate(${expanded ? 180 : 0}deg)`;
 }
@@ -6160,9 +6202,9 @@ function renderRegistrationSection(ev) {
     const min = ev.minParticipants || 0;
     const free = Math.max(0, max - count);
     const meta = [
-        max > 0 ? t('events_capacity_taken', '{count} von {max} Plätzen belegt', { count, max }) : t('events_registered_count', '{count} angemeldet', { count }),
-        max > 0 ? (free > 0 ? t('events_capacity_free', '{count} frei', { count: free }) : t('events_capacity_full', 'ausgebucht')) : '',
-        min > 0 ? t('events_capacity_min', 'mind. {count}', { count: min }) : ''
+        max > 0 ? t('events_capacity_taken', '{count} of {max} places taken', { count, max }) : t('events_registered_count', '{count} registered', { count }),
+        max > 0 ? (free > 0 ? t('events_capacity_free', '{count} free', { count: free }) : t('events_capacity_full', 'fully booked')) : '',
+        min > 0 ? t('events_capacity_min', 'min. {count}', { count: min }) : ''
     ].filter(Boolean).join(' · ');
     setText('detail-modal-reg-meta', meta);
     const capacity = $('detail-modal-capacity-info');
@@ -6180,11 +6222,11 @@ function renderRegistrationSection(ev) {
         </div>`;
     const leave = (current, label) => `<button type="button" class="event-reg-status-action" onclick="${toggle(current)}">${label}</button>`;
     $('detail-modal-reg-action-wrap').innerHTML = isEventPast(ev)
-        ? banner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? t('events_reg_was_registered', 'Du warst angemeldet') : t('events_reg_closed', 'Die Anmeldung ist beendet'), t('events_reg_event_over', 'Das Event ist vorbei.'))
-        : status === 'registered' ? banner('is-registered', 'check', t('events_reg_you_are_registered', 'Du bist angemeldet'), t('events_reg_looking_forward', 'Wir freuen uns auf dich!'), leave('registered', t('events_reg_unregister', 'Abmelden')))
-        : status === 'waitlist' ? banner('is-waitlist', 'clock', t('events_reg_on_waitlist', 'Du stehst auf der Warteliste'), t('events_reg_waitlist_hint', 'Du rückst nach, sobald ein Platz frei wird.'), leave('waitlist', t('events_reg_leave', 'Verlassen')))
-        : ev.isFull ? `<button type="button" class="btn btn-secondary btn-block" onclick="${toggle('none')}">${svgIcon('clock', 15, 2)}<span>${t('events_reg_join_waitlist', 'Auf die Warteliste setzen')}</span></button>`
-        : `<button type="button" class="btn btn-primary btn-block" onclick="${toggle('none')}">${svgIcon('check', 15, 2.5)}<span>${t('events_reg_register', 'Verbindlich anmelden')}</span></button>`;
+        ? banner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? t('events_reg_was_registered', 'You were registered') : t('events_reg_closed', 'Registration has closed'), t('events_reg_event_over', 'The event is over.'))
+        : status === 'registered' ? banner('is-registered', 'check', t('events_reg_you_are_registered', 'You are registered'), t('events_reg_looking_forward', 'We look forward to seeing you!'), leave('registered', t('events_reg_unregister', 'Unregister')))
+        : status === 'waitlist' ? banner('is-waitlist', 'clock', t('events_reg_on_waitlist', 'You are on the waiting list'), t('events_reg_waitlist_hint', 'You will move up as soon as a place becomes free.'), leave('waitlist', t('events_reg_leave', 'Leave')))
+        : ev.isFull ? `<button type="button" class="btn btn-secondary btn-block" onclick="${toggle('none')}">${svgIcon('clock', 15, 2)}<span>${t('events_reg_join_waitlist', 'Join the waiting list')}</span></button>`
+        : `<button type="button" class="btn btn-primary btn-block" onclick="${toggle('none')}">${svgIcon('check', 15, 2.5)}<span>${t('events_reg_register', 'Register')}</span></button>`;
     const attendees = $('detail-modal-attendees-details');
     if (attendees) attendees.open = false;
     loadEventAttendees(ev.id);
@@ -6207,7 +6249,7 @@ async function openEventDetailModal(eventId) {
 
     const typeIndicator = $('detail-modal-type-indicator');
     if (typeIndicator) {
-        typeIndicator.innerHTML = ev.isPinned ? `${svgIcon('star', 13)}<span>${t('events_major_event_highlight', 'Großevent & Highlight')}</span>` : '';
+        typeIndicator.innerHTML = ev.isPinned ? `${svgIcon('star', 13)}<span>${t('events_major_event_highlight', 'Major event & highlight')}</span>` : '';
         // Keep detail-view-only so the badge hides while editing or creating an event
         typeIndicator.className = `event-detail-type-badge detail-view-only${ev.isPinned ? ' type-pinned' : ''}`;
         typeIndicator.style.display = ev.isPinned ? 'inline-flex' : 'none';
@@ -6220,13 +6262,13 @@ async function openEventDetailModal(eventId) {
     const infoTime = $('detail-modal-info-time');
     if (infoTime) {
         if (isMultiDay) infoTime.textContent = '';
-        else setTextWithTitle('detail-modal-info-time', eventTimeRange(ev) || t('home_all_day', 'Ganztägig'));
+        else setTextWithTitle('detail-modal-info-time', eventTimeRange(ev) || t('home_all_day', 'All day'));
         infoTime.style.display = isMultiDay ? 'none' : 'inline';
     }
     show('detail-modal-when-sep', !isMultiDay, 'inline');
 
     const location = typeof ev.location === 'string' ? ev.location.trim() : '';
-    setTextWithTitle('detail-modal-info-where', location || t('events_no_location', 'Keine Angabe'));
+    setTextWithTitle('detail-modal-info-where', location || t('events_no_location', 'Not specified'));
     const mapLink = $('detail-modal-map-link');
     if (mapLink) {
         const isPlace = location && !/^(online|zoom|teams|skype|meet|keine angabe)$/i.test(location);
@@ -6237,8 +6279,8 @@ async function openEventDetailModal(eventId) {
     const creator = ev.createdByName?.trim() || '';
     const creatorEl = $('detail-creator-name');
     if (creatorEl) {
-        creatorEl.textContent = ev.createdByName || t('events_member_fallback', 'Mitglied');
-        creatorEl.title = creator || t('events_member_fallback', 'Mitglied');
+        creatorEl.textContent = ev.createdByName || t('events_member_fallback', 'Member');
+        creatorEl.title = creator || t('events_member_fallback', 'Member');
     }
     show('detail-modal-organizer-pill', !!creator, 'inline-flex');
 
@@ -6251,12 +6293,12 @@ async function openEventDetailModal(eventId) {
     const groupNames = (Array.isArray(ev.targetGroups) ? ev.targetGroups : []).map(g => findGroup(g)?.name || g).filter(Boolean);
     const groupsText = $('detail-modal-groups-text');
     if (groupsText) {
-        const quoted = groupNames.map(name => `<strong>${t('detail_groups_quoted', '„{name}“', { name: escapeHtml(name) })}</strong>`);
-        const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} ${t('detail_groups_and', 'und')} ${quoted[quoted.length - 1]}` : quoted.join('');
+        const quoted = groupNames.map(name => `<strong>${t('detail_groups_quoted', '“{name}”', { name: escapeHtml(name) })}</strong>`);
+        const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} ${t('detail_groups_and', 'and')} ${quoted[quoted.length - 1]}` : quoted.join('');
         const isEventType = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
-        const kind = isEventType ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Termin');
-        groupsText.innerHTML = quoted.length === 1 ? `${kind} ${t('detail_groups_for_one', 'für die Gruppe')} ${list}`
-            : `${kind} ${t('detail_groups_for_many', 'für die Gruppen')} ${list}`;
+        const kind = isEventType ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Appointment');
+        groupsText.innerHTML = quoted.length === 1 ? `${kind} ${t('detail_groups_for_one', 'for the group')} ${list}`
+            : `${kind} ${t('detail_groups_for_many', 'for the groups')} ${list}`;
     }
     show('detail-modal-groups-line', groupNames.length > 0, 'flex');
 
@@ -6283,8 +6325,8 @@ async function openEventDetailModal(eventId) {
         const duties = Array.isArray(ev.duties) ? ev.duties : [];
         // "2 von 3 besetzt": confirmed people and assigned groups count as filled
         const filled = duties.filter(d => d.status === 'confirmed' || (d.status === 'assigned' && (d.assignedGroup || d.assignedGroupName))).length;
-        const tasks = new Set(duties.map(d => (d.roleName || t('duty_task_fallback', 'Aufgabe')).trim())).size;
-        setText('detail-modal-duties-count', duties.length ? `${t('duty_filled_count', '{filled} von {total} besetzt', { filled, total: duties.length })} · ${tasks === 1 ? t('duty_task_count_one', '1 Aufgabe') : t('duty_task_count_many', '{count} Aufgaben', { count: tasks })}` : t('duty_no_tasks', 'Noch keine Aufgaben'));
+        const tasks = new Set(duties.map(d => (d.roleName || t('duty_task_fallback', 'Task')).trim())).size;
+        setText('detail-modal-duties-count', duties.length ? `${t('duty_filled_count', '{filled} of {total} filled', { filled, total: duties.length })} · ${tasks === 1 ? t('duty_task_count_one', '1 task') : t('duty_task_count_many', '{count} tasks', { count: tasks })}` : t('duty_no_tasks', 'No tasks yet'));
         const progress = $('detail-modal-duties-progress');
         if (progress) {
             progress.style.display = duties.length ? 'block' : 'none';
@@ -6317,7 +6359,7 @@ async function loadEventAttendees(eventId) {
         const registered = data.registered || [];
         const waitlist = data.waitlist || [];
         setText('detail-attendees-count', registered.length);
-        setText('detail-attendees-label-text', registered.length ? t('events_attendees', 'Teilnehmer') : t('events_attendees_none', 'Noch niemand angemeldet'));
+        setText('detail-attendees-label-text', registered.length ? t('events_attendees', 'Participants') : t('events_attendees_none', 'Nobody registered yet'));
         show('detail-attendees-count', registered.length > 0, 'inline-flex');
         // Overlapping avatar stack of the first attendees
         const stack = $('detail-attendees-stack');
@@ -6335,22 +6377,22 @@ async function loadEventAttendees(eventId) {
                 ${renderAvatarWrap(att.userId, att.name, { wrapClass: 'event-attendee-avatar' })}
                 <span class="event-attendee-name">${escapeHtml(att.name)}</span>
                 ${canManage ? `
-                <button type="button" class="event-attendee-remove" onclick="window.removeEventAttendee(${jsArg(eventId)}, ${jsArg(att.userId)})" title="${isWaitlist ? t('events_attendee_remove_waitlist', 'Von Warteliste entfernen') : t('events_attendee_remove', 'Teilnehmer entfernen')}" aria-label="${t('btn_remove', 'Entfernen')}">
+                <button type="button" class="event-attendee-remove" onclick="window.removeEventAttendee(${jsArg(eventId)}, ${jsArg(att.userId)})" title="${isWaitlist ? t('events_attendee_remove_waitlist', 'Remove from waiting list') : t('events_attendee_remove', 'Remove participant')}" aria-label="${t('btn_remove', 'Remove')}">
                     ${svgIcon('x', 13, 2.5)}
                 </button>` : ''}
             </div>`;
         itemsEl.innerHTML = registered.map(att => row(att, false)).join('')
-            + (waitlist.length ? `<div class="event-attendees-sub">${t('home_waitlist', 'Warteliste')} · ${waitlist.length}</div>${waitlist.map(att => row(att, true)).join('')}` : '')
-            || `<div class="event-attendees-empty">${t('events_attendees_empty', 'Sobald sich jemand anmeldet, erscheint die Person hier.')}</div>`;
+            + (waitlist.length ? `<div class="event-attendees-sub">${t('home_waitlist', 'Waiting list')} · ${waitlist.length}</div>${waitlist.map(att => row(att, true)).join('')}` : '')
+            || `<div class="event-attendees-empty">${t('events_attendees_empty', 'As soon as someone registers, they will appear here.')}</div>`;
     } catch (err) {
         console.warn('Failed to load event attendees:', err);
     }
 }
 
 async function removeEventAttendee(eventId, userId) {
-    if (!confirmAction(t('events_attendee_remove_confirm', 'Möchtest du diesen Teilnehmer wirklich aus der Liste entfernen?'))) return;
+    if (!confirmAction(t('events_attendee_remove_confirm', 'Do you really want to remove this participant from the list?'))) return;
     await eventAction(`/events/${eventId}/attendees/${userId}`, 'DELETE', undefined, {
-        success: t('events_attendee_removed', 'Teilnehmer entfernt'), successType: 'info', error: t('events_attendee_remove_error', 'Fehler beim Entfernen des Teilnehmers'), useServerError: false,
+        success: t('events_attendee_removed', 'Participant removed'), successType: 'info', error: t('events_attendee_remove_error', 'Failed to remove the participant'), useServerError: false,
         after: () => loadEventAttendees(eventId)
     });
 }
@@ -6360,10 +6402,10 @@ function renderGroupedDuties(duties, ev) {
     const container = $('detail-modal-duties-sections');
     if (!container) return;
     if (!duties || duties.length === 0) {
-        container.innerHTML = `<div class="duty-rows-empty">${ev.canEdit ? t('duty_empty_manager', 'Lege Aufgaben an und frage Personen oder Gruppen dafür an.') : t('duty_empty_member', 'Für dieses Event sind keine Dienste eingetragen.')}</div>`;
+        container.innerHTML = `<div class="duty-rows-empty">${ev.canEdit ? t('duty_empty_manager', 'Create tasks and request people or groups for them.') : t('duty_empty_member', 'No duties have been set up for this event.')}</div>`;
         return;
     }
-    const grouped = groupBy(duties, d => (d.roleName || t('duty_task_fallback', 'Aufgabe')).trim());
+    const grouped = groupBy(duties, d => (d.roleName || t('duty_task_fallback', 'Task')).trim());
     container.innerHTML = [...grouped].map(([roleName, roleDuties]) => renderDutyTaskCard(roleName, roleDuties, ev)).join('');
 }
 
@@ -6375,7 +6417,7 @@ function renderDutyTaskCard(roleName, roleDuties, ev) {
     const openSlots = roleDuties.length - assignees.length;
     const chips = assignees.map(d => renderDutyAssigneeItem(d, ev)).join('')
         + (assignees.length === 0 || openSlots > 0
-            ? `<button type="button" class="duty-chip is-open" ${canManage ? `onclick="window.openAssignDutyModalForRole(${jsArg(encodedRoleName)})"` : 'disabled'}>${svgIcon(canManage ? 'plus' : 'user', 12, 2.5)}<span>${canManage ? t('duty_open_assign', 'Offen – zuweisen') : t('duty_open', 'Offen')}</span></button>`
+            ? `<button type="button" class="duty-chip is-open" ${canManage ? `onclick="window.openAssignDutyModalForRole(${jsArg(encodedRoleName)})"` : 'disabled'}>${svgIcon(canManage ? 'plus' : 'user', 12, 2.5)}<span>${canManage ? t('duty_open_assign', 'Open – assign') : t('duty_open', 'Open')}</span></button>`
             : '');
     // Requests to me get the answer buttons right in the row
     const myRequest = roleDuties.find(d => d.status === 'requested' && isCurrentUser(d.requestedUser));
@@ -6386,16 +6428,16 @@ function renderDutyTaskCard(roleName, roleDuties, ev) {
                 <span class="duty-row-name">${escapeHtml(roleName)}</span>
                 ${canManage ? `
                 <div class="duty-row-tools">
-                    ${assignees.length > 0 && openSlots === 0 ? `<button type="button" class="duty-tool" onclick="window.openAssignDutyModalForRole(${jsArg(encodedRoleName)})" title="${t('duty_add_assignee', 'Person oder Gruppe hinzufügen')}" aria-label="${t('duty_add_assignee', 'Person oder Gruppe hinzufügen')}">${svgIcon('plus', 14, 2.5)}</button>` : ''}
-                    <button type="button" class="duty-tool is-danger" onclick="window.deleteEntireDutyTask(${jsArg(encodedRoleName)})" title="${t('duty_delete_task', 'Aufgabe löschen')}" aria-label="${t('duty_delete_task', 'Aufgabe löschen')}">${svgIcon('trash', 14)}</button>
+                    ${assignees.length > 0 && openSlots === 0 ? `<button type="button" class="duty-tool" onclick="window.openAssignDutyModalForRole(${jsArg(encodedRoleName)})" title="${t('duty_add_assignee', 'Add person or group')}" aria-label="${t('duty_add_assignee', 'Add person or group')}">${svgIcon('plus', 14, 2.5)}</button>` : ''}
+                    <button type="button" class="duty-tool is-danger" onclick="window.deleteEntireDutyTask(${jsArg(encodedRoleName)})" title="${t('duty_delete_task', 'Delete task')}" aria-label="${t('duty_delete_task', 'Delete task')}">${svgIcon('trash', 14)}</button>
                 </div>` : ''}
             </div>
             <div class="duty-row-people">${chips}</div>
             ${myRequest ? `
             <div class="duty-row-request">
-                <span>${t('duty_you_were_requested', 'Du wurdest angefragt')}</span>
-                <button type="button" class="btn btn-primary btn-tiny" onclick="window.respondToDutyRequest(${jsArg(myRequest.id)}, 'accept')">${svgIcon('check', 13, 2.5)}<span>${t('duty_btn_accept', 'Zusagen')}</span></button>
-                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.respondToDutyRequest(${jsArg(myRequest.id)}, 'decline')">${t('request_btn_reject', 'Ablehnen')}</button>
+                <span>${t('duty_you_were_requested', 'You have been requested')}</span>
+                <button type="button" class="btn btn-primary btn-tiny" onclick="window.respondToDutyRequest(${jsArg(myRequest.id)}, 'accept')">${svgIcon('check', 13, 2.5)}<span>${t('duty_btn_accept', 'Accept')}</span></button>
+                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.respondToDutyRequest(${jsArg(myRequest.id)}, 'decline')">${t('request_btn_reject', 'Reject')}</button>
             </div>` : ''}
             ${notes}
         </div>`;
@@ -6412,15 +6454,15 @@ function renderDutyAssigneeItem(d, ev) {
         cls = 'is-group';
         avatar = `<span class="duty-chip-icon">${svgIcon('users', 12, 2.5)}</span>`;
         name = d.assignedGroupName || d.assignedGroup;
-        state = t('duty_state_group', 'Gruppe');
+        state = t('duty_state_group', 'Group');
     } else if (d.status === 'requested' || d.status === 'declined') {
         cls = d.status === 'requested' ? 'is-requested' : 'is-declined';
         avatar = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
-        name = isCurrentUser(d.requestedUser) ? t('duty_you', 'Du') : (d.requestedUserName || t('details_person', 'Person'));
-        state = d.status === 'requested' ? t('duty_state_requested', 'angefragt') : t('duty_state_declined', 'abgelehnt');
+        name = isCurrentUser(d.requestedUser) ? t('duty_you', 'You') : (d.requestedUserName || t('details_person', 'Person'));
+        state = d.status === 'requested' ? t('duty_state_requested', 'requested') : t('duty_state_declined', 'declined');
     } else {
         avatar = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
-        name = isCurrentUser(d.assignedUser) ? t('duty_you', 'Du') : (d.assignedUserName || t('events_duty_status_assigned', 'Eingeteilt'));
+        name = isCurrentUser(d.assignedUser) ? t('duty_you', 'You') : (d.assignedUserName || t('events_duty_status_assigned', 'Assigned'));
         state = '';
     }
     return `
@@ -6428,7 +6470,7 @@ function renderDutyAssigneeItem(d, ev) {
             ${avatar}
             <span class="duty-chip-name">${escapeHtml(name)}</span>
             ${state ? `<span class="duty-chip-state">${state}</span>` : `<span class="duty-chip-check">${svgIcon('check', 11, 3)}</span>`}
-            ${canRemove ? `<button type="button" class="duty-chip-remove" onclick="window.removeDutyAssignee(${jsArg(d.id)})" title="${t('duty_remove_entry', 'Eintrag entfernen')}" aria-label="${t('duty_remove_entry', 'Eintrag entfernen')}">${svgIcon('x', 11, 2.5)}</button>` : ''}
+            ${canRemove ? `<button type="button" class="duty-chip-remove" onclick="window.removeDutyAssignee(${jsArg(d.id)})" title="${t('duty_remove_entry', 'Remove entry')}" aria-label="${t('duty_remove_entry', 'Remove entry')}">${svgIcon('x', 11, 2.5)}</button>` : ''}
         </span>`;
 }
 
@@ -6447,12 +6489,12 @@ async function submitAddNewTask() {
     const input = $('duty-new-task-name');
     const roleName = input?.value?.trim();
     if (!roleName) {
-        showToast(t('duty_task_name_required', 'Bitte einen Namen für die Aufgabe eingeben'), 'warning');
+        showToast(t('duty_task_name_required', 'Please enter a name for the task'), 'warning');
         input?.focus();
         return;
     }
     await eventAction(`/events/${currentDetailEvent.id}/duties`, 'POST', { roleName }, {
-        before: hideAddNewTaskForm, success: t('duty_task_added', 'Aufgabe "{name}" hinzugefügt!', { name: roleName }), error: t('duty_task_add_error', 'Fehler beim Anlegen der Aufgabe')
+        before: hideAddNewTaskForm, success: t('duty_task_added', 'Task "{name}" added!', { name: roleName }), error: t('duty_task_add_error', 'Failed to create the task')
     });
 }
 
@@ -6460,7 +6502,7 @@ async function submitAddNewTask() {
 function openAssignDutyModalForRole(encodedRoleName) {
     setValue('assign-duty-role-encoded', encodedRoleName);
     setValue('assign-duty-replace-id', '');
-    setText('subtitle-assign-duty', t('duty_assign_subtitle', 'Aufgabe: {name}', { name: decodeURIComponent(encodedRoleName) }));
+    setText('subtitle-assign-duty', t('duty_assign_subtitle', 'Task: {name}', { name: decodeURIComponent(encodedRoleName) }));
     setValue('assign-duty-search-input', '');
     switchAssignDutyTab('user');
     openModal('assign-duty-modal');
@@ -6471,7 +6513,7 @@ function switchAssignDutyTab(type) {
     $('assign-tab-user')?.classList.toggle('is-active', type === 'user');
     $('assign-tab-group')?.classList.toggle('is-active', type === 'group');
     const search = $('assign-duty-search-input');
-    if (search) search.placeholder = type === 'user' ? t('duty_search_person', 'Person suchen...') : t('duty_search_group', 'Gruppe suchen...');
+    if (search) search.placeholder = type === 'user' ? t('duty_search_person', 'Search person...') : t('duty_search_group', 'Search group...');
     renderAssignDutyModalList(search ? search.value : '');
 }
 
@@ -6496,18 +6538,18 @@ async function renderAssignDutyModalList(filterText = '') {
     const term = (filterText || '').trim().toLowerCase();
     const matches = text => !term || (text || '').toLowerCase().includes(term);
     const notice = text => `<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">${text}</div>`;
-    listEl.innerHTML = notice(t('loading_short', 'Wird geladen...'));
+    listEl.innerHTML = notice(t('loading_short', 'Loading...'));
     await loadEventCandidates();
     if (token !== dutyPickerToken) return;
     if (isUserTab) {
         const matched = (Array.isArray(eventCandidatesCache) ? eventCandidatesCache : []).filter(c => matches(c.name) || (term && matches(c.email)));
-        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_person', 'Keine passende Person gefunden.')) : matched.map(c => {
-            const name = c.name || c.email || t('events_member_fallback', 'Mitglied');
+        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_person', 'No matching person found.')) : matched.map(c => {
+            const name = c.name || c.email || t('events_member_fallback', 'Member');
             return pickerOption({
                 name,
                 subtitle: c.email || '',
                 badgeHtml: renderAvatarWrap(c.id, name, { style: 'width: 36px; height: 36px; font-size: 0.8rem;' }),
-                btnText: t('duty_btn_request', 'Anfragen'),
+                btnText: t('duty_btn_request', 'Request'),
                 btnClass: 'btn-primary',
                 onclick: `window.selectDutyAssignee({ targetUserId: ${jsArg(c.id)}, sendEmail: true })`
             });
@@ -6515,11 +6557,11 @@ async function renderAssignDutyModalList(filterText = '') {
     } else {
         const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0 ? eventGroupsCache : groupList();
         const matched = groups.filter(g => matches(g.name || g.id));
-        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_group', 'Keine passende Gruppe gefunden.')) : matched.map(g => pickerOption({
+        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_group', 'No matching group found.')) : matched.map(g => pickerOption({
             name: g.name || g.id,
-            subtitle: t('duty_assign_group_fixed', 'Gruppe fest einteilen'),
+            subtitle: t('duty_assign_group_fixed', 'Assign group directly'),
             badgeHtml: '<div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>',
-            btnText: t('admin_assign_short', 'Zuweisen'),
+            btnText: t('admin_assign_short', 'Assign'),
             btnClass: 'btn-secondary',
             onclick: `window.selectDutyAssignee({ targetGroupId: ${jsArg(g.id || g.name || g.id)} })`
         })).join('');
@@ -6539,36 +6581,36 @@ async function assignToDutyRole(eventId, encodedRoleName, assignData, replaceDut
     // Fill an existing open slot of this task before creating a new one
     const slotId = replaceDutyId || (Array.isArray(currentDetailEvent?.duties) ? currentDetailEvent.duties.find(d => (d.roleName || '').trim() === roleName.trim() && d.status === 'open')?.id : null);
     await eventAction(slotId ? `/events/duties/${slotId}/assign` : `/events/${eventId}/duties`, 'POST', slotId ? { ...assignData, sendEmail: true } : { roleName, ...assignData, sendEmail: true }, {
-        success: assignData.targetGroupId ? t('duty_group_assigned', 'Gruppe erfolgreich eingeteilt!') : t('duty_request_sent', 'Dienstanfrage versendet & E-Mail übermittelt!'),
-        error: t('duty_assign_error', 'Fehler beim Zuweisen')
+        success: assignData.targetGroupId ? t('duty_group_assigned', 'Group assigned successfully!') : t('duty_request_sent', 'Duty request sent & email delivered!'),
+        error: t('duty_assign_error', 'Failed to assign')
     });
 }
 
 async function deleteEntireDutyTask(encodedRoleName) {
     if (!currentDetailEvent) return;
     const roleName = decodeURIComponent(encodedRoleName);
-    if (!confirmAction(t('duty_delete_task_confirm', 'Möchtest du die gesamte Aufgabe "{name}" mit allen Einträgen wirklich löschen?', { name: roleName }))) return;
+    if (!confirmAction(t('duty_delete_task_confirm', 'Do you really want to delete the entire task "{name}" with all its entries?', { name: roleName }))) return;
     try {
         const duties = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
         if (duties.length === 0) return;
         await Promise.all(duties.map(d => api(`/events/duties/${d.id}`, 'DELETE')));
-        showToast(t('duty_task_deleted', 'Aufgabe "{name}" gelöscht', { name: roleName }), 'info');
+        showToast(t('duty_task_deleted', 'Task "{name}" deleted', { name: roleName }), 'info');
         await loadEventsData();
         refreshDetailEvent(true);
     } catch {
-        showToast(t('duty_task_delete_error', 'Fehler beim Löschen der Aufgabe'), 'error');
+        showToast(t('duty_task_delete_error', 'Failed to delete the task'), 'error');
     }
 }
 
 async function removeDutyAssignee(dutyId) {
-    if (!dutyId || !confirmAction(t('duty_remove_entry_confirm', 'Diesen Eintrag wirklich entfernen?'))) return;
+    if (!dutyId || !confirmAction(t('duty_remove_entry_confirm', 'Really remove this entry?'))) return;
     const ev = currentDetailEvent;
     const roleName = ev?.duties?.find(d => d.id === dutyId)?.roleName;
     const isOnlySlot = (ev?.duties?.filter(d => (d.roleName || '').trim() === (roleName || '').trim()) || []).length === 1;
     await eventAction(`/events/duties/${dutyId}`, 'DELETE', undefined, {
         // Keep the task as an empty role so it doesn't vanish with its last entry
         before: async () => { if (isOnlySlot && roleName && ev?.id) await api(`/events/${ev.id}/duties`, 'POST', { roleName }); },
-        success: t('duty_entry_removed', 'Eintrag entfernt'), successType: 'info', error: t('duty_remove_error', 'Fehler beim Entfernen')
+        success: t('duty_entry_removed', 'Entry removed'), successType: 'info', error: t('duty_remove_error', 'Failed to remove')
     });
 }
 
@@ -6576,17 +6618,17 @@ async function toggleEventRegistration(eventId, currentStatus) {
     if (!currentUser) return;
     const cancel = currentStatus === 'registered' || currentStatus === 'waitlist';
     await eventAction(`/events/${eventId}/register`, 'POST', { action: cancel ? 'cancel' : 'register' }, {
-        success: data => cancel ? t('events_unregistered_success', 'Erfolgreich abgemeldet') : data.isWaitlist ? t('events_waitlist_success', 'Auf die Warteliste gesetzt') : t('events_registered_success', 'Erfolgreich verbindlich angemeldet!'),
+        success: data => cancel ? t('events_unregistered_success', 'Unregistered successfully') : data.isWaitlist ? t('events_waitlist_success', 'Added to the waiting list') : t('events_registered_success', 'Registered successfully!'),
         successType: data => cancel ? 'info' : data.isWaitlist ? 'warning' : 'success',
-        error: t('error_action_failed', 'Aktion fehlgeschlagen'),
+        error: t('error_action_failed', 'Action failed'),
         after: () => { if (currentDetailEvent?.id === eventId) openEventDetailModal(eventId); }
     });
 }
 
 async function deleteEvent(eventId) {
-    if (!confirmAction(t('events_delete_confirm', 'Möchtest du dieses Event wirklich löschen?'))) return;
+    if (!confirmAction(t('events_delete_confirm', 'Do you really want to delete this event?'))) return;
     await eventAction(`/events/${eventId}`, 'DELETE', undefined, {
-        success: t('events_deleted_success', 'Event gelöscht'), error: t('toast_delete_failed_short', 'Löschen fehlgeschlagen'), networkError: t('events_delete_error', 'Fehler beim Löschen des Events'), after: () => {}
+        success: t('events_deleted_success', 'Event deleted'), error: t('toast_delete_failed_short', 'Deletion failed'), networkError: t('events_delete_error', 'Failed to delete the event'), after: () => {}
     });
 }
 
@@ -6617,8 +6659,8 @@ async function confirmEventCrop() {
     if (!eventCropper) return;
     const { x, y, scaleX, scaleY } = eventCropper.region();
     const blob = await cropToJpeg(eventCropper.img, [x, y, Math.round(eventCropper.cropW * scaleX), Math.round(eventCropper.cropH * scaleY)], 1280, 720, 0.82);
-    if (!blob) return showToast(t('crop_error', 'Fehler beim Zuschneiden des Bildes.'), 'error');
-    setButtonLoading('btn-confirm-event-crop', true, t('saving_short', 'Wird gespeichert...'));
+    if (!blob) return showToast(t('crop_error', 'Failed to crop the image.'), 'error');
+    setButtonLoading('btn-confirm-event-crop', true, t('saving_short', 'Saving...'));
     try {
         const token = await getToken();
         const res = await fetch(`${API}/events/upload-image`, {
@@ -6627,15 +6669,15 @@ async function confirmEventCrop() {
             body: toFormData({ image: new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' }) })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) return showToast(data.error || t('toast_upload_failed_short', 'Upload fehlgeschlagen'), 'error');
+        if (!res.ok) return showToast(data.error || t('toast_upload_failed_short', 'Upload failed'), 'error');
         setValue('detail-edit-image-url', data.url);
         showDetailCover(data.url);
         show('detail-edit-cover-placeholder', false);
         closeModal('event-crop-modal');
-        showToast(t('events_cover_applied', 'Eventbild im 16:9-Format übernommen!'), 'success');
+        showToast(t('events_cover_applied', 'Event image applied in 16:9 format!'), 'success');
     } catch (e) {
         console.error('Crop upload error:', e);
-        showToast(t('events_cover_save_error', 'Fehler beim Speichern des Eventbildes'), 'error');
+        showToast(t('events_cover_save_error', 'Failed to save the event image'), 'error');
     } finally {
         setButtonLoading('btn-confirm-event-crop', false, null);
     }
@@ -6659,7 +6701,7 @@ async function fetchPersonalCalendarFeed(force = false) {
 // The personal feed URL, or '' with an error toast when it could not be loaded
 async function personalFeedUrl() {
     const url = (await fetchPersonalCalendarFeed())?.feedUrl || cachedCalendarFeed?.feedUrl || '';
-    if (!url) showToast(t('calendar_feed_unavailable', 'Der Kalender-Link konnte nicht geladen werden. Bitte später erneut versuchen.'), 'error');
+    if (!url) showToast(t('calendar_feed_unavailable', 'The calendar link could not be loaded. Please try again later.'), 'error');
     return url;
 }
 
@@ -6672,20 +6714,20 @@ async function copyPersonalCalendarFeedUrl() {
     const url = await personalFeedUrl();
     if (!url) return;
     navigator.clipboard.writeText(url)
-        .then(() => showToast(t('calendar_sub_copied', 'Kalender-URL in die Zwischenablage kopiert!'), 'success'))
-        .catch(() => showToast(t('calendar_sub_copy_error', 'Fehler beim Kopieren der Kalender-URL'), 'error'));
+        .then(() => showToast(t('calendar_sub_copied', 'Calendar URL copied to clipboard!'), 'success'))
+        .catch(() => showToast(t('calendar_sub_copy_error', 'Failed to copy the calendar URL'), 'error'));
 }
 
 async function resetCalendarFeedToken() {
-    if (!confirmAction(t('calendar_sub_reset_confirm', 'Möchtest du wirklich einen neuen Kalender-Link generieren? Dein bisheriger Kalender-Link wird dadurch ungültig und du musst den Kalender in deinen Apps neu abonnieren.'))) return;
+    if (!confirmAction(t('calendar_sub_reset_confirm', 'Do you really want to generate a new calendar link? Your previous calendar link will stop working and you will have to subscribe to the calendar again in your apps.'))) return;
     try {
         const res = await api('/user/calendar-feed/reset', 'POST');
-        if (!res.ok) return showToast(t('calendar_sub_reset_error', 'Fehler beim Zurücksetzen des Links'), 'error');
+        if (!res.ok) return showToast(t('calendar_sub_reset_error', 'Failed to reset the link'), 'error');
         cachedCalendarFeed = await res.json();
         await loadPersonalCalendarFeedSettings(true);
-        showToast(t('calendar_sub_reset_success', 'Neuer Kalender-Link erfolgreich generiert!'), 'success');
+        showToast(t('calendar_sub_reset_success', 'New calendar link successfully generated!'), 'success');
     } catch {
-        showToast(t('calendar_sub_reset_network_error', 'Verbindungsfehler beim Zurücksetzen'), 'error');
+        showToast(t('calendar_sub_reset_network_error', 'Connection error while resetting'), 'error');
     }
 }
 
@@ -6711,9 +6753,9 @@ async function saveEventSystemSettings() {
     };
     try {
         const res = await api('/events/settings', 'PATCH', payload);
-        showToast(res.ok ? t('events_settings_saved', 'Event-Einstellungen erfolgreich gespeichert!') : t('events_settings_save_error', 'Fehler beim Speichern der Event-Einstellungen'), res.ok ? 'success' : 'error');
+        showToast(res.ok ? t('events_settings_saved', 'Event settings saved successfully!') : t('events_settings_save_error', 'Failed to save the event settings'), res.ok ? 'success' : 'error');
     } catch {
-        showToast(t('error_connection', 'Verbindungsfehler'), 'error');
+        showToast(t('error_connection', 'Connection error'), 'error');
     }
 }
 
@@ -6775,7 +6817,7 @@ function enterDetailEditMode() {
     populateDetailEditTargetGroups(selectedGroups);
     if (groupList().length === 0) loadSystemGroups().then(() => populateDetailEditTargetGroups(selectedGroups));
     show('detail-modal-action-bar', true, 'flex');
-    setText('detail-btn-save-text', ev ? t('btn_save', 'Speichern') : t('events_btn_publish_short', 'Veröffentlichen'));
+    setText('detail-btn-save-text', ev ? t('btn_save', 'Save') : t('events_btn_publish_short', 'Publish'));
 }
 
 function cancelDetailEditMode() {
@@ -6816,24 +6858,24 @@ async function saveDetailEditMode() {
         recurringCount
     };
     if (!title) {
-        showToast(t('events_title_required', 'Bitte gib einen Titel ein'), 'warning');
+        showToast(t('events_title_required', 'Please enter a title'), 'warning');
         return $('detail-edit-title')?.focus();
     }
     if (!date) {
-        showToast(t('events_date_required', 'Bitte gib ein Datum ein'), 'warning');
+        showToast(t('events_date_required', 'Please enter a date'), 'warning');
         return $('detail-edit-date')?.focus();
     }
-    if (isMultiDay && payload.endDate && payload.endDate < date) return showToast(t('events_end_before_start', 'Das Enddatum darf nicht vor dem Startdatum liegen'), 'warning');
+    if (isMultiDay && payload.endDate && payload.endDate < date) return showToast(t('events_end_before_start', 'The end date must not be before the start date'), 'warning');
 
     const saveBtn = $('detail-btn-save');
     if (saveBtn) saveBtn.disabled = true;
-    setText('detail-btn-save-text', t('saving_short', 'Wird gespeichert...'));
+    setText('detail-btn-save-text', t('saving_short', 'Saving...'));
     try {
         const eventId = currentDetailEvent ? currentDetailEvent.id : null;
         const res = await api(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload);
         const saved = await res.json().catch(() => ({}));
-        if (!res.ok) return showToast(saved.error || t('alert_save_error', 'Fehler beim Speichern.'), 'error');
-        showToast(eventId ? t('events_updated_success', 'Erfolgreich aktualisiert!') : (isRecurring ? t('events_series_created', '{count} Termine erfolgreich erstellt!', { count: recurringCount }) : t('events_published_success', 'Erfolgreich veröffentlicht!')), 'success');
+        if (!res.ok) return showToast(saved.error || t('alert_save_error', 'Error while saving.'), 'error');
+        showToast(eventId ? t('events_updated_success', 'Updated successfully!') : (isRecurring ? t('events_series_created', '{count} appointments created successfully!', { count: recurringCount }) : t('events_published_success', 'Published successfully!')), 'success');
         detailCard()?.classList.remove('detail-is-editing', 'detail-is-new');
         hideTypeSelector();
         await loadEventsData();
@@ -6842,10 +6884,10 @@ async function saveDetailEditMode() {
         else closeModal('event-detail-modal');
     } catch (err) {
         console.error('saveDetailEditMode error:', err);
-        showToast(t('events_save_network_error', 'Verbindungsfehler beim Speichern'), 'error');
+        showToast(t('events_save_network_error', 'Connection error while saving'), 'error');
     } finally {
         if (saveBtn) saveBtn.disabled = false;
-        setText('detail-btn-save-text', currentDetailEvent ? t('btn_save', 'Speichern') : t('events_btn_publish_short', 'Veröffentlichen'));
+        setText('detail-btn-save-text', currentDetailEvent ? t('btn_save', 'Save') : t('events_btn_publish_short', 'Publish'));
     }
 }
 
@@ -6860,7 +6902,7 @@ function openNewEventDetailModal(defaultType) {
     show('detail-modal-cover-wrap', false);
     const coverImg = $('detail-modal-cover-img');
     if (coverImg) coverImg.src = '';
-    setText('detail-modal-title', type === 'event' ? t('events_btn_new', 'Neues Event') : t('events_new_termin', 'Neuer Termin'));
+    setText('detail-modal-title', type === 'event' ? t('events_btn_new', 'New Event') : t('events_new_termin', 'New Appointment'));
     show('detail-modal-organizer-pill', false);
     show('detail-modal-groups-line', false);
     const tags = $('detail-modal-tags');
@@ -6886,13 +6928,13 @@ function setDetailEditType(type) {
     $('detail-type-card-termin')?.classList.toggle('is-active', isTermin);
     $('detail-type-card-event')?.classList.toggle('is-active', !isTermin);
     setText('detail-type-desc-text', isTermin
-        ? t('events_type_termin_desc', 'Regulärer Termin (z. B. Bistro, Gebetstreff, Probe) – erscheint im Terminkalender.')
-        : t('events_type_event_desc', 'Besonderes Event (z. B. Jugendtreff, Konzert, Fest) – mit Titelbild & Programm.'));
+        ? t('events_type_termin_desc', 'Regular appointment (e.g. bistro, prayer meeting, rehearsal) – appears in the appointment calendar.')
+        : t('events_type_event_desc', 'Special event (e.g. youth night, concert, festival) – with cover image & program.'));
     show('detail-edit-pinned-wrap', canManage && !isTermin, 'flex');
     show('detail-edit-recurring-toggle-wrap', canManage && isTermin && !currentDetailEvent, 'inline-flex');
     setText('detail-edit-heading', currentDetailEvent
-        ? (isTermin ? t('events_edit_termin', 'Termin bearbeiten') : t('events_edit_event', 'Event bearbeiten'))
-        : (isTermin ? t('events_new_termin', 'Neuer Termin') : t('events_btn_new', 'Neues Event')));
+        ? (isTermin ? t('events_edit_termin', 'Edit appointment') : t('events_edit_event', 'Edit event'))
+        : (isTermin ? t('events_new_termin', 'New Appointment') : t('events_btn_new', 'New Event')));
 }
 
 function toggleDetailMultiDay(isMultiDay) {
@@ -6900,7 +6942,7 @@ function toggleDetailMultiDay(isMultiDay) {
     show('detail-when-time-row', !isMultiDay, 'grid');
     show('detail-multiday-hint', isMultiDay, 'flex');
     const dateLabel = document.querySelector('label[for="detail-edit-date"]');
-    if (dateLabel) dateLabel.textContent = isMultiDay ? t('modal_date_start', 'Startdatum') : t('modal_date', 'Datum');
+    if (dateLabel) dateLabel.textContent = isMultiDay ? t('modal_date_start', 'Start Date') : t('modal_date', 'Date');
     if (isMultiDay && !inputValue('detail-edit-end-date') && inputValue('detail-edit-date')) setValue('detail-edit-end-date', inputValue('detail-edit-date'));
 }
 
@@ -6913,7 +6955,7 @@ function populateDetailEditTargetGroups(selectedGroups = []) {
     const container = $('detail-edit-target-groups-container');
     if (!container) return;
     container.innerHTML = groupList().length === 0
-        ? `<span style="font-size:0.78rem; color:var(--text-secondary);">${t('events_public_all_members', 'Öffentlich für alle Mitglieder')}</span>`
+        ? `<span style="font-size:0.78rem; color:var(--text-secondary);">${t('events_public_all_members', 'Public for all members')}</span>`
         : groupList().map(g => {
             const name = g.name || g.id;
             return `

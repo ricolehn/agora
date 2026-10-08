@@ -85,21 +85,21 @@ router.post('/api/reports', protectedActionRateLimit, verifyToken, async (req, r
     await storeReport(context.appConfig, report);
     adminUsers(context.appConfig).then((admins) => notifyUsers(context.appConfig, admins.filter((u) => u.id !== req.user?.uid), 'reports', {
       origin: originOf(req),
-      push: { title: report.type === 'ai' ? 'Gemeldete KI-Antwort' : 'Gemeldete Chat-Nachricht', body: report.reason || report.content.slice(0, 120), data: { url: '/#settings' } },
-      email: {
-        subject: report.type === 'ai' ? 'Gemeldete KI-Antwort' : 'Gemeldete Chat-Nachricht',
-        heading: report.type === 'ai' ? 'Gemeldete KI-Antwort' : 'Gemeldete Chat-Nachricht',
-        lines: ['Ein Inhalt wurde gemeldet und wartet auf deine Prüfung.'],
-        rows: [['Grund', report.reason || '–']],
-        actionLabel: 'Meldungen prüfen',
+      push: (tr) => ({ title: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'), body: report.reason || report.content.slice(0, 120), data: { url: '/#settings' } }),
+      email: (tr) => ({
+        subject: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
+        heading: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
+        lines: [tr('Some content was reported and is waiting for your review.')],
+        rows: [[tr('Reason'), report.reason || '–']],
+        actionLabel: tr('Review reports'),
         path: '/#settings',
         accent: '#dc2626'
-      }
+      })
     })).catch((err) => console.warn('[Notify] report:', err.message));
     res.status(201).json({ success: true });
   } catch (err) {
     console.error('Failed to store report:', err);
-    res.status(500).json({ error: 'Meldung konnte nicht gespeichert werden.' });
+    res.status(500).json({ error: 'The report could not be saved.' });
   }
 });
 
@@ -107,17 +107,17 @@ router.get('/api/admin/reports', verifyToken, verifyAdmin, async (req, res) => {
   try {
     res.json({ reports: await listReports(context.appConfig) });
   } catch (err) {
-    res.status(500).json({ error: 'Meldungen konnten nicht geladen werden.' });
+    res.status(500).json({ error: 'Reports could not be loaded.' });
   }
 });
 
 router.post('/api/admin/reports/:id/resolve', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const report = await resolveReport(context.appConfig, req.params.id);
-    if (!report) return res.status(404).json({ error: 'Meldung nicht gefunden.' });
+    if (!report) return res.status(404).json({ error: 'Report not found.' });
     res.json({ success: true, report });
   } catch (err) {
-    res.status(500).json({ error: 'Meldung konnte nicht aktualisiert werden.' });
+    res.status(500).json({ error: 'The report could not be updated.' });
   }
 });
 

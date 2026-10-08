@@ -14,9 +14,9 @@ function clip(value, max) {
 /** Validated report from a request body, or an error message. */
 function buildReport(body, user, now = Date.now()) {
   const type = String(body?.type || '');
-  if (!REPORT_TYPES.includes(type)) return { error: 'Unbekannte Art der Meldung.' };
+  if (!REPORT_TYPES.includes(type)) return { error: 'Unknown kind of report.' };
   const content = clip(body?.content, MAX_TEXT).trim();
-  if (!content) return { error: 'Die gemeldete Nachricht fehlt.' };
+  if (!content) return { error: 'The reported message is missing.' };
   return {
     report: {
       id: crypto.randomUUID(),

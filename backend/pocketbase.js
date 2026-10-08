@@ -320,7 +320,9 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'notes', type: 'text' },
       { name: 'status', type: 'text', required: true },
       { name: 'created', type: 'text' },
-      { name: 'updated', type: 'text' }
+      { name: 'updated', type: 'text' },
+      // per person the event start that was reminded (dutyReminders.js)
+      { name: 'reminded', type: 'json' }
     ]
   },
   {
@@ -341,7 +343,9 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'p256dh', type: 'text', required: true },
       { name: 'auth', type: 'text', required: true },
       { name: 'userAgent', type: 'text' },
-      { name: 'created', type: 'text' }
+      { name: 'created', type: 'text' },
+      // only subscriptions of the installed app (PWA) get pushes
+      { name: 'installed', type: 'bool' }
     ]
   },
   {
@@ -383,7 +387,8 @@ function generatePocketBaseCredentials() {
     url: getPocketBaseBaseUrl(),
     // Internal-only superuser used by the bundled backend to provision PocketBase.
     adminEmail: `agora-${crypto.randomUUID()}@local.invalid`,
-    adminPassword: crypto.randomBytes(24).toString('base64url')
+    // base64url may start with "-", which the PocketBase CLI would read as an option: always start with a letter
+    adminPassword: `p${crypto.randomBytes(24).toString('base64url')}`
   };
 }
 
@@ -443,7 +448,11 @@ function toPublicUser(record) {
       return { ...settings.push, ...settings };
     })(),
     isClaimed,
-    calendarToken: record.calendarToken || ''
+    calendarToken: record.calendarToken || '',
+    // the language the user's app resolved to (push / e-mail); '' = the instance default
+    language: record.language || '',
+    // time zone of the user's app (finds the community's zone for duty reminders when the server has no TZ)
+    timeZone: record.timeZone || ''
   };
 }
 
@@ -454,6 +463,14 @@ function sanitizeSelfUserWrite(input = {}) {
   const output = {};
   // No first / last name: the name links an account to its finance record, so only admins change it
   if (typeof input.emailNotifications === 'boolean') output.emailNotifications = input.emailNotifications;
+  if (typeof input.language === 'string') {
+    const language = require('./i18n').normalizeLanguage(input.language);
+    if (language) output.language = language;
+  }
+  if (typeof input.timeZone === 'string') {
+    const timeZone = require('./dutyReminders').validTimeZone(input.timeZone);
+    if (timeZone) output.timeZone = timeZone;
+  }
   if (input.notificationSettings && typeof input.notificationSettings === 'object') {
     const pickBooleans = (source) => Object.fromEntries(Object.entries(source && typeof source === 'object' ? source : {})
       .filter(([key, value]) => NOTIFICATION_SETTING_KEYS.includes(key) && typeof value === 'boolean'));
@@ -558,6 +575,7 @@ async function ensurePocketBaseSuperuser(appConfig) {
     dir,
     'superuser',
     'upsert',
+    '--', // e-mail and password are values even when they start with "-"
     appConfig.pocketbase.adminEmail,
     appConfig.pocketbase.adminPassword
   ];
@@ -597,6 +615,8 @@ async function ensureUsersCollection(appConfig) {
     { name: 'groups', type: 'json' },
     { name: 'emailNotifications', type: 'bool' },
     { name: 'notificationSettings', type: 'json' },
+    { name: 'language', type: 'text' },
+    { name: 'timeZone', type: 'text' },
     { name: 'isClaimed', type: 'bool' },
     { name: 'calendarToken', type: 'text' }
   ];
@@ -1397,7 +1417,7 @@ async function deleteUserRecord(appConfig, uid) {
 
 async function getOrCreateUserCalendarToken(appConfig, uid) {
   const user = await getUserRecord(appConfig, uid);
-  if (!user) throw new Error('Benutzer nicht gefunden');
+  if (!user) throw new Error('User not found');
   if (user.calendarToken && typeof user.calendarToken === 'string' && user.calendarToken.trim()) {
     return user.calendarToken.trim();
   }
@@ -1408,7 +1428,7 @@ async function getOrCreateUserCalendarToken(appConfig, uid) {
 
 async function regenerateUserCalendarToken(appConfig, uid) {
   const user = await getUserRecord(appConfig, uid);
-  if (!user) throw new Error('Benutzer nicht gefunden');
+  if (!user) throw new Error('User not found');
   const newToken = crypto.randomBytes(24).toString('hex');
   await updateUserRecord(appConfig, uid, { calendarToken: newToken });
   return newToken;
@@ -1677,12 +1697,12 @@ async function updateGroupRecord(appConfig, id, { name, permissions }) {
 }
 
 const SYSTEM_PERMISSIONS = [
-  { id: 'view_finances', name: 'Finanzverwaltung (Nur Lesen)', description: 'Erlaubt die Einsicht in Kassenstände, Historie, Transaktionen und Berichte ohne Bearbeitungsrechte' },
-  { id: 'manage_finances', name: 'Finanzverwaltung (Vollzugriff)', description: 'Erlaubt das Erfassen, Bearbeiten, Buchen und Löschen von Zahlungen, Spenden, Ausgaben und Daueraufträgen' },
-  { id: 'manage_registration_code', name: 'Registrierungscode verwalten', description: 'Erlaubt das Einsehen, Kopieren und Neugenerieren des Registrierungscodes für neue Mitglieder' },
-  { id: 'access_ai', name: 'KI-Support nutzen', description: 'Erlaubt den Zugriff und die Nutzung des integrierten KI-Assistenten' },
-  { id: 'manage_mentoring', name: 'Mentoring-Verwaltung', description: 'Berechtigt Leiter dazu, Mentorenbewerbungen zu prüfen, genehmigen oder abzulehnen (kein Zugriff auf private Chats)' },
-  { id: 'manage_events', name: 'Event- & Dienstplanverwaltung', description: 'Erlaubt das Anlegen von Serienterminen und die vollständige Verwaltung aller Events und Dienste' }
+  { id: 'view_finances', name: 'Finance management (read only)', description: 'Allows viewing balances, history, transactions and reports without editing rights' },
+  { id: 'manage_finances', name: 'Finance management (full access)', description: 'Allows recording, editing, booking and deleting payments, donations, expenses and standing orders' },
+  { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
+  { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
+  { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
+  { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {
@@ -2008,7 +2028,7 @@ async function getPushSubscriptionByEndpoint(appConfig, endpoint) {
   return getFirstRecord('push_subscriptions', pbFilterEquals('endpoint', endpoint), appConfig);
 }
 
-async function upsertPushSubscription(appConfig, userId, subscription, userAgent = '') {
+async function upsertPushSubscription(appConfig, userId, subscription, userAgent = '', installed = false) {
   const existing = await getPushSubscriptionByEndpoint(appConfig, subscription.endpoint);
   const payload = {
     user: String(userId),
@@ -2016,6 +2036,7 @@ async function upsertPushSubscription(appConfig, userId, subscription, userAgent
     p256dh: String(subscription.keys?.p256dh || ''),
     auth: String(subscription.keys?.auth || ''),
     userAgent: String(userAgent || ''),
+    installed: installed === true,
     created: new Date().toISOString()
   };
   if (existing) {

@@ -1,4 +1,5 @@
 const express = require('express');
+const { normalizeLanguage, languageFromHeader, BASE_LANGUAGE } = require('../i18n');
 const crypto = require('crypto');
 const {
   context,
@@ -51,6 +52,8 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
     const newConfig = {
       appName,
       smtp,
+      // the language the setup was done in becomes the instance's default language
+      defaultLanguage: normalizeLanguage(req.body?.defaultLanguage) || languageFromHeader(req.headers['accept-language']) || BASE_LANGUAGE,
       pocketbase: generatePocketBaseCredentials()
     };
 
@@ -167,14 +170,14 @@ router.post('/api/auth/register', authRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Missing email or password.' });
   }
   if (!firstName || !lastName) {
-    return res.status(400).json({ error: 'Vorname und Nachname sind erforderlich.' });
+    return res.status(400).json({ error: 'First and last name are required.' });
   }
 
   try {
     const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
     const validInviteCode = String(system?.inviteCode || DEFAULT_SYSTEM_STATE.inviteCode);
     if (!inviteCode || inviteCode !== validInviteCode) {
-      return res.status(403).json({ error: 'Ungültiger Registrierungscode.' });
+      return res.status(403).json({ error: 'Invalid registration code.' });
     }
 
     const normFirst = firstName.toLowerCase();
@@ -242,7 +245,7 @@ router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) =
   const password = String(req.body?.password || '');
 
   if (!oldPassword) {
-    return res.status(400).json({ error: 'Altes Passwort erforderlich.' });
+    return res.status(400).json({ error: 'Old password required.' });
   }
 
   if (!password || password.length < 6) {
@@ -264,18 +267,18 @@ router.post('/api/auth/delete-account', authRateLimit, verifyToken, async (req, 
   const password = String(req.body?.password || '');
   const uid = req.user.uid || req.user.id;
   if (!password) {
-    return res.status(400).json({ error: 'Bitte bestätige die Löschung mit deinem Passwort.' });
+    return res.status(400).json({ error: 'Please confirm the deletion with your password.' });
   }
   try {
     const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
     const ownerUid = system?.ownerUid || system?.superAdminUid || null;
     if (uid === ownerUid || req.user.owner === true || req.user.superAdmin === true) {
-      return res.status(400).json({ error: 'Der Eigentümer-Account verwaltet diese Instanz und kann nicht gelöscht werden.' });
+      return res.status(400).json({ error: 'The owner account manages this instance and cannot be deleted.' });
     }
     try {
       await loginUser(req.user.rawEmail || req.user.email, password);
     } catch {
-      return res.status(403).json({ error: 'Das Passwort ist nicht korrekt.' });
+      return res.status(403).json({ error: 'The password is not correct.' });
     }
     const summary = await deleteAccountData(context.appConfig, uid, { profilesDir });
     console.log(`[Account] User ${uid} deleted their account`, summary);
@@ -284,7 +287,7 @@ router.post('/api/auth/delete-account', authRateLimit, verifyToken, async (req, 
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to delete own account:', error);
-    res.status(500).json({ error: 'Konto konnte nicht gelöscht werden.' });
+    res.status(500).json({ error: 'The account could not be deleted.' });
   }
 });
 

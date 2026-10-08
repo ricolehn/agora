@@ -1,0 +1,508 @@
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const { assertHas } = require('./helpers');
+
+describe('pocketbase', () => {
+  const {
+    normalizeDataPath,
+    decodeTokenPayload,
+    toPublicUser,
+    sanitizeSelfUserWrite,
+    buildPocketBaseError,
+    generatePocketBaseCredentials,
+    normalizeRecordListInput,
+    stripNormalizedPersonData,
+    buildPersonRecordPayload,
+    buildPaymentRecordPayload,
+    buildStatusHistoryRecordPayload,
+    buildExpenseRecordPayload,
+    hydratePersonRecord,
+    clearSuperuserTokenCache
+  } = require('../backend/pocketbase');
+
+  // Defaults of a record without stored preferences: push with every kind, e-mail off
+  const ALL_KINDS = { duties: true, events: true, messages: true, requests: true, finances: true, reports: true };
+  const DEFAULT_NOTIFICATION_SETTINGS = { ...ALL_KINDS, channels: { push: true, email: false }, push: ALL_KINDS, email: ALL_KINDS };
+
+  test('normalizeDataPath trims duplicate separators', () => {
+    assert.equal(normalizeDataPath('/people//123/'), 'people/123');
+    assert.equal(normalizeDataPath(''), '');
+  });
+
+  test('decodeTokenPayload decodes base64url JWT payloads', () => {
+    const payload = { id: 'abc123', type: 'auth' };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const decoded = decodeTokenPayload(`x.${encoded}.y`);
+    assert.deepEqual(decoded, payload);
+  });
+
+  test('sanitizeSelfUserWrite strips admin flags and the name (it links the finance record)', () => {
+    const sanitized = sanitizeSelfUserWrite({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      emailNotifications: false,
+      admin: true,
+      superAdmin: true
+    });
+
+    assert.deepEqual(sanitized, {
+      emailNotifications: false
+    });
+  });
+
+  test('toPublicUser falls back to first and last name when the auth record has no name', () => {
+    const user = toPublicUser({
+      id: 'user-1',
+      email: 'ada@example.com',
+      firstName: 'Ada',
+      lastName: 'Lovelace'
+    });
+
+    assertHas(user, {
+      uid: 'user-1',
+      id: 'user-1',
+      email: 'ada@example.com',
+      rawEmail: 'ada@example.com',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      name: 'Ada Lovelace',
+      admin: false,
+      owner: false,
+      superAdmin: false,
+      pays: true,
+      groups: [],
+      emailNotifications: true,
+      notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+      isClaimed: true,
+      calendarToken: ''
+    });
+  });
+
+  test('toPublicUser preserves owner, pays, and groups fields', () => {
+    const user = toPublicUser({
+      id: 'user-2',
+      email: 'owner@example.com',
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      owner: true,
+      pays: false,
+      groups: ['Admins', 'Board']
+    });
+
+    assertHas(user, {
+      uid: 'user-2',
+      id: 'user-2',
+      email: 'owner@example.com',
+      rawEmail: 'owner@example.com',
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      name: 'Grace Hopper',
+      admin: true,
+      owner: true,
+      superAdmin: true,
+      pays: false,
+      groups: ['Admins', 'Board'],
+      emailNotifications: true,
+      notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+      isClaimed: true,
+      calendarToken: ''
+    });
+  });
+
+  test('toPublicUser preserves custom calendarToken', () => {
+    const user = toPublicUser({
+      id: 'user-cal',
+      email: 'cal@example.com',
+      firstName: 'Cal',
+      lastName: 'Endar',
+      calendarToken: 'secure-token-12345'
+    });
+
+    assert.equal(user.calendarToken, 'secure-token-12345');
+  });
+
+  test('toPublicUser handles unclaimed placeholder email accounts', () => {
+    const user = toPublicUser({
+      id: 'user-3',
+      email: 'unclaimed_12345_abcdef@agora.local',
+      firstName: 'John',
+      lastName: 'Doe',
+      isClaimed: false
+    });
+
+    assert.equal(user.email, '');
+    assert.equal(user.rawEmail, 'unclaimed_12345_abcdef@agora.local');
+    assert.equal(user.isClaimed, false);
+    assert.equal(user.name, 'John Doe');
+  });
+
+  test('isPlaceholderEmail detects generated placeholder emails', () => {
+    const { isPlaceholderEmail } = require('../backend/pocketbase');
+    assert.equal(isPlaceholderEmail('unclaimed_123_abc@agora.local'), true);
+    assert.equal(isPlaceholderEmail('user@agora.local'), true);
+    assert.equal(isPlaceholderEmail(''), true);
+    assert.equal(isPlaceholderEmail(null), true);
+    assert.equal(isPlaceholderEmail('realuser@gmail.com'), false);
+  });
+
+  test('buildPocketBaseError prefers detailed field validation messages', () => {
+    const error = buildPocketBaseError({
+      status: 400,
+      message: 'Failed to create record.',
+      data: {
+        firstName: { message: 'Vorname ist erforderlich.' }
+      }
+    }, 'Fallback');
+
+    assert.equal(error.message, 'Vorname ist erforderlich.');
+    assert.equal(error.status, 400);
+  });
+
+  test('generatePocketBaseCredentials returns docker-local defaults', () => {
+    const credentials = generatePocketBaseCredentials();
+    assert.equal(credentials.url, 'http://127.0.0.1:8090');
+    assert.match(credentials.adminEmail, /^agora-.*@local\.invalid$/);
+    assert.ok(credentials.adminPassword.length >= 20);
+  });
+
+  test('normalizeRecordListInput accepts arrays and object maps', () => {
+    assert.deepEqual(normalizeRecordListInput([{ id: 'a' }]), [{ id: 'a' }]);
+    assert.deepEqual(normalizeRecordListInput({ first: { id: 'a' }, second: { id: 'b' } }), [{ id: 'a' }, { id: 'b' }]);
+    assert.deepEqual(normalizeRecordListInput(null), []);
+  });
+
+  test('stripNormalizedPersonData removes nested payment and status history arrays', () => {
+    const person = {
+      id: 'person-1',
+      name: 'Ada',
+      status: 'active',
+      payments: [{ amount: '10.50' }, { amount: '4.50' }],
+      statusHistory: [{ status: 'active', startDate: '2024-01-01' }]
+    };
+
+    assert.deepEqual(stripNormalizedPersonData(person), {
+      id: 'person-1',
+      name: 'Ada',
+      status: 'active',
+      totalPaid: 15
+    });
+  });
+
+  test('build normalized PocketBase payloads expose relational scalar columns', () => {
+    const personPayload = buildPersonRecordPayload('person-1', {
+      uid: 'user-1',
+      name: 'Ada',
+      status: 'active',
+      memberSince: '2024-01-01',
+      originalMemberSince: '2024-01-01',
+      payments: [{ id: 'pay-1', amount: '10.50', date: '2024-02-01', description: 'Fee' }]
+    });
+    const paymentPayload = buildPaymentRecordPayload('person-1', { id: 'pay-1', amount: '10.50', date: '2024-02-01', description: 'Fee' });
+    const statusPayload = buildStatusHistoryRecordPayload('person-1', { status: 'active', startDate: '2024-01-01' });
+    const expensePayload = buildExpenseRecordPayload({ id: 'expense-1', amount: '7.25', date: '2024-03-01', issuer: 'Store', description: 'Paper', receipt: 'r.png' });
+
+    assert.equal(personPayload.personKey, 'person-1');
+    assert.equal(personPayload.uid, 'user-1');
+    assert.equal(personPayload.status, 'active');
+    assert.equal(personPayload.totalPaid, 10.5);
+    assert.deepEqual(personPayload.data, {
+      uid: 'user-1',
+      name: 'Ada',
+      status: 'active',
+      memberSince: '2024-01-01',
+      originalMemberSince: '2024-01-01',
+      totalPaid: 10.5
+    });
+
+    assert.equal(paymentPayload.personKey, 'person-1');
+    assert.equal(paymentPayload.amount, 10.5);
+    assert.equal(paymentPayload.date, '2024-02-01');
+    assert.ok(paymentPayload.paymentKey);
+
+    assert.equal(statusPayload.personKey, 'person-1');
+    assert.equal(statusPayload.status, 'active');
+    assert.equal(statusPayload.startDate, '2024-01-01');
+    assert.ok(statusPayload.historyKey);
+
+    assert.equal(expensePayload.amount, 7.25);
+    assert.equal(expensePayload.receipt, 'r.png');
+    assert.ok(expensePayload.expenseKey);
+  });
+
+  test('hydratePersonRecord rebuilds normalized child collections into legacy API shape', () => {
+    const record = {
+      personKey: 'person-1',
+      uid: 'user-1',
+      name: 'Ada',
+      status: 'active',
+      memberSince: '2024-01-01',
+      originalMemberSince: '2024-01-01',
+      data: {
+        id: 'person-1',
+        standingOrders: [{ id: 'so-1' }]
+      }
+    };
+    const payments = [
+      buildPaymentRecordPayload('person-1', { id: 'pay-3', amount: '1.00', date: '2024-02-01', description: 'Adjustment' }),
+      buildPaymentRecordPayload('person-1', { id: 'pay-2', amount: '4.50', date: '2024-03-01', description: 'Late fee' }),
+      buildPaymentRecordPayload('person-1', { id: 'pay-1', amount: '10.50', date: '2024-02-01', description: 'Fee' })
+    ];
+    const statusHistory = [
+      buildStatusHistoryRecordPayload('person-1', { status: 'paused', startDate: '2024-02-01' }),
+      buildStatusHistoryRecordPayload('person-1', { status: 'active', startDate: '2024-01-01' })
+    ];
+
+    const result = hydratePersonRecord(record, payments, statusHistory, {});
+
+    assert.equal(result.id, 'person-1');
+    assert.equal(result.uid, 'user-1');
+    assert.equal(result.name, 'Ada');
+    assert.equal(result.status, 'active');
+    assert.equal(result.totalPaid, 16);
+    assert.deepEqual(result.standingOrders, [{ id: 'so-1' }]);
+    assert.equal(result.payments.length, 3);
+    assert.equal(result.statusHistory.length, 2);
+    assert.ok('_paidUntil' in result);
+    assert.ok('_statusMeta' in result);
+    assert.ok('_overdueAmount' in result);
+    assert.ok('_currentStatus' in result);
+  });
+
+  test('migrateUserAndOwnerSchema patches existing users without pays=true to pays=true', () => {
+    const user1 = { id: 'u1', pays: false, email: 'a@agora.local' };
+    const user2 = { id: 'u2', pays: true, email: 'b@agora.local' };
+    const user3 = { id: 'u3', email: 'c@agora.local' };
+
+    // Helper check logic simulating migrateUserAndOwnerSchema patch check for pays
+    function needsPaysPatch(u) {
+      return u.pays !== true;
+    }
+
+    assert.equal(needsPaysPatch(user1), true);
+    assert.equal(needsPaysPatch(user2), false);
+    assert.equal(needsPaysPatch(user3), true);
+  });
+
+  test('clearSuperuserTokenCache is a callable function', () => {
+    assert.equal(typeof clearSuperuserTokenCache, 'function');
+    // Calling it should not throw
+    clearSuperuserTokenCache();
+  });
+
+  test('hydratePersonRecord attaches _childPayments/_childStatusHistory-compatible data', () => {
+    const record = {
+      personKey: 'person-1',
+      name: 'Test',
+      status: 'active',
+      memberSince: '2024-01-01',
+      data: { id: 'person-1' }
+    };
+    const payments = [
+      buildPaymentRecordPayload('person-1', { id: 'pay-1', amount: '5.00', date: '2024-01-15', description: 'Fee' })
+    ];
+    const result = hydratePersonRecord(record, payments, []);
+
+    assert.equal(result.payments.length, 1);
+    assert.equal(result.payments[0].id, 'pay-1');
+    assert.equal(result.totalPaid, 5);
+  });
+
+  test('decodeTokenPayload handles tokens with expiration far in future', () => {
+    const futureExp = Math.floor(Date.now() / 1000) + 315360000; // 10 years
+    const payload = { id: 'user123', type: 'auth', exp: futureExp };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const token = `eyJhbGciOiJIUzI1NiJ9.${encoded}.signature`;
+    const decoded = decodeTokenPayload(token);
+    assert.equal(decoded.id, 'user123');
+    assert.equal(decoded.exp, futureExp);
+    assert.ok(decoded.exp > Math.floor(Date.now() / 1000) + 300000000);
+  });
+
+  test('admin user and group helper functions are exported correctly', () => {
+    const {
+      adminResetUserPassword,
+      deleteUserRecord,
+      claimUserAccount,
+      isPlaceholderEmail,
+      listGroupRecords,
+      createGroupRecord,
+      updateGroupRecord,
+      deleteGroupRecord,
+      resolveUserPermissions
+    } = require('../backend/pocketbase');
+    assert.equal(typeof adminResetUserPassword, 'function');
+    assert.equal(typeof deleteUserRecord, 'function');
+    assert.equal(typeof claimUserAccount, 'function');
+    assert.equal(typeof isPlaceholderEmail, 'function');
+    assert.equal(typeof listGroupRecords, 'function');
+    assert.equal(typeof createGroupRecord, 'function');
+    assert.equal(typeof updateGroupRecord, 'function');
+    assert.equal(typeof deleteGroupRecord, 'function');
+    assert.equal(typeof resolveUserPermissions, 'function');
+  });
+
+  test('resolveUserPermissions merges permissions and determines finance, AI, and mentoring access', () => {
+    const { resolveUserPermissions } = require('../backend/pocketbase');
+    const allGroups = [
+      { id: 'g1', name: 'Finance Team', permissions: ['view_finances'] },
+      { id: 'g2', name: 'Treasury', permissions: ['manage_finances'] },
+      { id: 'g3', name: 'Regular', permissions: [] },
+      { id: 'g4', name: 'AI Users', permissions: ['access_ai'] },
+      { id: 'g5', name: 'Mentoring Participants', permissions: ['mentoring_participate'] },
+      { id: 'g6', name: 'Mentoring Leaders', permissions: ['manage_mentoring'] },
+      { id: 'g7', name: 'Invite Code Managers', permissions: ['manage_registration_code'] }
+    ];
+
+    const resEmpty = resolveUserPermissions([], allGroups);
+    assert.deepEqual(resEmpty.permissions, []);
+    assert.equal(resEmpty.canManageFinances, false);
+    assert.equal(resEmpty.canViewFinances, false);
+    assert.equal(resEmpty.canManageRegistrationCode, false);
+    assert.equal(resEmpty.canAccessAi, false);
+    assert.equal(resEmpty.canParticipateMentoring, true);
+    assert.equal(resEmpty.canManageMentoring, false);
+
+    const resView = resolveUserPermissions(['g1'], allGroups);
+    assert.deepEqual(resView.permissions, ['view_finances']);
+    assert.equal(resView.canManageFinances, false);
+    assert.equal(resView.canViewFinances, true);
+    assert.equal(resView.canManageRegistrationCode, false);
+    assert.equal(resView.canAccessAi, false);
+
+    const resManage = resolveUserPermissions(['g2'], allGroups);
+    assert.deepEqual(resManage.permissions, ['manage_finances']);
+    assert.equal(resManage.canManageFinances, true);
+    assert.equal(resManage.canViewFinances, true);
+    assert.equal(resManage.canManageRegistrationCode, false, 'manage_finances does not grant manage_registration_code');
+    assert.equal(resManage.canAccessAi, false);
+
+    const resAi = resolveUserPermissions(['g4'], allGroups);
+    assert.deepEqual(resAi.permissions, ['access_ai']);
+    assert.equal(resAi.canManageFinances, false);
+    assert.equal(resAi.canViewFinances, false);
+    assert.equal(resAi.canManageRegistrationCode, false);
+    assert.equal(resAi.canAccessAi, true);
+
+    const resInvite = resolveUserPermissions(['g7'], allGroups);
+    assert.deepEqual(resInvite.permissions, ['manage_registration_code']);
+    assert.equal(resInvite.canManageRegistrationCode, true);
+    assert.equal(resInvite.canManageFinances, false);
+
+    const resMentee = resolveUserPermissions(['g5'], allGroups);
+    assert.deepEqual(resMentee.permissions, ['mentoring_participate']);
+    assert.equal(resMentee.canParticipateMentoring, true);
+    assert.equal(resMentee.canManageMentoring, false);
+
+    const resLeader = resolveUserPermissions(['g6'], allGroups);
+    assert.deepEqual(resLeader.permissions, ['manage_mentoring']);
+    assert.equal(resLeader.canParticipateMentoring, true);
+    assert.equal(resLeader.canManageMentoring, true);
+
+    const resCombined = resolveUserPermissions(['g1', 'g4', 'g5', 'g7'], allGroups);
+    assert.ok(resCombined.permissions.includes('view_finances'));
+    assert.ok(resCombined.permissions.includes('access_ai'));
+    assert.ok(resCombined.permissions.includes('mentoring_participate'));
+    assert.ok(resCombined.permissions.includes('manage_registration_code'));
+    assert.equal(resCombined.canViewFinances, true);
+    assert.equal(resCombined.canManageFinances, false);
+    assert.equal(resCombined.canManageRegistrationCode, true);
+    assert.equal(resCombined.canAccessAi, true);
+    assert.equal(resCombined.canParticipateMentoring, true);
+    assert.equal(resCombined.canManageMentoring, false);
+    assert.equal(resCombined.canManageEvents, false);
+  });
+
+  // Regression: a password starting with "-" was read as a CLI option by "pocketbase superuser upsert" (~1 in 64 setups failed)
+  test('generated PocketBase superuser credentials never start with a dash', () => {
+    const { generatePocketBaseCredentials } = require('../backend/pocketbase');
+    for (let i = 0; i < 500; i++) {
+      const { adminEmail, adminPassword } = generatePocketBaseCredentials();
+      assert.ok(!adminPassword.startsWith('-') && !adminEmail.startsWith('-'));
+      assert.ok(adminPassword.length >= 24);
+    }
+  });
+
+  // A contract, not a snapshot: new permissions may be added, the existing ones must stay and be well-formed
+  test('SYSTEM_PERMISSIONS keeps the core permissions and every entry is well-formed', () => {
+    const { SYSTEM_PERMISSIONS } = require('../backend/pocketbase');
+    assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
+    const ids = SYSTEM_PERMISSIONS.map(p => p.id);
+    for (const core of ['view_finances', 'manage_finances', 'manage_registration_code', 'access_ai', 'manage_mentoring', 'manage_events']) {
+      assert.ok(ids.includes(core), `core permission ${core} is missing`);
+    }
+    assert.equal(new Set(ids).size, ids.length, 'permission ids are unique');
+    for (const permission of SYSTEM_PERMISSIONS) {
+      assert.match(permission.id, /^[a-z]+(?:_[a-z]+)*$/, `id ${permission.id} is snake_case`);
+      assert.ok(String(permission.name || '').trim(), `${permission.id} has a name`);
+      assert.ok(String(permission.description || '').trim(), `${permission.id} has a description`);
+    }
+  });
+
+  test('pocketbase exports encryptMentoringText and decryptMentoringText with proper round-trip', () => {
+    const { encryptMentoringText, decryptMentoringText } = require('../backend/pocketbase');
+    assert.equal(typeof encryptMentoringText, 'function');
+    assert.equal(typeof decryptMentoringText, 'function');
+
+    const threadId = 'pb-test-thread-42';
+    const original = 'Vertrauliche Seelsorge-Nachricht fuer PocketBase';
+    const encrypted = encryptMentoringText(original, threadId);
+
+    assert.ok(encrypted.startsWith('enc:v1:'));
+    assert.notEqual(encrypted, original);
+
+    const decrypted = decryptMentoringText(encrypted, threadId);
+    assert.equal(decrypted, original);
+
+    // Different thread cannot decrypt (returns safe placeholder)
+    const crossDecrypted = decryptMentoringText(encrypted, 'other-thread');
+    assert.equal(crossDecrypted, require('../backend/mentoringCrypto').DECRYPTION_FAILED);
+
+    // Legacy plaintext passes through
+    assert.equal(decryptMentoringText('Hallo Welt', threadId), 'Hallo Welt');
+  });
+});
+
+describe('accountDeletion', () => {
+  const { linkedPeople, freedDutyUpdate } = require('../backend/accountDeletion');
+  const { buildReport } = require('../backend/contentReports');
+
+  test('linkedPeople finds the person record of an account by uid, data.uid or personKey', () => {
+    const people = [
+      { personKey: 'p1', uid: 'u1' },
+      { personKey: 'p2', data: { uid: 'u1' } },
+      { personKey: 'u1' },
+      { personKey: 'p3', uid: 'u2' }
+    ];
+    assert.deepEqual(linkedPeople(people, 'u1').map(p => p.personKey), ['p1', 'p2', 'u1']);
+    assert.deepEqual(linkedPeople(people, 'nobody'), []);
+  });
+
+  test('freedDutyUpdate opens slots of the deleted user and keeps group assignments', () => {
+    assert.deepEqual(freedDutyUpdate({ assignedUser: 'u1', status: 'confirmed' }, 'u1'), { assignedUser: '', status: 'open' });
+    assert.deepEqual(freedDutyUpdate({ requestedUser: 'u1', status: 'requested' }, 'u1'), { requestedUser: '', status: 'open' });
+    assert.deepEqual(freedDutyUpdate({ assignedGroup: 'g1', assignedUser: 'u1' }, 'u1'), { assignedUser: '' });
+    // Only the requester was deleted: the requested person keeps the request
+    assert.deepEqual(freedDutyUpdate({ requestedUser: 'u2', requestedBy: 'u1', status: 'requested' }, 'u1'), { requestedBy: '' });
+    assert.equal(freedDutyUpdate({ assignedUser: 'u2' }, 'u1'), null);
+  });
+
+  test('buildReport validates type and content and keeps only the relevant context', () => {
+    assert.ok(buildReport({ type: 'spam', content: 'x' }, {}).error);
+    assert.ok(buildReport({ type: 'ai', content: '   ' }, {}).error);
+    const { report } = buildReport(
+      { type: 'ai', content: 'Antwort', prompt: 'Frage', threadId: 't1', reason: 'falsch' },
+      { uid: 'u1', firstName: 'Max', lastName: 'Mitglied' },
+      123
+    );
+    assert.equal(report.type, 'ai');
+    assert.equal(report.prompt, 'Frage');
+    assert.equal(report.threadId, '');
+    assert.equal(report.reportedBy, 'u1');
+    assert.equal(report.reporterName, 'Max Mitglied');
+    assert.equal(report.created, 123);
+    assert.equal(report.status, 'open');
+    const chat = buildReport({ type: 'chat', content: 'Hallo', threadId: 't1', prompt: 'x' }, { uid: 'u2' }).report;
+    assert.equal(chat.threadId, 't1');
+    assert.equal(chat.prompt, '');
+  });
+});

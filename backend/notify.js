@@ -3,6 +3,7 @@
 // lines, optional detail rows and a button into the app.
 const { wantsNotification } = require('./notificationPrefs');
 const { sendPushToUser } = require('./pushNotifications');
+const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
 
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -40,10 +41,12 @@ function originOf(req) {
   return `${protocol}://${host}`;
 }
 
-function buildEmail({ appName, recipientName, heading, lines = [], rows = [], actionLabel, url, accent = '#0891b2' }) {
+function buildEmail({ appName, recipientName, heading, lines = [], rows = [], actionLabel, url, accent = '#0891b2', lang = BASE_LANGUAGE }) {
+  const tr = translator(lang);
   const name = appName || 'Agora';
-  const greeting = recipientName ? `Hallo ${recipientName},` : 'Hallo,';
-  const text = [greeting, '', heading, '', ...lines, ...rows.map(([label, value]) => `${label}: ${value}`), '', url ? `${actionLabel || 'In der App öffnen'}: ${url}` : '', '', `— ${name}`]
+  const greeting = recipientName ? tr('Hello {name},', { name: recipientName }) : tr('Hello,');
+  const openLabel = actionLabel || tr('Open in the app');
+  const text = [greeting, '', heading, '', ...lines, ...rows.map(([label, value]) => `${label}: ${value}`), '', url ? `${openLabel}: ${url}` : '', '', `— ${name}`]
     .filter((line, i, all) => !(line === '' && all[i - 1] === '')).join('\n');
   const rowHtml = rows.length ? `
       <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; border-collapse:separate; border-spacing:0; margin:0 0 24px 0; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden;">
@@ -65,18 +68,18 @@ function buildEmail({ appName, recipientName, heading, lines = [], rows = [], ac
         <p style="margin:0 0 14px 0; font-size:15px; line-height:1.6; color:#334155;">${escapeHtml(greeting)}</p>
         ${lines.map((line) => `<p style="margin:0 0 14px 0; font-size:15px; line-height:1.6; color:#334155;">${escapeHtml(line)}</p>`).join('')}
         ${rowHtml}
-        ${url ? `<a href="${escapeHtml(url)}" style="display:inline-block; padding:12px 22px; border-radius:12px; background:${accent}; color:#ffffff; font-size:15px; font-weight:700; text-decoration:none;">${escapeHtml(actionLabel || 'In der App öffnen')}</a>` : ''}
+        ${url ? `<a href="${escapeHtml(url)}" style="display:inline-block; padding:12px 22px; border-radius:12px; background:${accent}; color:#ffffff; font-size:15px; font-weight:700; text-decoration:none;">${escapeHtml(openLabel)}</a>` : ''}
       </div>
       <div style="padding:16px 28px; background:#f8fafc; border-top:1px solid #e2e8f0; font-size:12px; line-height:1.5; color:#94a3b8;">
-        Diese Nachricht wurde automatisch von ${escapeHtml(name)} gesendet. Welche Nachrichten du per E-Mail bekommst, legst du in der App unter Einstellungen → Benachrichtigungen fest.
+        ${escapeHtml(tr('This message was sent automatically by {app}. You choose which messages you get by e-mail in the app under Settings → Notifications.', { app: name }))}
       </div>
     </div>
   </div>`;
   return { text, html };
 }
 
-/** Sends one e-mail if SMTP is set up; failures are logged, never thrown. */
-async function sendNotificationEmail(user, { subject, heading, lines, rows, actionLabel, path, accent }, origin = '') {
+/** Sends one e-mail if SMTP is set up; failures are logged, never thrown. Texts are in the recipient's language. */
+async function sendNotificationEmail(user, { subject, heading, lines, rows, actionLabel, path, accent }, origin = '', lang = userLanguage(user)) {
   const { context } = require('./context');
   const appConfig = context.appConfig;
   if (!user?.email || !context.transporter || !appConfig?.smtp?.user) return false;
@@ -85,7 +88,7 @@ async function sendNotificationEmail(user, { subject, heading, lines, rows, acti
     const { text, html } = buildEmail({
       appName: appConfig.appName,
       recipientName: user.firstName || user.name || '',
-      heading: heading || subject, lines, rows, actionLabel, url, accent
+      heading: heading || subject, lines, rows, actionLabel, url, accent, lang
     });
     await context.transporter.sendMail({
       from: `"${appConfig.appName || 'Agora'}" <${appConfig.smtp.user}>`,
@@ -104,6 +107,8 @@ async function sendNotificationEmail(user, { subject, heading, lines, rows, acti
 /**
  * Notifies [users] (user records) about something of [type]: push with [push] = { title, body, data } and an
  * e-mail with [email] = { subject, heading, lines, rows, actionLabel, path } - each only when wanted.
+ * [push] / [email] may be functions (tr, user) => {...}: they are built per recipient, with tr() translating the
+ * English texts into that person's language.
  */
 async function notifyUsers(appConfig, users, type, { push, email, origin = '' }) {
   const list = (Array.isArray(users) ? users : [users]).filter((u) => u && u.id);
@@ -112,11 +117,13 @@ async function notifyUsers(appConfig, users, type, { push, email, origin = '' })
     if (seen.has(user.id)) return;
     seen.add(user.id);
     const jobs = [];
+    const lang = userLanguage(user);
+    const build = (content) => (typeof content === 'function' ? content(translator(lang), user) : content);
     if (push && wantsNotification(user, type, 'push')) {
-      jobs.push(sendPushToUser(appConfig, user.id, push).catch((err) => console.warn('[Push] failed:', err.message)));
+      jobs.push(sendPushToUser(appConfig, user.id, build(push)).catch((err) => console.warn('[Push] failed:', err.message)));
     }
     if (email && wantsNotification(user, type, 'email')) {
-      jobs.push(sendNotificationEmail(user, email, origin));
+      jobs.push(sendNotificationEmail(user, build(email), origin, lang));
     }
     await Promise.all(jobs);
   }));

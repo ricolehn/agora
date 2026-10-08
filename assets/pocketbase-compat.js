@@ -85,7 +85,8 @@ function saveAuth(token, user, notify = true) {
 }
 
 async function apiFetch(url, options = {}) {
-  const headers = { ...(options.headers || {}) };
+  // The server answers in the language the page is shown in (set by the app's language loader)
+  const headers = { 'Accept-Language': document.documentElement.lang || 'en', ...(options.headers || {}) };
   if (authState.token) {
     headers.Authorization = `Bearer ${authState.token}`;
   }
@@ -104,7 +105,7 @@ async function apiFetch(url, options = {}) {
     } catch {
       message = await responseClone.text() || message;
     }
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: response.status });
   }
   if (response.status === 204) return null;
   return response.json();

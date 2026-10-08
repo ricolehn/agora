@@ -18,8 +18,10 @@ const { selectChurchLogoFilePath } = require('./logoStorage');
 const { resolveTrustProxySetting } = require('./trustProxy');
 const { securityHeadersMiddleware } = require('./securityHeaders');
 const { runAutomatedStandingOrders } = require('./standingOrders');
+const { runDutyReminders } = require('./dutyReminders');
 const { purgeExpiredRequests } = require('./requestRetention');
 const { compressResponses, compressedStatic, sendCompressedFile } = require('./compression');
+const { translateResponses } = require('./i18n');
 
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
@@ -36,12 +38,19 @@ app.set('trust proxy', resolveTrustProxySetting());
 app.use(securityHeadersMiddleware);
 // Gzip JSON / text responses (the reverse proxy in front usually does not compress)
 app.use(compressResponses);
+// Error / message texts of JSON answers in the language of the request (English in the code, see i18n.js)
+app.use(translateResponses);
 
 // Load configuration
 loadConfig();
 
 app.use(require('cors')());
 app.use(express.json({ limit: '2mb' }));
+
+// Duty reminders 3 hours before the start (dutyReminders.js)
+cron.schedule('*/5 * * * *', () => {
+  if (!context.setupMode && context.appConfig) runDutyReminders(context.appConfig);
+});
 
 cron.schedule('0 5 * * *', () => {
   if (!context.setupMode && context.appConfig) {
@@ -87,6 +96,8 @@ app.get('/assets/church-logo.svg', logoAssetRateLimit, (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+  // Opened directly, an SVG is a document of this origin: whatever slipped through the upload check must not run
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox");
   res.sendFile(logoFilePath, (error) => {
     if (error) next(error);
   });

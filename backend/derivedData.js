@@ -304,6 +304,8 @@ function preprocessPersonServerSide(person, settings) {
         overdueAmount = Math.max(0, rawOverdue - anticipated);
     }
 
+    // statusMeta.text is a fixed protocol value, not a display text: the web app and the released Android apps
+    // compare it word for word and show their own translation. Do not translate or reword it here.
     const statusMeta = isCurrent
         ? {
             text: hasActiveSO ? 'Dauerauftrag läuft' : 'Alles in Ordnung',

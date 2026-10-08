@@ -91,7 +91,7 @@ router.delete('/api/db', dbRateLimit, verifyToken, async (req, res) => {
 router.get('/api/stats', dbRateLimit, verifyToken, async (req, res) => {
   try {
     if (!req.user.canViewFinances) {
-      return res.status(403).json({ error: 'Finanzzugriffsrechte erforderlich' });
+      return res.status(403).json({ error: 'Finance access rights required' });
     }
     const stats = await aggregateStats(context.appConfig);
     res.json(stats);
@@ -103,7 +103,7 @@ router.get('/api/stats', dbRateLimit, verifyToken, async (req, res) => {
 router.get('/api/transactions', dbRateLimit, verifyToken, async (req, res) => {
   try {
     if (!req.user.canViewFinances) {
-      return res.status(403).json({ error: 'Finanzzugriffsrechte erforderlich' });
+      return res.status(403).json({ error: 'Finance access rights required' });
     }
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.perPage, 10) || 150;
@@ -131,7 +131,7 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) =>
 
     const nextValue = req.body?.value;
     if (!req.user.canManageFinances) {
-      return res.status(403).json({ error: 'Finanzverwaltungsrechte erforderlich' });
+      return res.status(403).json({ error: 'Finance management rights required' });
     }
 
     const updated = await upsertPeopleRecord(context.appConfig, id, nextValue, currentVersion);
@@ -208,26 +208,26 @@ router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, async (req
       return res.status(400).json({ error: 'Missing required fields: reqType, personName' });
     }
 
-    const typeLabels = { payment: 'Zahlung', status: 'Statusänderung', expense: 'Auslage', standing_order: 'Dauerauftrag' };
-    const reqTypeLabel = typeLabels[reqType] || reqType;
-    // Admins, owner and treasurers (groups with manage_finances), each over the channels they chose
+    const typeLabels = { payment: 'Payment', status: 'Status change', expense: 'Expense', standing_order: 'Standing order' };
+    const typeOf = (tr) => (typeLabels[reqType] ? tr(typeLabels[reqType]) : reqType);
+    // Admins, owner and treasurers (groups with manage_finances), each over the channels they chose and in their language
     const recipients = (await financeManagers(context.appConfig)).filter((u) => u.id !== req.user?.uid);
     await notifyUsers(context.appConfig, recipients, 'finances', {
       origin: originOf(req),
-      push: {
-        title: `Kasse: ${reqTypeLabel}`,
-        body: `${personName} hat einen Antrag eingereicht.`,
+      push: (tr) => ({
+        title: tr('Treasury: {type}', { type: typeOf(tr) }),
+        body: tr('{name} filed a request.', { name: personName }),
         data: { url: '/#requests' }
-      },
-      email: {
-        subject: `Neue Anfrage: ${reqTypeLabel}`,
-        heading: 'Neue Anfrage an die Kasse',
-        lines: [`${personName} hat eine Anfrage eingereicht. Bitte prüfe sie in der App.`],
-        rows: [['Art', reqTypeLabel], ['Von', personName]],
-        actionLabel: 'Anfrage prüfen',
+      }),
+      email: (tr) => ({
+        subject: tr('New request: {type}', { type: typeOf(tr) }),
+        heading: tr('New request to the treasury'),
+        lines: [tr('{name} filed a request. Please review it in the app.', { name: personName })],
+        rows: [[tr('Kind'), typeOf(tr)], [tr('From'), personName]],
+        actionLabel: tr('Review the request'),
         path: '/#finances',
         accent: '#d97706'
-      }
+      })
     });
     res.json({ success: true, notified: recipients.length });
   } catch (error) {

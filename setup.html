@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de" data-theme="system">
+<html lang="en" data-theme="system">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -62,8 +62,8 @@
 <div class="setup-container">
     <div style="text-align: center; margin-bottom: 30px;">
         <img src="assets/church-logo.svg" alt="Logo" style="width: 60px; height: 60px; margin-bottom: 10px;">
-        <h1 style="font-size: 2rem; font-weight: 800;" data-i18n="setup_heading">Ersteinrichtung</h1>
-        <p style="color: var(--text-secondary);" data-i18n="setup_subheading">Agora richtet PocketBase automatisch im Docker-Container ein.</p>
+        <h1 style="font-size: 2rem; font-weight: 800;" data-i18n="setup_heading">Initial Setup</h1>
+        <p style="color: var(--text-secondary);" data-i18n="setup_subheading">Agora configures PocketBase automatically in a Docker container.</p>
     </div>
 
     <div class="step-indicator" id="stepIndicator">
@@ -75,80 +75,80 @@
     <form id="setupForm" novalidate onsubmit="event.preventDefault(); nextStep();">
         <!-- STEP 1 -->
         <div class="setup-step active" id="step1">
-            <h2 style="margin-bottom: 20px;" data-i18n="setup_step1_title">1. Allgemeine Informationen</h2>
+            <h2 style="margin-bottom: 20px;" data-i18n="setup_step1_title">1. General Information</h2>
 
             <div class="form-group">
-                <label class="form-label" for="appName" data-i18n="setup_app_name">Name der Anwendung</label>
-                <input type="text" id="appName" class="form-input" data-i18n-placeholder="setup_app_name_placeholder" placeholder="z.B. Agora..." required>
-                <div class="help-text" data-i18n="setup_app_name_desc">Dieser Name wird in der App und in E-Mails angezeigt.</div>
+                <label class="form-label" for="appName" data-i18n="setup_app_name">Application Name</label>
+                <input type="text" id="appName" class="form-input" data-i18n-placeholder="setup_app_name_placeholder" placeholder="e.g., Agora..." required>
+                <div class="help-text" data-i18n="setup_app_name_desc">This name will be displayed in the app and in emails.</div>
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="setupLogo" data-i18n="setup_logo">Eigenes Logo (SVG, optional)</label>
+                <label class="form-label" for="setupLogo" data-i18n="setup_logo">Custom Logo (SVG, optional)</label>
                 <input type="file" id="setupLogo" class="form-input" accept=".svg,image/svg+xml">
-                <div class="help-text" data-i18n="setup_logo_desc">Optional können Sie direkt in der Ersteinrichtung ein eigenes SVG-Logo speichern.</div>
+                <div class="help-text" data-i18n="setup_logo_desc">Optionally, you can save your own SVG logo directly in the initial setup.</div>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 30px;" data-i18n="setup_btn_next">Weiter</button>
+            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 30px;" data-i18n="setup_btn_next">Next</button>
         </div>
 
         <!-- STEP 2 -->
         <div class="setup-step" id="step2">
-            <h2 style="margin-bottom: 20px;" data-i18n="setup_step2_title">2. Super-Admin-Konto erstellen</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;" data-i18n="setup_step2_desc">Dieser Benutzer wird automatisch als Administrator (Super-Admin) angelegt.</p>
+            <h2 style="margin-bottom: 20px;" data-i18n="setup_step2_title">2. Create Administrator Account (Owner)</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;" data-i18n="setup_step2_desc">This user is automatically created as Owner and System Administrator.</p>
 
             <div style="display: flex; gap: 15px;">
                 <div class="form-group" style="flex: 1;">
-                    <label class="form-label" for="adminFirstName" data-i18n="setup_admin_first_name">Vorname</label>
-                    <input type="text" id="adminFirstName" class="form-input" data-i18n-placeholder="setup_admin_first_name_placeholder" placeholder="z.B. Max" required>
+                    <label class="form-label" for="adminFirstName" data-i18n="setup_admin_first_name">First Name</label>
+                    <input type="text" id="adminFirstName" class="form-input" data-i18n-placeholder="setup_admin_first_name_placeholder" placeholder="e.g., John" required>
                 </div>
                 <div class="form-group" style="flex: 1;">
-                    <label class="form-label" for="adminLastName" data-i18n="setup_admin_last_name">Nachname</label>
-                    <input type="text" id="adminLastName" class="form-input" data-i18n-placeholder="setup_admin_last_name_placeholder" placeholder="z.B. Mustermann" required>
+                    <label class="form-label" for="adminLastName" data-i18n="setup_admin_last_name">Last Name</label>
+                    <input type="text" id="adminLastName" class="form-input" data-i18n-placeholder="setup_admin_last_name_placeholder" placeholder="e.g., Doe" required>
                 </div>
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="adminEmail" data-i18n="setup_admin_email">E-Mail-Adresse</label>
-                <input type="email" id="adminEmail" class="form-input" data-i18n-placeholder="setup_admin_email_placeholder" placeholder="z.B. admin@example.com" required>
+                <label class="form-label" for="adminEmail" data-i18n="setup_admin_email">Email Address</label>
+                <input type="email" id="adminEmail" class="form-input" data-i18n-placeholder="setup_admin_email_placeholder" placeholder="e.g., admin@example.com" required>
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="adminPassword" data-i18n="setup_admin_password">Passwort (mind. 6 Zeichen)</label>
-                <input type="password" id="adminPassword" class="form-input" data-i18n-placeholder="setup_admin_password_placeholder" placeholder="Passwort eingeben" minlength="6" required autocomplete="new-password">
+                <label class="form-label" for="adminPassword" data-i18n="setup_admin_password">Password (min. 6 characters)</label>
+                <input type="password" id="adminPassword" class="form-input" data-i18n-placeholder="setup_admin_password_placeholder" placeholder="Enter password" minlength="6" required autocomplete="new-password">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="adminPasswordConfirm" data-i18n="setup_admin_password_confirm">Passwort bestätigen</label>
-                <input type="password" id="adminPasswordConfirm" class="form-input" data-i18n-placeholder="setup_admin_password_confirm_placeholder" placeholder="Passwort bestätigen" minlength="6" required autocomplete="new-password">
+                <label class="form-label" for="adminPasswordConfirm" data-i18n="setup_admin_password_confirm">Confirm password</label>
+                <input type="password" id="adminPasswordConfirm" class="form-input" data-i18n-placeholder="setup_admin_password_confirm_placeholder" placeholder="Confirm password" minlength="6" required autocomplete="new-password">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="adminMemberSince" data-i18n="setup_admin_member_since">Mitglied seit</label>
+                <label class="form-label" for="adminMemberSince" data-i18n="setup_admin_member_since">Member since</label>
                 <input type="date" id="adminMemberSince" class="form-input" required>
-                <div class="help-text" data-i18n="setup_admin_member_since_desc">Datum, ab dem die Mitgliedschaft für das Profil gilt.</div>
+                <div class="help-text" data-i18n="setup_admin_member_since_desc">Date from which the membership is effective for the profile.</div>
             </div>
 
             <div style="display: flex; gap: 10px; margin-top: 30px;">
-                <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="prevStep()" data-i18n="setup_btn_back">Zurück</button>
-                <button type="submit" class="btn btn-primary" style="flex: 2;" data-i18n="setup_btn_next">Weiter</button>
+                <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="prevStep()" data-i18n="setup_btn_back">Back</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;" data-i18n="setup_btn_next">Next</button>
             </div>
         </div>
 
         <!-- STEP 3 -->
         <div class="setup-step" id="step3">
-            <h2 style="margin-bottom: 20px;" data-i18n="setup_step3_title">3. E-Mail Einstellungen (Optional)</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;" data-i18n="setup_step3_desc">Diese Einstellungen werden für Benachrichtigungen benötigt. Sie können diesen Schritt überspringen.</p>
+            <h2 style="margin-bottom: 20px;" data-i18n="setup_step3_title">3. Email Settings (Optional)</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;" data-i18n="setup_step3_desc">These settings are required for email notifications. You can skip this step.</p>
 
             <div class="form-group">
                 <label class="form-label" for="smtpHost" data-i18n="setup_smtp_host">SMTP Server</label>
-                <input type="text" id="smtpHost" class="form-input" data-i18n-placeholder="setup_smtp_host_placeholder" placeholder="z.B. smtp.gmail.com">
+                <input type="text" id="smtpHost" class="form-input" data-i18n-placeholder="setup_smtp_host_placeholder" placeholder="e.g., smtp.gmail.com">
             </div>
 
             <div style="display: flex; gap: 15px;">
                 <div class="form-group" style="flex: 1;">
                     <label class="form-label" for="smtpPort" data-i18n="setup_smtp_port">Port</label>
-                    <input type="number" id="smtpPort" class="form-input" data-i18n-placeholder="setup_smtp_port_placeholder" placeholder="z.B. 465">
+                    <input type="number" id="smtpPort" class="form-input" data-i18n-placeholder="setup_smtp_port_placeholder" placeholder="e.g., 465">
                 </div>
                 <div class="form-group" style="flex: 1; display: flex; align-items: flex-end; padding-bottom: 10px;">
                     <label class="switch" style="margin-right: 10px;">
@@ -160,21 +160,21 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="smtpUser" data-i18n="setup_smtp_user">Benutzername (E-Mail)</label>
-                <input type="email" id="smtpUser" class="form-input" data-i18n-placeholder="setup_smtp_user_placeholder" placeholder="z.B. no-reply@example.com" autocomplete="off">
+                <label class="form-label" for="smtpUser" data-i18n="setup_smtp_user">Username (email)</label>
+                <input type="email" id="smtpUser" class="form-input" data-i18n-placeholder="setup_smtp_user_placeholder" placeholder="e.g., no-reply@example.com" autocomplete="off">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="smtpPass" data-i18n="setup_smtp_pass">Passwort</label>
-                <input type="password" id="smtpPass" class="form-input" data-i18n-placeholder="setup_smtp_pass_placeholder" placeholder="App-Passwort" autocomplete="off">
-                <div class="help-text" data-i18n="setup_smtp_pass_desc">Bei Gmail wird dringend ein App-Passwort empfohlen.</div>
+                <label class="form-label" for="smtpPass" data-i18n="setup_smtp_pass">Password</label>
+                <input type="password" id="smtpPass" class="form-input" data-i18n-placeholder="setup_smtp_pass_placeholder" placeholder="App password" autocomplete="off">
+                <div class="help-text" data-i18n="setup_smtp_pass_desc">For Gmail, an app password is highly recommended.</div>
             </div>
 
             <div id="errorMsg" style="color: var(--danger); font-weight: bold; margin-top: 15px; display: none; text-align: center;"></div>
 
             <div style="display: flex; gap: 10px; margin-top: 30px;">
-                <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="prevStep()" data-i18n="setup_btn_back">Zurück</button>
-                <button type="button" class="btn btn-primary" style="flex: 2;" id="btnSubmit" onclick="submitSetup()" data-i18n="setup_btn_save_start">Speichern & Starten</button>
+                <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="prevStep()" data-i18n="setup_btn_back">Back</button>
+                <button type="button" class="btn btn-primary" style="flex: 2;" id="btnSubmit" onclick="submitSetup()" data-i18n="setup_btn_save_start">Save &amp; Start</button>
             </div>
         </div>
     </form>
@@ -183,16 +183,21 @@
 <script>
     let currentStep = 1;
     const totalSteps = 3;
-    let currentLang = 'de';
+    // English is the source language; the setup follows the browser language when it is supported
+    const SUPPORTED_LANGUAGES = ['en', 'de'];
+    let currentLang = 'en';
     let translations = {};
 
     async function loadLanguage() {
-        const browserLang = (navigator.language || navigator.userLanguage || 'de').toLowerCase();
-        currentLang = browserLang.startsWith('de') ? 'de' : 'en';
+        const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase().split('-')[0];
+        currentLang = SUPPORTED_LANGUAGES.includes(browserLang) ? browserLang : 'en';
+        document.documentElement.lang = currentLang;
 
         try {
-            const response = await fetch(`./assets/locales/${currentLang}.json`);
-            translations = await response.json();
+            const load = async lang => (await fetch(`./assets/locales/${lang}.json`)).json();
+            // empty or missing translations keep the English text; a broken translation file falls back to English
+            const [base, own] = await Promise.all([load('en'), currentLang === 'en' ? null : load(currentLang).catch(() => null)]);
+            translations = { ...base, ...Object.fromEntries(Object.entries(own || {}).filter(([, text]) => typeof text === 'string' && text.trim())) };
             applyTranslations();
         } catch (e) {
             console.error("Failed to load translation:", e);
@@ -257,7 +262,7 @@
         const appName = appNameInput.value.trim();
         appNameInput.setCustomValidity('');
         if (!appName) {
-            onError(t('setup_err_app_name', 'Bitte geben Sie einen Namen für die Anwendung ein.'));
+            onError(t('setup_err_app_name', 'Please enter a name for the application.'));
             return null;
         }
         return appName;
@@ -286,32 +291,32 @@
         const memberSince = (memberSinceInput && memberSinceInput.value.trim()) ? memberSinceInput.value.trim() : new Date().toISOString().slice(0, 10);
 
         if (!first) {
-            onError(t('setup_err_first_name', 'Bitte geben Sie den Vornamen des Admin-Kontos ein.'));
+            onError(t('setup_err_first_name', 'Please enter the first name of the admin account.'));
             firstInput.setCustomValidity('Pflichtfeld');
             firstInput.reportValidity();
             return null;
         }
         if (!last) {
-            onError(t('setup_err_last_name', 'Bitte geben Sie den Nachnamen des Admin-Kontos ein.'));
+            onError(t('setup_err_last_name', 'Please enter the last name of the admin account.'));
             lastInput.setCustomValidity('Pflichtfeld');
             lastInput.reportValidity();
             return null;
         }
         if (!email || !emailInput.checkValidity()) {
-            onError(t('setup_err_email', 'Bitte geben Sie eine gültige E-Mail-Adresse für das Admin-Konto ein.'));
-            emailInput.setCustomValidity('Gültige E-Mail erforderlich');
+            onError(t('setup_err_email', 'Please enter a valid email address for the admin account.'));
+            emailInput.setCustomValidity(t('setup_err_email', 'Please enter a valid email address for the admin account.'));
             emailInput.reportValidity();
             return null;
         }
         if (!pass || pass.length < 6) {
-            onError(t('setup_err_password_len', 'Das Passwort muss mindestens 6 Zeichen lang sein.'));
+            onError(t('setup_err_password_len', 'Password must be at least 6 characters long.'));
             passInput.setCustomValidity('Mindestens 6 Zeichen');
             passInput.reportValidity();
             return null;
         }
         if (pass !== confirm) {
-            onError(t('setup_err_password_match', 'Die Passwörter stimmen nicht überein.'));
-            confirmInput.setCustomValidity('Passwörter stimmen nicht überein');
+            onError(t('setup_err_password_match', 'Passwords do not match.'));
+            confirmInput.setCustomValidity(t('setup_err_password_match', 'Passwords do not match.'));
             confirmInput.reportValidity();
             return null;
         }
@@ -325,7 +330,7 @@
         const name = (file.name || '').toLowerCase();
         const type = (file.type || '').toLowerCase();
         if (!(name.endsWith('.svg') || type === 'image/svg+xml')) {
-            throw new Error(t('setup_err_svg_only', 'Bitte nur SVG-Dateien hochladen.'));
+            throw new Error(t('setup_err_svg_only', 'Please only upload SVG files.'));
         }
         return file.text();
     }
@@ -397,7 +402,7 @@
             };
         }
 
-        btn.innerText = t('setup_btn_saving', 'Speichert...');
+        btn.innerText = t('setup_btn_saving', 'Saving...');
         btn.disabled = true;
         errorMsg.style.display = 'none';
 
@@ -405,8 +410,8 @@
             const logoSvg = await readOptionalLogoSvg();
             const res = await fetch('/api/setup', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ appName, smtp, logoSvg, adminUser })
+                headers: { 'Content-Type': 'application/json', 'Accept-Language': currentLang },
+                body: JSON.stringify({ appName, smtp, logoSvg, adminUser, defaultLanguage: currentLang })
             });
             const data = await res.json();
             if (res.ok && data.success) {
@@ -419,11 +424,11 @@
                 window.location.href = '/';
                 return;
             }
-            throw new Error(data.error || t('setup_err_unknown', 'Ein unbekannter Fehler ist aufgetreten.'));
+            throw new Error(data.error || t('setup_err_unknown', 'An unknown error has occurred.'));
         } catch (err) {
-            errorMsg.innerText = err.message || t('setup_err_network', 'Netzwerkfehler beim Speichern.');
+            errorMsg.innerText = err.message || t('setup_err_network', 'Network error while saving.');
             errorMsg.style.display = 'block';
-            btn.innerText = t('setup_btn_save_start', 'Speichern & Starten');
+            btn.innerText = t('setup_btn_save_start', 'Save & Start');
             btn.disabled = false;
         }
     }

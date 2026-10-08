@@ -121,6 +121,9 @@ function encryptMentoringText(plaintext, threadId = '', options = {}) {
   return `enc:v1:${iv.toString('base64url')}:${authTag.toString('base64url')}:${ciphertext.toString('base64url')}`;
 }
 
+// Shown instead of a message that cannot be decrypted (English source text, translated by the routes)
+const DECRYPTION_FAILED = '[Encrypted message - decryption failed]';
+
 function decryptMentoringText(encryptedText, threadId = '', options = {}) {
   if (encryptedText === null || encryptedText === undefined || encryptedText === '') {
     return '';
@@ -150,11 +153,12 @@ function decryptMentoringText(encryptedText, threadId = '', options = {}) {
     return decrypted.toString('utf8');
   } catch (err) {
     console.warn('[MentoringCrypto] Decryption failed for thread:', threadId, err.message);
-    return '[Verschlüsselte Nachricht - Entschlüsselung fehlgeschlagen]';
+    return DECRYPTION_FAILED;
   }
 }
 
 module.exports = {
+  DECRYPTION_FAILED,
   getMentoringMasterKey,
   clearMasterKeyCache,
   deriveThreadKey,

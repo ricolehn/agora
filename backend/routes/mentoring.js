@@ -28,6 +28,8 @@ const {
 } = require('../pocketbase');
 
 const { notifyUsers, originOf } = require('../notify');
+const { translate, requestLanguage, instanceLanguage } = require('../i18n');
+const { DECRYPTION_FAILED } = require('../mentoringCrypto');
 
 const router = express.Router();
 
@@ -249,9 +251,9 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, as
           updated: t.updated || t.created,
           unreadCount,
           unread_count: unreadCount,
-          last_message: lastMessage ? lastMessage.text.slice(0, 240) : (t.last_message || ''),
+          last_message: lastMessage ? (lastMessage.text === DECRYPTION_FAILED ? translate(requestLanguage(req), lastMessage.text) : lastMessage.text).slice(0, 240) : (t.last_message || ''),
           lastMessage: lastMessage ? {
-            text: lastMessage.text.slice(0, 240),
+            text: (lastMessage.text === DECRYPTION_FAILED ? translate(requestLanguage(req), lastMessage.text) : lastMessage.text).slice(0, 240),
             created: lastMessage.created,
             senderRole: lastMessage.sender_role
           } : null,
@@ -260,7 +262,7 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, as
           mentorName,
           mentee_alias: t.mentee_alias,
           menteeAlias: t.mentee_alias,
-          title: isMentor ? (t.mentee_alias || 'Anonymer Suchender') : mentorName
+          title: isMentor ? (t.mentee_alias || translate(requestLanguage(req), 'Anonymous seeker')) : mentorName
         };
       } catch (threadErr) {
         console.warn('Error formatting thread:', t?.id, threadErr);
@@ -290,20 +292,20 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
     }
 
     if (!mentorRec || mentorRec.status !== 'approved') {
-      return res.status(400).json({ error: 'Mentor ist derzeit nicht verfügbar' });
+      return res.status(400).json({ error: 'The mentor is currently not available' });
     }
     if (mentorRec.user === currentUid) {
-      return res.status(400).json({ error: 'Du kannst dich nicht selbst begleiten' });
+      return res.status(400).json({ error: 'You cannot mentor yourself' });
     }
     if (mentorRec.is_accepting === false) {
-      return res.status(400).json({ error: 'Dieser Mentor nimmt derzeit keine neuen Begleitungen an' });
+      return res.status(400).json({ error: 'This mentor is currently not accepting new mentees' });
     }
 
     const allMentorThreads = await listMentoringThreadsForUser(context.appConfig, mentorRec.user);
     const activeMenteesCount = allMentorThreads.filter(t => t.mentor === mentorRec.user && !isClosedStatus(t.status)).length;
     const maxMentees = typeof mentorRec.max_mentees === 'number' ? mentorRec.max_mentees : 3;
     if (activeMenteesCount >= maxMentees) {
-      return res.status(400).json({ error: 'Dieser Mentor hat die maximale Anzahl an Begleitungen erreicht' });
+      return res.status(400).json({ error: 'This mentor has reached the maximum number of mentees' });
     }
 
     const userThreads = await listMentoringThreadsForUser(context.appConfig, currentUid);
@@ -314,24 +316,24 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
 
     if (existingThread) {
       if (isBlockedStatus(existingThread.status)) {
-        return res.status(403).json({ error: 'Dieses Gespräch wurde blockiert.', threadId: existingThread.id, status: 'closed' });
+        return res.status(403).json({ error: 'This conversation was blocked.', threadId: existingThread.id, status: 'closed' });
       }
       if (existingThread.status === 'closed') {
         return res.status(400).json({
-          error: 'Du hast bereits ein früheres Gespräch mit diesem Mentor. Du kannst es unter "Meine Begleitungen" wiedereröffnen.',
+          error: 'You already had a conversation with this mentor. You can reopen it under "My mentoring".',
           threadId: existingThread.id,
           status: 'closed'
         });
       }
       return res.status(400).json({
-        error: 'Du stehst bereits in aktiver Begleitung mit diesem Mentor.',
+        error: 'You are already being mentored by this mentor.',
         threadId: existingThread.id,
         status: 'active'
       });
     }
 
     const randomSuffix = crypto.randomInt(100, 1000);
-    const menteeAlias = `Suchender #${randomSuffix}`;
+    const menteeAlias = `${translate(instanceLanguage(), 'Seeker')} #${randomSuffix}`;
 
     const thread = await createMentoringThread(context.appConfig, {
       mentor: mentorRec.user,
@@ -354,19 +356,19 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
       const mentorUser = await getUserRecord(context.appConfig, mentorRec.user);
       notifyUsers(context.appConfig, [mentorUser], 'messages', {
         origin: originOf(req),
-        push: {
-          title: `Mentoring: ${menteeAlias || 'Suchender'}`,
-          body: initialMessage ? String(initialMessage).trim() : 'Neue Begleitungsanfrage erhalten.',
+        push: (tr) => ({
+          title: `Mentoring: ${menteeAlias || tr('Seeker')}`,
+          body: initialMessage ? String(initialMessage).trim() : tr('You received a new mentoring request.'),
           data: { url: '/#mentoring' }
-        },
-        email: {
-          subject: 'Neue Begleitungsanfrage',
-          heading: 'Neue Begleitungsanfrage',
-          lines: [`${menteeAlias || 'Jemand'} möchte von dir begleitet werden. Die Nachricht liest du in der App.`],
-          actionLabel: 'Anfrage öffnen',
+        }),
+        email: (tr) => ({
+          subject: tr('New mentoring request'),
+          heading: tr('New mentoring request'),
+          lines: [tr('{name} would like you to mentor them. You can read the message in the app.', { name: menteeAlias || tr('Someone') })],
+          actionLabel: tr('Open the request'),
           path: '/#mentoring',
           accent: '#7c3aed'
-        }
+        })
       }).catch(e => console.warn('[Notify] Mentoring thread:', e.message));
     } catch (e) {}
 
@@ -383,13 +385,13 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
     const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
     const thread = await getMentoringThread(context.appConfig, req.params.id);
     if (!thread) {
-      return res.status(404).json({ error: 'Thread nicht gefunden' });
+      return res.status(404).json({ error: 'Conversation not found' });
     }
 
     const isMentor = userIds.includes(thread.mentor);
     const isMentee = userIds.includes(thread.mentee);
     if (!isMentor && !isMentee) {
-      return res.status(403).json({ error: 'Vertrauliche Seelsorge-Verbindung: Zugriff verweigert' });
+      return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
     }
 
     const currentRole = isMentor ? 'mentor' : 'mentee';
@@ -402,6 +404,7 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
     const mentorUser = userMap.get(thread.mentor);
     const mentorName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || 'Mentor') : 'Mentor';
 
+    const lang = requestLanguage(req);
     const formattedMessages = messages.map(m => {
       const isSenderMe = (m.sender_role === 'mentor' && isMentor) || (m.sender_role === 'mentee' && isMentee);
       return {
@@ -410,8 +413,8 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
         senderRole: m.sender_role,
         sender_role: m.sender_role,
         sender: isSenderMe ? (req.user.uid || req.user.id) : 'partner',
-        sender_name: isSenderMe ? 'Du' : (isMentor ? (thread.mentee_alias || 'Suchender') : mentorName),
-        text: m.text,
+        sender_name: isSenderMe ? translate(requestLanguage(req), 'You') : (isMentor ? (thread.mentee_alias || translate(requestLanguage(req), 'Seeker')) : mentorName),
+        text: m.text === DECRYPTION_FAILED ? translate(lang, m.text) : m.text,
         message: m.text,
         read: !!m.read,
         created: m.created
@@ -430,22 +433,22 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
     const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
     const text = req.body?.text || req.body?.message;
     if (!text || !String(text).trim()) {
-      return res.status(400).json({ error: 'Nachrichtentext ist erforderlich' });
+      return res.status(400).json({ error: 'Message text is required' });
     }
 
     const thread = await getMentoringThread(context.appConfig, req.params.id);
     if (!thread) {
-      return res.status(404).json({ error: 'Thread nicht gefunden' });
+      return res.status(404).json({ error: 'Conversation not found' });
     }
 
     const isMentor = userIds.includes(thread.mentor);
     const isMentee = userIds.includes(thread.mentee);
     if (!isMentor && !isMentee) {
-      return res.status(403).json({ error: 'Vertrauliche Seelsorge-Verbindung: Zugriff verweigert' });
+      return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
     }
 
     if (isClosedStatus(thread.status)) {
-      return res.status(400).json({ error: isBlockedStatus(thread.status) ? 'Dieses Gespräch wurde blockiert.' : 'Gespräch ist beendet' });
+      return res.status(400).json({ error: isBlockedStatus(thread.status) ? 'This conversation was blocked.' : 'The conversation has ended' });
     }
 
     const senderRole = isMentor ? 'mentor' : 'mentee';
@@ -465,33 +468,34 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
     }
 
     const recipientUid = isMentor ? thread.mentee : thread.mentor;
-    let senderTitle = 'Mentoring';
+    // Who wrote, as the recipient sees it: the mentor's name or the mentee's alias
+    let senderName = null;
     if (isMentor) {
       try {
         const allUsers = await listUserRecords(context.appConfig);
         const mentorUser = allUsers.find(u => u.id === (req.user.uid || req.user.id || thread.mentor));
-        const mentorName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
-        senderTitle = `Mentoring: ${mentorName}`;
+        senderName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
       } catch (uErr) {
-        senderTitle = 'Mentoring: Mentor';
+        senderName = 'Mentor';
       }
     } else {
-      senderTitle = `Mentoring: ${thread.mentee_alias || 'Suchender'}`;
+      senderName = thread.mentee_alias || null;
     }
+    const senderOf = (tr) => senderName || tr('Seeker');
 
     try {
       const recipientUser = await getUserRecord(context.appConfig, recipientUid);
       notifyUsers(context.appConfig, [recipientUser], 'messages', {
         origin: originOf(req),
-        push: { title: senderTitle, body: String(text).trim(), data: { url: '/#mentoring' } },
-        email: {
-          subject: senderTitle,
-          heading: 'Neue Nachricht im Mentoring',
-          lines: [`Du hast eine neue Nachricht (${senderTitle.replace(/^Mentoring: /, '')}). Aus Datenschutzgründen steht sie nicht in dieser E-Mail – du liest sie in der App.`],
-          actionLabel: 'Nachricht lesen',
+        push: (tr) => ({ title: `Mentoring: ${senderOf(tr)}`, body: String(text).trim(), data: { url: '/#mentoring' } }),
+        email: (tr) => ({
+          subject: `Mentoring: ${senderOf(tr)}`,
+          heading: tr('New message in mentoring'),
+          lines: [tr('You have a new message ({name}). For privacy reasons it is not in this e-mail - you can read it in the app.', { name: senderOf(tr) })],
+          actionLabel: tr('Read the message'),
           path: '/#mentoring',
           accent: '#7c3aed'
-        }
+        })
       }).catch(e => console.warn('[Notify] Mentoring message:', e.message));
     } catch (e) {}
 
@@ -509,7 +513,7 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
     });
   } catch (err) {
     console.error('Failed to send mentoring message:', err);
-    res.status(500).json({ error: 'Nachricht konnte nicht gesendet werden' });
+    res.status(500).json({ error: 'The message could not be sent' });
   }
 });
 
@@ -518,31 +522,31 @@ router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringPa
     const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
     const { status } = req.body || {};
     if (status !== 'open' && status !== 'active' && status !== 'closed' && status !== 'blocked') {
-      return res.status(400).json({ error: 'Ungültiger Status' });
+      return res.status(400).json({ error: 'Invalid status' });
     }
 
     const thread = await getMentoringThread(context.appConfig, req.params.id);
     if (!thread) {
-      return res.status(404).json({ error: 'Thread nicht gefunden' });
+      return res.status(404).json({ error: 'Conversation not found' });
     }
 
     const isMentor = userIds.includes(thread.mentor);
     const isMentee = userIds.includes(thread.mentee);
     if (!isMentor && !isMentee) {
-      return res.status(403).json({ error: 'Zugriff verweigert' });
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const myBlock = `blocked_${isMentor ? 'mentor' : 'mentee'}`;
     // Only the person who blocked can lift the block (reopening or ending the chat)
     if (isBlockedStatus(thread.status) && thread.status !== myBlock) {
-      return res.status(403).json({ error: 'Dieses Gespräch wurde vom Gegenüber blockiert.' });
+      return res.status(403).json({ error: 'This conversation was blocked by the other person.' });
     }
     const updated = await updateMentoringThread(context.appConfig, thread.id, { status: status === 'blocked' ? myBlock : status });
     broadcastDataUpdate('mentoring');
     res.json({ success: true, thread: updated });
   } catch (err) {
     console.error('Failed to update thread status:', err);
-    res.status(500).json({ error: 'Status konnte nicht geändert werden' });
+    res.status(500).json({ error: 'The status could not be changed' });
   }
 });
 
