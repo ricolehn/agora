@@ -191,7 +191,7 @@ function isPaymentInCurrentMonth(paymentDate, today) {
     if (typeof paymentDate === 'string' && /^\d{4}-\d{2}/.test(paymentDate)) {
         const year = parseInt(paymentDate.substring(0, 4), 10);
         const month = parseInt(paymentDate.substring(5, 7), 10);
-        return year === today.getFullYear() && month === today.getMonth();
+        return year === today.getFullYear() && month === (today.getMonth() + 1);
     }
     const parsed = new Date(paymentDate);
     if (Number.isNaN(parsed.getTime())) return false;
