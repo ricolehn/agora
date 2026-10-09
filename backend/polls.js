@@ -1,7 +1,11 @@
 // Anonymous polls. Votes are only counted: the server keeps one tally per option and nothing that links an
 // account to an option. To stop double votes it keeps a keyed hash of "who took part" (HMAC with a secret that
 // lives in a file next to the database, not in it); the creator is stored the same way, so only they (and admins)
-// can end or delete a poll. Results are shown after the end, and only with enough votes to stay anonymous.
+// can end or delete a poll. Results are shown after the end, and only with enough votes to stay anonymous; a poll
+// that ends with fewer loses its tallies for good.
+//
+// Nobody in the app can see who voted for what. Someone with access to the server files AND the database could
+// recompute the participation hashes (not the choices) - polls-secret belongs in the backup, but apart from it.
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -11,15 +15,29 @@ const MAX_OPTIONS = 10;
 const MIN_RESULT_VOTES = 3;
 const MAX_DURATION_MS = 366 * 24 * 60 * 60 * 1000;
 const MIN_DURATION_MS = 5 * 60 * 1000;
+/** Per person running at the same time, and in total (ended ones count until deleted). */
+const MAX_OPEN_PER_CREATOR = 20;
+const MAX_POLLS = 500;
 
+/**
+ * The secret of the participation hashes. A missing file is created once; a damaged one is an error and never
+ * silently replaced - with a new secret everybody could vote again and creators would lose their polls.
+ */
 function loadSecret(dataDir) {
   const file = path.join(dataDir, 'polls-secret');
+  let existing = null;
   try {
-    const existing = fs.readFileSync(file, 'utf8').trim();
+    existing = fs.readFileSync(file, 'utf8').trim();
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  if (existing !== null) {
     if (existing.length >= 32) return existing;
-  } catch { /* created below */ }
+    throw new Error(`${file} is damaged; restore it from the backup (polls cannot be used until then)`);
+  }
   const secret = crypto.randomBytes(32).toString('hex');
-  fs.writeFileSync(file, secret, { encoding: 'utf8', mode: 0o600 });
+  // 'wx': never overwrite a file another process created a moment ago
+  fs.writeFileSync(file, secret, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
   return secret;
 }
 
@@ -78,6 +96,23 @@ function castVote(poll, optionIds, { uid, secret, now = Date.now() }) {
 
 const isMine = (poll, uid, secret) => poll.creator === keyedHash(secret, 'creator', poll.id, uid);
 
+/** The poll ends now; with too few votes its tallies are dropped for good. */
+const endPoll = (poll, now = Date.now()) => sealIfTooFew({ ...poll, endsAt: Math.min(poll.endsAt, now) }, now);
+
+/** Ended polls below the minimum keep no counts (also those that simply ran out). */
+function sealIfTooFew(poll, now = Date.now()) {
+  if (now < poll.endsAt || poll.voters.length >= MIN_RESULT_VOTES || poll.tallies === null) return poll;
+  return { ...poll, tallies: null };
+}
+
+/** Whether [uid] may start another poll: a few running ones per person, and a cap in total. */
+function canCreate(polls, { uid, secret, now = Date.now() }) {
+  if (polls.length >= MAX_POLLS) return { error: 'There are too many polls; delete old ones first.', status: 409 };
+  const running = polls.filter((poll) => now < poll.endsAt && poll.creator === keyedHash(secret, 'creator', poll.id, uid));
+  if (running.length >= MAX_OPEN_PER_CREATOR) return { error: 'You have too many running polls.', status: 409 };
+  return null;
+}
+
 /** What a member sees: never the creator or the participation list; results only after the end. */
 function publicPoll(poll, { uid, secret, now = Date.now() }) {
   const closed = now >= poll.endsAt;
@@ -95,9 +130,12 @@ function publicPoll(poll, { uid, secret, now = Date.now() }) {
     participants,
     hasVoted: poll.voters.includes(keyedHash(secret, 'voter', poll.id, uid)),
     isMine: isMine(poll, uid, secret),
-    results: closed && enough ? { counts: poll.tallies, participants } : null,
+    results: closed && enough && poll.tallies ? { counts: poll.tallies, participants } : null,
     tooFewVotes: closed && !enough
   };
 }
 
-module.exports = { MIN_RESULT_VOTES, loadSecret, buildPoll, castVote, publicPoll, isMine };
+module.exports = {
+  MIN_RESULT_VOTES, MAX_OPEN_PER_CREATOR, MAX_POLLS,
+  loadSecret, buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate
+};

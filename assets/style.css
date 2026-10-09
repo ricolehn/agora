@@ -9983,6 +9983,7 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 .settings-paged[data-page] .settings-password-group { margin-top: 0 !important; }
 /* Cards shared by several pages (e.g. notifications + password): the page title replaces their old header */
 .settings-paged[data-page] [data-settings-page*=" "] > .card-header { display: none; }
+.settings-paged[data-page="notifications"] [data-settings-page~="notifications"] > .card-header { display: none; }
 
 /* --- Anonymous polls (Extras): a calm list, a detail popup and a create page like the event editor --- */
 #polls .polls-note { max-width: 760px; }
@@ -10066,8 +10067,8 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 .poll-delete-btn { color: var(--danger); background: transparent; border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
 
 /* Create page: same look as the event editor (page heading, one card per section, large fields, save bar) */
-#poll-create-modal.poll-editor-page { align-items: stretch; justify-content: center; background: var(--bg); }
-#poll-create-modal.poll-editor-page.show { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.modal.poll-editor-page { align-items: stretch; justify-content: center; background: var(--bg); }
+.modal.poll-editor-page.show { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .poll-editor {
     --pe-field: var(--surface-alt);
     width: 100%;
@@ -10169,18 +10170,16 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 #song-view-modal.song-page { align-items: stretch; justify-content: center; background: var(--bg); }
 #song-view-modal.song-page.show { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .song-view { position: relative; width: 100%; max-width: 860px; height: 100%; display: flex; flex-direction: column; }
-.song-view-top { display: flex; align-items: center; gap: 12px; padding: calc(12px + env(safe-area-inset-top, 0px)) 20px 8px; }
-.song-view-heading { flex: 1; min-width: 0; }
-.song-view-title { margin: 0; font-size: 1.3rem; font-weight: 800; color: var(--text); overflow-wrap: anywhere; }
-.song-view-sub { font-size: 0.86rem; color: var(--text-secondary); }
-.song-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 20px 12px; border-bottom: 1px solid var(--border-light); }
-.song-tool-group { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 12px; background: var(--surface-alt); border: 1px solid var(--border-light); }
-.song-tool { min-width: 38px; height: 36px; padding: 0 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; font: inherit; font-size: 0.88rem; font-weight: 800; color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
-.song-toolbar > .song-tool { border-color: var(--border-light); background: var(--surface-alt); }
-.song-tool.is-active { color: #ffffff; background: var(--primary); border-color: var(--primary); }
-.song-view-top .song-tool { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--border-light); background: var(--surface); }
-.song-key { min-width: 46px; text-align: center; font-size: 0.86rem; font-weight: 800; color: var(--text); }
-.song-body { --song-base: 1rem; --song-step: 0; --song-size: calc(var(--song-base) * (1 + var(--song-step) * 0.12)); flex: 1; overflow-y: auto; padding: 18px 20px 120px; font-size: var(--song-size); line-height: 1.5; color: var(--text); }
+.song-view-top { display: flex; align-items: flex-start; gap: 12px; padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px; }
+.song-view-heading { flex: 1; min-width: 0; padding-top: 2px; }
+.song-view-title { margin: 0; font-size: 1.35rem; font-weight: 800; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
+.song-view-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; font-size: 0.88rem; color: var(--text-secondary); }
+.song-view-artist { overflow-wrap: anywhere; }
+.song-view-facts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.song-fact { padding: 2px 10px; border-radius: 999px; background: rgba(6, 182, 212, 0.12); color: #0891b2; font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
+[data-theme="dark"] .song-fact { background: rgba(34, 211, 238, 0.14); color: #22d3ee; }
+.song-head-btn { width: 42px; height: 42px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--border-light); background: var(--surface); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12); }
+.song-body { --song-base: 1rem; --song-step: 0; --song-size: calc(var(--song-base) * (1 + var(--song-step) * 0.12)); flex: 1; overflow-y: auto; padding: 0 16px; font-size: var(--song-size); line-height: 1.5; color: var(--text); }
 .song-section { margin: 18px 0 6px; font-size: 0.78em; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary); }
 .song-section:first-child { margin-top: 0; }
 .song-note { margin: 4px 0; font-style: italic; color: var(--text-secondary); }
@@ -10194,28 +10193,18 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 .song-end { height: 40vh; }
 @media (min-width: 769px) { .song-body { --song-base: 1.2rem; } }
 /* CCLI licence, song number and copyright: always at the bottom right of the song */
+/* CCLI notes after the last line of the song (CCLI asks for licence, song number and copyright with the text) */
 .song-ccli {
-    position: absolute;
-    right: 16px;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 1px;
-    max-width: min(70%, 360px);
-    padding: 7px 11px;
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    border: 1px solid var(--border-light);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    gap: 2px;
+    margin-top: 32px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
     font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-secondary);
-    text-align: right;
-    pointer-events: none;
 }
-
 /* Editor */
 .song-edit-row { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
 .song-edit-help { margin: 0; font-size: 0.82rem; line-height: 1.5; color: var(--text-secondary); }
@@ -10227,12 +10216,106 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 .song-edit-savebar:has(#song-delete-btn[style*="none"]) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
 @media (max-width: 480px) {
     .song-edit-row { grid-template-columns: 1fr; }
-    .song-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px; padding: 4px 14px 10px; }
-    .song-toolbar::-webkit-scrollbar { display: none; }
-    .song-toolbar > * { flex-shrink: 0; }
-    .song-tool { min-width: 34px; padding: 0 8px; }
-    .song-key { min-width: 36px; }
     .song-view-top { padding-left: 14px; padding-right: 14px; }
-    .song-view-title { font-size: 1.15rem; }
-    .song-body { padding: 14px 16px 120px; }
+    .song-view-title { font-size: 1.2rem; }
+    .song-body { padding: 0 12px; }
+}
+
+/* --- v3.1 ORION polish --- */
+
+/* Song lines wrap between words; each chord stays above its syllable */
+.song-word { display: inline-flex; align-items: flex-end; }
+/* Empty parts keep the height of filled ones, so chords and words stay on one baseline */
+.song-chord:empty { min-height: 1.2em; }
+.song-lyric:empty { min-height: 1.5em; }
+.song-line.chords-only .song-lyric { display: none; }
+.song-line.chords-only .song-seg { margin-right: 0.9em; }
+.song-edit-row-even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 768px) { .song-edit-row-even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.polls-loading { display: flex; justify-content: center; padding: 48px 0; }
+
+/* Keyboard focus on the new list rows and tiles (like .btn:focus-visible) */
+.settings-row:focus-visible, .hub-app:focus-visible, .poll-card:focus-visible, .song-row:focus-visible,
+.poll-filter:focus-visible, .song-dock-btn:focus-visible, .song-key:focus-visible, .song-head-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.poll-choice:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Less movement for people who asked their system for it */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .hub-app:hover { transform: none; }
+}
+
+/* Printing a song: only the song, chords included, CCLI notes at the end */
+@media print {
+    body.printing-song > *:not(#song-view-modal) { display: none !important; }
+    body.printing-song #song-view-modal { position: static; display: block; opacity: 1; visibility: visible; background: #ffffff; }
+    body.printing-song .song-view { height: auto; max-width: none; }
+    body.printing-song .song-dock, body.printing-song .song-sheet-actions, body.printing-song .song-view-top button { display: none !important; }
+    body.printing-song .song-sheet { padding: 0; border: none; box-shadow: none; background: none; }
+    body.printing-song .song-fact { padding: 0; background: none; color: #000000; }
+    body.printing-song .song-body { overflow: visible; padding: 0; font-size: 12pt; color: #000000; }
+    body.printing-song .song-chord { color: #000000; }
+    body.printing-song .song-section { color: #000000; }
+    body.printing-song .song-end { display: none; }
+    body.printing-song .song-line { break-inside: avoid; }
+}
+
+/* Polls: the answers are a fieldset (screen readers announce the question); own choice, only on this device */
+fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
+.poll-my-choice { margin: 10px 0 0; font-size: 0.85rem; color: var(--text-secondary); }
+.poll-result.is-mine { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 55%, transparent); }
+
+/* Settings pages: the page title gets the focus programmatically (no ring needed); the notifications page already
+   says "Notifications" in its title, the section keeps only its explanation */
+.settings-nav-title:focus { outline: none; }
+.settings-paged[data-page="notifications"] .notif-head-title { display: none; }
+
+/* --- Song page: the song on a card, the controls in a bar at the bottom (reachable with the thumb) --- */
+.song-sheet { padding: 22px 22px 18px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }
+.song-sheet-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.song-sheet-btn { flex: 1 1 140px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; font-size: 0.88rem; }
+.song-end { height: max(40vh, calc(120px + env(safe-area-inset-bottom, 0px))); }
+.song-dock {
+    position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    width: min(calc(100% - 24px), 560px); display: flex; align-items: flex-start; justify-content: space-around; gap: 4px;
+    padding: 8px 10px 6px; border-radius: 22px; border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    box-shadow: var(--shadow-lg);
+}
+.song-dock-item { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.song-dock-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); }
+.song-stepper { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--surface-alt); }
+.song-dock-btn { min-width: 40px; height: 38px; padding: 0 8px; border: none; border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 0.9rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.2s, color 0.2s; }
+.song-chords-btn { min-width: 46px; height: 42px; border: 1px solid var(--border-light); border-radius: 14px; background: var(--surface-alt); }
+.song-dock-btn.is-active { color: #ffffff; background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%); }
+.song-chords-btn.is-active { border-color: transparent; }
+.song-size-btn { font-size: 1.05rem; }
+.song-size-btn.is-small { font-size: 0.76rem; }
+.song-speed { min-width: 42px; font-size: 0.8rem; }
+.song-key { min-width: 46px; height: 38px; padding: 0 6px; border: none; border-radius: 12px; background: transparent; color: var(--primary); font: inherit; font-size: 0.95rem; font-weight: 800; cursor: default; }
+.song-key.is-shifted { cursor: pointer; background: rgba(6, 182, 212, 0.14); text-decoration: underline dotted; text-underline-offset: 3px; }
+@media (hover: hover) {
+    .song-dock-btn:not(.is-active):hover, .song-key.is-shifted:hover { background: rgba(6, 182, 212, 0.12); }
+    .song-head-btn:hover { border-color: var(--primary); color: var(--primary); }
+}
+@media (min-width: 769px) {
+    .song-sheet { padding: 32px 40px 24px; }
+    .song-body { padding: 0 24px; }
+    .song-view-top { padding-left: 24px; padding-right: 24px; }
+}
+@media (max-width: 400px) {
+    .song-dock { width: calc(100% - 16px); bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 7px 6px 5px; gap: 2px; }
+    .song-dock-btn { min-width: 34px; padding: 0 6px; }
+    .song-chords-btn { min-width: 40px; }
+    .song-key { min-width: 38px; }
+    .song-speed { min-width: 36px; }
+    .song-sheet { padding: 18px 16px 14px; }
 }

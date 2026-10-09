@@ -367,7 +367,24 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'created', type: 'text' },
       { name: 'updated', type: 'text' }
     ]
-  }
+  },
+  // One record per poll / song ({ key, data }), readable only by the server (no rules = superuser only): poll
+  // tallies and participation hashes must never be reachable with a member's or admin's PocketBase token
+  ...['polls', 'songs'].map((name) => ({
+    name,
+    type: 'base',
+    listRule: null,
+    viewRule: null,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
+    indexes: [`CREATE UNIQUE INDEX idx_${name}_key ON ${name} (key)`],
+    fields: [
+      { name: 'key', type: 'text', required: true },
+      // A poll with a few thousand participants or a long song stays far below this
+      { name: 'data', type: 'json', maxSize: 5000000 }
+    ]
+  }))
 ];
 
 function getPocketBaseBaseUrl() {
@@ -1256,6 +1273,55 @@ async function ensurePocketBaseSchema(appConfig) {
   await migrateUserAndOwnerSchema(appConfig);
   await migrateLegacyPeopleData(appConfig);
   await migrateLegacyExpensesData(appConfig);
+  await migrateStateToCollections(appConfig);
+  await migrateSongbookPermission(appConfig);
+}
+
+/**
+ * Installations from before the songbook have nobody with manage_songbook (new setups give it to the owner's
+ * Admin group). Once: if no group has it, the owner's groups with manage_events (else all of them) get it.
+ */
+async function migrateSongbookPermission(appConfig) {
+  const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  if (system?.songbookPermissionMigrated) return;
+  const groups = await listGroupRecords(appConfig);
+  if (!groups.some((g) => g.permissions.includes('manage_songbook'))) {
+    const ownerUid = system?.ownerUid || system?.superAdminUid;
+    const owner = ownerUid ? await getUserRecord(appConfig, ownerUid).catch(() => null) : null;
+    const ownerGroupIds = new Set((Array.isArray(owner?.groups) ? owner.groups : []).map((g) => (typeof g === 'object' && g ? g.id || g.name : String(g))));
+    const ownerGroups = groups.filter((g) => ownerGroupIds.has(g.id) || ownerGroupIds.has(g.name));
+    const targets = ownerGroups.some((g) => g.permissions.includes('manage_events'))
+      ? ownerGroups.filter((g) => g.permissions.includes('manage_events'))
+      : ownerGroups;
+    for (const group of targets) {
+      await updateGroupRecord(appConfig, group.id, { permissions: [...group.permissions, 'manage_songbook'] });
+      console.log(`[Migration] Group "${group.name}" may now manage the songbook`);
+    }
+  }
+  await upsertStateValue(appConfig, 'system', { ...system, songbookPermissionMigrated: true });
+}
+
+/**
+ * v3.1 beta kept all polls / songs in one app_state value (limited in size); they now live one record per item in
+ * their own collections. Copies what is still in app_state (skipping keys already there), then removes the value.
+ */
+async function migrateStateToCollections(appConfig) {
+  for (const name of ['polls', 'songs']) {
+    const state = await getStateRecord(appConfig, name).catch(() => null);
+    if (!state) continue;
+    const items = state.value && typeof state.value === 'object' && !Array.isArray(state.value) ? state.value : {};
+    let copied = 0;
+    for (const [key, data] of Object.entries(items)) {
+      if (!data || typeof data !== 'object' || !/^[A-Za-z0-9_-]{1,64}$/.test(key)) continue;
+      const exists = await getFirstRecord(name, pbFilterEquals('key', key), appConfig);
+      if (!exists) {
+        await createRecord(name, { key, data }, appConfig);
+        copied += 1;
+      }
+    }
+    await deleteRecord('app_state', state.id, appConfig);
+    console.log(`[Migration] Moved ${copied} ${name} from app_state into their own collection`);
+  }
 }
 
 async function verifyUserToken(token) {
@@ -2090,6 +2156,7 @@ module.exports = {
   upsertFcmToken,
   deleteFcmToken,
   listAllRecords,
+  getFirstRecord,
   createRecord,
   updateRecord,
   deleteRecord,

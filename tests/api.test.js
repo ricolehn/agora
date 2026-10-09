@@ -45,7 +45,12 @@ function start(label, command, args, env) {
   const child = spawn(command, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.label = label;
   child.log = [];
-  const keep = (chunk) => { child.log.push(chunk.toString()); if (child.log.length > 200) child.log.shift(); };
+  // API_TEST_LOG=1 prints the server output (debugging a failing test)
+  const keep = (chunk) => {
+    child.log.push(chunk.toString());
+    if (child.log.length > 200) child.log.shift();
+    if (process.env.API_TEST_LOG) process.stderr.write(`[${label}] ${chunk}`);
+  };
   child.stdout.on('data', keep);
   child.stderr.on('data', keep);
   return child;
@@ -452,6 +457,24 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call('mia', 'DELETE', `/api/polls/${poll.id}`)).status, 403);
     await ok(call('max', 'POST', `/api/polls/${poll.id}/close`));
     await ok(call('owner', 'DELETE', `/api/polls/${poll.id}`));
+  });
+
+  test('polls and songs: object names and odd ids are just "not found", and nothing lives in the readable app state', async () => {
+    for (const id of ['__proto__', 'constructor', 'toString', 'x%22%7C%7C1%3D1']) {
+      assert.equal((await call('mia', 'POST', `/api/polls/${id}/vote`, { optionIds: ['o1'] })).status, 404, `vote ${id}`);
+      assert.equal((await call('owner', 'POST', `/api/polls/${id}/close`)).status, 404, `close ${id}`);
+      assert.equal((await call('owner', 'PUT', `/api/songs/${id}`, { title: 'x', content: 'y' })).status, 404, `song ${id}`);
+    }
+    // The list still works for everyone afterwards
+    await ok(call('mia', 'GET', '/api/polls'));
+    // Votes and songs are not in app_state (which admins can read): polls are only reachable through the API
+    const poll = await ok(call('max', 'POST', '/api/polls', { title: 'Where to meet?', options: ['Hall', 'Garden'], endsAt: Date.now() + 86400000 }));
+    for (const key of ['polls', 'songs']) {
+      const response = await call('owner', 'GET', `/api/db?path=${key}`);
+      const body = response.status === 200 ? await response.text() : '';
+      assert.ok(!body.includes(poll.id), `${key} is not readable through /api/db`);
+    }
+    await ok(call('max', 'DELETE', `/api/polls/${poll.id}`));
   });
 
   test('malformed input gets a client error, never a crash', async () => {

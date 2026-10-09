@@ -122,3 +122,60 @@ describe('frontend', () => {
     assert.deepEqual(all.filter((file) => !exists(file)), []);
   });
 });
+
+describe('songbook (assets/songbook.js)', () => {
+  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'songbook.js')).href);
+
+  test('only real chords are chords: words in brackets stay text', async () => {
+    const { parseChord } = await load();
+    for (const chord of ['G', 'F#m7', 'D/F#', 'Gsus4', 'Cmaj7', 'Bbm', 'A7(b9)', 'Cm(maj7)', 'H7', 'Ddim', 'E5', 'Gadd9']) {
+      assert.ok(parseChord(chord), chord);
+    }
+    for (const text of ['Bridge', 'Chorus', 'N.C.', 'End', 'x', '', 'A'.repeat(40)]) assert.equal(parseChord(text), null, text);
+  });
+
+  test('transposing spells the target key: flats for flat keys, sharps otherwise, bass notes too', async () => {
+    const { transposeChord, spellingFor, transposedKey } = await load();
+    const up = (chord, content, key, steps) => transposeChord(chord, steps, spellingFor(content, key, steps));
+    assert.deepEqual(['D', 'G', 'A', 'Bm'].map((c) => up(c, '[D]a', 'D', 1)), ['Eb', 'Ab', 'Bb', 'Cm']);
+    assert.deepEqual(['G', 'C', 'D'].map((c) => up(c, '[G]a', 'G', 2)), ['A', 'D', 'E']);
+    assert.equal(up('D/F#', '[D]a', 'D', 2), 'E/G#');
+    assert.equal(up('Em', '[Em]a', 'Em', 3), 'Gm');
+    assert.equal(transposeChord('Bridge', 2, {}), 'Bridge');
+    // The key label always matches the chords below it
+    assert.equal(transposedKey('G', '[G]x', 1), 'Ab');
+    assert.equal(transposedKey('', '[G]x', 1), '');
+  });
+
+  test('German notation: B is Bb, H is B, and stays German', async () => {
+    const { transposeChord, spellingFor } = await load();
+    const spelling = spellingFor('[F]a [B]b [H]c', 'F', 2);
+    assert.deepEqual(['F', 'B', 'C', 'H'].map((c) => transposeChord(c, 2, spelling)), ['G', 'C', 'D', 'C#']);
+    assert.equal(transposeChord('C', 11, spellingFor('[C]a [H]b', 'C', 11)), 'H');
+  });
+
+  test('lines: sections, ChordPro directives, notes, chord-only lines and words that keep their chord', async () => {
+    const { parseSong } = await load();
+    const song = '# Verse 1\n[G]Amazing [D]grace\n\n\n[Bridge]\n{capo: 2}\n{c: Chorus}\n{soc}\n> twice\n[G] [D]';
+    assert.deepEqual(parseSong(song).map((l) => l.type), ['section', 'chords', 'gap', 'section', 'section', 'section', 'note', 'chords']);
+    // Without chords a line of chords alone disappears; {capo} never becomes a heading
+    assert.deepEqual(parseSong(song, { chords: false }).map((l) => l.type), ['section', 'text', 'gap', 'section', 'section', 'section', 'note']);
+    assert.deepEqual(parseSong('Ama[G]zing [D]grace')[0].words, [[{ chord: null, text: 'Ama' }, { chord: 'G', text: 'zing ' }], [{ chord: 'D', text: 'grace' }]]);
+  });
+
+  test('rendering escapes everything and a crafted line cannot hang the page', async () => {
+    const { renderSongHtml } = await load();
+    const html = renderSongHtml('[G]<img src=x onerror=alert(1)> & [C]"x"\n# <b>\n{c: <i>}');
+    assert.ok(!html.includes('<img') && !html.includes('<b>') && !html.includes('<i>'));
+    const started = Date.now();
+    renderSongHtml(`{c${' '.repeat(19990)}x\n[${'A'.repeat(19990)}]\n${' '.repeat(19990)}x`);
+    assert.ok(Date.now() - started < 500, `took ${Date.now() - started} ms`);
+  });
+
+  test('search ignores chords, case and accents', async () => {
+    const { searchText, normalizeSearch } = await load();
+    const text = searchText({ title: 'Herr, ich komme zu Dir', artist: 'Zoë Müller', content: '[G]Amazing [D]grace', ccli: '22025' });
+    for (const query of ['Amazing grace', 'ZOE MULLER', 'zoë', '22025', 'komme zu dir']) assert.ok(text.includes(normalizeSearch(query)), query);
+    assert.ok(!text.includes('[g]'));
+  });
+});

@@ -1,5 +1,6 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
+import { renderSongHtml, transposedKey, searchText, normalizeSearch } from "./songbook.js";
 
 const db = getDatabase(initializeApp(config));
 const auth = getAuth();
@@ -223,6 +224,8 @@ const ICONS = {
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
     play: '<polygon points="6 4 20 12 6 20 6 4"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
     pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect>',
     palette: '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.1 0 5.6-2.5 5.6-5.6C21.8 6 17.4 2 12 2z"/>',
@@ -570,9 +573,17 @@ function restoreFocus(el) {
 
 const reshowTopModal = () => modalStack.length && $(modalStack[modalStack.length - 1])?.classList.add('show');
 
-function closeModal(id, fromPopstate = false) {
+// A modal can refuse to close (unsaved changes): the guard returns false. A back gesture already left the modal's
+// history entry, so it is added again when the modal stays.
+const modalCloseGuards = {};
+
+function closeModal(id, fromPopstate = false, force = false) {
     const modal = $(id);
     if (!modal) return;
+    if (!force && modal.classList.contains('show') && typeof modalCloseGuards[id] === 'function' && !modalCloseGuards[id]()) {
+        if (fromPopstate) history.pushState({ isModal: true, modalId: id }, '');
+        return;
+    }
     const stackIndex = modalStack.indexOf(id);
     if (stackIndex > -1) {
         modalStack.splice(stackIndex, 1);
@@ -664,8 +675,19 @@ window.addEventListener('popstate', () => {
         closeModal(modalStack[modalStack.length - 1], true);
         return;
     }
-    // Back from a tab entry: return to the start page
+    // Back from a tab entry: one level up first (settings page → menu, an app → Extras), then the start page.
+    // Going up keeps the single "not home" history entry, so browser and app never disagree
     if (tabHistoryPushed && !history.state?.tab) {
+        if (settingsPageOpen()) {
+            closeSettingsPage();
+            history.pushState({ tab: currentActiveTab }, '');
+            return;
+        }
+        if (HUB_TABS.includes(currentActiveTab)) {
+            switchTab('hub', 'history');
+            history.pushState({ tab: 'hub' }, '');
+            return;
+        }
         tabHistoryPushed = false;
         if (currentActiveTab !== HOME_TAB) switchTab(HOME_TAB, 'history');
     }
@@ -879,16 +901,22 @@ function updateAiNavVisibility() {
 
 // --- Apps hub: one permanent nav entry for further apps; the AI chat is one of them (with the rights) ---
 const HUB_APPS = [
-    { key: 'ai', icon: 'sparkles', color: '#7c3aed', title: ['hub_ai_title', 'AI assistant'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
+    { key: 'ai', icon: 'sparkles', color: '#7c3aed', title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
     { key: 'songbook', icon: 'music', color: '#0891b2', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
     { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'], open: () => switchTab('polls') }
 ];
 
+let hubSignature = '';
 function renderHub() {
     const target = $('hub-apps');
     if (!target) return;
-    target.innerHTML = HUB_APPS.filter(app => !app.visible || app.visible()).map(app => `
+    const apps = HUB_APPS.filter(app => !app.visible || app.visible());
+    // Only when the tiles change (a re-render would take the keyboard focus away from a tile)
+    const signature = `${uiLang}:${apps.map(app => app.key).join(',')}`;
+    if (signature === hubSignature && target.childElementCount) return;
+    hubSignature = signature;
+    target.innerHTML = apps.map(app => `
         <button type="button" class="hub-app${app.soon ? ' is-soon' : ''}" style="--app-color: ${app.color};" ${app.soon ? 'disabled aria-disabled="true"' : `onclick="window.openHubApp('${app.key}')"`}>
             <span class="hub-app-icon">${svgIcon(app.icon, 24, 2)}</span>
             <span class="hub-app-text">
@@ -905,47 +933,126 @@ function openHubApp(key) {
 
 // --- Anonymous polls: browse running and finished polls, vote anonymously, create your own ---
 let polls = [];
+let pollsLoaded = false;
+let pollsError = '';
 let pollFilter = 'open';
 let openPollId = null;
+let pollEndTimer = null;
+const POLL_CHOICES_KEY = 'agora-poll-choices';
+
+// What you chose is remembered on this device only (the server keeps no link between you and your answer)
+function myPollChoice(id) {
+    try { return JSON.parse(localStorage.getItem(POLL_CHOICES_KEY) || '{}')[id] || null; } catch { return null; }
+}
+function rememberPollChoice(id, optionIds) {
+    try {
+        const all = JSON.parse(localStorage.getItem(POLL_CHOICES_KEY) || '{}');
+        all[id] = optionIds;
+        // Only polls that still exist
+        const known = new Set(polls.map(p => p.id));
+        for (const key of Object.keys(all)) if (!known.has(key) && key !== id) delete all[key];
+        localStorage.setItem(POLL_CHOICES_KEY, JSON.stringify(all));
+    } catch { /* private mode */ }
+}
 
 async function loadPolls() {
     try {
         polls = await apiJson('/polls', 'GET', undefined, t('polls_load_failed', 'Polls could not be loaded'));
+        pollsLoaded = true;
+        pollsError = '';
     } catch (err) {
-        showToast(err.message, 'error');
+        if (pollsLoaded) showToast(err.message, 'error');
+        else pollsError = err.message;
     }
     renderPolls();
-    if (openPollId && $('poll-detail-modal')?.classList.contains('show')) renderPollDetail();
+    scheduleNextPollEnd();
+    if (openPollId && $('poll-detail-modal')?.classList.contains('show')) {
+        if (!polls.some(p => p.id === openPollId)) {
+            // Deleted by its creator or an admin while it was open here
+            closeModal('poll-detail-modal');
+            showToast(t('polls_gone', 'This poll was deleted.'));
+        } else {
+            renderPollDetail();
+        }
+    }
+}
+
+// Reload when the next running poll ends, so it turns into "Finished" with its result without a manual refresh
+function scheduleNextPollEnd() {
+    clearTimeout(pollEndTimer);
+    const next = Math.min(...polls.filter(p => !p.closed).map(p => p.endsAt));
+    if (!Number.isFinite(next)) return;
+    pollEndTimer = setTimeout(() => {
+        if (currentActiveTab === 'polls') loadPolls();
+    }, Math.min(Math.max(next - Date.now() + 1500, 1000), 2147483000));
 }
 
 function setPollFilter(filter) {
     pollFilter = filter;
-    document.querySelectorAll('.polls-filter-btn').forEach(btn => btn.classList.toggle('is-active', btn.dataset.filter === filter));
+    document.querySelectorAll('.polls-filter-btn').forEach(btn => {
+        const active = btn.dataset.filter === filter;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-selected', String(active));
+    });
     renderPolls();
 }
 
+const pollEndTime = poll => new Date(poll.endsAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+const pollEndDate = poll => formatDateFast(toDateStr(new Date(poll.endsAt)));
+
 function pollTimeLabel(poll) {
     const end = new Date(poll.endsAt);
-    if (poll.closed) return t('polls_ended_on', 'Ended on {date}', { date: formatDateFast(toDateStr(end)) });
+    if (poll.closed) return t('polls_ended_on', 'Ended on {date}', { date: pollEndDate(poll) });
     const days = Math.ceil((poll.endsAt - Date.now()) / 86400000);
-    const time = end.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
-    if (days <= 1) return t('polls_ends_today', 'Ends {when} at {time}', { when: end.toDateString() === new Date().toDateString() ? t('polls_today', 'today') : t('polls_tomorrow', 'tomorrow'), time });
+    if (days <= 1) return t('polls_ends_today', 'Ends {when} at {time}', { when: end.toDateString() === new Date().toDateString() ? t('polls_today', 'today') : t('polls_tomorrow', 'tomorrow'), time: pollEndTime(poll) });
     return t('polls_ends_in', '{days} days left', { days });
 }
 
 const pollVotes = poll => poll.participants === 1 ? t('polls_votes_one', '1 vote') : t('polls_votes', '{count} votes', { count: poll.participants });
 
-// The answer with the most votes (results only exist after the end)
+/**
+ * Shares in whole percent. Single choice: largest remainder, so they add up to exactly 100. Multiple choice:
+ * share of the participants per answer (they add up to more than 100).
+ */
+function pollShares(poll) {
+    const counts = poll.results?.counts || {};
+    const total = Math.max(1, poll.results?.participants || 0);
+    const exact = poll.options.map(o => ({ id: o.id, value: ((counts[o.id] || 0) / total) * 100 }));
+    if (poll.multiple) return Object.fromEntries(exact.map(e => [e.id, Math.round(e.value)]));
+    const shares = Object.fromEntries(exact.map(e => [e.id, Math.floor(e.value)]));
+    const votes = exact.reduce((sum, e) => sum + (counts[e.id] || 0), 0);
+    if (votes > 0) {
+        let rest = 100 - Object.values(shares).reduce((a, b) => a + b, 0);
+        for (const e of [...exact].sort((a, b) => (b.value % 1) - (a.value % 1))) {
+            if (rest-- <= 0) break;
+            shares[e.id] += 1;
+        }
+    }
+    return shares;
+}
+
+// The leading answer(s) of a finished poll; a tie lists all of them
 function pollLeader(poll) {
     if (!poll.results) return null;
-    const [id, count] = Object.entries(poll.results.counts).sort((a, b) => b[1] - a[1])[0] || [];
-    const option = poll.options.find(o => o.id === id);
-    return option ? { option, share: Math.round((count / Math.max(1, poll.results.participants)) * 100) } : null;
+    const counts = poll.results.counts;
+    const top = Math.max(0, ...poll.options.map(o => counts[o.id] || 0));
+    if (top === 0) return null;
+    const leaders = poll.options.filter(o => (counts[o.id] || 0) === top);
+    return { text: leaders.map(o => o.text).join(' · '), share: pollShares(poll)[leaders[0].id], tie: leaders.length > 1 };
 }
 
 function renderPolls() {
     const target = $('polls-list');
     if (!target) return;
+    if (!pollsLoaded) {
+        target.innerHTML = pollsError ? `
+            <div class="polls-empty">
+                <span class="polls-empty-icon">${svgIcon('poll', 26, 1.8)}</span>
+                <span class="polls-empty-title">${escapeHtml(pollsError)}</span>
+                <button type="button" class="btn btn-secondary" onclick="window.loadPolls()">${t('btn_retry', 'Try again')}</button>
+            </div>` : '<div class="polls-loading"><span class="spinner"></span></div>';
+        return;
+    }
     const list = polls.filter(p => pollFilter === 'mine' ? p.isMine : pollFilter === 'closed' ? p.closed : !p.closed);
     if (!list.length) {
         target.innerHTML = `
@@ -970,13 +1077,13 @@ function renderPolls() {
             <button type="button" class="poll-card" data-id="${escapeHtml(poll.id)}" onclick="window.openPollDetail(this.dataset.id)">
                 <span class="poll-card-top">
                     ${chip}
-                    <span class="poll-card-time">${escapeHtml(poll.closed ? formatDateFast(toDateStr(new Date(poll.endsAt))) : pollTimeLabel(poll))}</span>
+                    <span class="poll-card-time">${escapeHtml(poll.closed ? pollEndDate(poll) : pollTimeLabel(poll))}</span>
                 </span>
                 <span class="poll-card-title">${escapeHtml(poll.title)}</span>
                 ${poll.description ? `<span class="poll-card-desc">${escapeHtml(poll.description)}</span>` : ''}
                 ${leader ? `
                 <span class="poll-card-leader">
-                    <span class="poll-card-leader-row"><span>${escapeHtml(leader.option.text)}</span><strong>${leader.share}%</strong></span>
+                    <span class="poll-card-leader-row"><span>${leader.tie ? `${t('polls_tie', 'Tie')}: ` : ''}${escapeHtml(leader.text)}</span><strong>${leader.share}%</strong></span>
                     <span class="poll-card-track"><span style="width: ${leader.share}%"></span></span>
                 </span>` : ''}
                 <span class="poll-card-footer">
@@ -993,10 +1100,19 @@ function openPollDetail(id) {
     openModal('poll-detail-modal');
 }
 
+/** "You chose …" for polls voted on this device. */
+function myChoiceNote(poll) {
+    const mine = myPollChoice(poll.id);
+    const texts = (mine || []).map(id => poll.options.find(o => o.id === id)?.text).filter(Boolean);
+    return texts.length ? `<p class="poll-my-choice">${t('polls_my_choice', 'Your choice (only saved on this device): {choice}', { choice: escapeHtml(texts.join(', ')) })}</p>` : '';
+}
+
 function renderPollDetail() {
     const poll = polls.find(p => p.id === openPollId);
     const body = $('poll-detail-body');
     if (!poll || !body) return;
+    // A refresh while someone is choosing must not lose their ticks
+    const ticked = new Set([...body.querySelectorAll('input[name="poll-choice"]:checked')].map(i => i.value));
     setText('poll-detail-title', poll.title);
     setText('poll-detail-meta', `${pollTimeLabel(poll)} · ${pollVotes(poll)}`);
     const description = poll.description ? `<p class="poll-detail-desc">${escapeHtml(poll.description)}</p>` : '';
@@ -1004,40 +1120,44 @@ function renderPollDetail() {
     if (!poll.closed && !poll.hasVoted) {
         const type = poll.multiple ? 'checkbox' : 'radio';
         main = `
-            <div class="poll-choices">
+            <fieldset class="poll-choices">
+                <legend class="sr-only">${escapeHtml(poll.title)}</legend>
                 ${poll.options.map(o => `
                     <label class="poll-choice">
-                        <input type="${type}" name="poll-choice" value="${escapeHtml(o.id)}">
+                        <input type="${type}" name="poll-choice" value="${escapeHtml(o.id)}"${ticked.has(o.id) ? ' checked' : ''}>
                         <span class="poll-choice-mark"></span>
                         <span class="poll-choice-text">${escapeHtml(o.text)}</span>
                     </label>`).join('')}
-            </div>
+            </fieldset>
             ${poll.multiple ? `<p class="poll-hint">${t('polls_multiple_hint', 'Several answers possible.')}</p>` : ''}
-            <p class="poll-anon-note">${svgIcon('shield', 14, 2)} ${t('polls_anon_note', 'Your choice is only counted – nobody can see what you chose.')}</p>
+            <p class="poll-anon-note">${svgIcon('shield', 14, 2)} ${t('polls_anon_note', 'Your choice is only counted – nobody in the app can see what you chose.')}</p>
             <button type="button" id="poll-vote-btn" class="btn btn-primary poll-vote-btn" onclick="window.votePoll()">${t('polls_vote_btn', 'Vote anonymously')}</button>`;
     } else if (!poll.closed) {
         main = `
             <div class="poll-state-box is-voted">
                 ${svgIcon('check', 20, 2.6)}
-                <span>${t('polls_voted_wait', 'You have voted. The result appears on {date}.', { date: formatDateFast(toDateStr(new Date(poll.endsAt))) })}</span>
+                <span>${t('polls_voted_wait', 'You have voted. The result appears on {date} at {time}.', { date: pollEndDate(poll), time: pollEndTime(poll) })}</span>
             </div>
+            ${myChoiceNote(poll)}
             <ul class="poll-option-list">${poll.options.map(o => `<li>${escapeHtml(o.text)}</li>`).join('')}</ul>`;
     } else if (poll.results) {
-        const total = Math.max(1, poll.results.participants);
-        const max = Math.max(...Object.values(poll.results.counts));
+        const shares = pollShares(poll);
+        const counts = poll.results.counts;
+        const max = Math.max(...poll.options.map(o => counts[o.id] || 0));
+        const mine = new Set(myPollChoice(poll.id) || []);
         main = `
             <div class="poll-results">
-                ${[...poll.options].sort((a, b) => (poll.results.counts[b.id] || 0) - (poll.results.counts[a.id] || 0)).map(o => {
-                    const count = poll.results.counts[o.id] || 0;
-                    const share = Math.round((count / total) * 100);
+                ${[...poll.options].sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0)).map(o => {
+                    const count = counts[o.id] || 0;
                     return `
-                        <div class="poll-result${count === max && count > 0 ? ' is-top' : ''}">
-                            <span class="poll-result-bar" style="width: ${share}%"></span>
+                        <div class="poll-result${count === max && count > 0 ? ' is-top' : ''}${mine.has(o.id) ? ' is-mine' : ''}">
+                            <span class="poll-result-bar" style="width: ${shares[o.id]}%"></span>
                             <span class="poll-result-text">${escapeHtml(o.text)}</span>
-                            <span class="poll-result-value">${share}% · ${count}</span>
+                            <span class="poll-result-value">${shares[o.id]}% · ${count}</span>
                         </div>`;
                 }).join('')}
             </div>
+            ${myChoiceNote(poll)}
             ${poll.multiple ? `<p class="poll-hint">${t('polls_multiple_result_hint', 'Multiple choice: share of participants who chose the answer.')}</p>` : ''}`;
     } else {
         main = `
@@ -1062,6 +1182,7 @@ async function votePoll() {
     if (btn) btn.disabled = true;
     try {
         const updated = await apiJson(`/polls/${encodeURIComponent(openPollId)}/vote`, 'POST', { optionIds });
+        rememberPollChoice(updated.id, optionIds);
         polls = polls.map(p => p.id === updated.id ? updated : p);
         renderPolls();
         renderPollDetail();
@@ -1069,16 +1190,24 @@ async function votePoll() {
     } catch (err) {
         showToast(err.message, 'error');
         if (btn) btn.disabled = false;
+        // Voted on another device, or the poll just ended: show what is true now
+        loadPolls();
     }
 }
 
 async function closePoll() {
-    if (!confirmAction(t('polls_end_confirm', 'End the poll now? Nobody can vote afterwards.'))) return;
+    const poll = polls.find(p => p.id === openPollId);
+    const tooFew = poll && poll.participants < 3;
+    const text = tooFew
+        ? t('polls_end_confirm_few', 'End the poll now? With fewer than three votes the result stays secret for good.')
+        : t('polls_end_confirm', 'End the poll now? Nobody can vote afterwards.');
+    if (!confirmAction(text)) return;
     try {
         const updated = await apiJson(`/polls/${encodeURIComponent(openPollId)}/close`, 'POST');
         polls = polls.map(p => p.id === updated.id ? updated : p);
         renderPolls();
         renderPollDetail();
+        scheduleNextPollEnd();
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -1098,36 +1227,118 @@ async function deletePoll() {
 }
 
 // --- Songbook: songs with chords ("[G]Amazing [C]grace", "# Chorus"), transposable, with auto-scroll ---
+// Text and chord rules live in songbook.js (tested on their own); this part is the list, the song page and the editor.
 let songs = [];
 let songbookCanManage = false;
 let songbookLicense = '';
+let songbookLoaded = false;
 let openSongId = null;
 let editSongId = null;
-const songView = { chords: true, steps: 0, size: 0, scrolling: false, speed: 1, frame: null, last: 0 };
+let songEditSnapshot = '';
 const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
-const NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const NOTES_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-const NOTE_INDEX = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11, H: 11 };
+const SONG_PREFS_KEY = 'agora-song-view';
+
+// Font size and scroll speed stay as the reader left them (eyesight, playing pace);
+// key and chords start as written every time a song opens
+const storedJson = (key, fallback) => {
+    try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') }; } catch { return { ...fallback }; }
+};
+const { size: songSize, speed: songSpeed } = storedJson(SONG_PREFS_KEY, { size: 0, speed: 1 });
+const songView = { scrolling: false, frame: null, last: 0, pos: null, steps: 0, chords: true, size: songSize, speed: songSpeed };
+const saveSongPrefs = () => {
+    try { localStorage.setItem(SONG_PREFS_KEY, JSON.stringify({ size: songView.size, speed: songView.speed })); } catch { /* private mode */ }
+};
+// Transpositions were remembered per song up to the first ORION builds
+try { localStorage.removeItem('agora-song-steps'); } catch { /* private mode */ }
+
+const songCollator = () => new Intl.Collator(uiLocale(), { sensitivity: 'base', numeric: true });
+const sortSongs = list => list.sort((a, b) => songCollator().compare(a.title || '', b.title || ''));
+const songSectionLabels = () => ({
+    chorus: t('songbook_label_chorus', 'Chorus'),
+    verse: t('songbook_label_verse', 'Verse'),
+    bridge: t('songbook_label_bridge', 'Bridge'),
+    tab: t('songbook_label_tab', 'Tab')
+});
 
 async function loadSongs() {
     try {
         const data = await apiJson('/songs', 'GET', undefined, t('songbook_load_failed', 'Songbook could not be loaded'));
-        songs = data.songs || [];
+        songs = sortSongs((data.songs || []).map(song => ({ ...song, _search: searchText(song) })));
         songbookCanManage = data.canManage === true;
         songbookLicense = data.ccliLicense || '';
+        songbookLoaded = true;
     } catch (err) {
+        if (!songbookLoaded) {
+            renderSongsError(err.message);
+            return;
+        }
         showToast(err.message, 'error');
     }
     updateFabVisibility();
     renderSongs();
-    if (openSongId && $('song-view-modal')?.classList.contains('show')) renderSongView();
+    if (openSongId && $('song-view-modal')?.classList.contains('show')) {
+        // The open song was deleted elsewhere
+        if (!songs.some(s => s.id === openSongId)) closeSong();
+        else renderSongView();
+    }
+    // Opened through a shared link (#songbook/<id>): show that song once, then forget the link
+    const linked = songIdFromHash();
+    if (linked) {
+        history.replaceState(history.state, '', window.location.pathname + window.location.search + '#songbook');
+        if (songs.some(s => s.id === linked)) openSong(linked);
+        else showToast(t('songbook_link_missing', 'This song is no longer in the songbook.'), 'error');
+    }
+}
+
+const songIdFromHash = () => {
+    const match = /^#\/?songbook\/([A-Za-z0-9_-]{1,64})$/.exec(window.location.hash || '');
+    return match ? match[1] : null;
+};
+
+// A link to the open song for the band: the system share sheet, else the clipboard
+async function shareSong() {
+    const song = songs.find(s => s.id === openSongId);
+    if (!song) return;
+    const url = `${window.location.origin}${window.location.pathname}#songbook/${encodeURIComponent(song.id)}`;
+    try {
+        if (navigator.share) {
+            await navigator.share({ title: song.title, url });
+            return;
+        }
+        await navigator.clipboard.writeText(url);
+        showToast(t('songbook_link_copied', 'Link copied'));
+    } catch (err) {
+        if (err?.name !== 'AbortError') showToast(t('songbook_link_failed', 'The link could not be shared.'), 'error');
+    }
+}
+
+function renderSongsError(message) {
+    const target = $('songbook-list');
+    if (target) target.innerHTML = `
+        <div class="polls-empty">
+            <span class="polls-empty-icon songbook-empty-icon">${svgIcon('music', 26, 1.8)}</span>
+            <span class="polls-empty-title">${escapeHtml(message)}</span>
+            <button type="button" class="btn btn-secondary" onclick="window.loadSongs()">${t('btn_retry', 'Try again')}</button>
+        </div>`;
+}
+
+function songMeta(song) {
+    return [
+        song.artist,
+        song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : '',
+        Number.isInteger(song.capo) && song.capo > 0 ? t('songbook_capo', 'Capo {fret}', { fret: song.capo }) : ''
+    ].filter(Boolean).join(' · ');
 }
 
 function renderSongs() {
     const target = $('songbook-list');
     if (!target) return;
-    const query = inputValue('songbook-search').trim().toLowerCase();
-    const list = songs.filter(s => !query || [s.title, s.artist, s.content].some(v => (v || '').toLowerCase().includes(query)));
+    if (!songbookLoaded) {
+        target.innerHTML = '<div class="polls-loading"><span class="spinner"></span></div>';
+        return;
+    }
+    const query = normalizeSearch(inputValue('songbook-search').trim());
+    const list = query ? songs.filter(s => s._search.includes(query)) : songs;
     setText('songbook-license', songbookLicense ? t('songbook_license', 'CCLI licence {number}', { number: songbookLicense }) : '');
     if (!list.length) {
         target.innerHTML = `
@@ -1138,13 +1349,13 @@ function renderSongs() {
             </div>`;
         return;
     }
-    // Alphabetical list in one card, a letter above each new initial
+    // Alphabetical list in one card, a letter above each new initial (only without a search)
     let letter = '';
     const rows = list.map(song => {
-        const initial = (song.title[0] || '#').toUpperCase();
-        const head = initial !== letter ? `<div class="song-letter">${escapeHtml(initial)}</div>` : '';
+        const initial = (song.title || '#').charAt(0).toLocaleUpperCase(uiLocale());
+        const head = !query && initial !== letter ? `<div class="song-letter">${escapeHtml(initial)}</div>` : '';
         letter = initial;
-        const meta = [song.artist, song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : ''].filter(Boolean).join(' · ');
+        const meta = songMeta(song);
         return `${head}
             <button type="button" class="song-row" data-id="${escapeHtml(song.id)}" onclick="window.openSong(this.dataset.id)">
                 <span class="song-row-icon">${svgIcon('music', 18, 2)}</span>
@@ -1158,87 +1369,78 @@ function renderSongs() {
     target.innerHTML = `<div class="song-list">${rows}</div>`;
 }
 
-// German songbooks write H for B: keep the notation the song uses
-function transposeChord(chord, steps, useFlats, german) {
-    if (!steps) return chord;
-    return chord.replace(/([A-H])(#|b)?/g, (match, root, accidental) => {
-        if (!(root in NOTE_INDEX)) return match;
-        const index = (NOTE_INDEX[root] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0) + steps + 120) % 12;
-        const note = (useFlats ? NOTES_FLAT : NOTES_SHARP)[index];
-        return german && note === 'B' ? 'H' : german && note === 'Bb' ? 'B' : note;
-    });
-}
-
-function renderSongContent(content, { steps = 0, chords = true } = {}) {
-    const chordTokens = [...content.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
-    const useFlats = chordTokens.some(c => /^[A-H]b/.test(c));
-    const german = chordTokens.some(c => /^H/.test(c));
-    const lines = content.split('\n');
-    return lines.map(line => {
-        const trimmed = line.trim();
-        if (!trimmed) return '<div class="song-gap"></div>';
-        const section = trimmed.match(/^#+\s*(.+)$/) || trimmed.match(/^\{(?:c|comment|start_of_\w+)\s*:?\s*(.*)\}$/i);
-        if (section) return `<div class="song-section">${escapeHtml(section[1] || '')}</div>`;
-        if (trimmed.startsWith('>')) return `<div class="song-note">${escapeHtml(trimmed.replace(/^>\s*/, ''))}</div>`;
-        if (/^\{.*\}$/.test(trimmed)) return '';
-        if (!line.includes('[') || !chords) return `<div class="song-line"><span class="song-lyric">${escapeHtml(line.replace(/\[[^\]]*\]/g, ''))}</span></div>`;
-        // Chord above the syllable it stands in front of
-        const segments = [];
-        let pending = null;
-        for (const part of line.split(/(\[[^\]]+\])/)) {
-            if (!part) continue;
-            const chord = part.match(/^\[([^\]]+)\]$/);
-            if (chord) {
-                if (pending !== null) segments.push({ chord: pending, text: '' });
-                pending = transposeChord(chord[1], steps, useFlats, german);
-            } else {
-                segments.push({ chord: pending, text: part });
-                pending = null;
-            }
-        }
-        if (pending !== null) segments.push({ chord: pending, text: '' });
-        return `<div class="song-line has-chords">${segments.map(seg => `<span class="song-seg"><span class="song-chord">${seg.chord ? escapeHtml(seg.chord) : '&nbsp;'}</span><span class="song-lyric">${seg.text ? escapeHtml(seg.text) : '&nbsp;'}</span></span>`).join('')}</div>`;
-    }).join('');
-}
-
 function openSong(id) {
+    if (!songs.some(s => s.id === id)) return;
     openSongId = id;
-    Object.assign(songView, { steps: 0, scrolling: false });
     stopSongScroll();
+    songView.steps = 0;
+    songView.chords = true;
     renderSongView();
     openModal('song-view-modal');
+    $('song-view-modal')._customOnClose = leaveSong;
     $('song-view-body')?.scrollTo({ top: 0 });
+    keepScreenOn(true);
 }
 
 function renderSongView() {
     const song = songs.find(s => s.id === openSongId);
     if (!song) return;
     setText('song-view-title', song.title);
-    setText('song-view-sub', song.artist || '');
-    const key = song.key ? transposeChord(song.key, songView.steps, /b/.test(song.key), /^H/.test(song.key)) : '';
-    setText('song-key', key || (songView.steps ? `${songView.steps > 0 ? '+' : ''}${songView.steps}` : t('songbook_key_label', 'Key')));
+    // Songwriter, then the facts a musician needs at a glance as chips
+    const facts = [
+        song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : '',
+        Number.isInteger(song.capo) && song.capo > 0 ? t('songbook_capo', 'Capo {fret}', { fret: song.capo }) : '',
+        Number.isInteger(song.tempo) ? t('songbook_tempo', '{bpm} BPM', { bpm: song.tempo }) : ''
+    ].filter(Boolean);
+    const sub = $('song-view-sub');
+    if (sub) {
+        sub.innerHTML = (song.artist ? `<span class="song-view-artist">${escapeHtml(song.artist)}</span>` : '')
+            + (facts.length ? `<span class="song-view-facts">${facts.map(f => `<span class="song-fact">${escapeHtml(f)}</span>`).join('')}</span>` : '');
+        sub.hidden = !song.artist && !facts.length;
+    }
+    // The (transposed) key, else the shift in semitones; tapping it goes back to the original key
+    const key = transposedKey(song.key, song.content, songView.steps);
+    const shift = `${songView.steps > 0 ? '+' : ''}${songView.steps}`;
+    setText('song-key', key || (songView.steps ? shift : '♪'));
+    setText('song-key-caption', songView.steps ? t('songbook_key_shift', 'Key {shift}', { shift }) : t('songbook_key_label', 'Key'));
+    const keyBtn = $('song-key');
+    if (keyBtn) {
+        keyBtn.classList.toggle('is-shifted', !!songView.steps);
+        const label = songView.steps ? t('songbook_key_reset', 'Back to the original key') : t('songbook_key_label', 'Key');
+        keyBtn.setAttribute('title', songView.steps ? `${t('songbook_transposed', 'Transposed by {steps} semitones', { steps: shift })} – ${label}` : '');
+        keyBtn.setAttribute('aria-label', `${key || shift} – ${label}`);
+    }
     $('song-chords-btn')?.classList.toggle('is-active', songView.chords);
+    $('song-chords-btn')?.setAttribute('aria-pressed', String(songView.chords));
+    setText('song-speed-btn', `${songView.speed.toLocaleString(uiLocale())}×`);
     show('song-edit-btn', songbookCanManage, 'inline-flex');
     const body = $('song-view-body');
     if (body) {
         body.style.setProperty('--song-step', String(songView.size));
-        body.innerHTML = renderSongContent(song.content, { steps: songView.steps, chords: songView.chords }) + '<div class="song-end"></div>';
-    }
-    // CCLI notes always at the bottom right
-    const ccli = [
-        songbookLicense ? t('songbook_license', 'CCLI licence {number}', { number: songbookLicense }) : '',
-        song.ccli ? t('songbook_ccli_song_short', 'CCLI song {number}', { number: song.ccli }) : '',
-        song.copyright ? `© ${song.copyright.replace(/^©\s*/, '')}` : ''
-    ].filter(Boolean);
-    const ccliBox = $('song-view-ccli');
-    if (ccliBox) {
-        ccliBox.innerHTML = ccli.map(line => `<span>${escapeHtml(line)}</span>`).join('');
-        ccliBox.style.display = ccli.length ? '' : 'none';
+        // CCLI notes after the last line (they used to cover the lyrics at the bottom right)
+        const ccli = [
+            songbookLicense ? t('songbook_license', 'CCLI licence {number}', { number: songbookLicense }) : '',
+            song.ccli ? t('songbook_ccli_song_short', 'CCLI song {number}', { number: song.ccli }) : '',
+            song.copyright ? `© ${song.copyright.replace(/^©\s*/, '')}` : ''
+        ].filter(Boolean);
+        body.innerHTML = `<article class="song-sheet">${renderSongHtml(song.content, { steps: songView.steps, declaredKey: song.key, chords: songView.chords, labels: songSectionLabels() })}
+            ${ccli.length ? `<div class="song-ccli">${ccli.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>` : ''}
+            <div class="song-sheet-actions">
+                <button type="button" class="btn btn-secondary song-sheet-btn" onclick="shareSong()">${svgIcon('link', 16)}<span>${escapeHtml(t('songbook_share', 'Share link'))}</span></button>
+                <button type="button" class="btn btn-secondary song-sheet-btn song-print-btn" onclick="printSong()">${svgIcon('printer', 16)}<span>${escapeHtml(t('songbook_print', 'Print'))}</span></button>
+            </div>
+        </article><div class="song-end"></div>`;
     }
 }
 
-function closeSong() {
+/** Runs whenever the song page closes (button, Escape, back gesture). */
+function leaveSong() {
     stopSongScroll();
+    keepScreenOn(false);
+}
+
+function closeSong() {
+    leaveSong();
     closeModal('song-view-modal');
 }
 
@@ -1252,18 +1454,56 @@ function transposeSong(delta) {
     renderSongView();
 }
 
-function sizeSong(delta) {
-    songView.size = Math.max(-2, Math.min(5, songView.size + delta));
+function resetSongKey() {
+    if (!songView.steps) return;
+    songView.steps = 0;
     renderSongView();
 }
 
-// Auto-scroll for playing: a steady glide, any touch or wheel stops it
+function sizeSong(delta) {
+    songView.size = Math.max(-2, Math.min(5, songView.size + delta));
+    saveSongPrefs();
+    renderSongView();
+}
+
+// Prints only the song (see "@media print" in style.css)
+function printSong() {
+    document.body.classList.add('printing-song');
+    const done = () => {
+        document.body.classList.remove('printing-song');
+        window.removeEventListener('afterprint', done);
+    };
+    window.addEventListener('afterprint', done);
+    window.print();
+}
+
+// The screen stays on while a song is open (players have no hand free); the lock is lost when the page is hidden
+let songWakeLock = null;
+async function keepScreenOn(on) {
+    try {
+        if (on && 'wakeLock' in navigator && !songWakeLock && document.visibilityState === 'visible') {
+            songWakeLock = await navigator.wakeLock.request('screen');
+            songWakeLock.addEventListener('release', () => { songWakeLock = null; });
+        } else if (!on && songWakeLock) {
+            await songWakeLock.release();
+            songWakeLock = null;
+        }
+    } catch { /* not supported or refused: the screen just times out as usual */ }
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && $('song-view-modal')?.classList.contains('show')) keepScreenOn(true);
+    // rAF pauses in the background: continue from where the page is instead of jumping ahead
+    songView.last = 0;
+});
+
+// Auto-scroll for playing: a steady glide; scrolling by hand moves the position, the glide continues from there
 function songScrollStep(time) {
     const body = $('song-view-body');
-    if (!songView.scrolling || !body) return;
+    if (!songView.scrolling || !body || !$('song-view-modal')?.classList.contains('show')) return stopSongScroll();
     // scrollTop drops fractions: keep the exact position, take over when the reader scrolled by hand
     if (songView.pos === null || Math.abs(body.scrollTop - songView.pos) > 2) songView.pos = body.scrollTop;
-    if (songView.last) songView.pos += ((time - songView.last) / 1000) * 22 * songView.speed;
+    // At most 100 ms per frame: after a pause (another app, a slow frame) it never jumps
+    if (songView.last) songView.pos += (Math.min(time - songView.last, 100) / 1000) * 22 * songView.speed;
     body.scrollTop = songView.pos;
     songView.last = time;
     if (body.scrollTop + body.clientHeight >= body.scrollHeight - 1) return stopSongScroll();
@@ -1275,8 +1515,12 @@ function toggleSongScroll() {
     songView.scrolling = true;
     songView.last = 0;
     songView.pos = null;
-    $('song-scroll-btn')?.classList.add('is-active');
-    $('song-scroll-btn').innerHTML = svgIcon('pause', 16, 2.4);
+    const btn = $('song-scroll-btn');
+    if (btn) {
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-pressed', 'true');
+        btn.innerHTML = svgIcon('pause', 16, 2.4);
+    }
     songView.frame = requestAnimationFrame(songScrollStep);
 }
 
@@ -1287,29 +1531,42 @@ function stopSongScroll() {
     const btn = $('song-scroll-btn');
     if (btn) {
         btn.classList.remove('is-active');
+        btn.setAttribute('aria-pressed', 'false');
         btn.innerHTML = svgIcon('play', 16, 2.4);
     }
 }
 
 function cycleSongSpeed() {
     songView.speed = SONG_SPEEDS[(SONG_SPEEDS.indexOf(songView.speed) + 1) % SONG_SPEEDS.length];
+    saveSongPrefs();
     setText('song-speed-btn', `${songView.speed.toLocaleString(uiLocale())}×`);
 }
 
 // --- Song editor (page like "New poll") ---
+const SONG_FIELDS = ['song-edit-name', 'song-edit-artist', 'song-edit-key', 'song-edit-capo', 'song-edit-tempo', 'song-edit-ccli', 'song-edit-copyright', 'song-edit-content'];
+const songEditState = () => JSON.stringify(SONG_FIELDS.map(id => $(id)?.value || ''));
+
 function openSongEditor(song = null) {
     editSongId = song?.id || null;
     setText('song-edit-title', song ? t('songbook_edit', 'Edit song') : t('songbook_new', 'New song'));
     setValue('song-edit-name', song?.title || '');
     setValue('song-edit-artist', song?.artist || '');
     setValue('song-edit-key', song?.key || '');
+    setValue('song-edit-capo', Number.isInteger(song?.capo) && song.capo > 0 ? song.capo : '');
+    setValue('song-edit-tempo', Number.isInteger(song?.tempo) ? song.tempo : '');
     setValue('song-edit-ccli', song?.ccli || '');
     setValue('song-edit-copyright', song?.copyright || '');
     setValue('song-edit-content', song?.content || '');
     show('song-delete-btn', !!song, 'inline-flex');
+    // A CCLI song number only counts together with the church's licence number
+    show('song-edit-license-hint', !songbookLicense);
     previewSongEdit();
+    songEditSnapshot = songEditState();
     openModal('song-edit-modal');
 }
+
+// Leaving the editor with changes asks first (back button, Cancel, Escape, back gesture)
+modalCloseGuards['song-edit-modal'] = () => songEditState() === songEditSnapshot || confirmAction(t('songbook_discard', 'Discard your changes?'));
 
 function editOpenSong() {
     const song = songs.find(s => s.id === openSongId);
@@ -1318,14 +1575,18 @@ function editOpenSong() {
 
 const previewSongEdit = debounce(() => {
     const target = $('song-edit-preview');
-    if (target) target.innerHTML = renderSongContent(inputValue('song-edit-content')) || `<span class="song-edit-empty">${t('songbook_preview_empty', 'The song appears here as it will be shown.')}</span>`;
+    if (!target) return;
+    const html = renderSongHtml(inputValue('song-edit-content'), { declaredKey: inputValue('song-edit-key'), labels: songSectionLabels() });
+    target.innerHTML = html || `<span class="song-edit-empty">${t('songbook_preview_empty', 'The song appears here as it will be shown.')}</span>`;
 }, 150);
 
 async function saveSong() {
     const payload = {
         title: inputValue('song-edit-name'),
         artist: inputValue('song-edit-artist'),
-        key: inputValue('song-edit-key'),
+        key: inputValue('song-edit-key').trim(),
+        capo: inputValue('song-edit-capo').trim(),
+        tempo: inputValue('song-edit-tempo').trim(),
         ccli: inputValue('song-edit-ccli'),
         copyright: inputValue('song-edit-copyright'),
         content: $('song-edit-content')?.value || ''
@@ -1336,8 +1597,8 @@ async function saveSong() {
         const saved = editSongId
             ? await apiJson(`/songs/${encodeURIComponent(editSongId)}`, 'PUT', payload)
             : await apiJson('/songs', 'POST', payload);
-        songs = [...songs.filter(s => s.id !== saved.id), saved].sort((a, b) => a.title.localeCompare(b.title, 'de'));
-        closeModal('song-edit-modal');
+        songs = sortSongs([...songs.filter(s => s.id !== saved.id), { ...saved, _search: searchText(saved) }]);
+        closeModal('song-edit-modal', false, true);
         renderSongs();
         if (openSongId === saved.id) renderSongView();
         showToast(t('songbook_saved', 'Song saved'));
@@ -1353,7 +1614,7 @@ async function deleteSong() {
     try {
         await apiJson(`/songs/${encodeURIComponent(editSongId)}`, 'DELETE');
         songs = songs.filter(s => s.id !== editSongId);
-        closeModal('song-edit-modal');
+        closeModal('song-edit-modal', false, true);
         if (openSongId === editSongId) closeSong();
         renderSongs();
         showToast(t('songbook_deleted', 'Song deleted'));
@@ -1385,6 +1646,9 @@ function setPollDuration(days) {
     document.querySelectorAll('.poll-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.days === String(days)));
 }
 
+// A date or time typed by hand no longer matches a duration chip
+const clearPollDurationChips = () => document.querySelectorAll('.poll-chip').forEach(chip => chip.classList.remove('is-active'));
+
 function openCreatePoll() {
     setValue('poll-question', '');
     setValue('poll-description', '');
@@ -1392,6 +1656,12 @@ function openCreatePoll() {
     if (multiple) multiple.checked = false;
     renderPollOptionInputs(['', '']);
     setPollDuration(7);
+    // The end lies between today and one year ahead (the server checks the exact limits)
+    const dateInput = $('poll-end-date');
+    if (dateInput) {
+        dateInput.min = toDateStr(new Date());
+        dateInput.max = toDateStr(new Date(Date.now() + 365 * 86400000));
+    }
     openModal('poll-create-modal');
 }
 
@@ -1439,8 +1709,8 @@ function setupSettingsNav(root) {
     nav.className = 'settings-nav';
     nav.innerHTML = `
         <div class="settings-nav-head">
-            <button type="button" class="settings-back-btn" onclick="window.closeSettingsPage()" aria-label="${escapeHtml(t('btn_back', 'Back'))}">${svgIcon('chevronLeft', 20, 2.5)}</button>
-            <h2 class="settings-nav-title"></h2>
+            <button type="button" class="settings-back-btn" onclick="window.closeSettingsPage()" data-i18n-aria-label="btn_back" aria-label="${escapeHtml(t('btn_back', 'Back'))}">${svgIcon('chevronLeft', 20, 2.5)}</button>
+            <h2 class="settings-nav-title" tabindex="-1"></h2>
         </div>
         <div class="settings-nav-top"></div>
         <div class="settings-menu"></div>`;
@@ -1450,8 +1720,10 @@ function setupSettingsNav(root) {
     if (invite) nav.querySelector('.settings-nav-top').appendChild(invite);
 }
 
-// A page is offered when one of its parts is not hidden by the rights (inline display: none)
-const settingsPageAvailable = (root, key) => [...root.querySelectorAll(`[data-settings-page~="${key}"]`)].some(el => el.style.display !== 'none');
+// A page is offered when one of its parts is not hidden by the rights (inline display: none); the fees only with
+// the finance permission (members never see the admin settings tab, but a #settings link must not show them)
+const settingsPageAvailable = (root, key) => (key !== 'fees' || canViewFinances() || isSuperAdminUser())
+    && [...root.querySelectorAll(`[data-settings-page~="${key}"]`)].some(el => el.style.display !== 'none');
 
 function notificationSummary() {
     const { push, email } = readNotificationSettings().channels;
@@ -1465,14 +1737,14 @@ function renderSettingsMenu(root) {
     const name = fullName(currentUser) || currentUser.email || '';
     const rows = SETTINGS_PAGES.filter(page => settingsPageAvailable(root, page.key)).map(page => {
         if (page.key === 'profile') return `
-            <button type="button" class="settings-row" onclick="window.openSettingsPage('profile')">
+            <button type="button" class="settings-row" data-key="profile" onclick="window.openSettingsPage('profile')">
                 ${renderAvatarWrap(currentUid(), name, { wrapClass: 'settings-row-avatar', imgClass: 'settings-row-avatar-img', initialsClass: 'settings-row-initials' })}
                 <span class="settings-row-text"><span class="settings-row-title">${escapeHtml(name)}</span><span class="settings-row-desc">${escapeHtml(currentUser.email || '')}</span></span>
                 ${svgIcon('chevronRight', 18, 2.5, 'class="settings-row-chevron"')}
             </button>`;
         const desc = page.key === 'notifications' ? notificationSummary() : t(...page.desc);
         return `
-            <button type="button" class="settings-row" style="--row-color: ${page.color};" onclick="window.openSettingsPage('${page.key}')">
+            <button type="button" class="settings-row" data-key="${page.key}" style="--row-color: ${page.color};" onclick="window.openSettingsPage('${page.key}')">
                 <span class="settings-row-icon">${svgIcon(page.icon, 20, 2)}</span>
                 <span class="settings-row-text"><span class="settings-row-title">${t(...page.title)}</span><span class="settings-row-desc">${escapeHtml(desc)}</span></span>
                 ${svgIcon('chevronRight', 18, 2.5, 'class="settings-row-chevron"')}
@@ -1495,17 +1767,25 @@ function openSettingsPage(key) {
     const page = SETTINGS_PAGES.find(p => p.key === key);
     if (!root || !page) return;
     root.dataset.page = key;
-    root.querySelector('.settings-nav-title').textContent = page.title ? t(...page.title) : t('settings_profile', 'Profile');
+    const title = root.querySelector('.settings-nav-title');
+    title.textContent = page.title ? t(...page.title) : t('settings_profile', 'Profile');
     document.querySelector('.container')?.scrollTo({ top: 0 });
+    // The row that had the focus is hidden now: keyboard and screen reader users continue at the page title
+    title.focus({ preventScroll: true });
 }
 
 function closeSettingsPage() {
     const root = settingsRoot();
     if (!root) return;
+    const left = root.dataset.page;
     delete root.dataset.page;
     renderSettingsMenu(root);
     document.querySelector('.container')?.scrollTo({ top: 0 });
+    root.querySelector(`.settings-row[data-key="${left}"]`)?.focus({ preventScroll: true });
 }
+
+const settingsPageOpen = () => ['settings', 'user-settings'].includes(currentActiveTab) && !!$(currentActiveTab)?.dataset.page;
+const HUB_TABS = ['ai-chat', 'polls', 'songbook'];
 
 function updateFabVisibility() {
     const financesFab = currentActiveTab === 'finances' && canManageFinances();
@@ -1549,6 +1829,8 @@ const TAB_ALIASES = { overview: 'finances', 'payment-history': 'finances', 'peop
 const TAB_GUARDS = {
     finances: () => canViewFinances(),
     'super-admin-settings': () => isSuperAdminUser(),
+    // The admin settings (registration code, fees) only for those who manage something there
+    settings: () => isSuperAdminUser() || canViewFinances() || canManageRegistrationCode(),
     'ai-chat': () => canAccessAi() && aiEnabled,
     mentoring: () => canUseMentoring()
 };
@@ -1619,7 +1901,18 @@ function switchTab(tabName, source) {
     if (tabName === 'overview' || tabName === 'payment-history') switchFinanceSubpage('history');
     else if (tabName === 'people-view') switchFinanceSubpage('members');
     tabName = TAB_ALIASES[tabName] || tabName;
-    if (TAB_GUARDS[tabName] && !TAB_GUARDS[tabName]()) tabName = 'user-overview';
+    // Without the right: the AI chat falls back to Extras (the AI status may still be loading), the admin settings
+    // to the member settings, everything else to the start page
+    if (TAB_GUARDS[tabName] && !TAB_GUARDS[tabName]()) {
+        tabName = tabName === 'ai-chat' ? 'hub' : tabName === 'settings' ? 'user-settings' : 'user-overview';
+        if (tabName === 'hub') renderHub();
+        if (tabName === 'user-settings') {
+            const root = $(tabName);
+            setupSettingsNav(root);
+            delete root.dataset.page;
+            renderSettingsMenu(root);
+        }
+    }
 
     currentActiveTab = tabName;
     updateNavVisibility();
@@ -1645,7 +1938,7 @@ function switchTab(tabName, source) {
 
     document.querySelectorAll('#desktop-nav [data-tab], #bottom-nav [data-tab], .desktop-nav [data-tab], .bottom-nav [data-tab]').forEach(el => {
         // Apps inside "Extras" keep its nav entry highlighted
-        const active = el.dataset.tab === tabName || (['ai-chat', 'polls', 'songbook'].includes(tabName) && el.dataset.tab === 'hub');
+        const active = el.dataset.tab === tabName || (HUB_TABS.includes(tabName) && el.dataset.tab === 'hub');
         el.classList.toggle('active', active);
         el.setAttribute('aria-selected', String(active));
     });
@@ -2486,7 +2779,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, openHubApp, setPollFilter, openPollDetail, votePoll, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, openSong, closeSong, toggleSongChords, transposeSong, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, shareSong, toggleSongChords, transposeSong, resetSongKey, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {

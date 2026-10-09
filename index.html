@@ -571,7 +571,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="super-admin-ccli" style="color: var(--text-secondary);" data-i18n="admin_ccli_label">CCLI licence number (songbook)</label>
-                        <input type="text" id="super-admin-ccli" class="form-input super-admin-input" inputmode="numeric" maxlength="12" placeholder="e.g. 1234567" autocomplete="off">
+                        <input type="text" id="super-admin-ccli" class="form-input super-admin-input" inputmode="numeric" maxlength="12" data-i18n-placeholder="ccli_placeholder" placeholder="e.g. 1234567" autocomplete="off">
                         <div class="help-text" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;" data-i18n="admin_ccli_desc">Shown at the bottom right of every song in the songbook.</div>
                     </div>
 
@@ -717,9 +717,9 @@
             </div>
             <p class="polls-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span data-i18n="polls_note">Votes are only counted – nobody sees who chose what.</span></p>
             <div class="polls-filter" role="tablist">
-                <button type="button" class="polls-filter-btn is-active" data-filter="open" onclick="setPollFilter('open')" data-i18n="polls_filter_open">Running</button>
-                <button type="button" class="polls-filter-btn" data-filter="closed" onclick="setPollFilter('closed')" data-i18n="polls_filter_closed">Finished</button>
-                <button type="button" class="polls-filter-btn" data-filter="mine" onclick="setPollFilter('mine')" data-i18n="polls_filter_mine">Mine</button>
+                <button type="button" role="tab" aria-selected="true" class="polls-filter-btn is-active" data-filter="open" onclick="setPollFilter('open')" data-i18n="polls_filter_open">Running</button>
+                <button type="button" role="tab" aria-selected="false" class="polls-filter-btn" data-filter="closed" onclick="setPollFilter('closed')" data-i18n="polls_filter_closed">Finished</button>
+                <button type="button" role="tab" aria-selected="false" class="polls-filter-btn" data-filter="mine" onclick="setPollFilter('mine')" data-i18n="polls_filter_mine">Mine</button>
             </div>
             <div id="polls-list"></div>
         </div>
@@ -732,7 +732,7 @@
             </div>
             <div class="input-with-icon search-bar-wrapper songbook-search">
                 <div class="input-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></div>
-                <input type="text" id="songbook-search" class="form-input search-input" data-i18n-placeholder="songbook_search" placeholder="Search title, artist or lyrics…" oninput="renderSongs()">
+                <input type="text" id="songbook-search" class="form-input search-input" data-i18n-placeholder="songbook_search" placeholder="Search title, songwriter, lyrics or CCLI number…" oninput="renderSongs()">
             </div>
             <div id="songbook-list"></div>
             <div id="songbook-license" class="songbook-license"></div>
@@ -1075,7 +1075,7 @@
                             </button>
                         </div>
                     </div>
-                    <button class="btn btn-secondary btn-block" onclick="changePassword(true)" data-i18n="btn_change_password">Change Password</button>
+                    <button class="btn btn-secondary btn-block" onclick="changePassword(true)" data-i18n="btn_change_password" data-settings-page="password">Change Password</button>
                 </div>
             </div>
 
@@ -1599,26 +1599,37 @@
                 <h2 id="song-view-title" class="song-view-title"></h2>
                 <div id="song-view-sub" class="song-view-sub"></div>
             </div>
-            <button type="button" id="song-edit-btn" class="song-tool" onclick="editOpenSong()" data-i18n-aria-label="songbook_edit" aria-label="Edit song"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-        </div>
-        <div class="song-toolbar">
-            <button type="button" id="song-chords-btn" class="song-tool is-active" onclick="toggleSongChords()" data-i18n="songbook_chords">Chords</button>
-            <div class="song-tool-group">
-                <button type="button" class="song-tool" onclick="transposeSong(-1)" data-i18n-aria-label="songbook_down" aria-label="Semitone down">−</button>
-                <span id="song-key" class="song-key"></span>
-                <button type="button" class="song-tool" onclick="transposeSong(1)" data-i18n-aria-label="songbook_up" aria-label="Semitone up">+</button>
-            </div>
-            <div class="song-tool-group">
-                <button type="button" class="song-tool" onclick="sizeSong(-1)" aria-label="A−">A−</button>
-                <button type="button" class="song-tool" onclick="sizeSong(1)" aria-label="A+">A+</button>
-            </div>
-            <div class="song-tool-group">
-                <button type="button" id="song-scroll-btn" class="song-tool" onclick="toggleSongScroll()" data-i18n-aria-label="songbook_autoscroll" aria-label="Scroll automatically"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>
-                <button type="button" id="song-speed-btn" class="song-tool" onclick="cycleSongSpeed()" data-i18n-aria-label="songbook_speed" aria-label="Speed">1×</button>
-            </div>
+            <button type="button" id="song-edit-btn" class="song-head-btn" onclick="editOpenSong()" data-i18n-aria-label="songbook_edit" aria-label="Edit song" data-i18n-title="songbook_edit" title="Edit song"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
         </div>
         <div id="song-view-body" class="song-body"></div>
-        <div id="song-view-ccli" class="song-ccli"></div>
+        <div class="song-dock" role="toolbar" data-i18n-aria-label="songbook_controls" aria-label="Song controls">
+            <div class="song-dock-item">
+                <button type="button" id="song-chords-btn" class="song-dock-btn song-chords-btn is-active" onclick="toggleSongChords()" aria-pressed="true" data-i18n-aria-label="songbook_show_chords" aria-label="Show chords"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
+                <span class="song-dock-label" data-i18n="songbook_chords">Chords</span>
+            </div>
+            <div class="song-dock-item">
+                <div class="song-stepper">
+                    <button type="button" class="song-dock-btn" onclick="transposeSong(-1)" data-i18n-aria-label="songbook_down" aria-label="Semitone down"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                    <button type="button" id="song-key" class="song-key" onclick="resetSongKey()"></button>
+                    <button type="button" class="song-dock-btn" onclick="transposeSong(1)" data-i18n-aria-label="songbook_up" aria-label="Semitone up"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                </div>
+                <span id="song-key-caption" class="song-dock-label" data-i18n="songbook_key_label">Key</span>
+            </div>
+            <div class="song-dock-item">
+                <div class="song-stepper">
+                    <button type="button" class="song-dock-btn song-size-btn is-small" onclick="sizeSong(-1)" data-i18n-aria-label="songbook_smaller" aria-label="Smaller text">A</button>
+                    <button type="button" class="song-dock-btn song-size-btn" onclick="sizeSong(1)" data-i18n-aria-label="songbook_larger" aria-label="Larger text">A</button>
+                </div>
+                <span class="song-dock-label" data-i18n="songbook_size">Text</span>
+            </div>
+            <div class="song-dock-item">
+                <div class="song-stepper">
+                    <button type="button" id="song-scroll-btn" class="song-dock-btn" onclick="toggleSongScroll()" aria-pressed="false" data-i18n-aria-label="songbook_autoscroll" aria-label="Scroll automatically"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>
+                    <button type="button" id="song-speed-btn" class="song-dock-btn song-speed" onclick="cycleSongSpeed()" data-i18n-aria-label="songbook_speed" aria-label="Speed">1×</button>
+                </div>
+                <span class="song-dock-label" data-i18n="songbook_scroll">Scroll</span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1632,8 +1643,12 @@
             <div class="poll-editor-label"><span class="poll-editor-chip is-cyan"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span><span data-i18n="songbook_song">Song</span></div>
             <input type="text" id="song-edit-name" class="poll-editor-input poll-editor-title" maxlength="120" data-i18n-placeholder="songbook_title_ph" placeholder="Title">
             <div class="song-edit-row">
-                <input type="text" id="song-edit-artist" class="poll-editor-input" maxlength="120" data-i18n-placeholder="songbook_artist_ph" placeholder="Artist / author">
-                <input type="text" id="song-edit-key" class="poll-editor-input" maxlength="8" data-i18n-placeholder="songbook_key_ph" placeholder="Key, e.g. G">
+                <input type="text" id="song-edit-artist" class="poll-editor-input" maxlength="120" data-i18n-placeholder="songbook_artist_ph" placeholder="Songwriter(s)">
+                <input type="text" id="song-edit-key" class="poll-editor-input" maxlength="4" autocapitalize="characters" oninput="previewSongEdit()" data-i18n-placeholder="songbook_key_ph" placeholder="Key, e.g. G">
+            </div>
+            <div class="song-edit-row song-edit-row-even">
+                <input type="number" id="song-edit-capo" class="poll-editor-input" min="0" max="11" inputmode="numeric" data-i18n-placeholder="songbook_capo_ph" placeholder="Capo (fret)">
+                <input type="number" id="song-edit-tempo" class="poll-editor-input" min="20" max="300" inputmode="numeric" data-i18n-placeholder="songbook_tempo_ph" placeholder="Tempo (BPM)">
             </div>
         </section>
         <section class="poll-editor-card">
@@ -1646,9 +1661,10 @@
         <section class="poll-editor-card">
             <div class="poll-editor-label"><span class="poll-editor-chip is-amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M14.8 9a3 3 0 1 0 0 6"/></svg></span><span data-i18n="songbook_rights">Rights</span></div>
             <div class="song-edit-row">
-                <label class="poll-field"><span data-i18n="songbook_ccli_song">CCLI song number</span><input type="text" id="song-edit-ccli" class="poll-editor-input" inputmode="numeric" maxlength="12" placeholder="e.g. 1234567"></label>
+                <label class="poll-field"><span data-i18n="songbook_ccli_song">CCLI song number</span><input type="text" id="song-edit-ccli" class="poll-editor-input" inputmode="numeric" maxlength="12" data-i18n-placeholder="ccli_placeholder" placeholder="e.g. 1234567"></label>
                 <label class="poll-field"><span data-i18n="songbook_copyright">Copyright</span><input type="text" id="song-edit-copyright" class="poll-editor-input" maxlength="300" placeholder="© 2006 …"></label>
             </div>
+            <p id="song-edit-license-hint" class="song-edit-help" style="display:none;" data-i18n="songbook_license_missing">The church's CCLI licence number is still missing – an admin enters it in the system settings. It is shown with every song.</p>
         </section>
         <div class="poll-editor-savebar song-edit-savebar">
             <button type="button" id="song-delete-btn" class="btn poll-delete-btn" onclick="deleteSong()" data-i18n="polls_delete">Delete</button>
@@ -1700,8 +1716,8 @@
                 <button type="button" class="poll-chip" data-days="14" onclick="setPollDuration(14)" data-i18n="polls_14d">2 weeks</button>
             </div>
             <div class="poll-end-row">
-                <label class="poll-field"><span data-i18n="polls_end_date">Date</span><input type="date" id="poll-end-date" class="poll-editor-input"></label>
-                <label class="poll-field"><span data-i18n="polls_end_time">Time</span><input type="time" id="poll-end-time" class="poll-editor-input"></label>
+                <label class="poll-field"><span data-i18n="polls_end_date">Date</span><input type="date" id="poll-end-date" class="poll-editor-input" oninput="clearPollDurationChips()"></label>
+                <label class="poll-field"><span data-i18n="polls_end_time">Time</span><input type="time" id="poll-end-time" class="poll-editor-input" oninput="clearPollDurationChips()"></label>
             </div>
         </section>
         <p class="polls-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span data-i18n="polls_create_sub">Nobody sees who created it.</span></p>

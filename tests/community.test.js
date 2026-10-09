@@ -1055,11 +1055,42 @@ describe('ai', () => {
 });
 
 describe('polls', () => {
-  const { buildPoll, castVote, publicPoll, MIN_RESULT_VOTES } = require('../backend/polls');
+  const { buildPoll, castVote, publicPoll, MIN_RESULT_VOTES, loadSecret, endPoll, sealIfTooFew, canCreate, MAX_OPEN_PER_CREATOR } = require('../backend/polls');
 
   const secret = 'x'.repeat(64);
   const now = 1_800_000_000_000;
   const day = 24 * 60 * 60 * 1000;
+
+  test('the secret is created once and never silently replaced', (t) => {
+    const dir = tempDir(t);
+    const first = loadSecret(dir);
+    assert.match(first, /^[0-9a-f]{64}$/);
+    assert.equal(loadSecret(dir), first);
+    // A damaged file would let everybody vote again: it is an error, not a reason for a new secret
+    fs.writeFileSync(path.join(dir, 'polls-secret'), 'short');
+    assert.throws(() => loadSecret(dir), /damaged/);
+  });
+
+  test('a poll that ends with too few votes loses its tallies for good', () => {
+    let { poll } = buildPoll({ title: 'Lunch?', options: ['A', 'B'], endsAt: now + day }, { uid: 'creator', secret, now, id: 'p9' });
+    ({ poll } = castVote(poll, ['o1'], { uid: 'a', secret, now }));
+    const ended = endPoll(poll, now + 1000);
+    assert.equal(ended.tallies, null);
+    assert.equal(publicPoll(ended, { uid: 'a', secret, now: now + 2000 }).results, null);
+    // Running out works the same way; enough votes keep their counts
+    assert.equal(sealIfTooFew(poll, now + 2 * day).tallies, null);
+    for (const uid of ['b', 'c']) ({ poll } = castVote(poll, ['o2'], { uid, secret, now }));
+    assert.deepEqual(endPoll(poll, now + 1000).tallies, { o1: 1, o2: 2 });
+  });
+
+  test('each person can only run a limited number of polls at once', () => {
+    const mine = Array.from({ length: MAX_OPEN_PER_CREATOR }, (_, i) =>
+      buildPoll({ title: `Poll ${i}`, options: ['A', 'B'], endsAt: now + day }, { uid: 'busy', secret, now, id: `q${i}` }).poll);
+    assert.equal(canCreate(mine, { uid: 'busy', secret, now }).status, 409);
+    assert.equal(canCreate(mine, { uid: 'someone-else', secret, now }), null);
+    // Ended polls do not count against the person
+    assert.equal(canCreate(mine.map((p) => ({ ...p, endsAt: now - 1 })), { uid: 'busy', secret, now }), null);
+  });
   const make = (extra = {}) => buildPoll({ title: 'Favourite song?', options: ['A', 'B', 'C'], endsAt: now + day, ...extra }, { uid: 'owner-uid-123', secret, now, id: 'p1' });
 
   test('a poll needs a question, 2-10 distinct answers and an end in the future', () => {
@@ -1120,6 +1151,22 @@ describe('songbook', () => {
     assert.ok(buildSong({ title: 'x', content: 'y', ccli: '12a' }).error);
     assert.equal(cleanCcli(' 12 34 '), '1234');
     assert.equal(cleanCcli(''), '');
+  });
+
+  test('key, capo and tempo are checked; empty means not set', () => {
+    const base = { title: 'A', content: 'x' };
+    const song = buildSong({ ...base, key: 'F#m', capo: '2', tempo: 72 }).song;
+    assert.deepEqual([song.key, song.capo, song.tempo], ['F#m', 2, 72]);
+    assert.deepEqual(['key', 'capo', 'tempo'].map((f) => buildSong({ ...base })?.song[f]), ['', null, null]);
+    for (const bad of [{ key: 'Bridge' }, { key: 'X' }, { capo: 12 }, { capo: 1.5 }, { tempo: 5 }, { tempo: 'fast' }]) {
+      assert.ok(buildSong({ ...base, ...bad }).error, JSON.stringify(bad));
+    }
+  });
+
+  test('ids from URLs are plain ids only (no filters or paths)', () => {
+    const { isValidKey } = require('../backend/itemStore');
+    assert.ok(isValidKey('5d3ab718-1402-42ba-b93d-56d1e0494185'));
+    for (const bad of ['a"||1=1', 'a b', '../x', '', 'x'.repeat(80), null, 42]) assert.equal(isValidKey(bad), false, String(bad));
   });
 
   test('editing keeps id and creation time', () => {

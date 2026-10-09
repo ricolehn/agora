@@ -1,32 +1,22 @@
 const express = require('express');
 const { context, verifyToken, protectedActionRateLimit, broadcastDataUpdate } = require('../context');
-const { getStateValue, upsertStateValue } = require('../pocketbase');
-const { canManageSongbook, buildSong } = require('../songbook');
+const { createItemStore } = require('../itemStore');
+const { requestLanguage } = require('../i18n');
+const { MAX_SONGS, canManageSongbook, buildSong } = require('../songbook');
 
 const router = express.Router();
-const STATE_KEY = 'songs';
-
-// Writes one after another, so two editors never overwrite each other's song
-let queue = Promise.resolve();
-function withSongs(change) {
-  const run = queue.then(async () => {
-    const songs = (await getStateValue(context.appConfig, STATE_KEY, {})) || {};
-    const result = await change(songs);
-    if (result?.save) await upsertStateValue(context.appConfig, STATE_KEY, result.save);
-    return result;
-  });
-  queue = run.catch(() => {});
-  return run;
-}
+const store = createItemStore('songs');
 
 const denied = (res) => res.status(403).json({ error: 'You do not have permission for the songbook.' });
+const notFound = (res) => res.status(404).json({ error: 'Song not found' });
 
 // All songs plus the church's CCLI licence number (shown with every song)
 router.get('/api/songs', verifyToken, async (req, res) => {
   try {
-    const songs = (await getStateValue(context.appConfig, STATE_KEY, {})) || {};
+    const songs = await store.list(context.appConfig);
+    const collator = new Intl.Collator(requestLanguage(req) || 'en', { sensitivity: 'base', numeric: true });
     res.json({
-      songs: Object.values(songs).sort((a, b) => a.title.localeCompare(b.title, 'de')),
+      songs: songs.sort((a, b) => collator.compare(a.title || '', b.title || '')),
       ccliLicense: context.appConfig?.ccliLicense || '',
       canManage: canManageSongbook(req.user)
     });
@@ -41,7 +31,8 @@ router.post('/api/songs', protectedActionRateLimit, verifyToken, async (req, res
   try {
     const { song, error } = buildSong(req.body);
     if (error) return res.status(400).json({ error });
-    await withSongs((songs) => ({ save: { ...songs, [song.id]: song } }));
+    if (await store.count(context.appConfig) >= MAX_SONGS) return res.status(409).json({ error: 'The songbook is full.' });
+    await store.update(context.appConfig, song.id, () => ({ save: song }));
     broadcastDataUpdate('songs');
     res.status(201).json(song);
   } catch (err) {
@@ -52,13 +43,13 @@ router.post('/api/songs', protectedActionRateLimit, verifyToken, async (req, res
 
 router.put('/api/songs/:id', protectedActionRateLimit, verifyToken, async (req, res) => {
   if (!canManageSongbook(req.user)) return denied(res);
+  if (!store.isValidKey(req.params.id)) return notFound(res);
   try {
-    const result = await withSongs((songs) => {
-      const existing = songs[req.params.id];
+    const result = await store.update(context.appConfig, req.params.id, (existing) => {
       if (!existing) return { error: 'Song not found', status: 404 };
       const { song, error } = buildSong(req.body, { existing });
       if (error) return { error, status: 400 };
-      return { song, save: { ...songs, [song.id]: song } };
+      return { song, save: song };
     });
     if (result.error) return res.status(result.status).json({ error: result.error });
     broadcastDataUpdate('songs');
@@ -71,13 +62,9 @@ router.put('/api/songs/:id', protectedActionRateLimit, verifyToken, async (req, 
 
 router.delete('/api/songs/:id', protectedActionRateLimit, verifyToken, async (req, res) => {
   if (!canManageSongbook(req.user)) return denied(res);
+  if (!store.isValidKey(req.params.id)) return notFound(res);
   try {
-    const result = await withSongs((songs) => {
-      if (!songs[req.params.id]) return { error: 'Song not found', status: 404 };
-      const rest = { ...songs };
-      delete rest[req.params.id];
-      return { save: rest };
-    });
+    const result = await store.update(context.appConfig, req.params.id, (existing) => (existing ? { remove: true } : { error: 'Song not found', status: 404 }));
     if (result.error) return res.status(result.status).json({ error: result.error });
     broadcastDataUpdate('songs');
     res.json({ success: true });
