@@ -126,6 +126,17 @@ describe('frontend', () => {
 describe('songbook (assets/songbook.js)', () => {
   const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'songbook.js')).href);
 
+  test('semitones between two keys, like the song page counts them', async () => {
+    const { keySteps } = await load();
+    assert.equal(keySteps('G', 'A'), 2);
+    assert.equal(keySteps('G', 'F'), -2);
+    assert.equal(keySteps('A', 'Ab'), -1);
+    assert.equal(keySteps('C', 'F#'), -6);
+    assert.equal(keySteps('Em', 'Gm'), 3);
+    assert.equal(keySteps('G', 'G'), 0);
+    assert.equal(keySteps('x', 'G'), null);
+  });
+
   test('only real chords are chords: words in brackets stay text', async () => {
     const { parseChord } = await load();
     for (const chord of ['G', 'F#m7', 'D/F#', 'Gsus4', 'Cmaj7', 'Bbm', 'A7(b9)', 'Cm(maj7)', 'H7', 'Ddim', 'E5', 'Gadd9']) {

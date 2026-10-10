@@ -5021,6 +5021,21 @@ details[open] .ai-thinking-summary::before { transform: rotate(90deg); }
 
 .event-card-status svg { flex-shrink: 0; }
 
+/* Own status (duty, request, waitlist…) sits as a small line under time and place */
+.event-card-tags {
+    display: flex;
+    min-width: 0;
+    margin-top: 2px;
+}
+.event-card-tags .event-card-status {
+    max-width: 100%;
+    min-width: 0;
+}
+.event-card-tags .event-card-status span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .event-card-status.status-duty {
     background: rgba(99, 102, 241, 0.12);
     color: #6366f1;
@@ -10414,3 +10429,209 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settings-delete-body[hidden] { display: none; }
 .settings-delete-body .danger-zone-text { margin-top: 12px; }
 @media (prefers-reduced-motion: reduce) { .settings-pill, .settings-delete-card .settings-row-chevron { transition: none; } }
+
+/* --- Prayer requests (Extras): calm cards, "I'm praying" as the one clear action --- */
+.prayer-anon-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+
+/* --- Duty roster with the order of service: calm rows (time, title, people); editors tap a row --- */
+.plan-list { display: flex; flex-direction: column; gap: 10px; }
+.plan-group { display: flex; flex-direction: column; }
+.plan-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.plan-group-head svg { flex-shrink: 0; }
+.plan-group-head em { margin-left: auto; font-style: normal; font-weight: 700; letter-spacing: 0; text-transform: none; font-size: 0.8rem; white-space: nowrap; }
+.plan-group.is-timeline .plan-group-head { color: #0284c7; }
+[data-theme="dark"] .plan-group.is-timeline .plan-group-head { color: #38bdf8; }
+.plan-row {
+    position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: start; gap: 10px;
+    padding: 8px 6px; margin: 0 -6px; border-radius: 10px;
+}
+.plan-row.is-task { grid-template-columns: minmax(0, 1fr); }
+/* Timeline: a line through the times with a dot at each item - reads as one sequence */
+.plan-group.is-timeline .plan-row::before {
+    content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: rgba(2, 132, 199, 0.18);
+}
+.plan-group.is-timeline .plan-row:first-of-type::before { top: 16px; }
+.plan-group.is-timeline .plan-row:last-child::before { bottom: calc(100% - 16px); }
+.plan-group.is-timeline .plan-row::after {
+    content: ''; position: absolute; left: 6px; top: 12px; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--surface); border: 2px solid #0284c7; box-sizing: border-box;
+}
+[data-theme="dark"] .plan-group.is-timeline .plan-row::after { border-color: #38bdf8; }
+.plan-group.is-timeline .plan-row-time { padding-left: 16px; }
+.plan-group.is-timeline .plan-row { grid-template-columns: 62px minmax(0, 1fr); gap: 6px; }
+/* Without a time the place in the order stands there, quieter than a time */
+.plan-row-time.is-place { color: var(--text-secondary); }
+[data-theme="dark"] .plan-row-time.is-place { color: var(--text-secondary); }
+/* Tasks without a time: their own calm box */
+.plan-group.is-tasks.is-boxed { padding: 2px 10px; border-radius: 14px; background: var(--surface-alt); }
+.plan-group.is-tasks .plan-row + .plan-row::before { content: ''; position: absolute; top: 0; left: 6px; right: 6px; height: 1px; background: var(--border-light); }
+.plan-row.is-editable { cursor: pointer; transition: background-color 0.15s; }
+@media (hover: hover) {
+    .plan-row.is-editable:hover { background: var(--surface-alt); }
+    .plan-group.is-tasks.is-boxed .plan-row.is-editable:hover { background: var(--surface); }
+}
+.plan-row.is-editable:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.plan-row-time { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; font-size: 0.86rem; font-weight: 800; color: #0284c7; padding-top: 1px; line-height: 1.35; }
+.plan-row-time small { font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); }
+[data-theme="dark"] .plan-row-time { color: #38bdf8; }
+.plan-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.plan-row-title { font-weight: 700; font-size: 0.95rem; color: var(--text); overflow-wrap: break-word; min-width: 0; }
+.plan-name { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 600; color: var(--text); white-space: nowrap; }
+.plan-name .plan-person-avatar, .plan-name .plan-person-icon { width: 18px; height: 18px; }
+/* Not settled yet or declined: said in a small word after the name */
+.plan-name em { font-style: normal; font-size: 0.74rem; font-weight: 700; color: #d97706; }
+.plan-name.is-declined em { color: var(--danger); }
+.plan-name.is-declined > span:not(.plan-person-avatar):not(.plan-person-icon) { color: var(--text-secondary); text-decoration: line-through; }
+.plan-name.is-more, .plan-name.is-text { color: var(--text-secondary); }
+.plan-row-people { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 0.84rem; color: var(--text); }
+.plan-row-note { font-size: 0.8rem; color: var(--text-secondary); font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; }
+.plan-person { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.plan-person > span:not(.plan-person-icon) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-person em { font-style: normal; font-size: 0.74rem; font-weight: 700; color: #d97706; }
+.plan-person.is-declined em { color: var(--danger); }
+.plan-person.is-declined > span:not(.plan-person-icon) { text-decoration: line-through; color: var(--text-secondary); }
+.plan-person-avatar { position: relative; width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-alt); }
+.plan-person-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.plan-person-initials { font-size: 0.55rem; font-weight: 800; color: var(--text-secondary); }
+.plan-person-icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(99, 102, 241, 0.12); color: #6366f1; flex-shrink: 0; }
+.plan-open { font-size: 0.8rem; color: var(--text-secondary); opacity: 0.8; }
+.plan-song { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: none; background: none; font: inherit; font-weight: 700; font-size: 0.95rem; color: var(--text); text-align: left; cursor: pointer; }
+.plan-song > span:not(.program-key) { overflow-wrap: break-word; text-decoration: underline; text-decoration-color: rgba(8, 145, 178, 0.45); text-underline-offset: 3px; }
+.plan-song svg { flex-shrink: 0; color: #0891b2; }
+.plan-answer { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 0.8rem; font-weight: 700; color: #b45309; }
+[data-theme="dark"] .plan-answer { color: #fbbf24; }
+.plan-answer-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Entry page: people of an existing entry, its place in the order */
+.plan-entry-person-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border-light); }
+.plan-entry-remove { width: 30px; height: 30px; border: none; border-radius: 50%; background: transparent; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+@media (hover: hover) { .plan-entry-remove:hover { background: var(--surface-alt); color: var(--danger); } }
+#plan-entry-person { display: flex; flex-direction: column; }
+#plan-entry-person:empty { display: none; }
+.duty-add-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.duty-add-buttons .duty-add-task-btn { flex: 1 1 160px; }
+.program-song-link {
+    display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; padding: 0; border: none; background: none;
+    font: inherit; font-weight: 700; color: var(--text); text-align: left; cursor: pointer;
+}
+.program-song-link > span:not(.program-key) { overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: rgba(8, 145, 178, 0.45); text-underline-offset: 3px; }
+.program-song-link svg { flex-shrink: 0; color: #0891b2; }
+.program-key { flex-shrink: 0; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 800; color: #0891b2; background: rgba(6, 182, 212, 0.12); }
+.program-note { font-size: 0.82rem; color: var(--text-secondary); font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; }
+.program-empty { margin: 4px 0; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.45; }
+/* Editor */
+.program-edit-heading { display: flex; flex-direction: column; min-width: 0; }
+.program-edit-sub { font-size: 0.82rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.program-tool {
+    width: 34px; height: 34px; border: none; border-radius: 10px; background: transparent; color: var(--text-secondary);
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.program-tool:disabled { opacity: 0.3; cursor: default; }
+@media (hover: hover) { .program-tool:not(:disabled):hover { background: var(--surface-alt); color: var(--text); } }
+.program-tool:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.program-edit-fields { display: grid; grid-template-columns: 96px 76px minmax(0, 1fr); gap: 8px; }
+.program-edit-fields:not(:has(.is-key)) { grid-template-columns: 96px minmax(0, 1fr); }
+.program-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.program-field > span { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-secondary); }
+.program-field .poll-editor-input { width: 100%; }
+.program-input-note { resize: vertical; min-height: 40px; font-size: 0.88rem; }
+.program-song-results { display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; margin-top: 4px; }
+.program-song-pick {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 10px 8px; border: none; border-top: 1px solid var(--border-light);
+    background: transparent; font: inherit; text-align: left; cursor: pointer; border-radius: 0;
+}
+.program-song-pick:first-child { border-top: none; }
+@media (hover: hover) { .program-song-pick:hover { background: var(--surface-alt); } }
+.program-song-pick-title { font-weight: 700; color: var(--text); }
+.program-song-pick-meta { font-size: 0.78rem; color: var(--text-secondary); }
+@media (max-width: 400px) {
+    .program-edit-fields { grid-template-columns: 84px 68px minmax(0, 1fr); }
+    .program-edit-fields:not(:has(.is-key)) { grid-template-columns: 84px minmax(0, 1fr); }
+}
+
+/* --- One plan entry (task or song, who, "in the order of service") and the tools in the plan --- */
+.plan-entry-song { display: flex; flex-direction: column; gap: 8px; }
+.plan-entry-song[hidden], .plan-entry-program[hidden], .plan-entry-hint[hidden], .program-field[hidden] { display: none; }
+.plan-song-chosen { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(6, 182, 212, 0.1); font-weight: 800; color: var(--text); }
+.plan-song-chosen[hidden] { display: none; }
+.plan-song-chosen svg { color: #0891b2; flex-shrink: 0; }
+.plan-song-chosen > span:not(.program-key) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.program-song-pick.is-chosen { background: rgba(6, 182, 212, 0.1); }
+.plan-entry-program { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }
+.plan-entry-hint { margin: 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.45; }
+.plan-person-chip { align-self: flex-start; }
+.plan-head { align-items: flex-start; }
+.plan-head .plan-title, .plan-head .program-song-link { flex: 1 1 auto; min-width: 0; padding-top: 2px; }
+.plan-head .program-song-link > span:not(.program-key) { overflow-wrap: break-word; }
+.plan-tools { display: inline-flex; gap: 0; margin-left: auto; flex-shrink: 0; }
+.plan-tools .program-tool { width: 30px; height: 30px; }
+
+/* --- Plan entry: a compact dialog (kind, name or song, who, in the order with position / duration / key / note) --- */
+.plan-sheet { max-width: 460px; }
+.plan-sheet-body { display: flex; flex-direction: column; gap: 12px; }
+.plan-sheet .settings-pill { min-height: 34px; padding: 6px 10px; font-size: 0.84rem; }
+.plan-input { height: 40px; padding: 8px 12px; font-size: 0.92rem; border-radius: 12px; }
+select.plan-input { padding-right: 32px; }
+.plan-sheet-section { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--border-light); }
+.plan-sheet-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-secondary); }
+.plan-link-btn {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; border: none; background: none;
+    font: inherit; font-size: 0.88rem; font-weight: 700; color: var(--primary); cursor: pointer;
+}
+@media (hover: hover) { .plan-link-btn:hover { text-decoration: underline; } }
+.plan-sheet .plan-entry-person-row { padding: 4px 0; }
+.plan-sheet .plan-entry-remove { width: 28px; height: 28px; }
+.plan-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.plan-sheet-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; margin-top: 4px; }
+.plan-sheet-fields .is-position { grid-column: 1 / -1; }
+/* Editing shows no kind / name: the first section needs no line above it */
+.plan-sheet.is-edit .plan-who-section { padding-top: 0; border-top: none; }
+.plan-sheet-fields[hidden] { display: none; }
+.plan-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 0.74rem; font-weight: 700; color: var(--text-secondary); }
+.plan-field[hidden] { display: none; }
+.plan-field-wide, .plan-sheet-hint { grid-column: 1 / -1; }
+.plan-sheet-hint { margin: -2px 0 0; font-size: 0.78rem; color: var(--text-secondary); }
+.plan-sheet-hint:empty { display: none; }
+.plan-sheet .program-song-results { max-height: 200px; }
+.plan-sheet .program-song-pick { padding: 8px 6px; }
+.plan-sheet .plan-song-chosen { padding: 8px 10px; }
+.plan-sheet-footer { display: flex; gap: 8px; }
+.plan-sheet-footer .btn { flex: 0 0 auto; }
+.plan-sheet-footer .btn-primary { flex: 1 1 auto; }
+.plan-delete {
+    width: 44px; height: 44px; flex: 0 0 44px; margin-right: auto; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08); color: var(--danger); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.plan-delete:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+.plan-delete[hidden] { display: none; }
+
+/* --- Prayer requests: a calm list like the plan; own requests open their options with a tap --- */
+.prayer-list {
+    display: flex; flex-direction: column; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-light);
+    background: var(--surface); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 22px -16px rgba(15, 23, 42, 0.25);
+}
+.prayer-row { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 12px 6px; margin: 0 -6px; border-radius: 12px; }
+.prayer-row + .prayer-row::before { content: ''; position: absolute; top: 0; left: 6px; right: 6px; height: 1px; background: var(--border-light); }
+.prayer-row.is-editable { cursor: pointer; transition: background-color 0.15s; }
+@media (hover: hover) { .prayer-row.is-editable:hover { background: var(--surface-alt); } }
+.prayer-row.is-editable:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.prayer-row.is-expired { opacity: 0.6; }
+.prayer-avatar {
+    position: relative; width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center; background: var(--surface-alt);
+}
+.prayer-avatar.is-anonymous { color: var(--text-secondary); }
+.prayer-avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.prayer-avatar-initials { font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); }
+.prayer-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.prayer-row-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.prayer-row-name { font-weight: 700; font-size: 0.9rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prayer-row-meta { font-size: 0.76rem; color: var(--text-secondary); white-space: nowrap; }
+.prayer-row-text { font-size: 0.93rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.prayer-input { min-height: 120px; resize: vertical; font-size: 0.95rem; line-height: 1.5; }
+.prayer-counter { align-self: flex-end; margin-top: -6px; font-size: 0.74rem; color: var(--text-secondary); }
+.prayer-duration .settings-pill { min-height: 34px; padding: 6px 10px; font-size: 0.84rem; }
+.prayer-anon-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prayer-options-text { margin: 0; font-size: 0.95rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.prayer-options-actions { display: flex; flex-direction: column-reverse; gap: 8px; width: 100%; }
+.prayer-options-actions .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+

@@ -446,6 +446,47 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.ok(!(api.headers.get('content-type') || '').includes('text/html') || api.status === 404, 'the API never answers with the app');
   });
 
+  test('prayer requests: anonymous stays anonymous for everyone, only the owner changes it, the owner or a moderator removes it', async () => {
+    const shared = await ok(call('max', 'POST', '/api/prayers', { text: 'Bitte betet für meine Oma', anonymous: true, duration: 'week' }));
+    assert.equal(shared.isMine, true);
+    const seen = (await ok(call('mia', 'GET', '/api/prayers'))).prayers.find((p) => p.id === shared.id);
+    assert.ok(seen && seen.author === null && seen.isMine === false);
+    // Not even the owner (admin, moderator) can tell who it was
+    assert.ok(!JSON.stringify(await ok(call('owner', 'GET', '/api/prayers'))).includes(uids.max));
+    assert.equal((await call('mia', 'PATCH', `/api/prayers/${shared.id}`, { extend: 'month' })).status, 403);
+    assert.equal((await call('mia', 'DELETE', `/api/prayers/${shared.id}`)).status, 403);
+    const extended = await ok(call('max', 'PATCH', `/api/prayers/${shared.id}`, { extend: 'month' }));
+    assert.ok(extended.expiresAt > shared.expiresAt);
+    // Named requests show their author; moderators (manage_prayers, the owner's Admin group) remove any request
+    const named = await ok(call('mia', 'POST', '/api/prayers', { text: 'Für die Freizeit' }));
+    assert.equal((await ok(call('max', 'GET', '/api/prayers'))).prayers.find((p) => p.id === named.id).author.uid, uids.mia);
+    await ok(call('owner', 'DELETE', `/api/prayers/${named.id}`));
+    await ok(call('max', 'DELETE', `/api/prayers/${shared.id}`));
+    for (const id of ['__proto__', 'x%22%7C%7C1']) assert.equal((await call('mia', 'DELETE', `/api/prayers/${id}`)).status, 404, id);
+  });
+
+  test('order of service: the duty team sees it, the editors of the event plan it, it goes with the event', async () => {
+    const created = await ok(call('owner', 'POST', '/api/events', { title: 'Gottesdienst', date: '2026-11-08', startTime: '10:00', endTime: '11:30', eventType: 'termin' }));
+    const id = created.id || created.event?.id || created.events?.[0]?.id;
+    const song = await ok(call('owner', 'POST', '/api/songs', { title: 'Amazing Grace', key: 'G', content: '[G]Amazing grace' }));
+    const items = [{ title: 'Begrüßung', minutes: 5, who: 'Olga' }, { songId: song.id, songKey: 'A', minutes: 4 }];
+    assert.equal((await call('max', 'PUT', `/api/events/${id}/program`, { items })).status, 403);
+    const saved = await ok(call('owner', 'PUT', `/api/events/${id}/program`, { items }));
+    assert.equal(saved.items.length, 2);
+    assert.equal((await call('mia', 'GET', `/api/events/${id}/program`)).status, 403, 'not on the duty roster');
+    await ok(call('owner', 'POST', `/api/events/${id}/duties`, { roleName: 'Technik', requestedUser: uids.mia }));
+    const seen = await ok(call('mia', 'GET', `/api/events/${id}/program`));
+    assert.deepEqual(seen.items.map((i) => i.minutes), [5, 4]);
+    assert.equal(seen.items[1].songKey, 'A');
+    assert.equal(seen.canEdit, false);
+    assert.equal((await call('mia', 'PUT', `/api/events/${id}/program`, { items: [] })).status, 403);
+    assert.equal((await call('owner', 'PUT', `/api/events/${id}/program`, { items: [{ title: '' }] })).status, 400);
+    assert.equal((await call('owner', 'GET', '/api/events/__proto__/program')).status, 404);
+    await ok(call('owner', 'DELETE', `/api/events/${id}`));
+    assert.equal((await call('owner', 'GET', `/api/events/${id}/program`)).status, 404);
+    await ok(call('owner', 'DELETE', `/api/songs/${song.id}`));
+  });
+
   test('songbook: only the songbook permission edits, every member reads', async () => {
     const song = { title: 'Amazing Grace', content: '[G]Amazing [C]grace, how [G]sweet the sound' };
     assert.equal((await call('max', 'POST', '/api/songs', song)).status, 403);

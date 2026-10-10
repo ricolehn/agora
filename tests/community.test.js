@@ -1203,3 +1203,95 @@ describe('switched-off features', () => {
     assert.equal(load('true').polls, true);
   });
 });
+
+describe('prayer requests', () => {
+  const { buildPrayer, canCreate, ownerUpdate, isGone, publicPrayer, visiblePrayers, canModerate, MAX_OPEN_PER_OWNER, KEEP_EXPIRED_MS } = require('../backend/prayers');
+  const secret = 'x'.repeat(64);
+  const DAY = 86400000;
+  const share = (input, uid = 'u1', now = 1000) => buildPrayer(input, { uid, name: 'Max Mitglied', secret, now }).prayer;
+
+  test('a request needs text; the duration decides how long it is shown', () => {
+    assert.match(buildPrayer({ text: ' a ' }, { uid: 'u1', secret }).error, /at least 3/);
+    const week = share({ text: 'Für meine Prüfung', duration: 'week' });
+    assert.equal(week.expiresAt - week.createdAt, 7 * DAY);
+    assert.equal(share({ text: 'Bitte betet', duration: 'nonsense' }).expiresAt - 1000, 30 * DAY, 'unknown durations become a month');
+    assert.equal(share({ text: 'x\n\n\n\ny' + 'z'.repeat(2000) }).text.length, 1000);
+    assert.ok(share({ text: 'x\n\n\n\ny' }).text.includes('x\n\ny'), 'paragraphs stay, runs of empty lines do not');
+  });
+
+  test('anonymous: no account, no name, not even for moderators - only the owner knows it is theirs', () => {
+    const prayer = share({ text: 'Anonym bitte', anonymous: true });
+    assert.equal(prayer.authorUid, null);
+    assert.equal(prayer.authorName, null);
+    assert.ok(!JSON.stringify(prayer).includes('u1'));
+    const forOwner = publicPrayer(prayer, { uid: 'u1', secret });
+    const forModerator = publicPrayer(prayer, { uid: 'admin', secret, moderator: true });
+    assert.equal(forOwner.isMine, true);
+    assert.equal(forModerator.isMine, false);
+    assert.equal(forModerator.author, null);
+    assert.equal(forModerator.canDelete, true);
+    assert.ok(!('owner' in forModerator) && !('authorUid' in forModerator));
+    const named = publicPrayer(share({ text: 'Mit Namen' }), { uid: 'u2', secret });
+    assert.deepEqual(named.author, { uid: 'u1', name: 'Max Mitglied' });
+    assert.equal(named.canDelete, false);
+  });
+
+  test('owner: extend from the later of now and the old end', () => {
+    const prayer = share({ text: 'Job', duration: 'week' });
+    const extended = ownerUpdate(prayer, { extend: 'month' }, { now: 2000 }).prayer;
+    assert.equal(extended.expiresAt, prayer.expiresAt + 30 * DAY);
+    const late = ownerUpdate(prayer, { extend: 'week' }, { now: prayer.expiresAt + 10 * DAY }).prayer;
+    assert.equal(late.expiresAt, prayer.expiresAt + 17 * DAY);
+    assert.equal(ownerUpdate(prayer, { extend: 'forever' }, { now: 2000 }).prayer.expiresAt, prayer.expiresAt, 'unknown durations change nothing');
+  });
+
+  test('lists: newest first, expired ones only for their owner, then removed', () => {
+    const now = 100 * DAY;
+    const open = share({ text: 'offen' }, 'u1', now - DAY);
+    const newer = share({ text: 'neuer' }, 'u2', now - 60000);
+    const expired = share({ text: 'abgelaufen', duration: 'week' }, 'u1', now - 10 * DAY);
+    assert.deepEqual(visiblePrayers([open, expired, newer], { uid: 'u3', secret, now }).map((p) => p.text), ['neuer', 'offen']);
+    assert.deepEqual(visiblePrayers([open, expired, newer], { uid: 'u1', secret, now }).map((p) => p.text), ['neuer', 'offen', 'abgelaufen']);
+    assert.equal(visiblePrayers([expired], { uid: 'u1', secret, now })[0].expired, true);
+    assert.equal(isGone(expired, expired.expiresAt + KEEP_EXPIRED_MS + 1), true);
+    assert.equal(isGone(open, now), false);
+  });
+
+  test('limits: a few open requests per person; moderation needs manage_prayers', () => {
+    const mine = Array.from({ length: MAX_OPEN_PER_OWNER }, (_, i) => share({ text: `Anliegen ${i}` }, 'u1', 1000));
+    assert.equal(canCreate(mine, { uid: 'u1', secret, now: 2000 }).status, 409);
+    assert.equal(canCreate(mine, { uid: 'u2', secret, now: 2000 }), null);
+    assert.equal(canModerate({ admin: true, permissions: [] }), false);
+    assert.equal(canModerate({ permissions: ['manage_prayers'] }), true);
+  });
+});
+
+describe('order of service', () => {
+  const { buildProgram, MAX_ITEMS } = require('../backend/program');
+
+  test('items keep their order, durations are whole minutes, songs keep a clean key', () => {
+    const { items } = buildProgram({ items: [
+      { title: ' Begrüßung ', minutes: '5', who: 'Max' },
+      { songId: 'song-1', songKey: 'A', minutes: 4 },
+      { songId: 'song-2', songKey: 'nonsense' },
+      { title: 'Predigt', minutes: null, note: 'Thema: Hoffnung' }
+    ] });
+    assert.deepEqual(items.map((i) => i.title), ['Begrüßung', '', '', 'Predigt']);
+    assert.deepEqual(items.map((i) => i.minutes), [5, 4, null, null]);
+    assert.equal(items[1].songKey, 'A');
+    assert.equal(items[2].songKey, '');
+    assert.ok(items.every((i) => /^[A-Za-z0-9_-]{1,64}$/.test(i.id)));
+    assert.equal(new Set(items.map((i) => i.id)).size, 4);
+  });
+
+  test('rejects missing titles, odd durations, too many items and bad song ids', () => {
+    assert.match(buildProgram({}).error, /missing/);
+    assert.match(buildProgram({ items: [{ title: '' }] }).error, /title/);
+    assert.match(buildProgram({ items: [{ title: 'x', minutes: 1.5 }] }).error, /whole number/);
+    assert.match(buildProgram({ items: [{ title: 'x', minutes: 601 }] }).error, /whole number/);
+    assert.match(buildProgram({ items: Array.from({ length: MAX_ITEMS + 1 }, () => ({ title: 'x' })) }).error, /at most 60/);
+    assert.match(buildProgram({ items: [{ songId: '../x' }] }).error, /title/, 'an invalid song id is no song');
+    const dup = buildProgram({ items: [{ id: 'a', title: 'x' }, { id: 'a', title: 'y' }] }).items;
+    assert.notEqual(dup[0].id, dup[1].id);
+  });
+});

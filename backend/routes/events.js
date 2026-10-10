@@ -47,8 +47,12 @@ const {
 const { notifyUsers, originOf } = require('../notify');
 const { userLanguage, translate, requestLanguage, instanceLanguage } = require('../i18n');
 const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
+const { createItemStore } = require('../itemStore');
+const { buildProgram } = require('../program');
 
 const router = express.Router();
+// Order of service per event (key = event id), readable only by the server
+const programStore = createItemStore('event_programs');
 
 // Event managers: members with the manage_events permission (directly or via a group)
 const hasEventPermission = (user) => user.canManageEvents === true || (Array.isArray(user.permissions) && user.permissions.includes('manage_events'));
@@ -494,11 +498,57 @@ router.delete('/api/events/:id', verifyToken, async (req, res) => {
     }
 
     await deleteEventRecord(context.appConfig, event.id);
+    // Its order of service goes with it
+    await programStore.update(context.appConfig, event.id, (program) => (program ? { remove: true } : {})).catch(() => {});
     broadcastDataUpdate('events');
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete event:', err);
     res.status(500).json({ error: 'The event could not be deleted' });
+  }
+});
+
+// --- Order of service ("Ablauf"): seen like the duty roster, edited by those who may edit the event ---
+async function programAccess(req, eventId) {
+  if (!programStore.isValidKey(eventId)) return null;
+  const event = await getEventRecord(context.appConfig, eventId);
+  if (!event) return null;
+  const canEdit = event.createdBy === (req.user.uid || req.user.id) || hasEventPermission(req.user);
+  if (canEdit) return { event, canEdit, canSee: true };
+  let groups = [];
+  try { groups = await listGroupRecords(context.appConfig); } catch {}
+  const duties = await listEventDuties(context.appConfig, pbFilterEquals('event', event.id));
+  const canSee = canUserAccessEventDutyPlan(req.user, event, duties, new Map(groups.map((g) => [g.id, g.name])));
+  return { event, canEdit, canSee };
+}
+
+router.get('/api/events/:id/program', verifyToken, async (req, res) => {
+  try {
+    const access = await programAccess(req, req.params.id);
+    if (!access) return res.status(404).json({ error: 'Event not found' });
+    if (!access.canSee) return res.status(403).json({ error: 'You cannot see the order of service of this event.' });
+    const program = await programStore.get(context.appConfig, access.event.id);
+    res.json({ items: program?.items || [], updatedAt: program?.updatedAt || null, canEdit: access.canEdit });
+  } catch (err) {
+    console.error('Failed to load the order of service:', err);
+    res.status(500).json({ error: 'The order of service could not be loaded' });
+  }
+});
+
+router.put('/api/events/:id/program', protectedActionRateLimit, verifyToken, async (req, res) => {
+  try {
+    const access = await programAccess(req, req.params.id);
+    if (!access) return res.status(404).json({ error: 'Event not found' });
+    if (!access.canEdit) return res.status(403).json({ error: 'No permission to edit this event' });
+    const { items, error } = buildProgram(req.body);
+    if (error) return res.status(400).json({ error });
+    const program = { eventId: access.event.id, items, updatedAt: Date.now() };
+    await programStore.update(context.appConfig, access.event.id, () => (items.length ? { save: program } : { remove: true }));
+    broadcastDataUpdate('events');
+    res.json({ items, updatedAt: program.updatedAt, canEdit: true });
+  } catch (err) {
+    console.error('Failed to save the order of service:', err);
+    res.status(500).json({ error: 'The order of service could not be saved' });
   }
 });
 

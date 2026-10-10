@@ -23,8 +23,8 @@ const MAX_POLLS = 500;
  * The secret of the participation hashes. A missing file is created once; a damaged one is an error and never
  * silently replaced - with a new secret everybody could vote again and creators would lose their polls.
  */
-function loadSecret(dataDir) {
-  const file = path.join(dataDir, 'polls-secret');
+function loadSecret(dataDir, name = 'polls-secret') {
+  const file = path.join(dataDir, name);
   let existing = null;
   try {
     existing = fs.readFileSync(file, 'utf8').trim();
@@ -33,7 +33,7 @@ function loadSecret(dataDir) {
   }
   if (existing !== null) {
     if (existing.length >= 32) return existing;
-    throw new Error(`${file} is damaged; restore it from the backup (polls cannot be used until then)`);
+    throw new Error(`${file} is damaged; restore it from the backup (${name.replace('-secret', '')} cannot be used until then)`);
   }
   const secret = crypto.randomBytes(32).toString('hex');
   // 'wx': never overwrite a file another process created a moment ago

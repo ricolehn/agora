@@ -1,5 +1,5 @@
 // Bumped: older caches could hold API responses of a previous user, the activate step deletes them
-const CACHE_NAME = 'agora-v1.0.26';
+const CACHE_NAME = 'agora-v1.0.28';
 const URLS_TO_CACHE = [
     './',
     './index.html',

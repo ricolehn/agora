@@ -370,7 +370,7 @@ const DEFAULT_COLLECTION_SPECS = [
   },
   // One record per poll / song ({ key, data }), readable only by the server (no rules = superuser only): poll
   // tallies and participation hashes must never be reachable with a member's or admin's PocketBase token
-  ...['polls', 'songs'].map((name) => ({
+  ...['polls', 'songs', 'prayers', 'event_programs'].map((name) => ({
     name,
     type: 'base',
     listRule: null,
@@ -1274,18 +1274,19 @@ async function ensurePocketBaseSchema(appConfig) {
   await migrateLegacyPeopleData(appConfig);
   await migrateLegacyExpensesData(appConfig);
   await migrateStateToCollections(appConfig);
-  await migrateSongbookPermission(appConfig);
+  await grantNewPermission(appConfig, 'manage_songbook', 'songbookPermissionMigrated', 'manage the songbook');
+  await grantNewPermission(appConfig, 'manage_prayers', 'prayersPermissionMigrated', 'moderate prayer requests');
 }
 
 /**
- * Installations from before the songbook have nobody with manage_songbook (new setups give it to the owner's
- * Admin group). Once: if no group has it, the owner's groups with manage_events (else all of them) get it.
+ * Installations from before a permission existed have nobody with it (new setups give it to the owner's Admin
+ * group). Once: if no group has it, the owner's groups with manage_events (else all of them) get it.
  */
-async function migrateSongbookPermission(appConfig) {
+async function grantNewPermission(appConfig, permission, flag, what) {
   const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
-  if (system?.songbookPermissionMigrated) return;
+  if (system?.[flag]) return;
   const groups = await listGroupRecords(appConfig);
-  if (!groups.some((g) => g.permissions.includes('manage_songbook'))) {
+  if (!groups.some((g) => g.permissions.includes(permission))) {
     const ownerUid = system?.ownerUid || system?.superAdminUid;
     const owner = ownerUid ? await getUserRecord(appConfig, ownerUid).catch(() => null) : null;
     const ownerGroupIds = new Set((Array.isArray(owner?.groups) ? owner.groups : []).map((g) => (typeof g === 'object' && g ? g.id || g.name : String(g))));
@@ -1294,11 +1295,11 @@ async function migrateSongbookPermission(appConfig) {
       ? ownerGroups.filter((g) => g.permissions.includes('manage_events'))
       : ownerGroups;
     for (const group of targets) {
-      await updateGroupRecord(appConfig, group.id, { permissions: [...group.permissions, 'manage_songbook'] });
-      console.log(`[Migration] Group "${group.name}" may now manage the songbook`);
+      await updateGroupRecord(appConfig, group.id, { permissions: [...group.permissions, permission] });
+      console.log(`[Migration] Group "${group.name}" may now ${what}`);
     }
   }
-  await upsertStateValue(appConfig, 'system', { ...system, songbookPermissionMigrated: true });
+  await upsertStateValue(appConfig, 'system', { ...system, [flag]: true });
 }
 
 /**
@@ -1769,7 +1770,8 @@ const SYSTEM_PERMISSIONS = [
   { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
   { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
   { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
-  { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' }
+  { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
+  { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {

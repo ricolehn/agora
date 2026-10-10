@@ -1,6 +1,6 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
-import { renderSongHtml, transposedKey, searchText, normalizeSearch } from "./songbook.js";
+import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
 
 const db = getDatabase(initializeApp(config));
 const auth = getAuth();
@@ -223,6 +223,8 @@ const ICONS = {
     location: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     chevronRight: '<polyline points="9 18 15 12 9 6"/>',
     chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
+    chevronUp: '<polyline points="18 15 12 9 6 15"/>',
+    chevronDown: '<polyline points="6 9 12 15 18 9"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
     play: '<polygon points="6 4 20 12 6 20 6 4"/>',
@@ -778,7 +780,7 @@ function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, cont
                         ${subtitle ? `<div class="modal-subtitle">${subtitle}</div>` : ''}
                     </div>
                 </div>
-                <button type="button" class="btn-close-enhanced" onclick="closeModal(${jsArg(id)})" aria-label="${t('btn_close', 'Close')}">✕</button>
+                <button type="button" class="close-btn" onclick="closeModal(${jsArg(id)})" aria-label="${t('btn_close', 'Close')}">&times;</button>
             </div>
             <div class="modal-body-enhanced">${contentHtml || bodyHtml || ''}</div>
             ${footerHtml ? `<div class="modal-footer-enhanced">${footerHtml}</div>` : ''}
@@ -883,7 +885,7 @@ function queueRemoteUpdate(scope) {
     if (!remoteUpdateTimer) remoteUpdateTimer = setTimeout(flushRemoteUpdates, REMOTE_UPDATE_DELAY_MS);
 }
 
-const REMOTE_LOADERS = { events: () => loadEventsData(), mentoring: () => refreshMentoringFromRemote(), polls: () => (currentActiveTab === 'polls' ? loadPolls() : null), songs: () => (currentActiveTab === 'songbook' ? loadSongs() : null) };
+const REMOTE_LOADERS = { events: () => { loadEventsData(); refreshProgram(); }, prayers: () => (currentActiveTab === 'prayers' ? loadPrayers() : null), mentoring: () => refreshMentoringFromRemote(), polls: () => (currentActiveTab === 'polls' ? loadPolls() : null), songs: () => (currentActiveTab === 'songbook' ? loadSongs() : null) };
 
 async function flushRemoteUpdates() {
     remoteUpdateTimer = null;
@@ -971,6 +973,7 @@ const HUB_APPS = [
     { key: 'ai', icon: 'sparkles', color: '#7c3aed', title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
     { key: 'songbook', icon: 'music', color: '#0891b2', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
+    { key: 'prayers', icon: 'heart', color: '#e11d48', title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
     { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
         visible: () => FEATURES.polls, open: () => switchTab('polls') }
 ];
@@ -1057,7 +1060,7 @@ function scheduleNextPollEnd() {
 
 function setPollFilter(filter) {
     pollFilter = filter;
-    document.querySelectorAll('.polls-filter-btn').forEach(btn => {
+    document.querySelectorAll('#polls .polls-filter-btn').forEach(btn => {
         const active = btn.dataset.filter === filter;
         btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-selected', String(active));
@@ -1294,6 +1297,189 @@ async function deletePoll() {
     }
 }
 
+// --- Prayer requests (Extras): a calm list; a request is shared (also anonymously) and removed when it is done ---
+// The server never tells who shared an anonymous request (see backend/prayers.js).
+let prayers = [];
+let prayersLoaded = false;
+let prayersError = '';
+let prayerFilter = 'all';
+let prayerDuration = 'month';
+
+async function loadPrayers() {
+    try {
+        const data = await apiJson('/prayers', 'GET', undefined, t('prayers_load_failed', 'Prayer requests could not be loaded'));
+        prayers = Array.isArray(data.prayers) ? data.prayers : [];
+        prayersLoaded = true;
+        prayersError = '';
+    } catch (err) {
+        if (!prayersLoaded) prayersError = err.message;
+        else showToast(err.message, 'error');
+    }
+    renderPrayers();
+}
+
+function setPrayerFilter(filter) {
+    prayerFilter = filter;
+    document.querySelectorAll('#prayers .polls-filter-btn').forEach(btn => {
+        const active = btn.dataset.filter === filter;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-selected', String(active));
+    });
+    renderPrayers();
+}
+
+const prayerDate = ms => new Date(ms).toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' });
+/** "2 hours ago", "yesterday"; older than a week as a date. */
+function timeAgo(ms) {
+    const diff = ms - Date.now();
+    const abs = Math.abs(diff);
+    if (abs > 7 * 86400000) return prayerDate(ms);
+    const format = new Intl.RelativeTimeFormat(uiLocale(), { numeric: 'auto' });
+    if (abs >= 86400000) return format.format(Math.round(diff / 86400000), 'day');
+    if (abs >= 3600000) return format.format(Math.round(diff / 3600000), 'hour');
+    return format.format(Math.min(0, Math.round(diff / 60000)), 'minute');
+}
+
+const prayerName = p => (p.author ? (p.author.name || t('events_member_fallback', 'Member')) : t('prayers_anonymous_name', 'Anonymous'));
+
+/** One quiet row: picture and name, when; the request below. Own requests (and moderators) open their options. */
+function prayerRow(p) {
+    const name = prayerName(p);
+    const avatar = p.author
+        ? renderAvatarWrap(p.author.uid, name, { wrapClass: 'prayer-avatar', imgClass: 'prayer-avatar-img', initialsClass: 'prayer-avatar-initials' })
+        : `<span class="prayer-avatar is-anonymous">${svgIcon('eyeOff', 14)}</span>`;
+    const editable = p.isMine || p.canDelete;
+    const meta = [timeAgo(p.createdAt), p.isMine ? (p.expired ? t('prayers_expired', 'Expired') : t('prayers_until_short', 'until {date}', { date: prayerDate(p.expiresAt) })) : ''].filter(Boolean).join(' · ');
+    return `
+        <div class="prayer-row${editable ? ' is-editable' : ''}${p.expired ? ' is-expired' : ''}"${editable ? ` role="button" tabindex="0" onclick="window.openPrayerOptions(${jsArg(p.id)})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}"` : ''}>
+            ${avatar}
+            <span class="prayer-row-main">
+                <span class="prayer-row-head"><span class="prayer-row-name">${escapeHtml(name)}</span><span class="prayer-row-meta">${escapeHtml(meta)}</span></span>
+                <span class="prayer-row-text">${escapeHtml(p.text)}</span>
+            </span>
+        </div>`;
+}
+
+function renderPrayers() {
+    const target = $('prayers-list');
+    if (!target) return;
+    if (!prayersLoaded) {
+        target.innerHTML = prayersError ? `
+            <div class="polls-empty">
+                <span class="polls-empty-icon">${svgIcon('heart', 26, 1.8)}</span>
+                <span class="polls-empty-title">${escapeHtml(prayersError)}</span>
+                <button type="button" class="btn btn-secondary" onclick="window.loadPrayers()">${t('btn_retry', 'Try again')}</button>
+            </div>` : '<div class="polls-loading"><span class="spinner"></span></div>';
+        return;
+    }
+    const list = prayers.filter(p => (prayerFilter === 'mine' ? p.isMine : !p.expired));
+    if (!list.length) {
+        target.innerHTML = `
+            <div class="polls-empty">
+                <span class="polls-empty-icon">${svgIcon('heart', 26, 1.8)}</span>
+                <span class="polls-empty-title">${prayerFilter === 'mine' ? t('prayers_empty_mine', 'You have not shared a request yet') : t('prayers_empty_open', 'No prayer requests right now')}</span>
+                <span class="polls-empty-hint">${t('prayers_empty_hint', 'Share a request with the plus at the bottom right.')}</span>
+            </div>`;
+        return;
+    }
+    target.innerHTML = `<div class="prayer-list">${list.map(prayerRow).join('')}</div>`;
+}
+
+const replacePrayer = updated => { prayers = prayers.map(p => (p.id === updated.id ? updated : p)); };
+
+/** The options of a request: extend and "done" for its owner, remove for moderators. */
+function openPrayerOptions(id) {
+    const p = prayers.find(item => item.id === id);
+    if (!p || !(p.isMine || p.canDelete)) return;
+    const actions = [];
+    if (p.isMine) actions.push(`<button type="button" class="btn btn-secondary" onclick="window.extendPrayer(${jsArg(p.id)})">${svgIcon('clock', 15)}<span>${t('prayers_extend_month', 'One more month')}</span></button>`);
+    actions.push(p.isMine
+        ? `<button type="button" class="btn btn-primary" onclick="window.deletePrayer(${jsArg(p.id)})">${svgIcon('check', 15, 2.6)}<span>${t('prayers_done', 'Done - remove')}</span></button>`
+        : `<button type="button" class="btn btn-danger" onclick="window.deletePrayer(${jsArg(p.id)})">${svgIcon('trash', 15)}<span>${t('prayers_remove', 'Remove')}</span></button>`);
+    showDynamicModal({
+        id: 'prayer-options-modal',
+        title: p.isMine ? t('prayers_yours', 'Your prayer request') : escapeHtml(prayerName(p)),
+        subtitle: escapeHtml(p.isMine
+            ? (p.expired ? t('prayers_expired_hint', 'No longer shown - extend it to show it again') : t('prayers_until', 'Shown until {date}', { date: prayerDate(p.expiresAt) }))
+            : timeAgo(p.createdAt)),
+        maxWidth: '440px',
+        bodyHtml: `<p class="prayer-options-text">${escapeHtml(p.text)}</p>`,
+        footerHtml: `<div class="prayer-options-actions">${actions.join('')}</div>`
+    });
+}
+
+function setPrayerDuration(duration) {
+    prayerDuration = duration;
+    document.querySelectorAll('#prayer-edit-modal [data-duration]').forEach(pill => {
+        const on = pill.dataset.duration === duration;
+        pill.classList.toggle('is-active', on);
+        pill.setAttribute('aria-checked', String(on));
+    });
+}
+
+function updatePrayerCounter() {
+    setText('prayer-counter', `${inputValue('prayer-text').length} / 1000`);
+}
+
+function openPrayerEditor() {
+    setValue('prayer-text', '');
+    const anonymous = $('prayer-anonymous');
+    if (anonymous) anonymous.checked = false;
+    setPrayerDuration('month');
+    updatePrayerCounter();
+    openModal('prayer-edit-modal');
+    modalCloseGuards['prayer-edit-modal'] = () => !inputValue('prayer-text').trim() || confirmAction(t('prayers_discard', 'Discard your request?'));
+    setTimeout(() => $('prayer-text')?.focus(), 150);
+}
+
+async function submitPrayer() {
+    const text = inputValue('prayer-text').trim();
+    if (text.length < 3) {
+        showToast(t('prayers_too_short', 'Please write your request (at least 3 characters).'), 'error');
+        $('prayer-text')?.focus();
+        return;
+    }
+    const btn = $('prayer-submit');
+    if (btn) btn.disabled = true;
+    try {
+        await apiJson('/prayers', 'POST', { text, anonymous: !!$('prayer-anonymous')?.checked, duration: prayerDuration }, t('prayers_share_failed', 'The prayer request could not be shared'));
+        closeModal('prayer-edit-modal', false, true);
+        showToast(t('prayers_shared', 'Your prayer request has been shared'));
+        setPrayerFilter('all');
+        await loadPrayers();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function extendPrayer(id) {
+    try {
+        replacePrayer(await apiJson(`/prayers/${encodeURIComponent(id)}`, 'PATCH', { extend: 'month' }, t('prayers_save_failed', 'The prayer request could not be saved')));
+        closeModal('prayer-options-modal');
+        showToast(t('prayers_extended', 'Shown for another month'));
+        renderPrayers();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+/** Done (own request) or removed by a moderator; only a moderator's removal asks first. */
+async function deletePrayer(id) {
+    const mine = prayers.find(p => p.id === id)?.isMine;
+    if (!mine && !confirmAction(t('prayers_remove_confirm', 'Remove this prayer request for everyone?'))) return;
+    try {
+        await apiJson(`/prayers/${encodeURIComponent(id)}`, 'DELETE', undefined, t('prayers_delete_failed', 'The prayer request could not be deleted'));
+        prayers = prayers.filter(p => p.id !== id);
+        closeModal('prayer-options-modal');
+        renderPrayers();
+        showToast(mine ? t('prayers_done_toast', 'Removed - thank you for sharing') : t('prayers_deleted', 'Prayer request deleted'));
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
 // --- Songbook: songs with chords ("[G]Amazing [C]grace", "# Chorus"), transposable, with auto-scroll ---
 // Text and chord rules live in songbook.js (tested on their own); this part is the list, the song page and the editor.
 let songs = [];
@@ -1432,11 +1618,11 @@ function renderSongs() {
     target.innerHTML = `<div class="song-list">${rows}</div>`;
 }
 
-function openSong(id) {
+function openSong(id, { steps = 0 } = {}) {
     if (!songs.some(s => s.id === id)) return;
     openSongId = id;
     stopSongScroll();
-    songView.steps = 0;
+    songView.steps = steps;
     songView.lastY = 0;
     toggleSongPanel(false);
     showSongControls(true);
@@ -1919,7 +2105,7 @@ function closeSettingsPage() {
 }
 
 const settingsPageOpen = () => ['settings', 'user-settings'].includes(currentActiveTab) && !!$(currentActiveTab)?.dataset.page;
-const HUB_TABS = ['ai-chat', 'polls', 'songbook'];
+const HUB_TABS = ['ai-chat', 'polls', 'songbook', 'prayers'];
 
 function updateFabVisibility() {
     const financesFab = currentActiveTab === 'finances' && canManageFinances();
@@ -1927,7 +2113,8 @@ function updateFabVisibility() {
     // Polls: the same "+" opens the create page directly (one action, no menu)
     const pollsFab = currentActiveTab === 'polls' && !!currentUser;
     const songbookFab = currentActiveTab === 'songbook' && songbookCanManage;
-    const visible = financesFab || eventsFab || pollsFab || songbookFab;
+    const prayersFab = currentActiveTab === 'prayers' && !!currentUser;
+    const visible = financesFab || eventsFab || pollsFab || songbookFab || prayersFab;
     show('fab-finances-items', financesFab, 'block');
     show('fab-events-items', eventsFab, 'block');
     const desktopFab = $('desktop-fab');
@@ -2030,6 +2217,7 @@ function switchTab(tabName, source) {
     if (tabName === 'hub') renderHub();
     if (tabName === 'polls') loadPolls();
     if (tabName === 'songbook') loadSongs();
+    if (tabName === 'prayers') loadPrayers();
     updateFabVisibility();
     if (tabName !== 'mentoring') {
         mentoringChatReturnHome = false;
@@ -2120,13 +2308,13 @@ const eventDay = ev => ev.date;
 const eventSlug = ev => itemSlug(ev, appEvents, eventDay);
 const songSlug = song => itemSlug(song, songs);
 
-const TAB_PATHS = { 'user-overview': '', finances: 'finances', 'user-finances': 'finances', events: 'events', mentoring: 'mentoring', hub: 'extras', songbook: 'songbook', 'ai-chat': 'ai', polls: 'polls', settings: 'settings', 'user-settings': 'settings', 'super-admin-settings': 'system' };
+const TAB_PATHS = { 'user-overview': '', finances: 'finances', 'user-finances': 'finances', events: 'events', mentoring: 'mentoring', hub: 'extras', songbook: 'songbook', prayers: 'prayers', 'ai-chat': 'ai', polls: 'polls', settings: 'settings', 'user-settings': 'settings', 'super-admin-settings': 'system' };
 // First part of a path → tab (old tab ids keep working)
 const ROUTE_TABS = {
     '': () => HOME_TAB, 'index.html': () => HOME_TAB, home: () => HOME_TAB, 'user-overview': () => HOME_TAB,
     finances: () => (canViewFinances() ? 'finances' : 'user-finances'),
     events: () => 'events', mentoring: () => 'mentoring', extras: () => 'hub', songbook: () => 'songbook',
-    ai: () => 'ai-chat', polls: () => 'polls', system: () => 'super-admin-settings',
+    ai: () => 'ai-chat', polls: () => 'polls', prayers: () => 'prayers', system: () => 'super-admin-settings',
     settings: () => (TAB_GUARDS.settings() ? 'settings' : 'user-settings')
 };
 // Old #links → paths
@@ -2247,6 +2435,10 @@ function toggleFab() {
     }
     if (currentActiveTab === 'songbook') {
         openSongEditor();
+        return;
+    }
+    if (currentActiveTab === 'prayers') {
+        openPrayerEditor();
         return;
     }
     if (currentActiveTab === 'events' && !canManageEvents()) {
@@ -3038,7 +3230,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, setPlanKind, renderProgramSongPicker, choosePlanSong, togglePlanInProgram, updatePlanOrder, pickPlanPerson, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
@@ -3065,7 +3257,8 @@ const DEFAULT_PERMISSIONS = [
     { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
     { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
     { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
-    { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' }
+    { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
+    { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' }
 ];
 
 // Several views ask for the groups during one refresh: they share the request that is already running
@@ -7346,9 +7539,9 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
                     ${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(when)}</span>
                 </div>
                 ${ev.location ? `<div class="event-card-where">${cardIcon('location')}<span>${escapeHtml(ev.location)}</span></div>` : ''}
+                ${status ? `<div class="event-card-tags">${status}</div>` : ''}
             </div>
             <div class="event-card-right">
-                ${status}
                 <div class="event-card-arrow">${cardIcon('chevronRight')}</div>
             </div>
         </div>`;
@@ -7449,6 +7642,548 @@ function renderRegistrationSection(ev) {
     loadEventAttendees(ev.id);
 }
 
+// --- One plan per event: duty roster and order of service merged. One "+" adds an entry (a task or a song, a person
+// to ask, and a switch "in the order of service"); entries in the order get their time from the start and the
+// durations, the others follow as "during the whole event". People are always asked through the duty roster, so
+// requests, answers, reminders and the apps keep working. Songs open in the band's key.
+let programEvent = null;
+let programItems = [];
+let programCanEdit = false;
+let programLoad = 0;
+
+function addMinutes(hhmm, minutes) {
+    const [h, m] = hhmm.split(':').map(Number);
+    const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+function programTimes(items, start) {
+    if (!/^\d{1,2}:\d{2}$/.test(start || '')) return items.map(() => '');
+    let offset = 0;
+    return items.map(item => {
+        const time = addMinutes(start, offset);
+        offset += Number(item.minutes) || 0;
+        return time;
+    });
+}
+const programTotal = items => items.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+const programSong = item => (item.songId ? songs.find(song => song.id === item.songId) : null);
+const programItemTitle = item => item.title || programSong(item)?.title || (item.songId ? t('program_song_missing', 'Song (no longer in the songbook)') : '');
+const programMinutes = minutes => t('program_minutes', '{minutes} min', { minutes });
+
+// "2 von 3 besetzt": confirmed people and assigned groups count as filled
+const filledDuties = duties => duties.filter(d => d.status === 'confirmed' || (d.status === 'assigned' && (d.assignedGroup || d.assignedGroupName))).length;
+function dutySummary(duties) {
+    if (!duties.length) return '';
+    const tasks = new Set(duties.map(d => (d.roleName || t('duty_task_fallback', 'Task')).trim())).size;
+    return `${t('duty_filled_count', '{filled} of {total} filled', { filled: filledDuties(duties), total: duties.length })} · ${tasks === 1 ? t('duty_task_count_one', '1 task') : t('duty_task_count_many', '{count} tasks', { count: tasks })}`;
+}
+
+/** Loads the order of service of the opened event and merges it into the duty roster. */
+async function renderProgramBox(ev) {
+    const load = ++programLoad;
+    // Another event: forget the old order at once; the same event keeps it until the fresh one is there (no flicker)
+    if (programEvent?.id !== ev?.id) {
+        programItems = [];
+        programCanEdit = false;
+    }
+    programEvent = ev;
+    updateDutyPlanHeader();
+    if (!ev?.canAccessDutyPlan) return;
+    try {
+        const data = await apiJson(`/events/${encodeURIComponent(ev.id)}/program`);
+        if (load !== programLoad) return;
+        programItems = Array.isArray(data.items) ? data.items : [];
+        programCanEdit = data.canEdit === true;
+        if (programItems.some(item => item.songId) && !songbookLoaded) await loadSongs();
+    } catch {
+        return;
+    }
+    if (load !== programLoad) return;
+    renderGroupedDuties(ev.duties || [], ev);
+    updateDutyPlanHeader();
+}
+
+/** Title, summary ("2 of 3 filled · 6 items · 10:00 – 11:25") and the plan button of the roster card. */
+function updateDutyPlanHeader() {
+    const has = programItems.length > 0;
+    const meta = $('detail-modal-duties-count');
+    if (meta) {
+        const base = dutySummary(programEvent?.duties || []);
+        const total = programTotal(programItems);
+        const start = programEvent?.startTime || '';
+        const span = total ? (programTimes(programItems, start)[0] ? `${start} – ${addMinutes(start, total)}` : programMinutes(total)) : '';
+        const count = programItems.length === 1 ? t('program_count_one', '1 item') : t('program_count_many', '{count} items', { count: programItems.length });
+        const duties = programEvent?.duties || [];
+        const filled = duties.length ? t('duty_filled_count', '{filled} of {total} filled', { filled: filledDuties(duties), total: duties.length }) : '';
+        meta.textContent = has ? ([filled, span].filter(Boolean).join(' · ') || count) : (base || t('duty_no_tasks', 'No tasks yet'));
+    }
+    setText('detail-modal-duties-title', has ? t('duty_roster_and_program', 'Duty roster & order of service') : t('events_duty_roster', 'Duty roster'));
+}
+
+const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+/** The roster task of an item: the one named under "who", else the one with the item's title. */
+function itemTask(item, roles) {
+    return roles.find(role => sameName(role, item.who)) || roles.find(role => sameName(role, programItemTitle(item))) || null;
+}
+
+function updateDutyProgress(duties) {
+    const progress = $('detail-modal-duties-progress');
+    if (!progress) return;
+    const filled = filledDuties(duties);
+    progress.style.display = duties.length ? 'block' : 'none';
+    progress.classList.toggle('is-complete', duties.length > 0 && filled === duties.length);
+    progress.querySelector('.event-progress-bar').style.width = `${duties.length ? Math.round((filled / duties.length) * 100) : 0}%`;
+}
+
+/** The people of a task as one quiet line: names (with "requested" / "declined"), or "still open". */
+function planPeople(roleDuties) {
+    const people = (roleDuties || []).filter(hasDutyAssignee);
+    if (!people.length) return `<span class="plan-open">${t('plan_open', 'still open')}</span>`;
+    return people.map(d => {
+        const group = d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup);
+        const uid = d.status === 'requested' || d.status === 'declined' ? d.requestedUser : d.assignedUser;
+        const name = group ? (d.assignedGroupName || d.assignedGroup)
+            : isCurrentUser(uid) ? t('duty_you', 'You') : ((d.status === 'requested' || d.status === 'declined' ? d.requestedUserName : d.assignedUserName) || t('details_person', 'Person'));
+        const state = d.status === 'requested' ? t('duty_state_requested', 'requested') : d.status === 'declined' ? t('duty_state_declined', 'declined') : '';
+        return `<span class="plan-person${state ? ` is-${d.status}` : ''}">${group ? `<span class="plan-person-icon">${svgIcon('users', 11, 2.5)}</span>` : renderAvatarWrap(uid, name, { wrapClass: 'plan-person-avatar', imgClass: 'plan-person-img', initialsClass: 'plan-person-initials' })}<span>${escapeHtml(name)}</span>${state ? `<em>${state}</em>` : ''}</span>`;
+    }).join('');
+}
+
+/** The people of a row, right under its title: small picture, first name and "requested" / "declined" if so, or "open". */
+function planPeopleShort(roleDuties) {
+    const people = (roleDuties || []).filter(hasDutyAssignee);
+    if (!people.length) return `<span class="plan-open">${t('plan_open_short', 'open')}</span>`;
+    const names = people.map(d => {
+        const group = d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup);
+        const uid = d.status === 'requested' || d.status === 'declined' ? d.requestedUser : d.assignedUser;
+        const full = group ? (d.assignedGroupName || d.assignedGroup)
+            : isCurrentUser(uid) ? t('duty_you', 'You') : ((d.status === 'requested' || d.status === 'declined' ? d.requestedUserName : d.assignedUserName) || t('details_person', 'Person'));
+        const state = group ? 'group' : d.status === 'requested' ? 'requested' : d.status === 'declined' ? 'declined' : 'confirmed';
+        const label = state === 'requested' ? t('duty_state_requested', 'requested') : state === 'declined' ? t('duty_state_declined', 'declined') : '';
+        const short = group ? full : String(full).split(/\s+/)[0];
+        const picture = group ? `<span class="plan-person-icon">${svgIcon('users', 11, 2.5)}</span>` : renderAvatarWrap(uid, full, { wrapClass: 'plan-person-avatar', imgClass: 'plan-person-img', initialsClass: 'plan-person-initials' });
+        return `<span class="plan-name is-${state}" title="${escapeHtml(label ? `${full} · ${label}` : full)}">${picture}<span>${escapeHtml(short)}</span>${label ? `<em>${escapeHtml(label)}</em>` : ''}</span>`;
+    });
+    return names.length > 3 ? names.slice(0, 2).join('') + `<span class="plan-name is-more">+${names.length - 2}</span>` : names.join('');
+}
+
+/** A request to the viewer: the answer stays right in the row. */
+function planAnswer(roleDuties) {
+    const mine = (roleDuties || []).find(d => d.status === 'requested' && isCurrentUser(d.requestedUser));
+    return mine ? `
+        <span class="plan-answer">
+            <span>${t('duty_you_were_requested', 'You have been requested')}</span>
+            <span class="plan-answer-buttons">
+                <button type="button" class="btn btn-primary btn-tiny" onclick="event.stopPropagation(); window.respondToDutyRequest(${jsArg(mine.id)}, 'accept')">${svgIcon('check', 13, 2.5)}<span>${t('duty_btn_accept', 'Accept')}</span></button>
+                <button type="button" class="btn btn-secondary btn-tiny" onclick="event.stopPropagation(); window.respondToDutyRequest(${jsArg(mine.id)}, 'decline')">${t('request_btn_reject', 'Reject')}</button>
+            </span>
+        </span>` : '';
+}
+
+/** Two clearly separate lists: the order of service as a timeline (time, title, people), then the tasks without a
+ * time in their own box (no heading: the box itself sets them apart). Editors tap a row to open its entry. */
+function renderDutyPlan(duties, items, ev) {
+    const grouped = groupBy(duties, d => (d.roleName || t('duty_task_fallback', 'Task')).trim());
+    const roles = [...grouped.keys()];
+    const editable = !!ev.canEdit;
+    const used = new Set();
+    const times = programTimes(items, ev.startTime);
+    const row = ({ onOpen, inOrder, time, minutes, title, people, note, answer }) => `
+        <div class="plan-row${inOrder ? '' : ' is-task'}${editable ? ' is-editable' : ''}"${editable ? ` role="button" tabindex="0" onclick="${onOpen}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}"` : ''}>
+            ${inOrder ? `<span class="plan-row-time${/:/.test(time) ? '' : ' is-place'}">${time}${minutes ? `<small>${escapeHtml(programMinutes(minutes))}</small>` : ''}</span>` : ''}
+            <span class="plan-row-main">
+                <span class="plan-row-title">${title}</span>
+                <span class="plan-row-people">${people}</span>
+                ${note ? `<span class="plan-row-note">${escapeHtml(note)}</span>` : ''}
+                ${answer}
+            </span>
+        </div>`;
+    const itemRows = items.map((item, i) => {
+        const role = itemTask(item, roles);
+        if (role) used.add(role);
+        const song = programSong(item);
+        const key = item.songKey || song?.key || '';
+        const name = escapeHtml(programItemTitle(item));
+        const title = song
+            ? `<button type="button" class="plan-song" onclick="event.stopPropagation(); window.openProgramSong(${jsArg(item.id)})"><span>${name}</span>${key ? `<span class="program-key">${escapeHtml(key)}</span>` : ''}</button>`
+            : name;
+        const who = !role && item.who && !sameName(item.who, programItemTitle(item)) ? `<span class="plan-name is-text">${escapeHtml(item.who)}</span>` : '';
+        return row({
+            onOpen: `window.openPlanEntryForItem(${jsArg(item.id)})`, inOrder: true, time: (item.minutes && times[i]) || `${i + 1}.`, minutes: item.minutes, title,
+            people: role ? planPeopleShort(grouped.get(role)) : (who || `<span class="plan-open">${t('plan_open_short', 'open')}</span>`), note: item.note, answer: role ? planAnswer(grouped.get(role)) : ''
+        });
+    }).join('');
+    const tasks = [...grouped].filter(([role]) => !used.has(role)).map(([role, roleDuties]) => row({
+        onOpen: `window.openPlanEntryForRole(${jsArg(encodeURIComponent(role))})`, title: escapeHtml(role),
+        people: planPeopleShort(roleDuties), note: roleDuties.find(d => d.notes)?.notes || '', answer: planAnswer(roleDuties)
+    })).join('');
+    if (!itemRows && !tasks) {
+        return `<div class="duty-rows-empty">${editable ? t('plan_empty_manager', 'Add what happens and who helps - with "+" below.') : t('duty_empty_member', 'No duties have been set up for this event.')}</div>`;
+    }
+    const total = programTotal(items);
+    const span = total && times[0] ? `${times[0]} – ${addMinutes(ev.startTime, total)}` : '';
+    const both = itemRows && tasks;
+    const head = (icon, title, meta) => `<div class="plan-group-head">${svgIcon(icon, 15, 2.2)}<span>${title}</span>${meta ? `<em>${escapeHtml(meta)}</em>` : ''}</div>`;
+    return `<div class="plan-list">
+        ${itemRows ? `<div class="plan-group is-timeline">${both ? head('clock', t('plan_group_program', 'Order of service'), '') : ''}${itemRows}</div>` : ''}
+        ${tasks ? `<div class="plan-group is-tasks${both ? ' is-boxed' : ''}">${tasks}</div>` : ''}
+    </div>`;
+}
+
+/** After a live update: the open card shows the saved order again (not while it is being edited). */
+async function refreshProgram() {
+    if (!programEvent || !shownModal('event-detail-modal') || shownModal('plan-entry-modal')) return;
+    const ev = appEvents.find(e => e.id === programEvent.id);
+    if (ev) await renderProgramBox(ev);
+}
+
+function openProgramSong(itemId) {
+    const item = programItems.find(i => i.id === itemId);
+    const song = item && programSong(item);
+    if (!song) return;
+    openSong(song.id, { steps: keySteps(song.key, item.songKey) || 0 });
+}
+
+// --- One entry of the plan (page like the other editors) ---
+// mode 'new': a task or song, optionally a person to ask, optionally in the order. mode 'edit': an existing task
+// (role) and / or order item; people are then changed in the list itself.
+let planEntry = null;
+let assignPickHandler = null;
+
+const planRoles = () => [...new Set((currentDetailEvent?.duties || []).map(d => (d.roleName || '').trim()).filter(Boolean))];
+const planEventId = () => currentDetailEvent?.id || programEvent?.id;
+
+function openPlanEntry(entry = { mode: 'new' }) {
+    if (!currentDetailEvent?.canEdit) return;
+    if (programEvent?.id !== currentDetailEvent.id) programItems = [];
+    const item = entry.itemId ? programItems.find(i => i.id === entry.itemId) : (entry.role ? programItems.find(i => itemTask(i, [entry.role])) : null);
+    const kind = item?.songId ? 'song' : 'task';
+    planEntry = { mode: entry.mode, role: entry.role || (item ? itemTask(item, planRoles()) : null), itemId: item?.id || null, kind, songId: item?.songId || '', assignees: [] };
+    const existingName = entry.mode === 'edit' ? (entry.role || (item ? programItemTitle(item) : '')) : '';
+    setText('plan-entry-title', entry.mode === 'new' ? t('plan_new_entry', 'New entry') : existingName || t('plan_edit_entry', 'Edit entry'));
+    setText('plan-entry-sub', [currentDetailEvent.title, formatEventDateSpanCompact(currentDetailEvent.date, currentDetailEvent.endDate), currentDetailEvent.startTime].filter(Boolean).join(' · '));
+    setValue('plan-entry-name', item ? (item.title || '') : (entry.role || ''));
+    const nameInput = $('plan-entry-name');
+    if (nameInput) nameInput.readOnly = entry.mode === 'edit';
+    setPlanKind(kind);
+    show('plan-entry-kind', entry.mode === 'new', 'flex');
+    document.querySelector('#plan-entry-modal .plan-sheet')?.classList.toggle('is-edit', entry.mode === 'edit');
+    if (entry.mode === 'edit') {
+        show('plan-entry-name', false);
+        const songBox = $('plan-entry-song');
+        if (songBox) songBox.hidden = true;
+    }
+    const inProgram = $('plan-entry-in-program');
+    if (inProgram) inProgram.checked = !!item;
+    // Without minutes an entry only sets the order; a duration gives it a time
+    setValue('plan-entry-minutes', item?.minutes || '');
+    setValue('plan-entry-key', item?.songKey || '');
+    setValue('plan-entry-note', item?.note || '');
+    togglePlanInProgram();
+    renderPlanPerson();
+    updatePlanOrder();
+    const del = $('plan-entry-delete');
+    if (del) del.hidden = entry.mode === 'new';
+    if (!songbookLoaded) loadSongs().then(renderProgramSongPicker);
+    openModal('plan-entry-modal');
+    if (entry.mode === 'new') setTimeout(() => $('plan-entry-name')?.focus(), 150);
+}
+
+function openPlanEntryForItem(itemId) {
+    openPlanEntry({ mode: 'edit', itemId });
+}
+function openPlanEntryForRole(encodedRole) {
+    openPlanEntry({ mode: 'edit', role: decodeURIComponent(encodedRole) });
+}
+
+function setPlanKind(kind) {
+    if (!planEntry) return;
+    planEntry.kind = kind;
+    $('plan-entry-kind')?.querySelectorAll('.settings-pill').forEach(pill => {
+        const on = pill.dataset.kind === kind;
+        pill.classList.toggle('is-active', on);
+        pill.setAttribute('aria-checked', String(on));
+    });
+    show('plan-entry-name', kind === 'task');
+    const songBox = $('plan-entry-song');
+    if (songBox) songBox.hidden = kind !== 'song';
+    const keyField = $('plan-entry-key-field');
+    if (keyField) keyField.hidden = kind !== 'song';
+    if (kind === 'song') {
+        setValue('program-song-search', '');
+        renderProgramSongPicker();
+    }
+}
+
+function renderProgramSongPicker() {
+    const chosen = $('plan-entry-song-chosen');
+    const song = planEntry?.songId ? songs.find(s => s.id === planEntry.songId) : null;
+    if (chosen) {
+        chosen.hidden = !song;
+        chosen.innerHTML = song ? `${svgIcon('music', 15)}<span>${escapeHtml(song.title)}</span>${song.key ? `<span class="program-key">${escapeHtml(song.key)}</span>` : ''}` : '';
+    }
+    const target = $('program-song-results');
+    if (!target) return;
+    // Editing keeps its song; a new song entry shows the songbook to choose from
+    const search = $('program-song-search');
+    if (search) search.hidden = planEntry?.mode === 'edit';
+    if (planEntry?.mode === 'edit') {
+        target.innerHTML = '';
+        return;
+    }
+    if (!songbookLoaded) {
+        target.innerHTML = '<div class="polls-loading"><span class="spinner"></span></div>';
+        return;
+    }
+    const query = normalizeSearch(inputValue('program-song-search').trim());
+    if (planEntry?.songId && !query) {
+        target.innerHTML = '';
+        return;
+    }
+    const found = (query ? songs.filter(s => s._search.includes(query)) : songs).slice(0, 30);
+    target.innerHTML = found.map(s => `
+        <button type="button" class="program-song-pick${s.id === planEntry?.songId ? ' is-chosen' : ''}" onclick="window.choosePlanSong(${jsArg(s.id)})">
+            <span class="program-song-pick-title">${escapeHtml(s.title)}</span>
+            <span class="program-song-pick-meta">${escapeHtml([s.artist, s.key].filter(Boolean).join(' · '))}</span>
+        </button>`).join('') || `<p class="program-empty">${t('songbook_no_match', 'No song found')}</p>`;
+}
+
+function choosePlanSong(songId) {
+    if (!planEntry) return;
+    planEntry.songId = songId;
+    const song = songs.find(s => s.id === songId);
+    if (song && !inputValue('plan-entry-key')) setValue('plan-entry-key', song.key || '');
+    setValue('program-song-search', '');
+    renderProgramSongPicker();
+}
+
+function togglePlanInProgram() {
+    const on = !!$('plan-entry-in-program')?.checked;
+    const fields = $('plan-entry-program-fields');
+    if (fields) fields.hidden = !on;
+    fillPlanPositions();
+    updatePlanOrder();
+}
+
+/** The place in the order: "At the start" or "After …" each other item (the entry itself left out). */
+function fillPlanPositions() {
+    const select = $('plan-entry-position');
+    if (!select || !planEntry) return;
+    const others = programItems.filter(i => i.id !== planEntry.itemId);
+    const index = planEntry.itemId ? programItems.findIndex(i => i.id === planEntry.itemId) : -1;
+    const current = index > -1 ? index : others.length;
+    select.innerHTML = [`<option value="0">${escapeHtml(t('plan_at_start', 'At the start'))}</option>`]
+        .concat(others.map((item, i) => `<option value="${i + 1}">${escapeHtml(t('plan_after', 'After "{name}"', { name: programItemTitle(item) }))}</option>`))
+        .join('');
+    select.value = String(current);
+}
+
+/** The time this entry would start at (only when the event has a start time). */
+function updatePlanOrder() {
+    if (!planEntry) return;
+    const others = programItems.filter(i => i.id !== planEntry.itemId);
+    const place = Math.min(Number(inputValue('plan-entry-position') || others.length), others.length);
+    const start = currentDetailEvent?.startTime || '';
+    const hint = $('plan-entry-start');
+    if (!hint) return;
+    const minutes = parseInt(inputValue('plan-entry-minutes'), 10) || 0;
+    if (!/^\d{1,2}:\d{2}$/.test(start)) {
+        hint.textContent = '';
+        return;
+    }
+    const time = addMinutes(start, programTotal(others.slice(0, place)));
+    hint.textContent = minutes
+        ? t('plan_starts_hint', 'Starts at {time}, until {end}', { time, end: addMinutes(time, minutes) })
+        : t('plan_order_only', 'Without a duration it only sets the order.');
+}
+
+/** After a change from the entry page: fresh data in the list behind it, the page stays open. */
+async function reloadPlanEvent() {
+    await loadEventsData();
+    const ev = appEvents.find(e => e.id === currentDetailEvent?.id);
+    if (!ev) return;
+    currentDetailEvent = ev;
+    programEvent = ev;
+    updateDutyProgress(ev.duties || []);
+    renderGroupedDuties(ev.duties || [], ev);
+    updateDutyPlanHeader();
+}
+
+/** The task an existing entry asks people for: its own, else one named after the item (the item then points to it). */
+async function ensurePlanRole() {
+    if (planEntry.role) return planEntry.role;
+    const item = programItems.find(i => i.id === planEntry.itemId);
+    if (!item) return null;
+    const role = programItemTitle(item).trim();
+    if (!sameName(item.who, role)) {
+        const items = programItems.map(i => (i.id === item.id ? { ...i, who: role } : i));
+        const data = await apiJson(`/events/${encodeURIComponent(currentDetailEvent.id)}/program`, 'PUT', { items }, t('program_save_failed', 'The order of service could not be saved'));
+        programItems = data.items || items;
+    }
+    planEntry.role = role;
+    return role;
+}
+
+/** Existing entry: ask right away (an open place of the task is filled first). */
+async function askPlanPerson(data) {
+    try {
+        const role = await ensurePlanRole();
+        if (!role) return;
+        const slot = (currentDetailEvent.duties || []).find(d => sameName(d.roleName, role) && d.status === 'open');
+        await apiJson(slot ? `/events/duties/${slot.id}/assign` : `/events/${encodeURIComponent(currentDetailEvent.id)}/duties`, 'POST',
+            slot ? { ...data, sendEmail: true } : { roleName: role, ...data, sendEmail: true }, t('duty_assign_error', 'Failed to assign'));
+        showToast(data.targetGroupId ? t('duty_group_assigned', 'Group assigned successfully!') : t('duty_request_sent', 'Duty request sent & email delivered!'));
+        await reloadPlanEvent();
+        renderPlanPerson();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function removePlanPerson(dutyId) {
+    const ev = currentDetailEvent;
+    const duty = ev?.duties?.find(d => d.id === dutyId);
+    if (!duty || !confirmAction(t('duty_remove_entry_confirm', 'Really remove this entry?'))) return;
+    try {
+        const res = await api(`/events/duties/${dutyId}`, 'DELETE');
+        if (!res.ok) throw new Error(t('duty_remove_error', 'Failed to remove'));
+        // The task stays (empty) when its last person goes
+        if ((ev.duties || []).filter(d => sameName(d.roleName, duty.roleName)).length === 1) await api(`/events/${ev.id}/duties`, 'POST', { roleName: duty.roleName });
+        await reloadPlanEvent();
+        renderPlanPerson();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+/** Who: new entries keep the one person / group to ask; existing entries show their people with "remove". */
+function renderPlanPerson() {
+    const box = $('plan-entry-person');
+    const editing = planEntry?.mode === 'edit';
+    show('plan-entry-person-btn', true, 'flex');
+    const asked = editing ? (currentDetailEvent?.duties || []).some(d => planEntry.role && sameName(d.roleName, planEntry.role) && hasDutyAssignee(d)) : planEntry?.assignees.length > 0;
+    setText('plan-entry-person-label', asked ? t('plan_ask_more', 'Ask someone else') : t('plan_ask_person', 'Ask a person or group'));
+    if (!box) return;
+    if (editing) {
+        const people = (currentDetailEvent?.duties || []).filter(d => planEntry.role && sameName(d.roleName, planEntry.role) && hasDutyAssignee(d));
+        box.innerHTML = people.map(d => `
+            <span class="plan-entry-person-row">
+                ${planPeople([d])}
+                <button type="button" class="plan-entry-remove" onclick="window.removePlanPerson(${jsArg(d.id)})" aria-label="${escapeHtml(t('duty_remove_entry', 'Remove entry'))}" title="${escapeHtml(t('duty_remove_entry', 'Remove entry'))}">${svgIcon('x', 14, 2.5)}</button>
+            </span>`).join('') || `<span class="plan-open">${t('plan_open', 'still open')}</span>`;
+        return;
+    }
+    // New entry: everyone chosen so far (asked when saving), each can go again
+    box.innerHTML = (planEntry?.assignees || []).map((a, index) => `
+        <span class="plan-entry-person-row">
+            <span class="plan-person">${a.data.targetGroupId ? `<span class="plan-person-icon">${svgIcon('users', 11, 2.5)}</span>` : renderAvatarWrap(a.data.targetUserId, a.label, { wrapClass: 'plan-person-avatar', imgClass: 'plan-person-img', initialsClass: 'plan-person-initials' })}<span>${escapeHtml(a.label)}</span></span>
+            <button type="button" class="plan-entry-remove" onclick="window.clearPlanPerson(${index})" aria-label="${escapeHtml(t('btn_remove', 'Remove'))}" title="${escapeHtml(t('btn_remove', 'Remove'))}">${svgIcon('x', 14, 2.5)}</button>
+        </span>`).join('');
+}
+
+function pickPlanPerson() {
+    const name = planEntry?.kind === 'song' ? songs.find(s => s.id === planEntry.songId)?.title : inputValue('plan-entry-name').trim();
+    openAssignDutyModalForRole(encodeURIComponent(name || t('duty_task_fallback', 'Task')));
+    // New entries keep the choice until saving; existing ones ask right away
+    assignPickHandler = data => {
+        const { label, ...rest } = data;
+        if (planEntry.mode === 'edit') return askPlanPerson(rest);
+        const same = a => (rest.targetUserId && a.data.targetUserId === rest.targetUserId) || (rest.targetGroupId && a.data.targetGroupId === rest.targetGroupId);
+        if (!planEntry.assignees.some(same)) planEntry.assignees.push({ data: rest, label: label || t('details_person', 'Person') });
+        renderPlanPerson();
+    };
+}
+
+function clearPlanPerson(index) {
+    if (!planEntry) return;
+    planEntry.assignees.splice(index, 1);
+    renderPlanPerson();
+}
+
+async function savePlanEntry() {
+    const ev = currentDetailEvent;
+    if (!planEntry || !ev) return;
+    const song = planEntry.kind === 'song' ? songs.find(s => s.id === planEntry.songId) : null;
+    if (planEntry.kind === 'song' && !song && planEntry.mode === 'new') return showToast(t('plan_song_missing', 'Please choose a song.'), 'error');
+    const existingItem = planEntry.itemId ? programItems.find(i => i.id === planEntry.itemId) : null;
+    const name = planEntry.mode === 'edit'
+        ? (planEntry.role || programItemTitle(existingItem || {}))
+        : (song ? song.title : inputValue('plan-entry-name').trim());
+    if (!name) {
+        showToast(t('plan_name_missing', 'Please enter a name.'), 'error');
+        $('plan-entry-name')?.focus();
+        return;
+    }
+    const inProgram = !!$('plan-entry-in-program')?.checked;
+    const minutesValue = inputValue('plan-entry-minutes');
+    const minutes = minutesValue === '' ? null : Math.max(0, Math.min(600, parseInt(minutesValue, 10) || 0));
+    const fields = { minutes, note: inputValue('plan-entry-note').trim(), songKey: song || existingItem?.songId ? inputValue('plan-entry-key').trim() : '' };
+    const btn = $('plan-entry-save');
+    if (btn) btn.disabled = true;
+    try {
+        const roles = planRoles();
+        const roleName = planEntry.role || roles.find(r => sameName(r, name)) || name;
+        const hasTask = roles.some(r => sameName(r, roleName));
+        // People are asked through the duty roster (requests, reminders, apps)
+        if (planEntry.assignees.length) {
+            for (const a of planEntry.assignees) {
+                await apiJson(`/events/${encodeURIComponent(ev.id)}/duties`, 'POST', { roleName, ...a.data, sendEmail: true }, t('duty_assign_error', 'Failed to assign'));
+            }
+        } else if (!hasTask && (!inProgram || planEntry.mode === 'edit')) {
+            // A task without a moment always stays on the roster (also when it leaves the order)
+            await apiJson(`/events/${encodeURIComponent(ev.id)}/duties`, 'POST', { roleName }, t('duty_task_add_error', 'Failed to create the task'));
+        }
+        let items = programItems.map(i => ({ ...i }));
+        const linked = existingItem || items.find(i => itemTask(i, [roleName]));
+        if (inProgram) {
+            const entry = linked
+                ? { ...linked, ...fields }
+                : { id: '', title: song ? '' : name, who: planEntry.assignees.length || hasTask || planEntry.mode === 'edit' ? roleName : '', songId: song?.id || '', ...fields };
+            items = items.filter(i => i !== linked && i.id !== linked?.id);
+            const place = Math.min(Math.max(0, Number(inputValue('plan-entry-position') || items.length)), items.length);
+            items.splice(place, 0, entry);
+        } else if (linked) {
+            items = items.filter(i => i.id !== linked.id);
+        }
+        if (JSON.stringify(items) !== JSON.stringify(programItems)) {
+            const data = await apiJson(`/events/${encodeURIComponent(ev.id)}/program`, 'PUT', { items }, t('program_save_failed', 'The order of service could not be saved'));
+            programItems = data.items || items;
+        }
+        closeModal('plan-entry-modal', false, true);
+        showToast(planEntry.assignees.length ? t('duty_request_sent', 'Duty request sent & email delivered!') : t('plan_saved', 'Saved'));
+        await loadEventsData();
+        refreshDetailEvent(true);
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function deletePlanEntry() {
+    const ev = currentDetailEvent;
+    if (!planEntry || !ev) return;
+    const item = planEntry.itemId ? programItems.find(i => i.id === planEntry.itemId) : null;
+    const name = planEntry.role || programItemTitle(item || {});
+    if (!confirmAction(t('plan_delete_confirm', 'Delete "{name}" with everyone asked for it?', { name }))) return;
+    try {
+        const duties = (ev.duties || []).filter(d => planEntry.role && sameName(d.roleName, planEntry.role));
+        await Promise.all(duties.map(d => api(`/events/duties/${d.id}`, 'DELETE')));
+        const items = programItems.filter(i => i.id !== item?.id && !(planEntry.role && itemTask(i, [planEntry.role])));
+        if (items.length !== programItems.length) {
+            const data = await apiJson(`/events/${encodeURIComponent(ev.id)}/program`, 'PUT', { items }, t('program_save_failed', 'The order of service could not be saved'));
+            programItems = data.items || items;
+        }
+        closeModal('plan-entry-modal', false, true);
+        showToast(t('plan_deleted', 'Entry deleted'), 'info');
+        await loadEventsData();
+        refreshDetailEvent(true);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+
 async function openEventDetailModal(eventId) {
     let ev = appEvents.find(e => e.id === eventId);
     if (!ev) {
@@ -7538,20 +8273,12 @@ async function openEventDetailModal(eventId) {
         const dutiesDetails = $('detail-modal-duties-details');
         if (dutiesDetails) dutiesDetails.open = false;
         show('detail-modal-add-duty-wrap', !!ev.canEdit, 'block');
-        hideAddNewTaskForm();
         const duties = Array.isArray(ev.duties) ? ev.duties : [];
-        // "2 von 3 besetzt": confirmed people and assigned groups count as filled
-        const filled = duties.filter(d => d.status === 'confirmed' || (d.status === 'assigned' && (d.assignedGroup || d.assignedGroupName))).length;
-        const tasks = new Set(duties.map(d => (d.roleName || t('duty_task_fallback', 'Task')).trim())).size;
-        setText('detail-modal-duties-count', duties.length ? `${t('duty_filled_count', '{filled} of {total} filled', { filled, total: duties.length })} · ${tasks === 1 ? t('duty_task_count_one', '1 task') : t('duty_task_count_many', '{count} tasks', { count: tasks })}` : t('duty_no_tasks', 'No tasks yet'));
-        const progress = $('detail-modal-duties-progress');
-        if (progress) {
-            progress.style.display = duties.length ? 'block' : 'none';
-            progress.classList.toggle('is-complete', duties.length > 0 && filled === duties.length);
-            progress.querySelector('.event-progress-bar').style.width = `${duties.length ? Math.round((filled / duties.length) * 100) : 0}%`;
-        }
+        setText('detail-modal-duties-count', dutySummary(duties) || t('duty_no_tasks', 'No tasks yet'));
+        updateDutyProgress(duties);
         renderGroupedDuties(duties, ev);
     }
+    renderProgramBox(ev);
 
     show('detail-btn-edit', !!ev.canEdit, 'inline-flex');
     show('detail-btn-delete', !!ev.canEdit, 'inline-flex');
@@ -7618,105 +8345,12 @@ async function removeEventAttendee(eventId, userId) {
 function renderGroupedDuties(duties, ev) {
     const container = $('detail-modal-duties-sections');
     if (!container) return;
-    if (!duties || duties.length === 0) {
-        container.innerHTML = `<div class="duty-rows-empty">${ev.canEdit ? t('duty_empty_manager', 'Create tasks and request people or groups for them.') : t('duty_empty_member', 'No duties have been set up for this event.')}</div>`;
-        return;
-    }
-    const grouped = groupBy(duties, d => (d.roleName || t('duty_task_fallback', 'Task')).trim());
-    container.innerHTML = [...grouped].map(([roleName, roleDuties]) => renderDutyTaskCard(roleName, roleDuties, ev)).join('');
-}
-
-// One compact row per task: name, people as status chips, small add/delete tools for managers
-function renderDutyTaskCard(roleName, roleDuties, ev) {
-    const canManage = ev.canEdit || roleDuties.some(d => d.canManageDuty);
-    const encodedRoleName = encodeURIComponent(roleName);
-    const assignees = roleDuties.filter(hasDutyAssignee);
-    const openSlots = roleDuties.length - assignees.length;
-    const chips = assignees.map(d => renderDutyAssigneeItem(d, ev)).join('')
-        + (assignees.length === 0 || openSlots > 0
-            ? `<button type="button" class="duty-chip is-open" ${canManage ? `onclick="window.openAssignDutyModalForRole(${jsArg(encodedRoleName)})"` : 'disabled'}>${svgIcon(canManage ? 'plus' : 'user', 12, 2.5)}<span>${canManage ? t('duty_open_assign', 'Open – assign') : t('duty_open', 'Open')}</span></button>`
-            : '');
-    // Requests to me get the answer buttons right in the row
-    const myRequest = roleDuties.find(d => d.status === 'requested' && isCurrentUser(d.requestedUser));
-    const notes = roleDuties.filter(d => d.notes).map(d => `<div class="duty-row-note">${escapeHtml(d.notes)}</div>`).join('');
-    return `
-        <div class="duty-row">
-            <div class="duty-row-head">
-                <span class="duty-row-name">${escapeHtml(roleName)}</span>
-                ${canManage ? `
-                <div class="duty-row-tools">
-                    ${assignees.length > 0 && openSlots === 0 ? `<button type="button" class="duty-tool" onclick="window.openAssignDutyModalForRole(${jsArg(encodedRoleName)})" title="${t('duty_add_assignee', 'Add person or group')}" aria-label="${t('duty_add_assignee', 'Add person or group')}">${svgIcon('plus', 14, 2.5)}</button>` : ''}
-                    <button type="button" class="duty-tool is-danger" onclick="window.deleteEntireDutyTask(${jsArg(encodedRoleName)})" title="${t('duty_delete_task', 'Delete task')}" aria-label="${t('duty_delete_task', 'Delete task')}">${svgIcon('trash', 14)}</button>
-                </div>` : ''}
-            </div>
-            <div class="duty-row-people">${chips}</div>
-            ${myRequest ? `
-            <div class="duty-row-request">
-                <span>${t('duty_you_were_requested', 'You have been requested')}</span>
-                <button type="button" class="btn btn-primary btn-tiny" onclick="window.respondToDutyRequest(${jsArg(myRequest.id)}, 'accept')">${svgIcon('check', 13, 2.5)}<span>${t('duty_btn_accept', 'Accept')}</span></button>
-                <button type="button" class="btn btn-secondary btn-tiny" onclick="window.respondToDutyRequest(${jsArg(myRequest.id)}, 'decline')">${t('request_btn_reject', 'Reject')}</button>
-            </div>` : ''}
-            ${notes}
-        </div>`;
-}
-
-// Person / group chip with its status colour (confirmed, requested, declined, group)
-function renderDutyAssigneeItem(d, ev) {
-    const canRemove = ev.canEdit || d.canManageDuty;
-    let cls = 'is-confirmed';
-    let avatar = '';
-    let name = '';
-    let state = '';
-    if (d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup)) {
-        cls = 'is-group';
-        avatar = `<span class="duty-chip-icon">${svgIcon('users', 12, 2.5)}</span>`;
-        name = d.assignedGroupName || d.assignedGroup;
-        state = t('duty_state_group', 'Group');
-    } else if (d.status === 'requested' || d.status === 'declined') {
-        cls = d.status === 'requested' ? 'is-requested' : 'is-declined';
-        avatar = renderAvatarWrap(d.requestedUser, d.requestedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
-        name = isCurrentUser(d.requestedUser) ? t('duty_you', 'You') : (d.requestedUserName || t('details_person', 'Person'));
-        state = d.status === 'requested' ? t('duty_state_requested', 'requested') : t('duty_state_declined', 'declined');
-    } else {
-        avatar = renderAvatarWrap(d.assignedUser, d.assignedUserName || 'P', { wrapClass: 'duty-chip-avatar' });
-        name = isCurrentUser(d.assignedUser) ? t('duty_you', 'You') : (d.assignedUserName || t('events_duty_status_assigned', 'Assigned'));
-        state = '';
-    }
-    return `
-        <span class="duty-chip ${cls}" id="duty-slot-${escapeHtml(d.id)}" title="${escapeHtml(state ? `${name} · ${state}` : name)}">
-            ${avatar}
-            <span class="duty-chip-name">${escapeHtml(name)}</span>
-            ${state ? `<span class="duty-chip-state">${state}</span>` : `<span class="duty-chip-check">${svgIcon('check', 11, 3)}</span>`}
-            ${canRemove ? `<button type="button" class="duty-chip-remove" onclick="window.removeDutyAssignee(${jsArg(d.id)})" title="${t('duty_remove_entry', 'Remove entry')}" aria-label="${t('duty_remove_entry', 'Remove entry')}">${svgIcon('x', 11, 2.5)}</button>` : ''}
-        </span>`;
-}
-
-function setNewTaskFormVisible(visible) {
-    show('detail-btn-add-duty', !visible, 'inline-flex');
-    show('duty-new-task-form', visible, 'block');
-    const input = $('duty-new-task-name');
-    if (!input) return;
-    input.value = '';
-    if (visible) input.focus();
-}
-const hideAddNewTaskForm = () => setNewTaskFormVisible(false);
-
-async function submitAddNewTask() {
-    if (!currentDetailEvent) return;
-    const input = $('duty-new-task-name');
-    const roleName = input?.value?.trim();
-    if (!roleName) {
-        showToast(t('duty_task_name_required', 'Please enter a name for the task'), 'warning');
-        input?.focus();
-        return;
-    }
-    await eventAction(`/events/${currentDetailEvent.id}/duties`, 'POST', { roleName }, {
-        before: hideAddNewTaskForm, success: t('duty_task_added', 'Task "{name}" added!', { name: roleName }), error: t('duty_task_add_error', 'Failed to create the task')
-    });
+    container.innerHTML = renderDutyPlan(duties || [], programEvent?.id === ev.id ? programItems : [], ev);
 }
 
 // --- Assign duty pop-up (persons / groups) ---
 function openAssignDutyModalForRole(encodedRoleName) {
+    assignPickHandler = null;
     setValue('assign-duty-role-encoded', encodedRoleName);
     setValue('assign-duty-replace-id', '');
     setText('subtitle-assign-duty', t('duty_assign_subtitle', 'Task: {name}', { name: decodeURIComponent(encodedRoleName) }));
@@ -7768,7 +8402,7 @@ async function renderAssignDutyModalList(filterText = '') {
                 badgeHtml: renderAvatarWrap(c.id, name, { style: 'width: 36px; height: 36px; font-size: 0.8rem;' }),
                 btnText: t('duty_btn_request', 'Request'),
                 btnClass: 'btn-primary',
-                onclick: `window.selectDutyAssignee({ targetUserId: ${jsArg(c.id)}, sendEmail: true })`
+                onclick: `window.selectDutyAssignee({ targetUserId: ${jsArg(c.id)}, sendEmail: true, label: ${jsArg(name)} })`
             });
         }).join('');
     } else {
@@ -7780,19 +8414,26 @@ async function renderAssignDutyModalList(filterText = '') {
             badgeHtml: '<div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>',
             btnText: t('admin_assign_short', 'Assign'),
             btnClass: 'btn-secondary',
-            onclick: `window.selectDutyAssignee({ targetGroupId: ${jsArg(g.id || g.name || g.id)} })`
+            onclick: `window.selectDutyAssignee({ targetGroupId: ${jsArg(g.id || g.name || g.id)}, label: ${jsArg(g.name || g.id)} })`
         })).join('');
     }
 }
 
 function selectDutyAssignee(assignData) {
+    if (assignPickHandler) {
+        const pick = assignPickHandler;
+        assignPickHandler = null;
+        closeModal('assign-duty-modal');
+        pick(assignData);
+        return;
+    }
     const encodedRoleName = inputValue('assign-duty-role-encoded');
     const replaceDutyId = inputValue('assign-duty-replace-id');
     closeModal('assign-duty-modal');
     if (currentDetailEvent && encodedRoleName) assignToDutyRole(currentDetailEvent.id, encodedRoleName, assignData, replaceDutyId);
 }
 
-async function assignToDutyRole(eventId, encodedRoleName, assignData, replaceDutyId = '') {
+async function assignToDutyRole(eventId, encodedRoleName, { label, ...assignData }, replaceDutyId = '') {
     if (!eventId) return;
     const roleName = decodeURIComponent(encodedRoleName);
     // Fill an existing open slot of this task before creating a new one
@@ -7800,34 +8441,6 @@ async function assignToDutyRole(eventId, encodedRoleName, assignData, replaceDut
     await eventAction(slotId ? `/events/duties/${slotId}/assign` : `/events/${eventId}/duties`, 'POST', slotId ? { ...assignData, sendEmail: true } : { roleName, ...assignData, sendEmail: true }, {
         success: assignData.targetGroupId ? t('duty_group_assigned', 'Group assigned successfully!') : t('duty_request_sent', 'Duty request sent & email delivered!'),
         error: t('duty_assign_error', 'Failed to assign')
-    });
-}
-
-async function deleteEntireDutyTask(encodedRoleName) {
-    if (!currentDetailEvent) return;
-    const roleName = decodeURIComponent(encodedRoleName);
-    if (!confirmAction(t('duty_delete_task_confirm', 'Do you really want to delete the entire task "{name}" with all its entries?', { name: roleName }))) return;
-    try {
-        const duties = (currentDetailEvent.duties || []).filter(d => (d.roleName || '').trim() === roleName.trim());
-        if (duties.length === 0) return;
-        await Promise.all(duties.map(d => api(`/events/duties/${d.id}`, 'DELETE')));
-        showToast(t('duty_task_deleted', 'Task "{name}" deleted', { name: roleName }), 'info');
-        await loadEventsData();
-        refreshDetailEvent(true);
-    } catch {
-        showToast(t('duty_task_delete_error', 'Failed to delete the task'), 'error');
-    }
-}
-
-async function removeDutyAssignee(dutyId) {
-    if (!dutyId || !confirmAction(t('duty_remove_entry_confirm', 'Really remove this entry?'))) return;
-    const ev = currentDetailEvent;
-    const roleName = ev?.duties?.find(d => d.id === dutyId)?.roleName;
-    const isOnlySlot = (ev?.duties?.filter(d => (d.roleName || '').trim() === (roleName || '').trim()) || []).length === 1;
-    await eventAction(`/events/duties/${dutyId}`, 'DELETE', undefined, {
-        // Keep the task as an empty role so it doesn't vanish with its last entry
-        before: async () => { if (isOnlySlot && roleName && ev?.id) await api(`/events/${ev.id}/duties`, 'POST', { roleName }); },
-        success: t('duty_entry_removed', 'Entry removed'), successType: 'info', error: t('duty_remove_error', 'Failed to remove')
     });
 }
 
@@ -8190,12 +8803,10 @@ function autoResizeDetailTextarea(textarea) {
 }
 
 Object.assign(window, {
-    switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, submitAddNewTask,
-    hideAddNewTaskForm, openAssignDutyModalForRole, switchAssignDutyTab, selectDutyAssignee, deleteEntireDutyTask, removeDutyAssignee,
-    toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
+    switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, 
+     openAssignDutyModalForRole, switchAssignDutyTab, selectDutyAssignee, toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
     enterDetailEditMode, cancelDetailEditMode, saveDetailEditMode, openNewEventDetailModal, setDetailEditType, toggleDetailMultiDay,
     toggleDetailRegFields, autoResizeDetailTextarea,
-    showAddNewTaskForm: () => setNewTaskFormVisible(true),
     handleEventsSearchInput: setEventsSearch,
     clearEventsSearch: () => {
         setValue('events-search-input', '');

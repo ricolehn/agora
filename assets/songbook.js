@@ -224,4 +224,13 @@ function searchText(song) {
 
 const normalizeSearch = (text) => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').toLowerCase();
 
-export { parseChord, transposeChord, transposedKey, spellingFor, parseSong, renderSongHtml, searchText, normalizeSearch };
+/** Semitones from one key to another (-6..5, like the song page), e.g. G → A = 2; null if one is not a key. */
+function keySteps(from, to) {
+    const a = parseChord(from);
+    const b = parseChord(to);
+    if (!a || !b) return null;
+    const diff = noteIndex(b.root, b.accidental, false) - noteIndex(a.root, a.accidental, false);
+    return ((((diff + 18) % 12) + 12) % 12) - 6;
+}
+
+export { parseChord, transposeChord, transposedKey, keySteps, spellingFor, parseSong, renderSongHtml, searchText, normalizeSearch };

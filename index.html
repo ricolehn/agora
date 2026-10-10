@@ -741,6 +741,20 @@
             <div id="songbook-license" class="songbook-license"></div>
         </div>
 
+        <!-- Prayer requests: share what is on your heart, pray for each other -->
+        <div id="prayers" class="tab-content" role="tabpanel">
+            <div class="polls-head">
+                <button type="button" class="hub-back-btn" onclick="switchTab('hub')" data-i18n-aria-label="btn_back" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                <h1 class="polls-title" data-i18n="prayers_title">Prayer requests</h1>
+            </div>
+            <p class="polls-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span data-i18n="prayers_note">Share what is on your heart, with your name or anonymously. When it is done, simply remove it.</span></p>
+            <div class="polls-filter prayers-filter" role="tablist">
+                <button type="button" role="tab" aria-selected="true" class="polls-filter-btn is-active" data-filter="all" onclick="setPrayerFilter('all')" data-i18n="prayers_filter_all">All</button>
+                <button type="button" role="tab" aria-selected="false" class="polls-filter-btn" data-filter="mine" onclick="setPrayerFilter('mine')" data-i18n="prayers_filter_mine">Mine</button>
+            </div>
+            <div id="prayers-list"></div>
+        </div>
+
         <div id="ai-chat" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-ai-chat" style="height: 100%;">
             <div id="card-ai-chat" class="ai-chat-layout">
                 <div class="card-header ai-chat-header-styled">
@@ -1717,6 +1731,96 @@
     </div>
 </div>
 
+<div id="prayer-edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="prayer-edit-title">
+    <div class="modal-content modal-content-enhanced plan-sheet">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div><div id="prayer-edit-title" class="modal-title-main" data-i18n="prayers_new">Share a prayer request</div></div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeModal('prayer-edit-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced plan-sheet-body">
+            <textarea id="prayer-text" class="form-input prayer-input" rows="5" maxlength="1000" data-i18n-placeholder="prayers_text_ph" placeholder="What can we pray for?" data-i18n-aria-label="prayers_your_request" aria-label="Your request" oninput="updatePrayerCounter()"></textarea>
+            <span id="prayer-counter" class="prayer-counter">0 / 1000</span>
+            <div class="plan-sheet-section">
+                <span class="plan-sheet-label" id="prayer-duration-label" data-i18n="prayers_how_long_short">Shown for</span>
+                <div class="settings-pills prayer-duration" role="radiogroup" aria-labelledby="prayer-duration-label">
+                    <button type="button" class="settings-pill" data-duration="week" role="radio" onclick="setPrayerDuration('week')" data-i18n="prayers_week">1 week</button>
+                    <button type="button" class="settings-pill" data-duration="month" role="radio" onclick="setPrayerDuration('month')" data-i18n="prayers_month">1 month</button>
+                    <button type="button" class="settings-pill" data-duration="quarter" role="radio" onclick="setPrayerDuration('quarter')" data-i18n="prayers_quarter">3 months</button>
+                </div>
+            </div>
+            <div class="plan-sheet-section">
+                <label class="plan-switch-row" for="prayer-anonymous">
+                    <span class="prayer-anon-text"><span class="plan-sheet-label" data-i18n="prayers_anonymous">Share anonymously</span><span class="plan-sheet-hint" data-i18n="prayers_anonymous_desc">Nobody sees who it is from, not even the leaders.</span></span>
+                    <span class="switch"><input type="checkbox" id="prayer-anonymous" role="switch"><span class="slider"></span></span>
+                </label>
+            </div>
+        </div>
+        <div class="modal-footer-enhanced plan-sheet-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('prayer-edit-modal')" data-i18n="btn_cancel">Cancel</button>
+            <button type="button" id="prayer-submit" class="btn btn-primary" onclick="submitPrayer()" data-i18n="prayers_share">Share</button>
+        </div>
+    </div>
+</div>
+
+<div id="plan-entry-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="plan-entry-title">
+    <div class="modal-content modal-content-enhanced plan-sheet">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div>
+                    <div id="plan-entry-title" class="modal-title-main" data-i18n="plan_new_entry">New entry</div>
+                    <div id="plan-entry-sub" class="modal-subtitle"></div>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeModal('plan-entry-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced plan-sheet-body">
+            <div id="plan-entry-kind" class="settings-pills plan-kind" role="radiogroup" data-i18n-aria-label="plan_kind" aria-label="Kind of entry">
+                <button type="button" role="radio" class="settings-pill is-active" data-kind="task" aria-checked="true" onclick="setPlanKind('task')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span data-i18n="plan_kind_task">Task / item</span></button>
+                <button type="button" role="radio" class="settings-pill" data-kind="song" aria-checked="false" onclick="setPlanKind('song')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span data-i18n="plan_kind_song">Song</span></button>
+            </div>
+            <input type="text" id="plan-entry-name" class="form-input plan-input" maxlength="80" data-i18n-placeholder="plan_name_ph" placeholder="e.g. Sermon, tech, welcome" data-i18n-aria-label="plan_name" aria-label="Name">
+            <div id="plan-entry-song" class="plan-entry-song" hidden>
+                <div id="plan-entry-song-chosen" class="plan-song-chosen" hidden></div>
+                <input type="search" id="program-song-search" class="form-input plan-input" data-i18n-placeholder="program_song_search" placeholder="Search the songbook…" oninput="renderProgramSongPicker()">
+                <div id="program-song-results" class="program-song-results"></div>
+            </div>
+
+            <div class="plan-sheet-section plan-who-section">
+                <span class="plan-sheet-label" data-i18n="plan_who">Who?</span>
+                <div id="plan-entry-person"></div>
+                <button type="button" id="plan-entry-person-btn" class="plan-link-btn" onclick="pickPlanPerson()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span id="plan-entry-person-label" data-i18n="plan_ask_person">Ask a person or group</span></button>
+            </div>
+
+            <div class="plan-sheet-section">
+                <label class="plan-switch-row" for="plan-entry-in-program">
+                    <span class="plan-sheet-label" data-i18n="plan_in_program">In the order of service</span>
+                    <span class="switch"><input type="checkbox" id="plan-entry-in-program" role="switch" onchange="togglePlanInProgram()"><span class="slider"></span></span>
+                </label>
+                <div id="plan-entry-program-fields" class="plan-sheet-fields" hidden>
+                    <label class="plan-field is-position"><span data-i18n="plan_position_label">Position</span>
+                        <select id="plan-entry-position" class="form-select plan-input" onchange="updatePlanOrder()"></select>
+                    </label>
+                    <label class="plan-field is-minutes"><span data-i18n="plan_duration">Duration (min)</span>
+                        <input type="number" id="plan-entry-minutes" inputmode="numeric" min="0" max="600" placeholder="0" class="form-input plan-input" oninput="updatePlanOrder()">
+                    </label>
+                    <label class="plan-field is-key" id="plan-entry-key-field" hidden><span data-i18n="songbook_key_label">Key</span>
+                        <input type="text" id="plan-entry-key" maxlength="3" class="form-input plan-input">
+                    </label>
+                    <p id="plan-entry-start" class="plan-sheet-hint"></p>
+                    <input type="text" id="plan-entry-note" class="form-input plan-input plan-field-wide" maxlength="300" data-i18n-placeholder="program_note_ph" placeholder="Note (optional)" data-i18n-aria-label="program_note_ph" aria-label="Note (optional)">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer-enhanced plan-sheet-footer">
+            <button type="button" id="plan-entry-delete" class="plan-delete" onclick="deletePlanEntry()" data-i18n-aria-label="plan_delete_entry" aria-label="Delete entry" data-i18n-title="plan_delete_entry" title="Delete entry" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('plan-entry-modal')" data-i18n="btn_cancel">Cancel</button>
+            <button type="button" id="plan-entry-save" class="btn btn-primary" onclick="savePlanEntry()" data-i18n="btn_save">Save</button>
+        </div>
+    </div>
+</div>
+
 <div id="poll-create-modal" class="modal poll-editor-page" role="dialog" aria-modal="true" aria-labelledby="poll-create-title">
     <div class="poll-editor">
         <div class="poll-editor-top">
@@ -2688,7 +2792,7 @@
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
                         </div>
                         <div class="event-card-head-text">
-                            <span class="event-card-head-title" data-i18n="events_duty_roster">Duty roster</span>
+                            <span id="detail-modal-duties-title" class="event-card-head-title" data-i18n="events_duty_roster">Duty roster</span>
                             <span id="detail-modal-duties-count" class="event-card-head-meta"></span>
                         </div>
                         <span class="event-chevron">
@@ -2702,17 +2806,10 @@
                         <!-- One row per task, rendered dynamically -->
                     </div>
                     <div id="detail-modal-add-duty-wrap" class="duty-add-wrap" style="display:none;">
-                        <button type="button" class="duty-add-task-btn" id="detail-btn-add-duty" onclick="window.showAddNewTaskForm()">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            <span data-i18n="duty_add_task">Add task</span>
+                        <button type="button" class="duty-add-task-btn" id="detail-btn-add-duty" onclick="window.openPlanEntry()">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span data-i18n="plan_add_entry">Add entry</span>
                         </button>
-                        <div id="duty-new-task-form" class="duty-new-task-form" style="display:none;">
-                            <div class="duty-new-task-input-wrap">
-                                <input type="text" id="duty-new-task-name" class="duty-new-task-input" placeholder="Task name (e.g. bistro, tech)..." data-i18n-placeholder="duty_task_name_placeholder" onkeydown="if(event.key==='Enter'){event.preventDefault();window.submitAddNewTask();}">
-                                <button type="button" class="btn btn-primary btn-small duty-new-task-submit" onclick="window.submitAddNewTask()" data-i18n="btn_add">Add</button>
-                                <button type="button" class="btn btn-ghost btn-small duty-new-task-cancel" onclick="window.hideAddNewTaskForm()" aria-label="Cancel" data-i18n-aria-label="btn_cancel">✕</button>
-                            </div>
-                        </div>
                     </div>
                 </details>
             </div>

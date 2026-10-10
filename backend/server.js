@@ -33,6 +33,7 @@ const systemRouter = require('./routes/system');
 const pollsRouter = require('./routes/polls');
 const features = require('./features');
 const songbookRouter = require('./routes/songbook');
+const prayersRouter = require('./routes/prayers');
 
 const app = express();
 app.set('trust proxy', resolveTrustProxySetting());
@@ -139,6 +140,7 @@ app.use(systemRouter);
 // Polls are switched off for now (backend/features.js): without the router every /api/polls call is a 404
 if (features.polls) app.use(pollsRouter);
 app.use(songbookRouter);
+app.use(prayersRouter);
 
 app.get('*', pageRateLimit, (req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/data/')) {
