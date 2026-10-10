@@ -433,6 +433,19 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.ok(mentee);
   });
 
+  test('page addresses: deep paths get the app (with <base href>), files and the API stay what they are', async () => {
+    for (const page of ['/events/Jugendfreizeit_2026', '/settings/profile', '/songbook/Gro%C3%9Fer_Gott', '/mentoring/chat/abc']) {
+      const res = await fetch(base + page, { headers: { 'X-Forwarded-For': '10.42.9.1' } });
+      assert.equal(res.status, 200, page);
+      const html = await res.text();
+      assert.ok(html.includes('<base href="/">'), `${page} has the base address`);
+    }
+    const js = await fetch(base + '/assets/app.js');
+    assert.match(js.headers.get('content-type') || '', /javascript/);
+    const api = await fetch(base + '/api/does-not-exist');
+    assert.ok(!(api.headers.get('content-type') || '').includes('text/html') || api.status === 404, 'the API never answers with the app');
+  });
+
   test('songbook: only the songbook permission edits, every member reads', async () => {
     const song = { title: 'Amazing Grace', content: '[G]Amazing [C]grace, how [G]sweet the sound' };
     assert.equal((await call('max', 'POST', '/api/songs', song)).status, 403);

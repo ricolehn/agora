@@ -1274,5 +1274,6 @@
   "songbook_text_size": "Text size",
   "songbook_adjust": "Adjust",
   "songbook_pause": "Pause scrolling",
-  "songbook_key_shifted": "Key {key} ({shift})"
+  "songbook_key_shifted": "Key {key} ({shift})",
+  "events_link_missing": "This event no longer exists."
 }

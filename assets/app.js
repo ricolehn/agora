@@ -611,6 +611,7 @@ function openModal(id) {
     if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
     modal._escHandler = e => { if (e.key === 'Escape') closeModal(id); };
     document.addEventListener('keydown', modal._escHandler);
+    syncUrl();
 }
 
 function hideModal(modal) {
@@ -654,6 +655,7 @@ function closeModal(id, fromPopstate = false, force = false) {
         try { modal._customOnClose(); } catch { /* ignore */ }
         delete modal._customOnClose;
     }
+    syncUrl();
 }
 
 function closeMultipleModals(ids) {
@@ -675,6 +677,7 @@ function closeMultipleModals(ids) {
     // Nested modals share a single history entry (replaceState), so step back at most once
     if (backs > 0 && history.state?.isModal) programmaticBack();
     reshowTopModal();
+    syncUrl();
 }
 
 // --- Header: slides away while scrolling down, comes back on the first scroll up (like the Android app) ---
@@ -717,6 +720,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('popstate', () => {
+    // A #link inside the running app (a notification, an old bookmark) also fires popstate: it is a destination
+    if (followLegacyHash()) return;
+    handleHistoryBack();
+    syncUrl();
+});
+
+function handleHistoryBack() {
     if (programmaticBacks > 0 && Date.now() - programmaticBackAt < PROGRAMMATIC_BACK_WINDOW_MS) {
         programmaticBacks--;
         return;
@@ -748,7 +758,7 @@ window.addEventListener('popstate', () => {
         tabHistoryPushed = false;
         if (currentActiveTab !== HOME_TAB) switchTab(HOME_TAB, 'history');
     }
-});
+}
 
 function showDynamicModal({ id = 'dynamic-ui-modal', title, subtitle, icon, contentHtml, bodyHtml, footerHtml, maxWidth, onClose }) {
     let modal = $(id);
@@ -1339,25 +1349,20 @@ async function loadSongs() {
         if (!songs.some(s => s.id === openSongId)) closeSong();
         else renderSongView();
     }
-    // Opened through a shared link (#songbook/<id>): show that song once, then forget the link
-    const linked = songIdFromHash();
-    if (linked) {
-        history.replaceState(history.state, '', window.location.pathname + window.location.search + '#songbook');
-        if (songs.some(s => s.id === linked)) openSong(linked);
+    // Opened through its address (/songbook/<name>, old links #songbook/<id>): show that song once
+    if (pendingSongSlug) {
+        const linked = findBySlug(songs, pendingSongSlug);
+        pendingSongSlug = null;
+        if (linked) openSong(linked.id);
         else showToast(t('songbook_link_missing', 'This song is no longer in the songbook.'), 'error');
     }
 }
-
-const songIdFromHash = () => {
-    const match = /^#\/?songbook\/([A-Za-z0-9_-]{1,64})$/.exec(window.location.hash || '');
-    return match ? match[1] : null;
-};
 
 // A link to the open song for the band: the system share sheet, else the clipboard
 async function shareSong() {
     const song = songs.find(s => s.id === openSongId);
     if (!song) return;
-    const url = `${window.location.origin}${window.location.pathname}#songbook/${encodeURIComponent(song.id)}`;
+    const url = `${window.location.origin}/songbook/${encodeURIComponent(songSlug(song))}`;
     try {
         if (navigator.share) {
             await navigator.share({ title: song.title, url });
@@ -1893,6 +1898,7 @@ function openSettingsPage(key) {
     const page = SETTINGS_PAGES.find(p => p.key === key);
     if (!root || !page) return;
     root.dataset.page = key;
+    syncUrl();
     const title = root.querySelector('.settings-nav-title');
     title.textContent = page.title ? t(...page.title) : t('settings_profile', 'Profile');
     if (key === 'appearance') renderSettingsPills();
@@ -1907,6 +1913,7 @@ function closeSettingsPage() {
     const left = root.dataset.page;
     delete root.dataset.page;
     renderSettingsMenu(root);
+    syncUrl();
     document.querySelector('.container')?.scrollTo({ top: 0 });
     root.querySelector(`.settings-row[data-key="${left}"]`)?.focus({ preventScroll: true });
 }
@@ -1950,6 +1957,7 @@ function switchFinanceSubpage(subpage) {
         renderHistoryTab(true);
         renderStats();
     }
+    syncUrl();
 }
 
 const TAB_ALIASES = { overview: 'finances', 'payment-history': 'finances', 'people-view': 'finances', 'user-history': 'user-finances', 'user-requests': 'user-finances', calendar: 'events' };
@@ -2073,19 +2081,144 @@ function switchTab(tabName, source) {
     });
     if (source !== 'history' && isAuthenticated) syncTabHistory(tabName);
     TAB_LOADERS[tabName]?.();
+    syncUrl();
 }
 
-function resolveHashTab() {
-    let tab = (window.location.hash || '').replace(/^#\/?/, '').trim().split('?')[0].split('/')[0];
-    if (tab === 'calendar') tab = 'events';
-    if (tab === 'requests') tab = canViewFinances() ? 'finances' : 'user-finances';
-    return tab && $(tab)?.classList.contains('tab-content') ? tab : null;
+// --- Addresses: every page has its own path (/events, /events/Jugendfreizeit_2026, /settings/profile, ...) ---
+// The history keeps its shape (start page, one entry for "somewhere else", open pop-ups); the address of the
+// current entry follows what is on screen. Old #links (notifications, the apps, bookmarks) still lead there.
+const slugify = text => String(text || '').normalize('NFC').trim().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+const titleSlug = item => slugify(item.title) || item.id;
+
+// A readable name for an item of a list: its title; when titles repeat, the date (events) or the id tells them apart
+function itemSlug(item, list, date) {
+    const base = titleSlug(item);
+    const twins = list.filter(other => titleSlug(other) === base);
+    if (twins.length <= 1) return base;
+    const day = date?.(item);
+    if (day && twins.filter(other => date(other) === day).length === 1) return `${base}_${day}`;
+    return `${base}~${item.id}`;
 }
 
-window.addEventListener('hashchange', () => {
-    const tab = isAuthenticated && resolveHashTab();
-    if (tab) switchTab(tab);
-});
+function findBySlug(list, slug, date) {
+    if (!slug) return null;
+    const exact = list.find(item => itemSlug(item, list, date) === slug);
+    if (exact) return exact;
+    const id = slug.includes('~') ? slug.split('~').pop() : slug;
+    const byId = list.find(item => item.id === id);
+    if (byId) return byId;
+    // An older link whose title got a twin since: the one of that day, else the next upcoming (or the latest)
+    const dated = date ? /^(.*)_(\d{4}-\d{2}-\d{2})$/.exec(slug) : null;
+    const twins = list.filter(item => titleSlug(item) === (dated ? dated[1] : slug));
+    if (dated) return twins.find(item => date(item) === dated[2]) || null;
+    if (!date || twins.length < 2) return twins[0] || null;
+    const sorted = [...twins].sort((a, b) => String(date(a)).localeCompare(String(date(b))));
+    return sorted.find(item => String(date(item)) >= getTodayStr()) || sorted[sorted.length - 1];
+}
+
+const eventDay = ev => ev.date;
+const eventSlug = ev => itemSlug(ev, appEvents, eventDay);
+const songSlug = song => itemSlug(song, songs);
+
+const TAB_PATHS = { 'user-overview': '', finances: 'finances', 'user-finances': 'finances', events: 'events', mentoring: 'mentoring', hub: 'extras', songbook: 'songbook', 'ai-chat': 'ai', polls: 'polls', settings: 'settings', 'user-settings': 'settings', 'super-admin-settings': 'system' };
+// First part of a path → tab (old tab ids keep working)
+const ROUTE_TABS = {
+    '': () => HOME_TAB, 'index.html': () => HOME_TAB, home: () => HOME_TAB, 'user-overview': () => HOME_TAB,
+    finances: () => (canViewFinances() ? 'finances' : 'user-finances'),
+    events: () => 'events', mentoring: () => 'mentoring', extras: () => 'hub', songbook: () => 'songbook',
+    ai: () => 'ai-chat', polls: () => 'polls', system: () => 'super-admin-settings',
+    settings: () => (TAB_GUARDS.settings() ? 'settings' : 'user-settings')
+};
+// Old #links → paths
+const LEGACY_HASHES = { 'super-admin-settings': 'system', 'user-finances': 'finances', requests: 'finances', overview: 'finances', 'payment-history': 'finances', 'user-history': 'finances', 'user-requests': 'finances', 'people-view': 'finances/members', calendar: 'events', 'ai-chat': 'ai', 'user-settings': 'settings', hub: 'extras' };
+
+function legacyHashPath(hash) {
+    const raw = String(hash || '').replace(/^#\/?/, '').split('?')[0].trim();
+    if (!raw) return null;
+    const [head, ...rest] = raw.split('/');
+    return '/' + [head in LEGACY_HASHES ? LEGACY_HASHES[head] : head, ...rest].filter(Boolean).join('/');
+}
+
+const shownModal = id => !!$(id)?.classList.contains('show');
+
+/** The path of what is on screen. */
+function routePath() {
+    if (shownModal('event-detail-modal') && currentDetailEvent && appEvents.some(ev => ev.id === currentDetailEvent.id)) {
+        return `/events/${encodeURIComponent(eventSlug(currentDetailEvent))}`;
+    }
+    const song = shownModal('song-view-modal') && songs.find(s => s.id === openSongId);
+    if (song) return `/songbook/${encodeURIComponent(songSlug(song))}`;
+    const tab = currentActiveTab;
+    let sub = '';
+    if (tab === 'finances' && $('finances-subpage-members')?.classList.contains('active')) sub = 'members';
+    else if (tab === 'mentoring') sub = activeMentoringThreadId ? `chat/${encodeURIComponent(activeMentoringThreadId)}` : (currentMentoringSubTab !== 'chats' ? currentMentoringSubTab : '');
+    else if (tab === 'settings' || tab === 'user-settings') sub = $(tab)?.dataset.page || '';
+    else if (tab === 'super-admin-settings' && currentSysSettingsTab !== 'accounts') sub = currentSysSettingsTab;
+    return '/' + [TAB_PATHS[tab] ?? '', sub].filter(Boolean).join('/');
+}
+
+// Until the first route after signing in is applied, the address still holds where the person wanted to go
+let routeReady = false;
+function syncUrl() {
+    if (!isAuthenticated || !routeReady) return;
+    const path = routePath();
+    if (window.location.pathname !== path || window.location.hash) history.replaceState(history.state, '', path + window.location.search);
+}
+
+let pendingSongSlug = null;
+
+/** Shows the page of a path: tab, sub-page, event, song, chat. */
+async function applyRoute(path) {
+    const [head = '', ...rest] = String(path || '/').split('/').filter(Boolean).map(part => {
+        try { return decodeURIComponent(part); } catch { return part; }
+    });
+    const known = ROUTE_TABS[head]?.();
+    const tab = known || ($(head)?.classList.contains('tab-content') ? head : HOME_TAB);
+    const [sub, extra] = known || head === tab ? rest : [];
+    if (tab === 'songbook' && sub) pendingSongSlug = sub;
+    switchTab(tab);
+    if (currentActiveTab === 'finances' && sub === 'members') switchFinanceSubpage('members');
+    else if ((currentActiveTab === 'settings' || currentActiveTab === 'user-settings') && sub && SETTINGS_PAGES.some(p => p.key === sub) && settingsPageAvailable($(currentActiveTab), sub)) openSettingsPage(sub);
+    else if (currentActiveTab === 'super-admin-settings' && sub && SYS_TAB_LOADERS[sub]) switchSysSettingsTab(sub);
+    else if (currentActiveTab === 'mentoring' && sub === 'chat' && extra) openMentoringChatDirect(extra);
+    else if (currentActiveTab === 'mentoring' && sub && MENTORING_SUBTABS[sub] && $(`mentoring-tab-${sub}`)?.style.display !== 'none') switchMentoringSubTab(sub);
+    else if (currentActiveTab === 'events' && sub) await openEventFromRoute(sub);
+    syncUrl();
+}
+
+async function openEventFromRoute(slug) {
+    let ev = findBySlug(appEvents, slug, eventDay);
+    if (!ev) {
+        await loadEventsData();
+        ev = findBySlug(appEvents, slug, eventDay);
+    }
+    if (ev) await openEventDetailModal(ev.id);
+    else showToast(t('events_link_missing', 'This event no longer exists.'), 'error');
+}
+
+/** Once after signing in: the page the address names (or an old #link), on top of the start page. */
+function applyInitialRoute() {
+    const target = legacyHashPath(window.location.hash) ?? window.location.pathname;
+    // A reload keeps the history entry of a deeper page: it stays that entry instead of getting a second one
+    if (history.state?.tab || history.state?.isModal || history.state?.view) {
+        history.replaceState({ tab: 'restored' }, '');
+        tabHistoryPushed = true;
+    } else {
+        history.replaceState(null, '', '/' + window.location.search);
+    }
+    routeReady = true;
+    return applyRoute(target);
+}
+
+/** An old #link opened inside the running app: its entry gets the page's own address, then the app goes there. */
+function followLegacyHash() {
+    const path = legacyHashPath(window.location.hash);
+    if (!path || !isAuthenticated || !routeReady) return false;
+    history.replaceState(history.state, '', window.location.pathname + window.location.search);
+    applyRoute(path);
+    return true;
+}
+window.addEventListener('hashchange', followLegacyHash);
 
 function closeProfileMenu() {
     $('profileDropdown')?.classList.remove('show');
@@ -2264,12 +2397,8 @@ async function loadData(silent = false, { freshUser = false } = {}) {
         }
         updateNavVisibility();
 
-        if (window.location.hash) {
-            const tab = resolveHashTab();
-            if (tab) switchTab(tab);
-        } else if (!document.querySelector('.tab-content.active')) {
-            switchTab('user-overview');
-        }
+        if (!routeReady) applyInitialRoute();
+        else if (!document.querySelector('.tab-content.active')) switchTab('user-overview');
 
         people.forEach(preprocessPerson);
         if (canManageFinances()) {
@@ -2376,6 +2505,7 @@ onAuthStateChanged(auth, async user => {
         localStorage.removeItem('agora-is-logged-in');
         localStorage.removeItem('nova-is-logged-in');
         isAuthenticated = false;
+        routeReady = false;
         advancedConfigLoaded = false;
         advancedConfigAppName = null;
         currentUser = null;
@@ -2444,6 +2574,7 @@ async function attemptRegister() {
 }
 
 async function logout() {
+    history.replaceState(null, '', '/');
     try {
         sseConnection?.close();
         sseConnection = null;
@@ -2483,7 +2614,6 @@ async function deleteOwnAccount(suffix = '') {
         if (input) input.value = '';
         alert(t('delete_account_done', 'Your account has been deleted.'));
         await logout();
-        location.hash = '';
         location.reload();
     } catch (err) {
         alert(err.message || t('delete_account_failed', 'The account could not be deleted.'));
@@ -3137,6 +3267,7 @@ function switchSysSettingsTab(tabName) {
         show(`sys-panel-${key}`, key === tabName);
     });
     SYS_TAB_LOADERS[tabName]?.();
+    syncUrl();
 }
 
 function renderAccountRow(u) {
@@ -5921,6 +6052,7 @@ function switchMentoringSubTab(subTab) {
         show(`mentoring-subview-${key}`, key === subTab);
     }
     MENTORING_SUBTABS[subTab]?.();
+    syncUrl();
 }
 
 async function loadMentoringData() {
@@ -6196,6 +6328,7 @@ async function openMentoringThread(threadId) {
         }
     }
     document.querySelectorAll('.mentoring-thread-item').forEach(item => item.classList.remove('active'));
+    syncUrl();
     const activeEl = threadElement(threadId);
     if (activeEl) {
         activeEl.classList.add('active');
@@ -6262,6 +6395,7 @@ function closeMentoringChatMobile(fromHistory = false, userBack = !fromHistory) 
     mentoringChatHistoryPushed = false;
     if (returnHome) tabHistoryPushed = false;
     if (steps > 0) programmaticBack(steps);
+    syncUrl();
     if (returnHome) switchTab(HOME_TAB, 'history');
     // Only a chat that was open changes the unread counts; never pick a new chat while closing
     else if (hadOpenChat) loadMentoringThreads(false, null, false);

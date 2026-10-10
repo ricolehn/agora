@@ -1274,5 +1274,6 @@
   "songbook_text_size": "Schriftgröße",
   "songbook_adjust": "Anpassen",
   "songbook_pause": "Scrollen anhalten",
-  "songbook_key_shifted": "Tonart {key} ({shift})"
+  "songbook_key_shifted": "Tonart {key} ({shift})",
+  "events_link_missing": "Diesen Termin gibt es nicht mehr."
 }
