@@ -59,6 +59,8 @@ const {
 
 const { isFcmEnabled, getClientConfig } = require('../fcmNotifications');
 
+const features = require('../features');
+
 const router = express.Router();
 
 router.get('/api/status', (req, res) => {
@@ -78,7 +80,8 @@ router.get('/assets/config.js', async (req, res) => {
   const jsConfig = `
 export const config = {
     apiBaseUrl: window.location.origin + "/api",
-    appName: ${JSON.stringify(appName)}
+    appName: ${JSON.stringify(appName)},
+    features: ${JSON.stringify({ polls: features.polls })}
 };
 `;
   res.setHeader('Content-Type', 'application/javascript');

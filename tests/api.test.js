@@ -118,7 +118,9 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       POCKETBASE_DIR: pbDir,
       DATA_DIR: path.join(dataRoot, 'data'),
       FRONTEND_DIR: REPO_ROOT,
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      // Polls are switched off by default; their API is tested here all the same
+      AGORA_FEATURE_POLLS: '1'
     }));
     await waitFor(`${base}/api/status`, 'backend', processes);
 

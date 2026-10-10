@@ -1183,3 +1183,23 @@ describe('songbook', () => {
     assert.equal(canManageSongbook({ permissions: ['manage_songbook'] }), true);
   });
 });
+
+describe('switched-off features', () => {
+  const load = (value) => {
+    const file = require.resolve('../backend/features');
+    const before = process.env.AGORA_FEATURE_POLLS;
+    if (value === undefined) delete process.env.AGORA_FEATURE_POLLS; else process.env.AGORA_FEATURE_POLLS = value;
+    delete require.cache[file];
+    try { return require(file); } finally {
+      if (before === undefined) delete process.env.AGORA_FEATURE_POLLS; else process.env.AGORA_FEATURE_POLLS = before;
+      delete require.cache[file];
+    }
+  };
+  test('polls are off unless AGORA_FEATURE_POLLS turns them on', () => {
+    assert.equal(load(undefined).polls, false);
+    assert.equal(load('').polls, false);
+    assert.equal(load('0').polls, false);
+    assert.equal(load('1').polls, true);
+    assert.equal(load('true').polls, true);
+  });
+});

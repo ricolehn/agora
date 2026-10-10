@@ -1265,12 +1265,14 @@
   "songbook_link_copied": "Link kopiert",
   "songbook_link_failed": "Der Link konnte nicht geteilt werden.",
   "songbook_link_missing": "Dieses Lied ist nicht mehr im Liederbuch.",
-  "songbook_controls": "Liedsteuerung",
   "songbook_show_chords": "Akkorde anzeigen",
   "songbook_smaller": "Kleinere Schrift",
   "songbook_larger": "Größere Schrift",
-  "songbook_size": "Schrift",
-  "songbook_scroll": "Scrollen",
-  "songbook_key_shift": "Tonart {shift}",
-  "songbook_key_reset": "Zurück zur Originaltonart"
+  "songbook_key_reset": "Zurück zur Originaltonart",
+  "songbook_display": "Anzeige",
+  "songbook_original_key": "Originaltonart",
+  "songbook_text_size": "Schriftgröße",
+  "songbook_adjust": "Anpassen",
+  "songbook_pause": "Scrollen anhalten",
+  "songbook_key_shifted": "Tonart {key} ({shift})"
 }

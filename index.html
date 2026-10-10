@@ -259,33 +259,38 @@
             <section class="settings-section settings-section-general">
                 <h2 class="settings-section-title" data-i18n="settings_section_general">General</h2>
                 <div class="settings-grid">
-            <div class="card card-settings" data-settings-page="profile" id="card-profile-pic-admin">
-                <div class="card-header" data-i18n="profile_pic_title">Profile Picture</div>
-                <div class="card-body">
-                    <div class="profile-pic-section">
+            <div class="card card-settings settings-profile-card" data-settings-page="profile" id="card-profile-pic-admin">
+                <div class="card-body settings-profile">
+                    <div class="settings-profile-ring avatar-ring-standard" data-profile-ring>
                         <div class="profile-pic-preview-wrap">
                             <img id="admin-profile-pic-preview" class="profile-pic-preview" alt="Profile Picture" data-i18n-alt="profile_pic_title" style="display:none;">
-                            <div id="admin-profile-pic-placeholder" class="profile-pic-placeholder">
-                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="btn btn-secondary" for="admin-profile-pic-input" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                <span data-i18n="btn_upload_pic">Upload Image</span>
-                            </label>
-                            <input type="file" id="admin-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'admin')">
-                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;" data-i18n="profile_pic_desc">JPG, PNG, HEIC – will be saved as 256×256 JPEG.</div>
+                            <div id="admin-profile-pic-placeholder" class="profile-pic-placeholder"><span class="settings-profile-initials" data-profile-initials></span></div>
                         </div>
                     </div>
+                    <div class="settings-profile-name" data-profile-name></div>
+                    <div class="settings-profile-email" data-profile-email></div>
+                    <label class="btn btn-secondary settings-profile-upload" for="admin-profile-pic-input">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <span data-i18n="btn_upload_pic">Upload Image</span>
+                    </label>
+                    <input type="file" id="admin-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'admin')">
+                    <div class="settings-profile-hint" data-i18n="profile_pic_desc">JPG, PNG, HEIC – will be saved as 256×256 JPEG.</div>
                 </div>
             </div>
 
+
             <div class="card card-settings" data-settings-page="appearance" id="card-language">
-                <div class="card-header" data-i18n="settings_language">Language</div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label class="form-label" data-i18n="settings_language">Language</label>
+                    <div class="form-group settings-choice">
+                        <label class="settings-caps-label" id="settings-theme-label" for="settings-theme" data-i18n="theme_title">Color Theme</label>
+                        <select id="settings-theme" class="form-select" onchange="setTheme(this.value)">
+                            <option value="system" data-i18n="theme_system">System</option>
+                            <option value="light" data-i18n="theme_light">Light</option>
+                            <option value="dark" data-i18n="theme_dark">Dark</option>
+                        </select>
+                    </div>
+                    <div class="form-group settings-choice">
+                        <label class="settings-caps-label" id="settings-language-label" for="settings-language" data-i18n="settings_language">Language</label>
                         <select id="settings-language" class="form-select" onchange="changeAppLanguage(this.value)">
                             <option value="system" data-i18n="lang_system">System</option>
                             <option value="de">Deutsch</option>
@@ -295,40 +300,32 @@
                 </div>
             </div>
 
-            <div class="card card-settings" data-settings-page="appearance" id="card-design">
-                <div class="card-header" data-i18n="settings_design">Design</div>
+
+            <div class="card card-settings settings-flat-card" data-settings-page="notifications" id="card-security">
+                <div class="card-header" data-i18n="security_title">Security &amp; Notifications</div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label class="form-label" for="settings-theme" data-i18n="theme_title">Color Theme</label>
-                        <select id="settings-theme" class="form-select" onchange="setTheme(this.value)">
-                            <option value="system" data-i18n="theme_system">System</option>
-                            <option value="light" data-i18n="theme_light">Light</option>
-                            <option value="dark" data-i18n="theme_dark">Dark</option>
-                        </select>
-                    </div>
+                    <div class="notif-settings" id="notif-settings-admin"></div>
                 </div>
             </div>
 
-            <div class="card card-settings" data-settings-page="notifications password" id="card-security">
-                <div class="card-header" data-i18n="security_title">Security &amp; Notifications</div>
+
+            <div class="card card-settings" data-settings-page="password" id="card-password-admin">
                 <div class="card-body">
-                    <div class="notif-settings" id="notif-settings-admin" data-settings-page="notifications"></div>
-                    <div class="form-group settings-password-group" style="margin-top:20px;" data-settings-page="password">
-                        <label class="form-label" data-i18n="change_password_title">Change Password</label>
+                    <div class="form-group settings-password-group">
                         <div class="password-wrapper" style="margin-bottom: 12px;">
-                            <input type="password" id="old-password" class="form-input has-toggle" data-i18n-placeholder="old_password" placeholder="Old Password">
+                            <input type="password" id="old-password" class="form-input has-toggle" data-i18n-placeholder="old_password" placeholder="Old Password" data-i18n-aria-label="old_password" aria-label="Old Password" autocomplete="current-password">
                             <button type="button" class="password-toggle" onclick="togglePassword('old-password', this)" aria-label="Show password" data-i18n-aria-label="password_show">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
                         </div>
                         <div class="password-wrapper">
-                            <input type="password" id="new-password" class="form-input has-toggle" data-i18n-placeholder="new_password" placeholder="New Password">
+                            <input type="password" id="new-password" class="form-input has-toggle" data-i18n-placeholder="new_password" placeholder="New Password" data-i18n-aria-label="new_password" aria-label="New Password" autocomplete="new-password">
                             <button type="button" class="password-toggle" onclick="togglePassword('new-password', this)" aria-label="Show password" data-i18n-aria-label="password_show">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
                         </div>
                     </div>
-                    <button class="btn btn-secondary btn-block" onclick="changePassword()" data-i18n="btn_change_password" data-settings-page="password">Change Password</button>
+                    <button class="btn btn-primary btn-block" onclick="changePassword()" data-i18n="btn_change_password">Change Password</button>
                 </div>
             </div>
 
@@ -429,19 +426,23 @@
                 </div>
             </div>
 
-            <div class="card card-settings" data-settings-page="account" id="card-privacy-admin">
-                <div class="card-header" data-i18n="settings_privacy_title">Privacy</div>
-                <div class="card-body">
-                    <p class="settings-card-hint" data-i18n="settings_privacy_desc">How Agora handles your data and what rights you have.</p>
-                    <a class="btn btn-secondary btn-small" href="/privacy" target="_blank" rel="noopener" data-i18n="settings_privacy_open">Open privacy policy</a>
-                </div>
+            <div class="settings-menu-card settings-page-rows" data-settings-page="account" id="card-privacy-admin">
+                <a class="settings-row" href="/privacy" target="_blank" rel="noopener" style="--row-color: #0ea5e9;">
+                    <span class="settings-row-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                    <span class="settings-row-text"><span class="settings-row-title" data-i18n="settings_privacy_title">Privacy</span><span class="settings-row-desc" data-i18n="settings_privacy_desc">How Agora handles your data and what rights you have.</span></span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="settings-row-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
             </div>
-            <div class="card card-settings card-danger-zone" data-settings-page="account" id="card-delete-account-admin">
-                <div class="card-header" data-i18n="delete_account_title">Delete account</div>
-                <div class="card-body">
+            <div class="settings-menu-card settings-page-rows settings-delete-card" data-settings-page="account" id="card-delete-account-admin">
+                <button type="button" class="settings-row is-danger" aria-expanded="false" aria-controls="delete-account-body-admin" onclick="toggleDeleteAccount(this)">
+                    <span class="settings-row-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+                    <span class="settings-row-text"><span class="settings-row-title" data-i18n="delete_account_title">Delete account</span></span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="settings-row-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="settings-delete-body" id="delete-account-body-admin" hidden>
                     <p class="danger-zone-text" data-i18n="delete_account_desc">Deletes your login and your personal data: profile, profile picture, registrations, mentoring conversations, open requests and notifications. Booked payments stay with the organization for bookkeeping reasons.</p>
                     <div class="password-wrapper" style="margin-bottom: 12px;">
-                        <input type="password" id="delete-account-password-admin" class="form-input" data-i18n-placeholder="delete_account_password" placeholder="Password to confirm" autocomplete="current-password">
+                        <input type="password" id="delete-account-password-admin" class="form-input" data-i18n-placeholder="delete_account_password" placeholder="Password to confirm" data-i18n-aria-label="delete_account_password" aria-label="Password to confirm" autocomplete="current-password">
                     </div>
                     <button class="btn btn-danger btn-block" onclick="deleteOwnAccount('-admin')" data-i18n="delete_account_btn">Delete account permanently</button>
                 </div>
@@ -1019,67 +1020,70 @@
             <section class="settings-section settings-section-general">
                 <h2 class="settings-section-title" data-i18n="settings_section_general">General</h2>
                 <div class="settings-grid">
-            <div class="card" data-settings-page="profile">
-                <div class="card-header" data-i18n="profile_pic_title">Profile Picture</div>
-                <div class="card-body">
-                    <div class="profile-pic-section">
+            <div class="card card-settings settings-profile-card" data-settings-page="profile" id="card-profile-pic-user">
+                <div class="card-body settings-profile">
+                    <div class="settings-profile-ring avatar-ring-standard" data-profile-ring>
                         <div class="profile-pic-preview-wrap">
                             <img id="user-profile-pic-preview" class="profile-pic-preview" alt="Profile Picture" data-i18n-alt="profile_pic_title" style="display:none;">
-                            <div id="user-profile-pic-placeholder" class="profile-pic-placeholder">
-                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="btn btn-secondary" for="user-profile-pic-input" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                <span data-i18n="btn_upload_pic">Upload Image</span>
-                            </label>
-                            <input type="file" id="user-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'user')">
-                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:6px;" data-i18n="profile_pic_desc">JPG, PNG, HEIC – will be saved as 256×256 JPEG.</div>
+                            <div id="user-profile-pic-placeholder" class="profile-pic-placeholder"><span class="settings-profile-initials" data-profile-initials></span></div>
                         </div>
                     </div>
+                    <div class="settings-profile-name" data-profile-name></div>
+                    <div class="settings-profile-email" data-profile-email></div>
+                    <label class="btn btn-secondary settings-profile-upload" for="user-profile-pic-input">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <span data-i18n="btn_upload_pic">Upload Image</span>
+                    </label>
+                    <input type="file" id="user-profile-pic-input" accept="image/*,.heic,.heif" style="display:none;" onchange="openProfileCrop(this, 'user')">
+                    <div class="settings-profile-hint" data-i18n="profile_pic_desc">JPG, PNG, HEIC – will be saved as 256×256 JPEG.</div>
                 </div>
             </div>
 
-            <div class="card" data-settings-page="appearance password">
-                <div class="card-header" data-i18n="nav_settings">Settings</div>
+
+            <div class="card card-settings" data-settings-page="appearance" id="card-appearance-user">
                 <div class="card-body">
-                    <div class="form-group" data-settings-page="appearance">
-                        <label class="form-label" data-i18n="settings_language">Language</label>
-                        <select id="user-settings-language" class="form-select" onchange="changeAppLanguage(this.value)">
-                            <option value="system" data-i18n="lang_system">System</option>
-                            <option value="de">Deutsch</option>
-                            <option value="en">English</option>
-                        </select>
-                    </div>
-                    <div class="form-group" data-settings-page="appearance" style="margin-top:20px;">
-                        <label class="form-label" for="user-settings-theme" data-i18n="theme_title">Color Theme</label>
+                    <div class="form-group settings-choice">
+                        <label class="settings-caps-label" id="user-settings-theme-label" for="user-settings-theme" data-i18n="theme_title">Color Theme</label>
                         <select id="user-settings-theme" class="form-select" onchange="setTheme(this.value)">
                             <option value="system" data-i18n="theme_system">System</option>
                             <option value="light" data-i18n="theme_light">Light</option>
                             <option value="dark" data-i18n="theme_dark">Dark</option>
                         </select>
                     </div>
-                    <div class="form-group" data-settings-page="password" style="margin-top:20px;">
-                        <label class="form-label" data-i18n="change_password_title">Change Password</label>
-                        <div class="password-wrapper" style="margin-bottom: 12px;">
-                            <input type="password" id="user-old-password" class="form-input has-toggle" data-i18n-placeholder="old_password" placeholder="Old Password">
-                            <button type="button" class="password-toggle" onclick="togglePassword('user-old-password', this)" aria-label="Show password" data-i18n-aria-label="password_show">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                            </button>
-                        </div>
-                        <div class="password-wrapper">
-                            <input type="password" id="user-new-password" class="form-input has-toggle" data-i18n-placeholder="new_password" placeholder="New Password">
-                            <button type="button" class="password-toggle" onclick="togglePassword('user-new-password', this)" aria-label="Show password" data-i18n-aria-label="password_show">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                            </button>
-                        </div>
+                    <div class="form-group settings-choice">
+                        <label class="settings-caps-label" id="user-settings-language-label" for="user-settings-language" data-i18n="settings_language">Language</label>
+                        <select id="user-settings-language" class="form-select" onchange="changeAppLanguage(this.value)">
+                            <option value="system" data-i18n="lang_system">System</option>
+                            <option value="de">Deutsch</option>
+                            <option value="en">English</option>
+                        </select>
                     </div>
-                    <button class="btn btn-secondary btn-block" onclick="changePassword(true)" data-i18n="btn_change_password" data-settings-page="password">Change Password</button>
                 </div>
             </div>
 
-            <div class="card card-settings" data-settings-page="notifications" id="card-security-user">
+
+            <div class="card card-settings" data-settings-page="password" id="card-password-user">
+                <div class="card-body">
+                    <div class="form-group settings-password-group">
+                        <div class="password-wrapper" style="margin-bottom: 12px;">
+                            <input type="password" id="user-old-password" class="form-input has-toggle" data-i18n-placeholder="old_password" placeholder="Old Password" data-i18n-aria-label="old_password" aria-label="Old Password" autocomplete="current-password">
+                            <button type="button" class="password-toggle" onclick="togglePassword('user-old-password', this)" aria-label="Show password" data-i18n-aria-label="password_show">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                        <div class="password-wrapper">
+                            <input type="password" id="user-new-password" class="form-input has-toggle" data-i18n-placeholder="new_password" placeholder="New Password" data-i18n-aria-label="new_password" aria-label="New Password" autocomplete="new-password">
+                            <button type="button" class="password-toggle" onclick="togglePassword('user-new-password', this)" aria-label="Show password" data-i18n-aria-label="password_show">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="changePassword(true)" data-i18n="btn_change_password">Change Password</button>
+                </div>
+            </div>
+
+
+            <div class="card card-settings settings-flat-card" data-settings-page="notifications" id="card-security-user">
                 <div class="card-header" data-i18n="security_title">Security &amp; Notifications</div>
                 <div class="card-body">
                     <div class="notif-settings" id="notif-settings-user"></div>
@@ -1163,19 +1167,23 @@
                 </div>
             </div>
 
-            <div class="card card-settings" data-settings-page="account" id="card-privacy-user">
-                <div class="card-header" data-i18n="settings_privacy_title">Privacy</div>
-                <div class="card-body">
-                    <p class="settings-card-hint" data-i18n="settings_privacy_desc">How Agora handles your data and what rights you have.</p>
-                    <a class="btn btn-secondary btn-small" href="/privacy" target="_blank" rel="noopener" data-i18n="settings_privacy_open">Open privacy policy</a>
-                </div>
+            <div class="settings-menu-card settings-page-rows" data-settings-page="account" id="card-privacy-user">
+                <a class="settings-row" href="/privacy" target="_blank" rel="noopener" style="--row-color: #0ea5e9;">
+                    <span class="settings-row-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                    <span class="settings-row-text"><span class="settings-row-title" data-i18n="settings_privacy_title">Privacy</span><span class="settings-row-desc" data-i18n="settings_privacy_desc">How Agora handles your data and what rights you have.</span></span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="settings-row-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
             </div>
-            <div class="card card-settings card-danger-zone" data-settings-page="account" id="card-delete-account-user">
-                <div class="card-header" data-i18n="delete_account_title">Delete account</div>
-                <div class="card-body">
+            <div class="settings-menu-card settings-page-rows settings-delete-card" data-settings-page="account" id="card-delete-account-user">
+                <button type="button" class="settings-row is-danger" aria-expanded="false" aria-controls="delete-account-body-user" onclick="toggleDeleteAccount(this)">
+                    <span class="settings-row-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+                    <span class="settings-row-text"><span class="settings-row-title" data-i18n="delete_account_title">Delete account</span></span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="settings-row-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="settings-delete-body" id="delete-account-body-user" hidden>
                     <p class="danger-zone-text" data-i18n="delete_account_desc">Deletes your login and your personal data: profile, profile picture, registrations, mentoring conversations, open requests and notifications. Booked payments stay with the organization for bookkeeping reasons.</p>
                     <div class="password-wrapper" style="margin-bottom: 12px;">
-                        <input type="password" id="delete-account-password-user" class="form-input" data-i18n-placeholder="delete_account_password" placeholder="Password to confirm" autocomplete="current-password">
+                        <input type="password" id="delete-account-password-user" class="form-input" data-i18n-placeholder="delete_account_password" placeholder="Password to confirm" data-i18n-aria-label="delete_account_password" aria-label="Password to confirm" autocomplete="current-password">
                     </div>
                     <button class="btn btn-danger btn-block" onclick="deleteOwnAccount('-user')" data-i18n="delete_account_btn">Delete account permanently</button>
                 </div>
@@ -1601,33 +1609,50 @@
             </div>
             <button type="button" id="song-edit-btn" class="song-head-btn" onclick="editOpenSong()" data-i18n-aria-label="songbook_edit" aria-label="Edit song" data-i18n-title="songbook_edit" title="Edit song"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
         </div>
-        <div id="song-view-body" class="song-body"></div>
-        <div class="song-dock" role="toolbar" data-i18n-aria-label="songbook_controls" aria-label="Song controls">
-            <div class="song-dock-item">
-                <button type="button" id="song-chords-btn" class="song-dock-btn song-chords-btn is-active" onclick="toggleSongChords()" aria-pressed="true" data-i18n-aria-label="songbook_show_chords" aria-label="Show chords"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
-                <span class="song-dock-label" data-i18n="songbook_chords">Chords</span>
-            </div>
-            <div class="song-dock-item">
-                <div class="song-stepper">
-                    <button type="button" class="song-dock-btn" onclick="transposeSong(-1)" data-i18n-aria-label="songbook_down" aria-label="Semitone down"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-                    <button type="button" id="song-key" class="song-key" onclick="resetSongKey()"></button>
-                    <button type="button" class="song-dock-btn" onclick="transposeSong(1)" data-i18n-aria-label="songbook_up" aria-label="Semitone up"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <div id="song-view-body" class="song-body" onclick="songBodyTap()"></div>
+        <div id="song-controls" class="song-controls">
+            <div id="song-panel" class="song-panel" role="group" aria-labelledby="song-panel-title" hidden>
+                <div class="song-panel-head">
+                    <span id="song-panel-title" class="song-panel-title" data-i18n="songbook_display">Display</span>
+                    <button type="button" class="song-panel-close" onclick="toggleSongPanel(false)" data-i18n-aria-label="btn_close" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
                 </div>
-                <span id="song-key-caption" class="song-dock-label" data-i18n="songbook_key_label">Key</span>
-            </div>
-            <div class="song-dock-item">
-                <div class="song-stepper">
-                    <button type="button" class="song-dock-btn song-size-btn is-small" onclick="sizeSong(-1)" data-i18n-aria-label="songbook_smaller" aria-label="Smaller text">A</button>
-                    <button type="button" class="song-dock-btn song-size-btn" onclick="sizeSong(1)" data-i18n-aria-label="songbook_larger" aria-label="Larger text">A</button>
+                <div class="song-panel-row">
+                    <div class="song-panel-label">
+                        <span data-i18n="songbook_key_label">Key</span>
+                        <button type="button" id="song-key-reset" class="song-key-reset" onclick="resetSongKey()" style="display:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span data-i18n="songbook_original_key">Original key</span></button>
+                    </div>
+                    <div class="song-stepper">
+                        <button type="button" class="song-step-btn" onclick="transposeSong(-1)" data-i18n-aria-label="songbook_down" aria-label="Semitone down"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                        <button type="button" id="song-key" class="song-key" onclick="resetSongKey()"></button>
+                        <button type="button" class="song-step-btn" onclick="transposeSong(1)" data-i18n-aria-label="songbook_up" aria-label="Semitone up"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                    </div>
                 </div>
-                <span class="song-dock-label" data-i18n="songbook_size">Text</span>
-            </div>
-            <div class="song-dock-item">
-                <div class="song-stepper">
-                    <button type="button" id="song-scroll-btn" class="song-dock-btn" onclick="toggleSongScroll()" aria-pressed="false" data-i18n-aria-label="songbook_autoscroll" aria-label="Scroll automatically"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>
-                    <button type="button" id="song-speed-btn" class="song-dock-btn song-speed" onclick="cycleSongSpeed()" data-i18n-aria-label="songbook_speed" aria-label="Speed">1×</button>
+                <div class="song-panel-row">
+                    <label class="song-panel-label" for="song-chords-btn" data-i18n="songbook_show_chords">Show chords</label>
+                    <label class="switch"><input type="checkbox" id="song-chords-btn" role="switch" checked onchange="toggleSongChords()"><span class="slider"></span></label>
                 </div>
-                <span class="song-dock-label" data-i18n="songbook_scroll">Scroll</span>
+                <div class="song-panel-row">
+                    <span class="song-panel-label" data-i18n="songbook_text_size">Text size</span>
+                    <div class="song-stepper">
+                        <button type="button" class="song-step-btn song-size-btn is-small" onclick="sizeSong(-1)" data-i18n-aria-label="songbook_smaller" aria-label="Smaller text">A</button>
+                        <button type="button" class="song-step-btn song-size-btn" onclick="sizeSong(1)" data-i18n-aria-label="songbook_larger" aria-label="Larger text">A</button>
+                    </div>
+                </div>
+                <div class="song-panel-row">
+                    <span class="song-panel-label" data-i18n="songbook_autoscroll">Scroll automatically</span>
+                    <div class="song-stepper">
+                        <button type="button" id="song-scroll-btn" class="song-step-btn" onclick="toggleSongScroll()" aria-pressed="false" data-i18n-aria-label="songbook_autoscroll" aria-label="Scroll automatically"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>
+                        <button type="button" id="song-speed-btn" class="song-step-btn song-speed" onclick="cycleSongSpeed()" data-i18n-aria-label="songbook_speed" aria-label="Speed">1×</button>
+                    </div>
+                </div>
+                <div class="song-panel-actions">
+                    <button type="button" class="btn btn-secondary song-panel-action" onclick="shareSong()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span data-i18n="songbook_share">Share link</span></button>
+                    <button type="button" class="btn btn-secondary song-panel-action song-print-btn" onclick="printSong()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span data-i18n="songbook_print">Print</span></button>
+                </div>
+            </div>
+            <div class="song-pill-row">
+                <button type="button" id="song-quick-scroll" class="song-pill song-pill-round" onclick="toggleSongScroll()" data-i18n-aria-label="songbook_pause" aria-label="Pause scrolling" style="display:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>
+                <button type="button" id="song-panel-btn" class="song-pill" onclick="toggleSongPanel()" aria-expanded="false" aria-controls="song-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span data-i18n="songbook_adjust">Adjust</span></button>
             </div>
         </div>
     </div>

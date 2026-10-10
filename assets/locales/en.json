@@ -1265,12 +1265,14 @@
   "songbook_link_copied": "Link copied",
   "songbook_link_failed": "The link could not be shared.",
   "songbook_link_missing": "This song is no longer in the songbook.",
-  "songbook_controls": "Song controls",
   "songbook_show_chords": "Show chords",
   "songbook_smaller": "Smaller text",
   "songbook_larger": "Larger text",
-  "songbook_size": "Text",
-  "songbook_scroll": "Scroll",
-  "songbook_key_shift": "Key {shift}",
-  "songbook_key_reset": "Back to the original key"
+  "songbook_key_reset": "Back to the original key",
+  "songbook_display": "Display",
+  "songbook_original_key": "Original key",
+  "songbook_text_size": "Text size",
+  "songbook_adjust": "Adjust",
+  "songbook_pause": "Pause scrolling",
+  "songbook_key_shifted": "Key {key} ({shift})"
 }

@@ -31,6 +31,7 @@ const financeRouter = require('./routes/finance');
 const aiRouter = require('./routes/ai');
 const systemRouter = require('./routes/system');
 const pollsRouter = require('./routes/polls');
+const features = require('./features');
 const songbookRouter = require('./routes/songbook');
 
 const app = express();
@@ -135,7 +136,8 @@ app.use(mentoringRouter);
 app.use(financeRouter);
 app.use(aiRouter);
 app.use(systemRouter);
-app.use(pollsRouter);
+// Polls are switched off for now (backend/features.js): without the router every /api/polls call is a 404
+if (features.polls) app.use(pollsRouter);
 app.use(songbookRouter);
 
 app.get('*', pageRateLimit, (req, res, next) => {

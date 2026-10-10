@@ -7,6 +7,8 @@ const auth = getAuth();
 const API = config.apiBaseUrl;
 // Name from the server configuration (System-Konfiguration); changes take effect right after saving
 let APP_NAME = config.appName || 'Agora';
+// Switched-off features (backend/features.js); an old cached config.js has none, so everything stays off
+const FEATURES = { polls: config.features?.polls === true };
 
 let people = [];
 let requests = [];
@@ -224,8 +226,9 @@ const ICONS = {
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
     play: '<polygon points="6 4 20 12 6 20 6 4"/>',
-    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-    printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+    monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+    moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
     pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect>',
     palette: '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.1 0 5.6-2.5 5.6-5.6C21.8 6 17.4 2 12 2z"/>',
@@ -427,6 +430,60 @@ function applyTranslations() {
 function syncPreferenceSelects(theme = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system') {
     ['settings-language', 'user-settings-language'].forEach(id => setValue(id, currentLang));
     ['settings-theme', 'user-settings-theme'].forEach(id => setValue(id, theme));
+    renderSettingsPills();
+    ['settings', 'user-settings'].forEach(id => {
+        const root = $(id);
+        const page = SETTINGS_PAGES.find(p => p.key === root?.dataset.page);
+        const title = root?.querySelector('.settings-nav-title');
+        if (page && title) title.textContent = page.title ? t(...page.title) : t('settings_profile', 'Profile');
+    });
+}
+
+// Theme and language as pill tabs (like the Android app); the select stays the state and its change handler runs
+const PILL_ICONS = { system: 'monitor', light: 'sun', dark: 'moon' };
+function renderSettingsPills() {
+    document.querySelectorAll('.settings-choice select').forEach(select => {
+        let pills = select.nextElementSibling;
+        if (!pills?.classList.contains('settings-pills')) {
+            pills = document.createElement('div');
+            pills.className = 'settings-pills';
+            pills.setAttribute('role', 'radiogroup');
+            pills.setAttribute('aria-labelledby', `${select.id}-label`);
+            select.after(pills);
+            select.classList.add('settings-choice-select');
+            pills.addEventListener('click', e => {
+                const pill = e.target.closest('.settings-pill');
+                if (!pill || select.value === pill.dataset.value) return;
+                select.value = pill.dataset.value;
+                select.dispatchEvent(new Event('change'));
+                renderSettingsPills();
+            });
+            // Arrow keys move between the choices like in any radio group
+            pills.addEventListener('keydown', e => {
+                const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+                if (!step) return;
+                e.preventDefault();
+                const all = [...pills.querySelectorAll('.settings-pill')];
+                const next = all[(all.indexOf(document.activeElement) + step + all.length) % all.length];
+                next?.click();
+                pills.querySelector(`.settings-pill[data-value="${next?.dataset.value}"]`)?.focus();
+            });
+        }
+        const withIcons = select.id.endsWith('theme');
+        pills.innerHTML = [...select.options].map(option => {
+            const on = option.value === select.value;
+            return `<button type="button" role="radio" class="settings-pill${on ? ' is-active' : ''}" data-value="${escapeHtml(option.value)}" aria-checked="${on}" tabindex="${on ? 0 : -1}">${withIcons && PILL_ICONS[option.value] ? svgIcon(PILL_ICONS[option.value], 16, 2) : ''}<span>${escapeHtml(option.textContent.trim())}</span></button>`;
+        }).join('');
+    });
+}
+
+// Delete account: a danger row that opens its form (a sheet in the Android app)
+function toggleDeleteAccount(btn, open = btn.getAttribute('aria-expanded') !== 'true') {
+    const body = $(btn.getAttribute('aria-controls'));
+    if (!body) return;
+    btn.setAttribute('aria-expanded', String(open));
+    body.hidden = !open;
+    if (open) body.querySelector('input')?.focus();
 }
 
 async function changeAppLanguage(lang) {
@@ -904,7 +961,8 @@ const HUB_APPS = [
     { key: 'ai', icon: 'sparkles', color: '#7c3aed', title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
     { key: 'songbook', icon: 'music', color: '#0891b2', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
-    { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'], open: () => switchTab('polls') }
+    { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
+        visible: () => FEATURES.polls, open: () => switchTab('polls') }
 ];
 
 let hubSignature = '';
@@ -1238,15 +1296,15 @@ let songEditSnapshot = '';
 const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
 const SONG_PREFS_KEY = 'agora-song-view';
 
-// Font size and scroll speed stay as the reader left them (eyesight, playing pace);
-// key and chords start as written every time a song opens
+// Chords on/off, font size and scroll speed stay as the reader left them (instrument, eyesight, playing pace);
+// the key starts as written every time a song opens
 const storedJson = (key, fallback) => {
     try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') }; } catch { return { ...fallback }; }
 };
-const { size: songSize, speed: songSpeed } = storedJson(SONG_PREFS_KEY, { size: 0, speed: 1 });
-const songView = { scrolling: false, frame: null, last: 0, pos: null, steps: 0, chords: true, size: songSize, speed: songSpeed };
+const { chords: songChords, size: songSize, speed: songSpeed } = storedJson(SONG_PREFS_KEY, { chords: true, size: 0, speed: 1 });
+const songView = { scrolling: false, frame: null, last: 0, pos: null, steps: 0, lastY: 0, chords: songChords !== false, size: songSize, speed: songSpeed };
 const saveSongPrefs = () => {
-    try { localStorage.setItem(SONG_PREFS_KEY, JSON.stringify({ size: songView.size, speed: songView.speed })); } catch { /* private mode */ }
+    try { localStorage.setItem(SONG_PREFS_KEY, JSON.stringify({ chords: songView.chords, size: songView.size, speed: songView.speed })); } catch { /* private mode */ }
 };
 // Transpositions were remembered per song up to the first ORION builds
 try { localStorage.removeItem('agora-song-steps'); } catch { /* private mode */ }
@@ -1374,7 +1432,9 @@ function openSong(id) {
     openSongId = id;
     stopSongScroll();
     songView.steps = 0;
-    songView.chords = true;
+    songView.lastY = 0;
+    toggleSongPanel(false);
+    showSongControls(true);
     renderSongView();
     openModal('song-view-modal');
     $('song-view-modal')._customOnClose = leaveSong;
@@ -1386,32 +1446,35 @@ function renderSongView() {
     const song = songs.find(s => s.id === openSongId);
     if (!song) return;
     setText('song-view-title', song.title);
-    // Songwriter, then the facts a musician needs at a glance as chips
+    // The (transposed) key, else the shift in semitones
+    const key = transposedKey(song.key, song.content, songView.steps);
+    const shift = `${songView.steps > 0 ? '+' : ''}${songView.steps}`;
+    // Songwriter, then the facts a musician needs at a glance as chips; a transposed key shows there too,
+    // so the change stays visible while the controls are closed
+    const keyFact = songView.steps
+        ? { text: key ? t('songbook_key_shifted', 'Key {key} ({shift})', { key, shift }) : t('songbook_transposed', 'Transposed by {steps} semitones', { steps: shift }), shifted: true }
+        : (song.key ? { text: t('songbook_key_short', 'Key {key}', { key: song.key }) } : null);
     const facts = [
-        song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : '',
-        Number.isInteger(song.capo) && song.capo > 0 ? t('songbook_capo', 'Capo {fret}', { fret: song.capo }) : '',
-        Number.isInteger(song.tempo) ? t('songbook_tempo', '{bpm} BPM', { bpm: song.tempo }) : ''
+        keyFact,
+        Number.isInteger(song.capo) && song.capo > 0 ? { text: t('songbook_capo', 'Capo {fret}', { fret: song.capo }) } : null,
+        Number.isInteger(song.tempo) ? { text: t('songbook_tempo', '{bpm} BPM', { bpm: song.tempo }) } : null
     ].filter(Boolean);
     const sub = $('song-view-sub');
     if (sub) {
         sub.innerHTML = (song.artist ? `<span class="song-view-artist">${escapeHtml(song.artist)}</span>` : '')
-            + (facts.length ? `<span class="song-view-facts">${facts.map(f => `<span class="song-fact">${escapeHtml(f)}</span>`).join('')}</span>` : '');
+            + (facts.length ? `<span class="song-view-facts">${facts.map(f => `<span class="song-fact${f.shifted ? ' is-shifted' : ''}">${escapeHtml(f.text)}</span>`).join('')}</span>` : '');
         sub.hidden = !song.artist && !facts.length;
     }
-    // The (transposed) key, else the shift in semitones; tapping it goes back to the original key
-    const key = transposedKey(song.key, song.content, songView.steps);
-    const shift = `${songView.steps > 0 ? '+' : ''}${songView.steps}`;
     setText('song-key', key || (songView.steps ? shift : '♪'));
-    setText('song-key-caption', songView.steps ? t('songbook_key_shift', 'Key {shift}', { shift }) : t('songbook_key_label', 'Key'));
     const keyBtn = $('song-key');
     if (keyBtn) {
         keyBtn.classList.toggle('is-shifted', !!songView.steps);
-        const label = songView.steps ? t('songbook_key_reset', 'Back to the original key') : t('songbook_key_label', 'Key');
-        keyBtn.setAttribute('title', songView.steps ? `${t('songbook_transposed', 'Transposed by {steps} semitones', { steps: shift })} – ${label}` : '');
-        keyBtn.setAttribute('aria-label', `${key || shift} – ${label}`);
+        keyBtn.setAttribute('aria-label', songView.steps ? `${key || shift} – ${t('songbook_key_reset', 'Back to the original key')}` : (key || t('songbook_key_label', 'Key')));
+        keyBtn.setAttribute('title', songView.steps ? t('songbook_key_reset', 'Back to the original key') : '');
     }
-    $('song-chords-btn')?.classList.toggle('is-active', songView.chords);
-    $('song-chords-btn')?.setAttribute('aria-pressed', String(songView.chords));
+    show('song-key-reset', !!songView.steps, 'inline-flex');
+    const chordsSwitch = $('song-chords-btn');
+    if (chordsSwitch) chordsSwitch.checked = songView.chords;
     setText('song-speed-btn', `${songView.speed.toLocaleString(uiLocale())}×`);
     show('song-edit-btn', songbookCanManage, 'inline-flex');
     const body = $('song-view-body');
@@ -1423,21 +1486,66 @@ function renderSongView() {
             song.ccli ? t('songbook_ccli_song_short', 'CCLI song {number}', { number: song.ccli }) : '',
             song.copyright ? `© ${song.copyright.replace(/^©\s*/, '')}` : ''
         ].filter(Boolean);
-        body.innerHTML = `<article class="song-sheet">${renderSongHtml(song.content, { steps: songView.steps, declaredKey: song.key, chords: songView.chords, labels: songSectionLabels() })}
-            ${ccli.length ? `<div class="song-ccli">${ccli.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>` : ''}
-            <div class="song-sheet-actions">
-                <button type="button" class="btn btn-secondary song-sheet-btn" onclick="shareSong()">${svgIcon('link', 16)}<span>${escapeHtml(t('songbook_share', 'Share link'))}</span></button>
-                <button type="button" class="btn btn-secondary song-sheet-btn song-print-btn" onclick="printSong()">${svgIcon('printer', 16)}<span>${escapeHtml(t('songbook_print', 'Print'))}</span></button>
-            </div>
-        </article><div class="song-end"></div>`;
+        body.innerHTML = `<div class="song-sheet">${renderSongHtml(song.content, { steps: songView.steps, declaredKey: song.key, chords: songView.chords, labels: songSectionLabels() })}
+            ${ccli.length ? `<div class="song-ccli">${ccli.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>` : ''}</div><div class="song-end"></div>`;
     }
 }
 
 /** Runs whenever the song page closes (button, Escape, back gesture). */
 function leaveSong() {
     stopSongScroll();
+    toggleSongPanel(false);
     keepScreenOn(false);
 }
+
+// The controls stay out of the way: a small "Adjust" button opens them, it hides while reading on
+// (scrolling down) and comes back when scrolling up, at the top or with a tap on the song
+let songPanelOpen = false;
+function toggleSongPanel(open = !songPanelOpen) {
+    const panel = $('song-panel');
+    if (!panel) return;
+    const hadFocus = panel.contains(document.activeElement);
+    songPanelOpen = open;
+    panel.hidden = !open;
+    $('song-controls')?.classList.toggle('is-open', open);
+    $('song-panel-btn')?.setAttribute('aria-expanded', String(open));
+    if (open) {
+        showSongControls(true);
+        panel.querySelector('.song-panel-close')?.focus({ preventScroll: true });
+    } else if (hadFocus) {
+        $('song-panel-btn')?.focus({ preventScroll: true });
+    }
+}
+
+function showSongControls(visible) {
+    $('song-controls')?.classList.toggle('is-hidden', !visible);
+}
+
+function songBodyTap() {
+    if (songPanelOpen) toggleSongPanel(false);
+    else showSongControls(true);
+}
+
+function onSongBodyScroll() {
+    const body = $('song-view-body');
+    if (!body) return;
+    const y = body.scrollTop;
+    // Auto-scroll moves the page itself: the pause button has to stay reachable then
+    if (!songPanelOpen && !songView.scrolling) {
+        if (y < 60 || y < songView.lastY - 12) showSongControls(true);
+        else if (y > songView.lastY + 12) showSongControls(false);
+    }
+    if (Math.abs(y - songView.lastY) > 12 || y < 60) songView.lastY = y;
+}
+$('song-view-body')?.addEventListener('scroll', onSongBodyScroll, { passive: true });
+
+// Escape closes the open controls first, a second Escape the song page
+window.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && songPanelOpen && $('song-view-modal')?.classList.contains('show')) {
+        e.stopPropagation();
+        toggleSongPanel(false);
+    }
+}, true);
 
 function closeSong() {
     leaveSong();
@@ -1446,6 +1554,7 @@ function closeSong() {
 
 function toggleSongChords() {
     songView.chords = !songView.chords;
+    saveSongPrefs();
     renderSongView();
 }
 
@@ -1515,6 +1624,10 @@ function toggleSongScroll() {
     songView.scrolling = true;
     songView.last = 0;
     songView.pos = null;
+    // The song needs the whole screen while it scrolls; the pause button stays next to "Adjust"
+    toggleSongPanel(false);
+    showSongControls(true);
+    show('song-quick-scroll', true, 'inline-flex');
     const btn = $('song-scroll-btn');
     if (btn) {
         btn.classList.add('is-active');
@@ -1528,6 +1641,7 @@ function stopSongScroll() {
     songView.scrolling = false;
     if (songView.frame) cancelAnimationFrame(songView.frame);
     songView.frame = null;
+    show('song-quick-scroll', false);
     const btn = $('song-scroll-btn');
     if (btn) {
         btn.classList.remove('is-active');
@@ -1738,7 +1852,7 @@ function renderSettingsMenu(root) {
     const rows = SETTINGS_PAGES.filter(page => settingsPageAvailable(root, page.key)).map(page => {
         if (page.key === 'profile') return `
             <button type="button" class="settings-row" data-key="profile" onclick="window.openSettingsPage('profile')">
-                ${renderAvatarWrap(currentUid(), name, { wrapClass: 'settings-row-avatar', imgClass: 'settings-row-avatar-img', initialsClass: 'settings-row-initials' })}
+                <span class="settings-row-ring ${getAvatarRingClass(currentUser)}">${renderAvatarWrap(currentUid(), name, { wrapClass: 'settings-row-avatar', imgClass: 'settings-row-avatar-img', initialsClass: 'settings-row-initials' })}</span>
                 <span class="settings-row-text"><span class="settings-row-title">${escapeHtml(name)}</span><span class="settings-row-desc">${escapeHtml(currentUser.email || '')}</span></span>
                 ${svgIcon('chevronRight', 18, 2.5, 'class="settings-row-chevron"')}
             </button>`;
@@ -1750,6 +1864,8 @@ function renderSettingsMenu(root) {
                 ${svgIcon('chevronRight', 18, 2.5, 'class="settings-row-chevron"')}
             </button>`;
     }).join('');
+    renderSettingsProfile(root, name);
+    root.querySelectorAll('.settings-delete-card .settings-row[aria-expanded="true"]').forEach(btn => toggleDeleteAccount(btn, false));
     menu.innerHTML = `
         <div class="settings-menu-card">${rows}</div>
         <div class="settings-menu-card">
@@ -1758,6 +1874,16 @@ function renderSettingsMenu(root) {
                 <span class="settings-row-text"><span class="settings-row-title">${t('logout', 'Log Out')}</span></span>
             </button>
         </div>`;
+}
+
+function renderSettingsProfile(root, name) {
+    const ring = root.querySelector('[data-profile-ring]');
+    if (!ring) return;
+    ring.classList.remove('avatar-ring-manager', 'avatar-ring-mentor', 'avatar-ring-standard');
+    ring.classList.add(getAvatarRingClass(currentUser));
+    root.querySelectorAll('[data-profile-name]').forEach(el => { el.textContent = name; });
+    root.querySelectorAll('[data-profile-email]').forEach(el => { el.textContent = name === currentUser.email ? '' : currentUser.email || ''; });
+    root.querySelectorAll('[data-profile-initials]').forEach(el => { el.textContent = getInitials(name); });
 }
 
 const settingsRoot = () => $(currentActiveTab === 'settings' ? 'settings' : 'user-settings');
@@ -1769,6 +1895,7 @@ function openSettingsPage(key) {
     root.dataset.page = key;
     const title = root.querySelector('.settings-nav-title');
     title.textContent = page.title ? t(...page.title) : t('settings_profile', 'Profile');
+    if (key === 'appearance') renderSettingsPills();
     document.querySelector('.container')?.scrollTo({ top: 0 });
     // The row that had the focus is hidden now: keyboard and screen reader users continue at the page title
     title.focus({ preventScroll: true });
@@ -1882,6 +2009,8 @@ function syncTabHistory(tabName) {
 
 // source: the clicked nav element (ignored) or 'history' when called from a back navigation
 function switchTab(tabName, source) {
+    // A switched-off app (old link, remembered tab) opens the hub instead
+    if (tabName === 'polls' && !FEATURES.polls) tabName = 'hub';
     // The owner runs the instance and cannot delete their account (the server refuses it too)
     if (tabName === 'settings' || tabName === 'user-settings') {
         for (const id of ['card-delete-account-admin', 'card-delete-account-user']) show(id, !isOwnerUser(), 'block');
@@ -2779,7 +2908,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, shareSong, toggleSongChords, transposeSong, resetSongKey, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {

@@ -932,6 +932,9 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     will-change: opacity, backdrop-filter;
 }
 .modal.show { opacity: 1; pointer-events: all; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+/* A closed modal is only transparent: nothing inside may catch taps, even parts that switch pointer-events back
+   on for themselves (event hero top bar, cover actions, song controls) - they would sit invisibly over the page */
+.modal:not(.show), .modal:not(.show) * { pointer-events: none !important; }
 .modal-content {
     background: var(--surface); width: 90%; max-width: 420px;
     border-radius: 20px; padding: 0 20px 20px 20px;
@@ -10236,7 +10239,8 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 
 /* Keyboard focus on the new list rows and tiles (like .btn:focus-visible) */
 .settings-row:focus-visible, .hub-app:focus-visible, .poll-card:focus-visible, .song-row:focus-visible,
-.poll-filter:focus-visible, .song-dock-btn:focus-visible, .song-key:focus-visible, .song-head-btn:focus-visible {
+.poll-filter:focus-visible, .song-step-btn:focus-visible, .song-key:focus-visible, .song-head-btn:focus-visible,
+.song-pill:focus-visible, .song-panel-close:focus-visible, .song-key-reset:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
@@ -10258,8 +10262,8 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
     body.printing-song > *:not(#song-view-modal) { display: none !important; }
     body.printing-song #song-view-modal { position: static; display: block; opacity: 1; visibility: visible; background: #ffffff; }
     body.printing-song .song-view { height: auto; max-width: none; }
-    body.printing-song .song-dock, body.printing-song .song-sheet-actions, body.printing-song .song-view-top button { display: none !important; }
-    body.printing-song .song-sheet { padding: 0; border: none; box-shadow: none; background: none; }
+    body.printing-song .song-controls, body.printing-song .song-view-top button { display: none !important; }
+    body.printing-song .song-view-top { border: none; }
     body.printing-song .song-fact { padding: 0; background: none; color: #000000; }
     body.printing-song .song-body { overflow: visible; padding: 0; font-size: 12pt; color: #000000; }
     body.printing-song .song-chord { color: #000000; }
@@ -10278,44 +10282,135 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settings-nav-title:focus { outline: none; }
 .settings-paged[data-page="notifications"] .notif-head-title { display: none; }
 
-/* --- Song page: the song on a card, the controls in a bar at the bottom (reachable with the thumb) --- */
-.song-sheet { padding: 22px 22px 18px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }
-.song-sheet-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-.song-sheet-btn { flex: 1 1 140px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; font-size: 0.88rem; }
+/* --- Song page: the text straight on the page, the controls behind an "Adjust" button --- */
+.song-view-top { border-bottom: 1px solid var(--border-light); }
+.song-sheet { padding: 20px 4px 0; }
 .song-end { height: max(40vh, calc(120px + env(safe-area-inset-bottom, 0px))); }
-.song-dock {
-    position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
-    width: min(calc(100% - 24px), 560px); display: flex; align-items: flex-start; justify-content: space-around; gap: 4px;
-    padding: 8px 10px 6px; border-radius: 22px; border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-    box-shadow: var(--shadow-lg);
+.song-fact.is-shifted { background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%); color: #ffffff; }
+
+.song-controls {
+    position: absolute; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 2;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none;
 }
-.song-dock-item { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
-.song-dock-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); }
-.song-stepper { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--surface-alt); }
-.song-dock-btn { min-width: 40px; height: 38px; padding: 0 8px; border: none; border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 0.9rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.2s, color 0.2s; }
-.song-chords-btn { min-width: 46px; height: 42px; border: 1px solid var(--border-light); border-radius: 14px; background: var(--surface-alt); }
-.song-dock-btn.is-active { color: #ffffff; background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%); }
-.song-chords-btn.is-active { border-color: transparent; }
+/* Only clickable while the song page is shown: a closed modal is just transparent (opacity 0), and
+   pointer-events: auto on the children would leave invisible buttons over the rest of the app */
+#song-view-modal.show .song-controls > * { pointer-events: auto; }
+.song-pill-row { display: flex; gap: 8px; transition: transform 0.25s ease, opacity 0.25s ease, visibility 0.25s; }
+#song-view-modal .song-controls.is-hidden .song-pill-row { transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none; visibility: hidden; }
+.song-pill {
+    height: 48px; padding: 0 20px 0 16px; border: 1px solid transparent; border-radius: 999px;
+    background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%); color: #ffffff;
+    font: inherit; font-size: 0.95rem; font-weight: 800; display: inline-flex; align-items: center; gap: 8px;
+    box-shadow: 0 8px 22px rgba(6, 182, 212, 0.35); cursor: pointer;
+}
+.song-pill-round { width: 48px; padding: 0; justify-content: center; }
+.song-controls.is-open #song-panel-btn { background: var(--surface); color: var(--text); border-color: var(--border); box-shadow: var(--shadow-lg); }
+
+.song-panel {
+    width: min(360px, calc(100vw - 32px)); padding: 12px 16px 16px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg);
+    animation: song-panel-in 0.2s ease-out;
+}
+.song-panel[hidden] { display: none; }
+@keyframes song-panel-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+.song-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 6px; }
+.song-panel-title { font-size: 1rem; font-weight: 800; color: var(--text); }
+.song-panel-close { width: 36px; height: 36px; border: none; border-radius: 50%; background: var(--surface-alt); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.song-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 6px 0; border-top: 1px solid var(--border-light); }
+.song-panel-label { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 0.92rem; font-weight: 700; color: var(--text); }
+.song-key-reset { padding: 0; border: none; background: none; color: var(--primary); font: inherit; font-size: 0.78rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.song-stepper { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--surface-alt); flex-shrink: 0; }
+.song-step-btn { min-width: 42px; height: 38px; padding: 0 8px; border: none; border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 0.9rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.2s, color 0.2s; }
+.song-step-btn.is-active { color: #ffffff; background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%); }
 .song-size-btn { font-size: 1.05rem; }
 .song-size-btn.is-small { font-size: 0.76rem; }
-.song-speed { min-width: 42px; font-size: 0.8rem; }
-.song-key { min-width: 46px; height: 38px; padding: 0 6px; border: none; border-radius: 12px; background: transparent; color: var(--primary); font: inherit; font-size: 0.95rem; font-weight: 800; cursor: default; }
-.song-key.is-shifted { cursor: pointer; background: rgba(6, 182, 212, 0.14); text-decoration: underline dotted; text-underline-offset: 3px; }
+.song-speed { font-size: 0.8rem; }
+.song-key { min-width: 48px; height: 38px; padding: 0 6px; border: none; border-radius: 12px; background: transparent; color: var(--primary); font: inherit; font-size: 0.95rem; font-weight: 800; cursor: default; }
+.song-key.is-shifted { cursor: pointer; background: rgba(6, 182, 212, 0.14); }
+.song-panel-actions { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-light); }
+.song-panel-action { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; font-size: 0.86rem; }
 @media (hover: hover) {
-    .song-dock-btn:not(.is-active):hover, .song-key.is-shifted:hover { background: rgba(6, 182, 212, 0.12); }
+    .song-step-btn:not(.is-active):hover, .song-key.is-shifted:hover, .song-panel-close:hover { background: rgba(6, 182, 212, 0.12); }
     .song-head-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .song-key-reset:hover { text-decoration: underline; }
 }
 @media (min-width: 769px) {
-    .song-sheet { padding: 32px 40px 24px; }
-    .song-body { padding: 0 24px; }
+    .song-body { padding: 0 28px; }
     .song-view-top { padding-left: 24px; padding-right: 24px; }
+    .song-sheet { padding-top: 28px; }
+    .song-controls { right: 24px; bottom: 24px; }
 }
-@media (max-width: 400px) {
-    .song-dock { width: calc(100% - 16px); bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 7px 6px 5px; gap: 2px; }
-    .song-dock-btn { min-width: 34px; padding: 0 6px; }
-    .song-chords-btn { min-width: 40px; }
-    .song-key { min-width: 38px; }
-    .song-speed { min-width: 36px; }
-    .song-sheet { padding: 18px 16px 14px; }
+@media (max-width: 480px) {
+    .song-body { padding: 0 18px; }
 }
+@media (prefers-reduced-motion: reduce) {
+    .song-pill-row, .song-panel { transition: none; animation: none; }
+}
+
+/* --- Settings sub-pages like the Android app --- */
+/* Menu: the own picture with the role ring (3px ring, 2px gap in the card colour, soft glow) */
+.settings-row-ring { display: inline-flex; flex-shrink: 0; border-radius: 50%; }
+.settings-row-ring .settings-row-avatar { width: 40px; height: 40px; }
+.settings-row-desc { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Page titles already name the page: cards of a single page lose their repeated heading */
+.settings-paged[data-page="calendar"] [data-settings-page="calendar"] > .card-header,
+.settings-paged[data-page="fees"] [data-settings-page="fees"] > .card-header { display: none; }
+.settings-paged[data-page] .card-settings > .card-header + .card-body,
+.settings-paged[data-page] .card-settings > .card-body:first-child { padding-top: 20px; }
+
+/* Profile: big picture with the ring, name, e-mail, upload button, hint - centred */
+.settings-profile { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 24px 20px; }
+.settings-profile-ring { display: inline-flex; border-radius: 50%; }
+.settings-profile-ring .profile-pic-preview-wrap { width: 96px; height: 96px; background: var(--surface-alt); }
+.settings-profile-initials { font-size: 1.9rem; font-weight: 800; color: var(--primary); letter-spacing: 0.02em; }
+.settings-profile-name { margin-top: 14px; font-size: 1.2rem; font-weight: 800; color: var(--text); overflow-wrap: anywhere; }
+.settings-profile-email { font-size: 0.9rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.settings-profile-email:empty { display: none; }
+.settings-profile-upload { margin-top: 18px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.settings-profile-hint { margin-top: 8px; max-width: 320px; font-size: 0.78rem; line-height: 1.45; color: var(--text-secondary); }
+
+/* Appearance: small caps labels and pill tabs instead of drop-downs */
+.settings-caps-label { display: block; margin-bottom: 8px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.settings-choice + .settings-choice { margin-top: 20px; }
+.settings-choice-select { display: none !important; }
+.settings-pills { display: flex; gap: 4px; padding: 4px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--surface-alt); }
+.settings-pill {
+    flex: 1 1 0; min-width: 0; min-height: 40px; padding: 8px 10px; border: none; border-radius: 10px;
+    background: transparent; color: var(--text-secondary); font: inherit; font-size: 0.88rem; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+    transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.settings-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-pill.is-active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 4px 12px -6px rgba(15, 23, 42, 0.25); }
+[data-theme="dark"] .settings-pill.is-active { background: var(--bg); }
+.settings-pill:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (hover: hover) { .settings-pill:not(.is-active):hover { color: var(--text); } }
+
+/* Notifications: no card around the cards - intro, channels, caption and kinds straight on the page */
+.settings-paged[data-page="notifications"] .settings-flat-card { background: none; border: none; box-shadow: none; overflow: visible; }
+.settings-paged[data-page="notifications"] .settings-flat-card > .card-body { padding: 0 !important; }
+.settings-paged[data-page="notifications"] .notif-head { padding: 0 4px; }
+.settings-paged[data-page="notifications"] .notif-head-desc { font-size: 0.9rem; }
+.settings-paged[data-page="notifications"] .notif-kinds-head { padding: 0 4px; }
+.settings-paged[data-page="notifications"] .notif-channels,
+.settings-paged[data-page="notifications"] .notif-kinds {
+    border-radius: 20px; border-color: var(--border-light); background: var(--surface);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 22px -16px rgba(15, 23, 42, 0.25);
+}
+
+/* Calendar: the actions full width one below the other, .ics and "renew link" side by side */
+.settings-paged[data-page="calendar"] [data-settings-page="calendar"] .card-body > div:last-child { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; }
+.settings-paged[data-page="calendar"] [data-settings-page="calendar"] .card-body > div:last-child > .btn { width: 100%; justify-content: center; margin: 0 !important; }
+.settings-paged[data-page="calendar"] [data-settings-page="calendar"] .card-body > div:last-child > .btn:nth-child(-n+2) { grid-column: 1 / -1; }
+
+/* Account: rows like the menu; the danger row opens the delete form */
+.settings-paged[data-page] .settings-page-rows { margin-bottom: 16px; }
+.settings-paged[data-page] .settings-page-rows .settings-row { text-decoration: none; }
+.settings-delete-card .settings-row-chevron { transition: transform 0.2s; }
+.settings-delete-card .settings-row[aria-expanded="true"] .settings-row-chevron { transform: rotate(90deg); }
+.settings-delete-card .settings-row.is-danger .settings-row-chevron { color: var(--danger); }
+.settings-delete-body { padding: 4px 16px 16px; border-top: 1px solid var(--border-light); }
+.settings-delete-body[hidden] { display: none; }
+.settings-delete-body .danger-zone-text { margin-top: 12px; }
+@media (prefers-reduced-motion: reduce) { .settings-pill, .settings-delete-card .settings-row-chevron { transition: none; } }
