@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e6f2fa">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
-    <meta name="theme-color" content="#e6f2fa">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#181817">
+    <meta name="theme-color" content="#f5f4f1">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <!-- Pages have their own paths (/events/...): relative files are always found from the root -->
     <base href="/">
@@ -15,20 +15,21 @@
     <link rel="modulepreload" href="assets/config.js">
     <link rel="modulepreload" href="assets/app.js">
     <link rel="modulepreload" href="assets/pocketbase-compat.js">
+    <link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="assets/style.css">
     <style>
         :root {
-            --bg: #e6f2fa;
-            --text: #0f172a;
-            --primary: #06b6d4;
-            --secondary: #10b981;
-            --primary-dark: #0e7490;
+            --bg: #f5f4f1;
+            --text: #1a1917;
+            --primary: #0d9e94;
+            --secondary: #14a87c;
+            --primary-dark: #0a6f68;
         }
         [data-theme="dark"] {
-            --bg: #0f172a;
-            --text: #f3f4f6;
-            --primary: #22d3ee;
-            --primary-dark: #06b6d4;
+            --bg: #181817;
+            --text: #ebe8e3;
+            --primary: #63c0b4;
+            --primary-dark: #2fc2b4;
         }
         #loading-overlay {
             position: fixed;
@@ -47,7 +48,7 @@
         .spinner {
             width: 60px;
             height: 60px;
-            border: 4px solid rgba(6, 182, 212, 0.1);
+            border: 4px solid rgba(13, 158, 148, 0.1);
             border-left-color: var(--primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
@@ -74,6 +75,7 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
+    <link rel="stylesheet" href="assets/polish.css">
     <script>
         (function() {
             try {

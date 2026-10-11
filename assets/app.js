@@ -838,12 +838,13 @@ async function renderReceiptsInto(container, receiptField, { loading, header = '
     }
 }
 
+// Every profile picture: the initials on one soft background (the look of the finance history), the picture over them
 function renderAvatarWrap(userId, userName, { wrapClass = 'duty-assignee-avatar-wrap', imgClass = 'duty-assignee-avatar-img', initialsClass = 'duty-assignee-initials', style } = {}) {
     const name = userName || 'P';
     return `
-        <div class="${wrapClass}" ${style ? `style="${style}"` : ''}>
-            <span class="${initialsClass}">${escapeHtml(getInitials(name))}</span>
-            ${userId ? `<img src="${API}/profile/picture/${encodeURIComponent(userId)}" alt="${escapeHtml(name)}" class="${imgClass}" onerror="this.style.display='none'">` : ''}
+        <div class="avatar ${wrapClass}" ${style ? `style="${style}"` : ''}>
+            <span class="avatar-initials ${initialsClass}">${escapeHtml(getInitials(name))}</span>
+            ${userId ? `<img src="${API}/profile/picture/${encodeURIComponent(userId)}" alt="${escapeHtml(name)}" class="avatar-img ${imgClass}" onerror="this.remove()">` : ''}
         </div>`;
 }
 
@@ -3467,7 +3468,6 @@ function renderAccountRow(u) {
     const name = fullName(u) || t('status_unknown', 'Unknown');
     const uid = escapeHtml(u.uid);
     const isOwner = u.owner === true || u.superAdmin === true;
-    const initials = ((u.firstName?.[0] || '') + (u.lastName?.[0] || (u.firstName ? '' : '?'))).toUpperCase() || '?';
     const linked = findLinkedPerson(u.uid);
     const memberSince = u.memberSince || linked?.memberSince || linked?.data?.memberSince || '';
     const groups = Array.isArray(u.groupObjects) && u.groupObjects.length > 0
@@ -3482,11 +3482,7 @@ function renderAccountRow(u) {
             <td>
                 <div class="nc-user-cell">
                     <div class="nc-avatar ${getAvatarRingClass(u)}">
-                        <!-- Inner circle like the other avatars: initials on a soft background, the picture over them -->
-                        <span class="nc-avatar-inner">
-                            <span class="nc-avatar-initials">${escapeHtml(initials)}</span>
-                            <img class="nc-avatar-img" src="${API}/profile/picture/${u.uid}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.remove()">
-                        </span>
+                        ${renderAvatarWrap(u.uid, name, { wrapClass: 'nc-avatar-inner', imgClass: 'nc-avatar-img', initialsClass: 'nc-avatar-initials' })}
                     </div>
                     <div class="nc-user-info">
                         <div class="nc-user-name">
@@ -4401,25 +4397,23 @@ function renderUserView() {
 
         if (statusCard) renderHomePaymentStatus(statusCard, p, meta, statusText);
         if (financeCard) {
+            // One glance: a big symbol, the state in plain words, then fee and status as two chips
+            const symbol = meta.isOverdue ? svgIcon('alert', 26, 2.4) : meta.isSoonDue ? svgIcon('clock', 26, 2.4) : svgIcon('check', 28, 2.8);
             financeCard.innerHTML = `
-                <div class="user-finance-hero-card" style="${tint}">
+                <div class="user-finance-hero-card ${statusClass}" style="${tint} --hero-accent:${accent}; --hero-rgb:${rgb};">
                     <div class="user-finance-hero-top">
+                        <span class="user-finance-hero-symbol" aria-hidden="true">${symbol}</span>
                         <div class="user-finance-hero-info">
                             <div class="user-finance-hero-title" style="color:${accent};">${statusText}</div>
                             ${subline('')}
                         </div>
                     </div>
                     ${overdueBox('')}
-                    <div class="user-finance-stat-row">
-                        <div class="user-finance-stat">
-                            <div class="user-finance-stat-label">${t('user_monthly_rate', 'Monthly fee')}</div>
-                            <div class="user-finance-stat-value">${euro(settings[currentStatus] || 0)}</div>
-                        </div>
-                        <div class="user-finance-stat-divider"></div>
-                        <div class="user-finance-stat user-finance-stat-clickable" role="button" tabindex="0" onclick="openUserRequestModal('status')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openUserRequestModal('status');}" title="${requestStatus}" aria-label="${requestStatus}">
-                            <div class="user-finance-stat-label">${t('user_current_status', 'Status')}</div>
-                            <div class="user-finance-stat-value">${escapeHtml(getStatusLabels(false)[currentStatus] || currentStatus)}</div>
-                        </div>
+                    <div class="user-finance-chips">
+                        <span class="user-finance-chip">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(settings[currentStatus] || 0)}</strong>` })}</span>
+                        <button type="button" class="user-finance-chip is-action" onclick="openUserRequestModal('status')" title="${requestStatus}" aria-label="${requestStatus}">
+                            ${escapeHtml(getStatusLabels(false)[currentStatus] || currentStatus)}${svgIcon('chevronRight', 14, 2.5)}
+                        </button>
                     </div>
                 </div>`;
         }
@@ -4439,7 +4433,7 @@ const requestStateLabel = req => {
     return t(key, fallback);
 };
 
-const MY_REQUESTS_SHOWN = 5;
+const MY_REQUESTS_SHOWN = 3;
 let showAllMyRequests = false;
 function toggleAllMyRequests() {
     showAllMyRequests = !showAllMyRequests;
@@ -4465,9 +4459,10 @@ function renderUserRequests() {
         const data = req.data || {};
         const type = REQUEST_TYPES[req.type] || { icon: 'file' };
         const [stateColor] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
+        // A second line only where it helps: why it was rejected, or what an expense was for
         const text = req.status === 'rejected'
             ? t('user_request_reason', 'Reason: {reason}', { reason: req.rejectionReason || t('user_no_reason', 'No reason given') })
-            : (req.type === 'expense' ? data.description : data.note) || requestDateLabel(req);
+            : (req.type === 'expense' ? data.description : '') || '';
         return `
             <button type="button" class="home-msg-row req-row my-req-row" style="--req-color: ${REQUEST_COLORS[req.type] || 'var(--primary)'}; --state-color: ${stateColor};" data-id="${escapeHtml(req.id)}" onclick="window.openRequestDetail(this.dataset.id)">
                 <span class="my-req-tile">${svgIcon(type.icon || 'file', 18, 2.2)}</span>
@@ -4477,7 +4472,7 @@ function renderUserRequests() {
                         <span class="req-row-amount">${requestAmount(req, statusLabels)}</span>
                     </span>
                     <span class="my-req-state"><span class="req-row-dot"></span>${requestStateLabel(req)}${req.timestamp ? ` · ${formatDateFast(req.timestamp)}` : ''}${data.receipt ? ` · ${svgIcon('paperclip', 11)}` : ''}</span>
-                    <span class="home-msg-snippet-line"><span class="home-msg-snippet${req.status === 'rejected' ? ' my-req-reason' : ''}">${escapeHtml(text)}</span></span>
+                    ${text ? `<span class="home-msg-snippet-line"><span class="home-msg-snippet${req.status === 'rejected' ? ' my-req-reason' : ''}">${escapeHtml(text)}</span></span>` : ''}
                 </span>
                 ${svgIcon('chevronRight', 16, 2.5, 'class="req-row-chevron"')}
             </button>`;
@@ -4544,45 +4539,33 @@ function generateTimelineHTML(person) {
 function renderStandingOrders(p) {
     const orders = safeList(p.standingOrders);
     if (orders.length === 0) return '';
-    const chip = (icon, text, extraClass = '') => `
-        <div class="so-chip${extraClass}">
-            ${svgIcon(icon, 11)}
-            <span>${text}</span>
-        </div>`;
-    return `
-        <div class="standing-order-section">
-            <div class="so-section-header">
-                <div class="so-header-title">
-                    ${svgIcon('rotate', 13, 2.5)}
-                    <span>${t('modal_standing_order', 'Standing Order')}</span>
+    // One calm row per standing order: round symbol, amount per month, dates and note as one line, state on the right
+    const rows = orders.map(so => {
+        const isEnded = so.endDate && new Date(so.endDate) < new Date();
+        const note = so.note?.trim();
+        const facts = [
+            t('so_chip_start', 'Start: {date}', { date: formatDateFast(so.startDate) }),
+            so.endDate ? t('so_chip_end', 'End: {date}', { date: formatDateFast(so.endDate) }) : '',
+            note && note !== 'Ohne Notiz' && note !== 'No note' ? note : ''
+        ].filter(Boolean).map(escapeHtml).join(' · ');
+        return `
+            <div class="so-row${isEnded ? ' is-ended' : ''}">
+                <span class="so-row-icon" aria-hidden="true">${svgIcon('rotate', 16, 2.2)}</span>
+                <div class="so-row-text">
+                    <div class="so-row-amount">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(so.amount)}</strong>` })}</div>
+                    <div class="so-row-facts">${facts}</div>
                 </div>
-            </div>
-            <div class="so-items-list">
-                ${orders.map(so => {
-                    const isEnded = so.endDate && new Date(so.endDate) < new Date();
-                    const note = so.note?.trim();
-                    return `
-                    <div class="so-card-item ${isEnded ? 'is-ended' : ''}">
-                        <div class="so-card-top">
-                            <div class="so-card-amount-wrapper">
-                                <span class="so-amount-val">${euro(so.amount)}</span>
-                                <span class="so-period-label">/ ${t('month', 'month')}</span>
-                                <span class="so-status-pill ${isEnded ? 'ended' : 'active'}">${isEnded ? t('status_ended', 'Ended') : t('status_active', 'Active')}</span>
-                            </div>
-                            ${canManageFinances() ? `
-                            <button type="button" class="btn-so-action" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Edit/End'))}">
-                                ${svgIcon('edit', 12)}
-                                <span>${t('btn_manage', 'Manage')}</span>
-                            </button>` : ''}
-                        </div>
-                        <div class="so-card-meta-chips">
-                            ${chip('calendar', t('so_chip_start', 'Start: {date}', { date: formatDateFast(so.startDate) }))}
-                            ${so.endDate ? chip('clock', t('so_chip_end', 'End: {date}', { date: formatDateFast(so.endDate) }), isEnded ? ' ended' : ' ') : ''}
-                            ${note && note !== 'Ohne Notiz' && note !== 'No note' ? chip('fileText', escapeHtml(so.note), ' so-note-chip') : ''}
-                        </div>
-                    </div>`;
-                }).join('')}
-            </div>
+                <span class="so-row-state ${isEnded ? 'ended' : 'active'}">${isEnded ? t('status_ended', 'Ended') : t('status_active', 'Active')}</span>
+                ${canManageFinances() ? `
+                <button type="button" class="so-row-edit" data-pid="${escapeHtml(p.id)}" data-soid="${escapeHtml(so.id)}" onclick="openEndStandingOrderModal(this.dataset.pid, this.dataset.soid)" title="${escapeHtml(t('edit_end_title', 'Edit/End'))}" aria-label="${escapeHtml(t('edit_end_title', 'Edit/End'))}">
+                    ${svgIcon('edit', 15, 2)}
+                </button>` : ''}
+            </div>`;
+    }).join('');
+    return `
+        <div class="so-block">
+            <div class="history-header">${t('modal_standing_order', 'Standing Order')}</div>
+            <div class="so-rows">${rows}</div>
         </div>`;
 }
 
@@ -4593,67 +4576,54 @@ function generatePersonHTML(p) {
     const statusLabels = getStatusLabels(false);
     const currentStatus = p._currentStatus || p.status;
     const id = escapeHtml(p.id);
-    const memberButton = (cls, handler, icon, size, strokeWidth, label) => `
-        <button type="button" class="${cls}" data-id="${id}" onclick="${handler}(this.dataset.id)">
-            ${svgIcon(icon, size, strokeWidth)}
-            <span>${label}</span>
+    // Actions like the member finance page: a tinted tile, a round symbol, a short title
+    const memberAction = (handler, icon, color, label) => `
+        <button type="button" class="req-action member-action" style="--req-color: ${color};" data-id="${id}" onclick="${handler}(this.dataset.id)">
+            <span class="req-action-icon">${svgIcon(icon, 20, 2)}</span>
+            <span class="req-action-text"><span class="req-action-title">${label}</span></span>
         </button>`;
-    const tileLabel = (icon, label) => `
-        <span class="summary-tile-label">
-            ${svgIcon(icon, 12)}
-            ${label}
-        </span>`;
     return `
         <div class="person-wrapper">
             <div id="person-item-${p.id}" class="person-item" role="button" tabindex="0" aria-expanded="false" data-id="${id}" onclick="toggleDetails(this.dataset.id)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); toggleDetails(this.dataset.id);}">
                 <div class="person-pill">
+                    ${renderAvatarWrap(p.uid || p.data?.uid, p.name, { wrapClass: 'person-avatar', imgClass: 'person-avatar-img', initialsClass: 'person-avatar-initials' })}
                     <div class="person-left">
-                        <div class="person-name">
-                            ${escapeHtml(p.name)}
-                            <span class="chevron">›</span>
-                        </div>
+                        <div class="person-name">${escapeHtml(p.name)}</div>
                         <span class="person-status">${escapeHtml(statusLabels[currentStatus] || currentStatus)}</span>
                     </div>
                     <div class="person-right">
                         ${standingOrderCovers(meta) ? '' : `<span class="payment-pill ${pillClass}">${dateText}</span>`}
                         <span class="time-remaining">${escapeHtml(translateStatusText(meta.text))}</span>
                     </div>
+                    <span class="chevron" aria-hidden="true">›</span>
                 </div>
             </div>
             <div id="drawer-${p.id}" class="person-details">
                 <div class="details-content">
-                    <div class="member-summary-card ${meta.isOverdue ? 'danger' : 'success'}">
-                        <div class="summary-grid">
-                            <div class="summary-tile">
-                                ${tileLabel('user', t('status_label', 'Status'))}
-                                <span class="summary-status-badge">${escapeHtml(statusLabels[p.status] || p.status)}</span>
-                            </div>
-                            <div class="summary-tile">
-                                ${tileLabel('calendar', t('paid_until', 'Paid until'))}
-                                ${standingOrderCovers(meta) ? `
-                                    <span class="summary-so-badge">
-                                        ${svgIcon('rotate', 11, 2.5)}
-                                        ${t('status_standing_order_active', 'Standing order is active')}
-                                    </span>` : `<span class="summary-paid-badge ${pillClass}">${dateText}</span>`}
+                    <div class="member-hero ${pillClass}">
+                        <div class="member-hero-top">
+                            <span class="member-hero-symbol" aria-hidden="true">${meta.isOverdue ? svgIcon('alert', 20, 2.4) : meta.isSoonDue ? svgIcon('clock', 20, 2.4) : svgIcon('check', 22, 2.8)}</span>
+                            <div class="member-hero-info">
+                                <div class="member-hero-title">${escapeHtml(translateStatusText(meta.text))}</div>
+                                <div class="member-hero-sub">${t('paid_until', 'Paid until')} <strong>${dateText}</strong></div>
                             </div>
                         </div>
                         ${meta.isOverdue ? `
-                        <div class="summary-overdue-alert">
-                            <div class="overdue-alert-label">
-                                ${svgIcon('alert', 14, 2.5)}
-                                <span>${t('overdue_amount_label', 'Outstanding Amount')}</span>
-                            </div>
-                            <span class="overdue-alert-val">${euro(p._overdueAmount || 0)}</span>
+                        <div class="member-hero-overdue">
+                            <span>${t('overdue_amount_label', 'Outstanding Amount')}</span>
+                            <strong>${euro(p._overdueAmount || 0)}</strong>
                         </div>` : ''}
+                        <div class="user-finance-chips">
+                            <span class="user-finance-chip">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(settings[currentStatus] || 0)}</strong>` })}</span>
+                            <span class="user-finance-chip">${escapeHtml(statusLabels[p.status] || p.status)}</span>
+                        </div>
                     </div>
                     ${renderStandingOrders(p)}
                     ${canManageFinances() ? `
-                    <div class="member-actions-group">
-                        ${memberButton('btn-member-primary', 'openPaymentModal', 'coin', 15, 2.2, t('record_payment_btn', 'Book Payment'))}
-                        <div class="member-secondary-actions">
-                            ${memberButton('btn-member-secondary', 'openChangeStatusModal', 'refresh', 14, 2, t('status_btn', 'Status'))}
-                            ${memberButton('btn-member-secondary', 'sendStatusEmail', 'mail', 14, 2, t('email_btn', 'Email'))}
-                        </div>
+                    <div class="member-actions-grid">
+                        ${memberAction('openPaymentModal', 'coin', '#10b981', t('record_payment_btn', 'Book Payment'))}
+                        ${memberAction('openChangeStatusModal', 'refresh', '#6366f1', t('status_btn', 'Status'))}
+                        ${memberAction('sendStatusEmail', 'mail', '#0891b2', t('email_btn', 'Email'))}
                     </div>` : ''}
                     <div class="history-header">${t('history_label', 'History')}</div>
                     <div id="timeline-${p.id}">
@@ -4797,8 +4767,8 @@ async function renderHistoryTab(resetLimit = true) {
                 if (!url) {
                     // Known person without a picture: initials instead of the plain icon
                     if (wrapper.dataset.name) {
-                        wrapper.classList.add('has-initials');
-                        wrapper.innerHTML = `<span class="trans-initials">${escapeHtml(getInitials(wrapper.dataset.name))}</span>${badge}`;
+                        wrapper.classList.add('avatar');
+                        wrapper.innerHTML = `<span class="avatar-initials trans-initials">${escapeHtml(getInitials(wrapper.dataset.name))}</span>${badge}`;
                     }
                     return;
                 }
@@ -6429,10 +6399,7 @@ function renderThreadItem(thread) {
     const dateStr = thread.updated ? new Date(thread.updated).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
     const avatar = isMentor
         ? `<div class="mentoring-thread-avatar mentee-avatar" title="${escapeHtml(name)}">${svgIcon('shield', 20)}</div>`
-        : `<div class="mentoring-thread-avatar mentor-avatar" title="${escapeHtml(name)}">
-                <span class="mentoring-avatar-initials">${escapeHtml(name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'M')}</span>
-                ${thread.mentor ? `<img src="${API}/profile/picture/${encodeURIComponent(thread.mentor)}" alt="${escapeHtml(name)}" class="mentoring-avatar-img" onerror="this.style.display='none'">` : ''}
-            </div>`;
+        : renderAvatarWrap(thread.mentor, name, { wrapClass: 'mentoring-thread-avatar mentor-avatar', imgClass: 'mentoring-avatar-img', initialsClass: 'mentoring-avatar-initials' });
     return `
         <div class="mentoring-thread-item ${activeMentoringThreadId === thread.id ? 'active' : ''} ${unread > 0 ? 'unread' : 'read'}" data-thread-id="${escapeHtml(thread.id)}" onclick="window.openMentoringThread(${jsArg(thread.id)})">
             <div class="mentoring-thread-avatar-wrap">
@@ -7111,6 +7078,27 @@ function renderHomeGreeting() {
     const first = (currentUser?.firstName || fullName(currentUser) || currentUser?.name || '').trim().split(/\s+/)[0];
     setText('home-greeting-title', first ? `${hello}, ${first} 👋` : `${hello} 👋`);
     setText('home-greeting-date', new Date().toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' }));
+    fitHomeGreeting();
+}
+
+// The greeting stays on one line: a long name makes the text smaller instead of wrapping
+// (watches the width of the box around it: its own height changes with the font size)
+let greetingObserver = null;
+let greetingWidth = 0;
+function fitHomeGreeting(force = true) {
+    const el = $('home-greeting-title');
+    if (!el) return;
+    if (!greetingObserver && 'ResizeObserver' in window && el.parentElement) {
+        greetingObserver = new ResizeObserver(() => fitHomeGreeting(false));
+        greetingObserver.observe(el.parentElement);
+    }
+    const width = el.clientWidth;
+    if (!width || (!force && width === greetingWidth)) return;
+    greetingWidth = width;
+    el.style.fontSize = '';
+    if (el.scrollWidth <= width) return;
+    const base = parseFloat(getComputedStyle(el).fontSize);
+    el.style.fontSize = `${Math.max(14, Math.floor(base * width / el.scrollWidth * 2) / 2)}px`;
 }
 
 const HOME_UPCOMING_COUNT = 5;
@@ -7536,10 +7524,10 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
                 <div class="event-card-title">${escapeHtml(ev.title)}</div>
                 <div class="event-card-when">
                     ${isToday ? `<span class="event-card-today">${t('home_today', 'Today')}</span>` : ''}
-                    ${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span>${escapeHtml(when)}</span>
+                    ${cardIcon(isMultiDay ? 'calendar' : 'clock')}<span class="event-card-when-text">${escapeHtml(when)}</span>
+                    ${status ? `<span class="event-card-when-sep" aria-hidden="true">·</span>${status}` : ''}
                 </div>
                 ${ev.location ? `<div class="event-card-where">${cardIcon('location')}<span>${escapeHtml(ev.location)}</span></div>` : ''}
-                ${status ? `<div class="event-card-tags">${status}</div>` : ''}
             </div>
             <div class="event-card-right">
                 <div class="event-card-arrow">${cardIcon('chevronRight')}</div>

@@ -1,0 +1,1013 @@
+/* ==========================================================================
+   Polish layer — same look (colours, gradients, layout), finer details:
+   real typeface, layered soft shadows, hairline borders, tactile buttons,
+   frosted bars, consistent focus / press states. Loaded after style.css.
+   ========================================================================== */
+
+/* --- Typeface: Inter (variable, self-hosted, SIL OFL — assets/fonts/OFL.txt); the CSS always asked for it --- */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    src: url('fonts/inter-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    src: url('fonts/inter-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* --- Palette "Stone & Lagoon": warm stone neutrals (calm, not technical grey/blue), a deep lagoon teal that
+       runs into emerald as the brand, warm shadows. Light and dark share the same character. --- */
+:root {
+    --brand: #0d9e94;
+    --brand-rgb: 13, 158, 148;
+    --brand-deep: #0b7d75;
+    --primary: #0c8d84;
+    --primary-dark: #0a6f68;
+    --secondary: #14a87c;
+    --gradient-primary: linear-gradient(135deg, #0e9f96 0%, #17ad80 100%);
+    --gradient-hover: linear-gradient(135deg, #12aba1 0%, #1cb98a 100%);
+
+    --bg: #f5f4f1;
+    --surface: #ffffff;
+    --surface-alt: #f1efeb;
+    --border-light: #e8e5df;
+    --border: #d9d5cd;
+    --text: #1a1917;
+    --text-secondary: #6d6861;
+    --success: #0f9b6c;
+    --danger: #e5484d;
+    --warning: #e0900f;
+
+    --desktop-header-bg: #ffffff;
+    --desktop-header-border: var(--border-light);
+    --desktop-nav-text: var(--text-secondary);
+    --desktop-nav-active: var(--text);
+    --desktop-nav-underline: var(--brand);
+    --nav-pill: #dcf1ec;
+    --nav-pill-text: #0a5049;
+
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --hairline: rgba(48, 38, 26, 0.09);
+    --shadow: 0 1px 2px rgba(48, 38, 26, 0.05), 0 2px 6px -1px rgba(48, 38, 26, 0.05);
+    --shadow-md: 0 1px 2px rgba(48, 38, 26, 0.05), 0 8px 20px -6px rgba(48, 38, 26, 0.12);
+    --shadow-lg: 0 2px 4px rgba(48, 38, 26, 0.04), 0 18px 44px -12px rgba(48, 38, 26, 0.24);
+    --shadow-brand: 0 1px 2px rgba(10, 90, 80, 0.25), 0 6px 16px -6px rgba(var(--brand-rgb), 0.55);
+    --ring: 0 0 0 3px rgba(var(--brand-rgb), 0.28);
+}
+[data-theme="dark"] {
+    --brand: #2fc2b4;
+    --brand-rgb: 47, 194, 180;
+    --brand-deep: #23a396;
+    --primary: #3ccfbf;
+    --primary-dark: #2fc2b4;
+    --secondary: #34c48f;
+    --gradient-primary: linear-gradient(135deg, #109b92 0%, #17a97d 100%);
+    --gradient-hover: linear-gradient(135deg, #14a89e 0%, #1db78a 100%);
+
+    --bg: #131312;
+    --surface: #1c1c1b;
+    --surface-alt: #262624;
+    --border-light: #2d2c2a;
+    --border: #3c3b38;
+    --text: #f2f0ec;
+    --text-secondary: #a5a19a;
+    --success: #3dd598;
+    --danger: #ff6369;
+    --warning: #f5b546;
+
+    --desktop-header-bg: var(--surface);
+    --desktop-header-border: var(--border-light);
+    --nav-pill: #173f3a;
+    --nav-pill-text: #bff3ea;
+
+    --hairline: rgba(255, 255, 255, 0.07);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -6px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.3), 0 20px 48px -12px rgba(0, 0, 0, 0.7);
+    --shadow-brand: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px -6px rgba(var(--brand-rgb), 0.3);
+    --ring: 0 0 0 3px rgba(var(--brand-rgb), 0.3);
+}
+
+/* --- Type rendering: crisp, tighter tracking on large text, aligned figures in amounts --- */
+html, body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+h1, h2, h3,
+.header-left h1,
+.home-greeting-title,
+.events-page-title,
+.hub-title,
+.polls-title,
+.mentoring-hero-title,
+.event-detail-title-main,
+.settings-nav-title { letter-spacing: -0.022em; }
+.hero-amount { letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.trans-amount { letter-spacing: -0.01em; }
+::selection { background: rgba(var(--brand-rgb), 0.22); }
+
+/* --- Surfaces: hairline border + soft layered shadow; a quiet lift on hover --- */
+.card,
+.event-card,
+.trans-item,
+.hub-app,
+.home-next-card,
+.settings-menu-card,
+.song-list,
+.prayer-list,
+.mentoring-header-card {
+    border-color: var(--hairline);
+    box-shadow: var(--shadow);
+}
+.trans-item { border: 1px solid var(--hairline); }
+@media (hover: hover) {
+    .event-card,
+    .trans-item,
+    .hub-app,
+    .home-next-card { transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), border-color 0.25s var(--ease), background-color 0.25s var(--ease); }
+    .event-card:hover,
+    .trans-item:hover,
+    .hub-app:hover:not(:disabled),
+    .home-next-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+}
+.event-card:active,
+.trans-item:active,
+.hub-app:active:not(:disabled),
+.home-next-card:active { transform: scale(0.985); transition-duration: 0.1s; }
+/* Dark surfaces: a faint top highlight separates them from the page like a real edge */
+[data-theme="dark"] .card,
+[data-theme="dark"] .event-card,
+[data-theme="dark"] .trans-item,
+[data-theme="dark"] .hub-app,
+[data-theme="dark"] .home-next-card,
+[data-theme="dark"] .settings-menu-card { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--shadow); }
+
+/* --- Hero: the balance banner floats on a soft brand-tinted shadow --- */
+.hero-card { box-shadow: 0 2px 4px rgba(10, 90, 80, 0.12), 0 18px 40px -16px rgba(var(--brand-rgb), 0.55); }
+.hero-label { letter-spacing: 0.08em; backdrop-filter: blur(6px); }
+
+/* --- Buttons: tactile primary (inner highlight + tinted shadow), quiet secondary, honest press --- */
+.btn { transition: transform 0.15s var(--ease), box-shadow 0.2s var(--ease), background-color 0.2s var(--ease), border-color 0.2s var(--ease), filter 0.2s var(--ease); }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn-primary,
+.btn-mentor-primary {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--shadow-brand);
+    text-shadow: 0 1px 1px rgba(6, 70, 62, 0.18);
+}
+.btn-primary:hover:not(:disabled),
+.btn-mentor-primary:hover { filter: brightness(1.04) saturate(1.05); }
+.btn-secondary { border-color: var(--hairline); background: var(--surface); box-shadow: var(--shadow); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-alt); }
+.btn:focus-visible,
+.pill-tab:focus-visible,
+.nav-item:focus-visible,
+.nav-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* --- Inputs: 1px hairline instead of 2px, a clear focus ring --- */
+.form-input,
+.form-select {
+    border-width: 1px;
+    border-color: rgba(48, 38, 26, 0.14);
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background-color 0.2s var(--ease);
+}
+[data-theme="dark"] .form-input,
+[data-theme="dark"] .form-select { border-color: rgba(255, 255, 255, 0.12); }
+.form-input:hover:not(:focus),
+.form-select:hover:not(:focus) { border-color: rgba(48, 38, 26, 0.24); }
+.form-input:focus,
+.form-select:focus { border-color: var(--primary); box-shadow: var(--ring); }
+.search-bar-wrapper .form-input.search-input { border-color: var(--hairline); box-shadow: var(--shadow); }
+
+/* --- Segmented controls: crisper selected chip --- */
+.pill-tabs { border-color: var(--hairline); box-shadow: inset 0 1px 2px rgba(48, 38, 26, 0.05); }
+.pill-tab { transition: background-color 0.2s var(--ease), color 0.2s var(--ease), box-shadow 0.2s var(--ease); }
+.pill-tab.active,
+.pill-tab.is-active { box-shadow: 0 1px 2px rgba(48, 38, 26, 0.10), 0 2px 8px -2px rgba(48, 38, 26, 0.10), 0 0 0 0.5px rgba(48, 38, 26, 0.06); }
+
+/* --- Bars: frosted glass, the content glides underneath --- */
+.bottom-nav {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: saturate(180%) blur(24px);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+    border-top-color: var(--hairline);
+}
+[data-theme="dark"] .bottom-nav { background: rgba(28, 28, 27, 0.9); }
+.nav-item svg { transition: background-color 0.25s var(--ease), stroke 0.25s var(--ease), transform 0.25s var(--ease); }
+.nav-item:active svg { transform: scale(0.92); }
+@media (min-width: 769px) {
+    .header {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: saturate(180%) blur(24px);
+        -webkit-backdrop-filter: saturate(180%) blur(24px);
+        border-bottom-color: var(--hairline);
+        box-shadow: 0 1px 0 rgba(48, 38, 26, 0.02), 0 8px 24px -16px rgba(48, 38, 26, 0.18);
+    }
+    [data-theme="dark"] .header { background: rgba(28, 28, 27, 0.9); }
+}
+
+
+/* --- Dialogs: a deeper, calmer scrim and a soft large shadow --- */
+.modal { background: rgba(20, 16, 12, 0.45); }
+.modal.show { backdrop-filter: blur(6px) saturate(120%); -webkit-backdrop-filter: blur(6px) saturate(120%); }
+.modal-content { box-shadow: var(--shadow-lg), 0 0 0 1px var(--hairline); }
+.profile-dropdown { box-shadow: var(--shadow-lg), 0 0 0 1px var(--hairline); border-color: transparent; }
+
+/* --- Avatars in the header: no glow halo, just the ring --- */
+.profile-btn { box-shadow: var(--shadow); }
+
+/* --- Respect "reduce motion" --- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* --- Lists inside a card: inset hairline dividers (they start at the text, not at the edge) --- */
+.settings-row + .settings-row { border-top: 0; }
+.settings-row { position: relative; }
+.settings-row + .settings-row::before { content: ''; position: absolute; top: 0; left: 72px; right: 0; height: 1px; background: var(--hairline); }
+
+/* ==========================================================================
+   Start page — calmer greeting, smaller "coming up" cards (pictures stay 16:9)
+   ========================================================================== */
+.home-greeting { margin-bottom: 26px; padding-top: 2px; }
+.home-greeting-date { font-size: 0.76rem; letter-spacing: 0.08em; font-weight: 600; color: var(--brand-deep); }
+.home-greeting-title { margin-top: 6px; font-size: 1.6rem; font-weight: 750; line-height: 1.15; letter-spacing: -0.03em; white-space: nowrap; overflow: hidden; }
+.home-section-head { margin-bottom: 14px; }
+.home-section-head h2 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
+.home-section-link { font-weight: 600; font-size: 0.9rem; padding: 6px 4px; }
+#home-duty-requests, #home-upcoming, #user-mentoring-home-card, #user-duties-home-card, #user-status-card { margin-bottom: 30px; }
+
+.home-next-card { border-radius: 22px; padding: 6px; }
+.home-next-cover { border-radius: 17px; }
+/* No picture: a calm tint of the category colour instead of the colourful blur */
+.home-next-fallback {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--cat) 20%, var(--surface)) 0%, color-mix(in srgb, var(--cat) 7%, var(--surface)) 100%);
+}
+.home-next-day { font-weight: 600; background: rgba(26, 25, 23, 0.55); border-color: rgba(255, 255, 255, 0.22); }
+.home-next-day.is-today { background: var(--gradient-primary); }
+.home-next-body { padding: 10px 10px 8px; gap: 6px; }
+.home-next-title { font-weight: 700; letter-spacing: -0.015em; }
+}
+@media (min-width: 769px) { .home-greeting-title { font-size: 1.9rem; } }
+
+/* ==========================================================================
+   Termine — tighter header, month labels stay on top while scrolling, roomier cards
+   ========================================================================== */
+.events-top-bar { margin-bottom: 14px; }
+.events-page-title { font-size: 1.7rem; font-weight: 750; letter-spacing: -0.03em; line-height: 1.15; }
+.events-subnav-bar { margin-bottom: 12px; }
+.events-filter-bar { margin-bottom: 6px; }
+.events-month-group { gap: 10px; }
+.events-month-header {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: 0 -6px;
+    padding: 10px 8px 8px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--text);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+.events-month-header::after { background: var(--hairline); }
+.events-month-count { font-weight: 600; letter-spacing: 0; color: var(--text-secondary); }
+
+.event-card { padding: 8px 12px 8px 14px; gap: 12px; border-radius: 16px; }
+/* The category stripe as a slim rounded tab inside the card */
+.event-card::before { top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; }
+.event-cal { width: 44px; border-radius: 11px; border-color: var(--hairline); box-shadow: var(--shadow); }
+.event-cal-month { font-size: 0.56rem; letter-spacing: 0.08em; padding: 3px 0 2px; }
+.event-cal-day { font-size: 1.12rem; letter-spacing: -0.03em; padding-top: 3px; }
+.event-cal-weekday { font-size: 0.6rem; font-weight: 600; padding: 1px 0 4px; }
+.event-card-body { gap: 2px; }
+.event-card-title { font-size: 0.97rem; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; }
+.event-card-when { font-size: 0.82rem; font-weight: 550; }
+.event-card-where { font-size: 0.8rem; }
+.event-card-today { text-transform: none; letter-spacing: 0; font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+
+@media (min-width: 769px) {
+    .events-page-title { font-size: 2.1rem; }
+    .events-subnav-segments { max-width: 460px; }
+    .events-month-header { top: 72px; }
+}
+
+/* ==========================================================================
+   Mentoring — the intro as a calm banner: text left, action beside it; tabs that always fit
+   ========================================================================== */
+.mentoring-header-card {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    text-align: left;
+    gap: 6px 18px;
+    padding: 22px 22px 20px;
+    border-radius: 26px;
+    background:
+        radial-gradient(120% 140% at 100% 0%, rgba(var(--brand-rgb), 0.14) 0%, transparent 55%),
+        radial-gradient(90% 120% at 0% 100%, rgba(20, 168, 124, 0.08) 0%, transparent 60%),
+        var(--surface);
+}
+.mentoring-hero-title { flex: 1 1 100%; font-size: 1.7rem; font-weight: 750; letter-spacing: -0.03em; line-height: 1.15; }
+.mentoring-hero-desc { flex: 1 1 260px; margin: 0; max-width: 520px; font-size: 0.95rem; line-height: 1.5; }
+.mentoring-header-action-wrap { width: auto; flex: 0 0 auto; justify-content: flex-start; margin-top: 8px; }
+.btn-mentor-primary { min-width: 0; padding: 11px 22px; font-size: 0.9rem; font-weight: 650; }
+.mentoring-nav-segments .pill-tab,
+.mentoring-nav-segment { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mentoring-thread-item { border-radius: 20px; padding: 14px 16px; border-color: var(--hairline); box-shadow: var(--shadow); }
+@media (min-width: 769px) {
+    .mentoring-header-card { padding: 28px 30px 26px; }
+    .mentoring-hero-title { font-size: 2.1rem; }
+}
+
+/* --- Fixes after review --- */
+/* Today in the list: a brand ring instead of the grey one */
+.event-card.is-today { box-shadow: var(--shadow), 0 0 0 2px rgba(var(--brand-rgb), 0.55) !important; }
+/* Three mentoring tabs fit on a phone */
+@media (max-width: 480px) {
+    .mentoring-nav-segments .pill-tab,
+    .mentoring-nav-segment { font-size: 0.82rem; padding-left: 4px; padding-right: 4px; }
+}
+@media (min-width: 769px) {
+    /* The action sits on the right of the intro */
+    .mentoring-header-action-wrap { margin-left: auto; margin-top: 0; }
+}
+
+/* --- Start page: the "coming up" row with smaller cards, every picture and tint in 16:9 --- */
+.home-next-card { flex: 0 0 196px; }
+.home-next-cover,
+.home-next-cover:has(.home-next-fallback) { aspect-ratio: 16 / 9; }
+.home-next-fallback svg { width: 20px; height: 20px; }
+.home-next-title { font-size: 0.95rem; }
+@media (min-width: 769px) { .home-next-card { flex: 0 0 210px; } }
+@media (min-width: 1200px) {
+    /* Five cards side by side, but not stretched over the whole width */
+    .home-next-card { flex: 0 0 min(232px, calc((100% - 4 * 16px) / 5)); }
+}
+
+/* --- Segmented pills at the top of Finanzen and Events: the same, a little slimmer --- */
+.finance-subnav-btn,
+.events-subnav-segment { padding: 7px 14px; font-size: 0.88rem; }
+.finance-subnav-btn svg,
+.events-subnav-segment svg { width: 15px; height: 15px; }
+
+/* --- Own status on a list card: a quiet note at the end of the time line (no extra line, no coloured box);
+       the time always stays whole, a long duty name ends with "…" --- */
+.event-card-when { min-width: 0; }
+.event-card-when-text { flex-shrink: 0; white-space: nowrap; }
+.event-card-when-sep { flex-shrink: 0; color: var(--text-secondary); opacity: 0.6; font-weight: 400; }
+.event-card-when .event-card-status {
+    min-width: 0;
+    padding: 0;
+    gap: 4px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    font-size: inherit;
+    font-weight: 600;
+    line-height: inherit;
+}
+.event-card-when .event-card-status svg { opacity: 1; width: 13px; height: 13px; }
+.event-card-when .event-card-status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-card-when .event-card-status.status-duty { color: var(--primary); }
+.event-card-when .event-card-status.status-requested,
+.event-card-when .event-card-status.status-waitlist { color: var(--warning); }
+.event-card-when .event-card-status.status-open-duties { color: var(--text-secondary); font-weight: 500; }
+.event-card-when .event-card-status.status-full { color: var(--danger); }
+
+/* ==========================================================================
+   Finances for members — simple and friendly: one clear state, three quick actions, the latest requests
+   ========================================================================== */
+.user-finance-hero-card {
+    border-width: 1px;
+    border-radius: 26px;
+    padding: 20px 20px 18px;
+    background:
+        radial-gradient(120% 140% at 100% 0%, rgba(var(--hero-rgb, 16, 185, 129), 0.16) 0%, transparent 60%),
+        var(--surface) !important;
+    border-color: rgba(var(--hero-rgb, 16, 185, 129), 0.28) !important;
+    box-shadow: var(--shadow);
+}
+.user-finance-hero-top { display: flex; align-items: center; gap: 14px; text-align: left; margin-bottom: 16px; }
+.user-finance-hero-symbol {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background: var(--hero-accent, var(--success));
+    box-shadow: 0 6px 16px -6px rgba(var(--hero-rgb, 16, 185, 129), 0.7);
+}
+.user-finance-hero-title { font-size: 1.45rem; font-weight: 750; letter-spacing: -0.025em; margin-bottom: 2px; }
+.user-finance-hero-sub { font-size: 0.92rem; }
+.user-finance-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.user-finance-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline);
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 500;
+}
+.user-finance-chip strong { color: var(--text); font-weight: 700; }
+.user-finance-chip.is-action { color: var(--text); font-weight: 600; cursor: pointer; transition: background-color 0.15s var(--ease); }
+.user-finance-chip.is-action svg { opacity: 0.55; }
+@media (hover: hover) { .user-finance-chip.is-action:hover { background: var(--border-light); } }
+.user-finance-overdue-box { text-align: left; border-radius: 16px; }
+.user-finance-overdue-label { text-transform: none; letter-spacing: 0; font-size: 0.82rem; }
+
+/* Quick actions: three tiles side by side — symbol and a short title, nothing to read through */
+#user-finances > .req-actions { margin: 22px 0 24px; }
+.req-actions-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 10px; }
+.req-actions-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.req-action {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 16px 8px 14px;
+    border-radius: 20px;
+    border-color: var(--hairline);
+    text-align: center;
+    box-shadow: var(--shadow);
+}
+.req-action-icon { width: 48px; height: 48px; border-radius: 16px; }
+.req-action-text { align-items: center; }
+.req-action-title { font-size: 0.86rem; font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
+.req-action-desc,
+.req-action-chevron { display: none; }
+
+/* Own requests: a slim list */
+.my-req-card { border-radius: 22px; border-color: var(--hairline); box-shadow: var(--shadow); }
+.my-req-row { padding-top: 11px; padding-bottom: 11px; }
+.my-req-tile { width: 40px; height: 40px; border-radius: 12px; }
+
+/* --- Member finances, round 2: fee and status always side by side; friendlier action buttons --- */
+.user-finance-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.user-finance-chip {
+    justify-content: center;
+    min-width: 0;
+    padding: 9px 10px;
+    border-radius: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.user-finance-chip.is-action { justify-content: center; }
+@media (min-width: 769px) { .user-finance-chips { max-width: 420px; } }
+
+/* The three actions: a soft tint of their colour, a solid round symbol, one even height */
+.req-actions-grid { gap: 10px; }
+.req-action {
+    gap: 9px;
+    min-height: 108px;
+    padding: 14px 6px 12px;
+    border: 0;
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--req-color) 10%, var(--surface));
+    box-shadow: none;
+}
+[data-theme="dark"] .req-action { background: color-mix(in srgb, var(--req-color) 14%, var(--surface)); }
+.req-action-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: #ffffff;
+    background: var(--req-color);
+    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--req-color) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.req-action-icon svg { width: 20px; height: 20px; }
+.req-action-title { font-size: 0.8rem; font-weight: 650; line-height: 1.25; color: var(--text); }
+.req-action:active { transform: scale(0.96); }
+@media (hover: hover) {
+    .req-action:hover { background: color-mix(in srgb, var(--req-color) 16%, var(--surface)); border-color: transparent; box-shadow: none; }
+}
+@media (min-width: 769px) {
+    .req-action { flex-direction: row; justify-content: flex-start; min-height: 0; padding: 12px 14px; gap: 12px; text-align: left; }
+    .req-action-text { align-items: flex-start; }
+    .req-action-title { font-size: 0.9rem; }
+}
+
+/* Each action has its own frame: a fine line in its colour and a soft shadow (no shared box behind them) */
+.req-action {
+    border: 1px solid color-mix(in srgb, var(--req-color) 26%, transparent);
+    box-shadow: 0 1px 2px rgba(48, 38, 26, 0.05), 0 6px 16px -10px color-mix(in srgb, var(--req-color) 55%, transparent);
+}
+[data-theme="dark"] .req-action { border-color: color-mix(in srgb, var(--req-color) 34%, transparent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+@media (hover: hover) {
+    .req-action:hover { border-color: color-mix(in srgb, var(--req-color) 45%, transparent); box-shadow: 0 1px 2px rgba(48, 38, 26, 0.05), 0 10px 22px -10px color-mix(in srgb, var(--req-color) 65%, transparent); }
+}
+
+/* Start page: the "coming up" cards a bit bigger again (pictures stay 16:9) */
+.home-next-card { flex: 0 0 224px; }
+.home-next-title { font-size: 1rem; }
+@media (min-width: 769px) { .home-next-card { flex: 0 0 240px; } }
+@media (min-width: 1200px) { .home-next-card { flex: 0 0 min(264px, calc((100% - 4 * 16px) / 5)); } }
+
+/* Finance actions, softer: a light tinted symbol instead of a solid one, a whisper of colour on the tile */
+.req-action {
+    background: color-mix(in srgb, var(--req-color) 5%, var(--surface));
+    border-color: color-mix(in srgb, var(--req-color) 16%, var(--border-light));
+    box-shadow: var(--shadow);
+}
+.req-action-icon {
+    color: var(--req-color);
+    background: color-mix(in srgb, var(--req-color) 14%, var(--surface));
+    box-shadow: none;
+}
+[data-theme="dark"] .req-action {
+    background: color-mix(in srgb, var(--req-color) 7%, var(--surface));
+    border-color: color-mix(in srgb, var(--req-color) 20%, var(--border-light));
+    box-shadow: var(--shadow);
+}
+[data-theme="dark"] .req-action-icon { background: color-mix(in srgb, var(--req-color) 20%, var(--surface)); }
+@media (hover: hover) {
+    .req-action:hover { background: color-mix(in srgb, var(--req-color) 9%, var(--surface)); border-color: color-mix(in srgb, var(--req-color) 28%, var(--border-light)); box-shadow: var(--shadow-md); }
+}
+/* The own duty on the start page cards in the brand colour, like in the list */
+.home-next-chip.chip-duty { background: rgba(var(--brand-rgb), 0.1); color: var(--primary); border-color: rgba(var(--brand-rgb), 0.25); }
+[data-theme="dark"] .home-next-chip.chip-duty { color: var(--primary); }
+
+/* ==========================================================================
+   Frosted glass — one subtle strength everywhere (like the month labels in Termine): 88 % colour, 14px blur.
+   Only where content really moves underneath or something floats above the page.
+   ========================================================================== */
+:root {
+    --frost: saturate(150%) blur(14px);
+    --frost-bg: color-mix(in srgb, var(--bg) 88%, transparent);
+    --frost-surface: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+/* Bars: phone header (stays while scrolling up), bottom nav, desktop header */
+@media (max-width: 768px) {
+    .header { background: var(--frost-bg); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
+}
+.bottom-nav,
+[data-theme="dark"] .bottom-nav { background: var(--frost-surface); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
+@media (min-width: 769px) {
+    .header,
+    [data-theme="dark"] .header { background: var(--frost-surface); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
+}
+.events-month-header { background: var(--frost-bg); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
+
+/* Headers that stay on top inside pages and dialogs */
+.modal-header,
+.poll-editor-top,
+.poll-editor-savebar,
+#event-detail-modal .detail-is-editing .event-detail-admin-bar {
+    background: var(--frost-bg);
+    backdrop-filter: var(--frost);
+    -webkit-backdrop-filter: var(--frost);
+}
+.modal-header { background: var(--frost-surface); }
+
+/* Sub-pages (settings pages, songbook, prayers): the back button and title stay reachable while scrolling */
+.settings-paged[data-page] > .settings-nav,
+#songbook > .polls-head,
+#prayers > .polls-head {
+    position: sticky;
+    top: 0;
+    z-index: 7;
+    margin-left: -8px;
+    margin-right: -8px;
+    padding: 8px;
+    border-radius: 0 0 16px 16px;
+    background: var(--frost-bg);
+    backdrop-filter: var(--frost);
+    -webkit-backdrop-filter: var(--frost);
+}
+@media (min-width: 769px) {
+    .settings-paged[data-page] > .settings-nav,
+    #songbook > .polls-head,
+    #prayers > .polls-head { top: 72px; }
+}
+
+/* Things floating above the page */
+.toast,
+.profile-dropdown,
+.fab-menu-item,
+#event-detail-modal.modal-page .event-detail-close-btn {
+    background: var(--frost-surface);
+    backdrop-filter: var(--frost);
+    -webkit-backdrop-filter: var(--frost);
+}
+/* Chat: header and input bar over the messages */
+.mentoring-chat-header,
+#ai-chat .ai-chat-input-styled {
+    background: var(--frost-surface);
+    backdrop-filter: var(--frost);
+    -webkit-backdrop-filter: var(--frost);
+}
+.settings-paged[data-page] > .settings-nav .settings-nav-head { margin-bottom: 0; }
+.settings-paged[data-page] > .settings-nav { margin-bottom: 12px; }
+
+/* The header's glass sits on its own layer (::before): a backdrop filter on the header itself would stop the
+   profile menu inside it from blurring the page below (nested backdrop filters only see their parent) */
+.header,
+[data-theme="dark"] .header {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+.header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--frost-bg);
+    backdrop-filter: var(--frost);
+    -webkit-backdrop-filter: var(--frost);
+}
+@media (min-width: 769px) { .header::before { background: var(--frost-surface); } }
+.profile-dropdown { background: var(--frost-surface); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
+
+/* Phone: while the header is shown, the sticky labels and sub-page heads sit just below it instead of under it */
+@media (max-width: 768px) {
+    .events-month-header,
+    .settings-paged[data-page] > .settings-nav,
+    #songbook > .polls-head,
+    #prayers > .polls-head { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .container:has(> .app-layout > .header:not(.header-hidden)) .events-month-header,
+    .container:has(> .app-layout > .header:not(.header-hidden)) .settings-paged[data-page] > .settings-nav,
+    .container:has(> .app-layout > .header:not(.header-hidden)) #songbook > .polls-head,
+    .container:has(> .app-layout > .header:not(.header-hidden)) #prayers > .polls-head { top: var(--mobile-header-h, 68px); }
+}
+
+/* ==========================================================================
+   Events without a picture: large glass spheres on a soft pastel wash (like Microsoft wallpapers) — hair-thin
+   rims, an almost clear inside, a breath of refraction. The symbol stays centred.
+   ========================================================================== */
+@keyframes sphere-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-1.5cqw, 1cqw, 0) scale(1.03); } }
+
+.home-next-fallback,
+.ct-event-card-fallback-cover { position: relative; overflow: hidden; isolation: isolate; container-type: inline-size; }
+.home-next-fallback > *,
+.ct-event-card-fallback-cover > * { position: relative; z-index: 2; }
+.home-next-fallback,
+.ct-event-card-fallback-cover {
+    --wash: var(--cat, var(--brand));
+    background:
+        radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--wash) 26%, transparent) 0%, transparent 62%),
+        radial-gradient(80% 110% at 100% 0%, rgba(167, 139, 250, 0.18) 0%, transparent 60%),
+        radial-gradient(70% 90% at 70% 100%, rgba(125, 211, 192, 0.16) 0%, transparent 65%),
+        linear-gradient(135deg, color-mix(in srgb, var(--wash) 10%, var(--surface)) 0%, var(--surface-alt) 100%);
+}
+.ct-event-card-fallback-cover { --wash: var(--brand); }
+
+.home-next-fallback::before,
+.ct-event-card-fallback-cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 22.0cqw 12.8cqw at 0.0cqw 30.8cqw, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 40cqw at 12cqw 50cqw, rgba(255, 255, 255, 0) calc(40cqw - 1.4px), rgba(255, 255, 255, 0.75) calc(40cqw - 0.7px), rgba(255, 255, 255, 0) 40cqw),
+        radial-gradient(circle 40cqw at 14.0cqw 48.4cqw, rgba(150, 200, 255, 0) 84%, rgba(150, 200, 255, 0.22) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 40cqw at 10.0cqw 52.0cqw, rgba(255, 196, 226, 0) 86%, rgba(255, 196, 226, 0.16) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 40cqw at 12cqw 50cqw, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.033) 72%, rgba(255, 255, 255, 0) 100%),
+        radial-gradient(ellipse 16.5cqw 9.6cqw at 83.0cqw -12.4cqw, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 30cqw at 92cqw 2cqw, rgba(255, 255, 255, 0) calc(30cqw - 1.4px), rgba(255, 255, 255, 0.75) calc(30cqw - 0.7px), rgba(255, 255, 255, 0) 30cqw),
+        radial-gradient(circle 30cqw at 93.5cqw 0.8cqw, rgba(150, 200, 255, 0) 84%, rgba(150, 200, 255, 0.22) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 30cqw at 90.5cqw 3.5cqw, rgba(255, 196, 226, 0) 86%, rgba(255, 196, 226, 0.16) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 30cqw at 92cqw 2cqw, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.033) 72%, rgba(255, 255, 255, 0) 100%),
+        radial-gradient(ellipse 5.5cqw 3.2cqw at 63.0cqw 37.2cqw, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 10cqw at 66cqw 42cqw, rgba(255, 255, 255, 0) calc(10cqw - 1.4px), rgba(255, 255, 255, 0.75) calc(10cqw - 0.7px), rgba(255, 255, 255, 0) 10cqw),
+        radial-gradient(circle 10cqw at 66.5cqw 41.6cqw, rgba(150, 200, 255, 0) 84%, rgba(150, 200, 255, 0.22) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 10cqw at 65.5cqw 42.5cqw, rgba(255, 196, 226, 0) 86%, rgba(255, 196, 226, 0.16) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 10cqw at 66cqw 42cqw, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.033) 72%, rgba(255, 255, 255, 0) 100%);
+    animation: sphere-drift 18s ease-in-out infinite alternate;
+}
+[data-theme="dark"] .home-next-fallback::before,
+[data-theme="dark"] .ct-event-card-fallback-cover::before {
+    background:
+        radial-gradient(ellipse 22.0cqw 12.8cqw at 0.0cqw 30.8cqw, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 40cqw at 12cqw 50cqw, rgba(255, 255, 255, 0) calc(40cqw - 1.4px), rgba(255, 255, 255, 0.32) calc(40cqw - 0.7px), rgba(255, 255, 255, 0) 40cqw),
+        radial-gradient(circle 40cqw at 14.0cqw 48.4cqw, rgba(150, 200, 255, 0) 84%, rgba(150, 200, 255, 0.14) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 40cqw at 10.0cqw 52.0cqw, rgba(255, 196, 226, 0) 86%, rgba(255, 196, 226, 0.1) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 40cqw at 12cqw 50cqw, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.017) 72%, rgba(255, 255, 255, 0) 100%),
+        radial-gradient(ellipse 16.5cqw 9.6cqw at 83.0cqw -12.4cqw, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 30cqw at 92cqw 2cqw, rgba(255, 255, 255, 0) calc(30cqw - 1.4px), rgba(255, 255, 255, 0.32) calc(30cqw - 0.7px), rgba(255, 255, 255, 0) 30cqw),
+        radial-gradient(circle 30cqw at 93.5cqw 0.8cqw, rgba(150, 200, 255, 0) 84%, rgba(150, 200, 255, 0.14) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 30cqw at 90.5cqw 3.5cqw, rgba(255, 196, 226, 0) 86%, rgba(255, 196, 226, 0.1) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 30cqw at 92cqw 2cqw, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.017) 72%, rgba(255, 255, 255, 0) 100%),
+        radial-gradient(ellipse 5.5cqw 3.2cqw at 63.0cqw 37.2cqw, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 10cqw at 66cqw 42cqw, rgba(255, 255, 255, 0) calc(10cqw - 1.4px), rgba(255, 255, 255, 0.32) calc(10cqw - 0.7px), rgba(255, 255, 255, 0) 10cqw),
+        radial-gradient(circle 10cqw at 66.5cqw 41.6cqw, rgba(150, 200, 255, 0) 84%, rgba(150, 200, 255, 0.14) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 10cqw at 65.5cqw 42.5cqw, rgba(255, 196, 226, 0) 86%, rgba(255, 196, 226, 0.1) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 10cqw at 66cqw 42cqw, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.017) 72%, rgba(255, 255, 255, 0) 100%);
+}
+[data-theme="dark"] .home-next-fallback,
+[data-theme="dark"] .ct-event-card-fallback-cover {
+    background:
+        radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--wash) 22%, transparent) 0%, transparent 62%),
+        radial-gradient(80% 110% at 100% 0%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
+        linear-gradient(135deg, color-mix(in srgb, var(--wash) 8%, var(--surface)) 0%, var(--surface-alt) 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+    .home-next-fallback::before,
+    .ct-event-card-fallback-cover::before { animation: none; }
+}
+
+/* ==========================================================================
+   Dark mode, tuned on its own: in the dark, coloured shadows read as glow and near-white on near-black
+   flickers. So: softer off-white text, a slightly lifted canvas, dimmed and less saturated accents, and
+   neutral shadows only (no coloured light anywhere).
+   ========================================================================== */
+[data-theme="dark"] {
+    --bg: #181817;
+    --surface: #222120;
+    --surface-alt: #2b2a28;
+    --border-light: #343230;
+    --border: #45433f;
+    --text: #ebe8e3;
+    --text-secondary: #a3a09a;
+
+    --brand: #2ea398;
+    --brand-rgb: 46, 163, 152;
+    --brand-deep: #268a80;
+    --primary: #63c0b4;
+    --primary-dark: #2ea398;
+    --secondary: #3fae84;
+    --gradient-primary: linear-gradient(135deg, #0f8e86 0%, #159a72 100%);
+    --gradient-hover: linear-gradient(135deg, #12988f 0%, #19a57b 100%);
+
+    --success: #5bb48b;
+    --danger: #de6f72;
+    --warning: #d4a24e;
+
+    --nav-pill: #22403b;
+    --nav-pill-text: #addcd3;
+    --hairline: rgba(255, 252, 245, 0.07);
+    --shadow-brand: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --ring: 0 0 0 3px rgba(46, 163, 152, 0.28);
+}
+/* No coloured light: rings, buttons, banners and symbols get neutral shadows */
+[data-theme="dark"] .avatar-ring-standard,
+[data-theme="dark"] .avatar-ring-mentor,
+[data-theme="dark"] .avatar-ring-manager { --ring-glow: rgba(0, 0, 0, 0.45); }
+[data-theme="dark"] .hero-card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 30px -16px rgba(0, 0, 0, 0.75); }
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .btn-mentor-primary { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.45); text-shadow: none; }
+[data-theme="dark"] .btn-mentor-primary:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.45); }
+[data-theme="dark"] .desktop-fab { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45); }
+[data-theme="dark"] .user-finance-hero-symbol { box-shadow: none; }
+[data-theme="dark"] .event-card.is-today { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 0 0 1.5px rgba(var(--brand-rgb), 0.35) !important; }
+[data-theme="dark"] .profile-btn { box-shadow: none; }
+/* Tinted surfaces stay a whisper in the dark */
+[data-theme="dark"] .mentoring-header-card {
+    background:
+        radial-gradient(120% 140% at 100% 0%, rgba(var(--brand-rgb), 0.08) 0%, transparent 55%),
+        var(--surface);
+}
+[data-theme="dark"] .user-finance-hero-card {
+    background:
+        radial-gradient(120% 140% at 100% 0%, rgba(var(--hero-rgb, 16, 185, 129), 0.09) 0%, transparent 60%),
+        var(--surface) !important;
+    border-color: rgba(var(--hero-rgb, 16, 185, 129), 0.18) !important;
+}
+[data-theme="dark"] .user-finance-hero-title { filter: saturate(0.75) brightness(0.92); }
+[data-theme="dark"] .req-action-icon { background: color-mix(in srgb, var(--req-color) 16%, var(--surface)); }
+[data-theme="dark"] .req-action-icon svg { opacity: 0.85; }
+/* Big bright headings: a touch less white than body text would allow */
+[data-theme="dark"] .home-greeting-title,
+[data-theme="dark"] .events-page-title,
+[data-theme="dark"] .mentoring-hero-title,
+[data-theme="dark"] .hub-title,
+[data-theme="dark"] .polls-title { color: #e4ded6; }
+/* Soft shadows in brand colour (style.css): teal light in light mode, plain shadow in the dark */
+:root { --glow-rgb: 13, 158, 148; }
+[data-theme="dark"] { --glow-rgb: 0, 0, 0; }
+/* Role rings around pictures: calmer colours in the dark */
+[data-theme="dark"] .avatar-ring-standard { --ring: linear-gradient(135deg, #2f9a90, #2f8f6c); }
+[data-theme="dark"] .avatar-ring-mentor { --ring: linear-gradient(135deg, #9a7fc8, #6c4fb0); }
+[data-theme="dark"] .avatar-ring-manager { --ring: linear-gradient(135deg, #c9a640, #c0574f); }
+
+/* No glow anywhere: every coloured soft shadow becomes a quiet neutral shadow (crisp focus/today rings stay) */
+:root {
+    --glow-rgb: 48, 38, 26;
+    --shadow-brand: 0 1px 2px rgba(48, 38, 26, 0.12), 0 4px 10px -4px rgba(48, 38, 26, 0.18);
+}
+[data-theme="dark"] { --glow-rgb: 0, 0, 0; }
+.avatar-ring-standard,
+.avatar-ring-mentor,
+.avatar-ring-manager { --ring-glow: rgba(48, 38, 26, 0.16); }
+[data-theme="dark"] .avatar-ring-standard,
+[data-theme="dark"] .avatar-ring-mentor,
+[data-theme="dark"] .avatar-ring-manager { --ring-glow: rgba(0, 0, 0, 0.45); }
+.hero-card { box-shadow: 0 1px 2px rgba(48, 38, 26, 0.08), 0 12px 28px -16px rgba(48, 38, 26, 0.35); }
+.user-finance-hero-symbol { box-shadow: none; }
+.btn-primary,
+.btn-mentor-primary { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), var(--shadow-brand); }
+.btn-mentor-primary:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), var(--shadow-brand); }
+
+/* ==========================================================================
+   Admin finances — fee list: a picture-like initial (tinted by payment state), names up to two lines,
+   a right column that never squeezes, the chevron at the far right
+   ========================================================================== */
+.person-wrapper { margin-bottom: 10px; }
+.person-item { padding: 12px 14px; border-radius: 18px; border: 1px solid var(--hairline); box-shadow: var(--shadow); }
+.person-wrapper.active { border-radius: 18px; box-shadow: var(--shadow-md); border: 1px solid var(--hairline); }
+.person-item.active { border: 0; border-bottom: 1px solid var(--border-light); }
+.person-pill { gap: 12px; justify-content: flex-start; }
+.person-left { flex: 1 1 auto; min-width: 0; gap: 2px; }
+.person-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.98rem;
+    font-weight: 650;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+.person-status { text-transform: none; letter-spacing: 0; font-size: 0.8rem; font-weight: 500; opacity: 1; }
+.person-right { flex: 0 0 auto; max-width: 42%; min-width: 0; gap: 3px; }
+.payment-pill {
+    white-space: nowrap;
+    font-size: 0.76rem;
+    font-weight: 650;
+    padding: 3px 10px;
+    box-shadow: none;
+}
+.payment-pill.status-ok { background: color-mix(in srgb, var(--success) 14%, var(--surface)); color: color-mix(in srgb, var(--success) 85%, var(--text)); }
+.payment-pill.status-warn { background: color-mix(in srgb, var(--warning) 18%, var(--surface)); color: color-mix(in srgb, var(--warning) 80%, var(--text)); }
+.payment-pill.status-err { background: color-mix(in srgb, var(--danger) 14%, var(--surface)); color: var(--danger); }
+.time-remaining { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.76rem; }
+.person-pill > .chevron { flex-shrink: 0; margin-left: 0; font-size: 1.25rem; line-height: 1; opacity: 0.55; }
+.person-item.active .person-pill > .chevron { opacity: 1; }
+/* Section labels like the month labels in Termine */
+.list-section-title { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.1em; margin: 14px 2px 10px; }
+.list-section-title::after { background: var(--hairline); opacity: 1; }
+@media (min-width: 769px) {
+    .finance-subnav { max-width: 460px; }
+}
+/* Phones: the coloured date already tells the state, so its repeat in words gives way to the name */
+@media (max-width: 480px) {
+    .payment-pill + .time-remaining { display: none; }
+    .person-right { max-width: 40%; }
+}
+
+/* ==========================================================================
+   Admin fee list — the opened member: like the member finance page (state with a round symbol, fee and
+   status as chips, three soft action tiles, then the history)
+   ========================================================================== */
+.person-details .details-content { padding: 14px; }
+.member-hero {
+    --hero-accent: var(--success);
+    padding: 16px;
+    margin-bottom: 12px;
+    border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--hero-accent) 24%, transparent);
+    background:
+        radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--hero-accent) 13%, transparent) 0%, transparent 60%),
+        var(--surface);
+}
+.member-hero.status-warn { --hero-accent: var(--warning); }
+.member-hero.status-err { --hero-accent: var(--danger); }
+.member-hero-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.member-hero-symbol {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background: var(--hero-accent);
+}
+.member-hero-info { min-width: 0; }
+.member-hero-title { font-size: 1.12rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; color: var(--hero-accent); }
+.member-hero-sub { font-size: 0.86rem; color: var(--text-secondary); }
+.member-hero-sub strong { color: var(--text); font-weight: 650; }
+.member-hero-overdue {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+    color: var(--danger);
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+.member-hero-overdue strong { font-size: 1.15rem; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.member-hero .user-finance-chips { max-width: none; }
+.member-actions-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+.member-action.req-action { min-height: 92px; padding: 12px 6px 10px; flex-direction: column; justify-content: center; text-align: center; gap: 8px; }
+.member-action .req-action-text { align-items: center; }
+.member-action .req-action-icon { width: 40px; height: 40px; }
+.member-action .req-action-title { font-size: 0.8rem; }
+[data-theme="dark"] .member-hero {
+    background: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--hero-accent) 8%, transparent) 0%, transparent 60%), var(--surface);
+    border-color: color-mix(in srgb, var(--hero-accent) 18%, transparent);
+}
+[data-theme="dark"] .member-hero-symbol { color: var(--bg); background: color-mix(in srgb, var(--hero-accent) 85%, var(--surface)); }
+/* Standing order block in the same calm style */
+.standing-order-section { border-radius: 16px; border-color: var(--hairline); box-shadow: none; }
+.so-header-title { text-transform: none; letter-spacing: 0; }
+.person-details .history-header { font-size: 0.74rem; letter-spacing: 0.1em; }
+/* Closed rows: "Dauerauftrag läuft" may wrap so the name keeps its room */
+.person-right { max-width: 34%; }
+.time-remaining { white-space: normal; text-align: right; line-height: 1.25; }
+
+/* Opened member, round 2: compact action buttons (symbol beside the title) and the standing orders as calm rows */
+.member-actions-grid { gap: 8px; margin-bottom: 14px; }
+.member-action.req-action {
+    min-height: 0;
+    flex-direction: row;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 8px;
+    border-radius: 14px;
+}
+.member-action .req-action-icon { width: 28px; height: 28px; }
+.member-action .req-action-icon svg { width: 15px; height: 15px; }
+.member-action .req-action-title { font-size: 0.8rem; line-height: 1.15; text-align: left; }
+@media (max-width: 380px) { .member-action .req-action-icon { display: none; } }
+
+.so-block { margin-bottom: 14px; }
+.so-block .history-header { margin-top: 0; }
+.so-rows { border-radius: 16px; border: 1px solid var(--hairline); background: var(--surface); overflow: hidden; }
+.so-row { display: flex; align-items: center; gap: 12px; padding: 11px 12px 11px 14px; }
+.so-row + .so-row { border-top: 1px solid var(--hairline); }
+.so-row.is-ended { opacity: 0.6; }
+.so-row-icon {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+}
+.so-row-text { flex: 1 1 auto; min-width: 0; }
+.so-row-amount { font-size: 0.92rem; color: var(--text-secondary); }
+.so-row-amount strong { color: var(--text); font-weight: 700; }
+.so-row-facts { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.so-row-state { flex-shrink: 0; padding: 3px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 650; }
+.so-row-state.active { background: color-mix(in srgb, var(--success) 13%, var(--surface)); color: color-mix(in srgb, var(--success) 85%, var(--text)); }
+.so-row-state.ended { background: var(--surface-alt); color: var(--text-secondary); }
+.so-row-edit {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1px solid var(--hairline);
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+@media (hover: hover) { .so-row-edit:hover { color: var(--text); background: var(--border-light); } }
+/* History dots: masked with the card colour (not white), so they sit calmly in both themes */
+.timeline-dot { border-color: var(--surface); box-shadow: 0 0 0 4px var(--surface); }
+/* Standing order facts may take two lines */
+.so-row-facts { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ==========================================================================
+   One look for every profile picture without a photo (the one of the finance history):
+   initials on a soft violet-to-teal tint; a real picture covers it
+   ========================================================================== */
+.avatar,
+.trans-icon-wrapper.avatar,
+.profile-pic-placeholder {
+    position: relative;
+    overflow: hidden;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.16), rgba(var(--brand-rgb), 0.16)), var(--surface);
+}
+.avatar-initials,
+.settings-profile-initials { font-weight: 700; letter-spacing: 0.02em; color: var(--text); user-select: none; }
+.avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.person-avatar { width: 42px; height: 42px; flex-shrink: 0; }
+.person-avatar-initials { font-size: 0.82rem; }
+/* Finance history: the red expense badge sits over the edge of the picture, so nothing is cut off there */
+.trans-icon-wrapper.avatar { overflow: visible; }
