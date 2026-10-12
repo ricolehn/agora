@@ -1,5 +1,6 @@
 const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords } = require('./pocketbase');
 const { toDateStr } = require('./utils/date');
+const { buildEventContext } = require('./eventContext');
 
 const AI_STATE_KEY = 'ai_config';
 
@@ -181,9 +182,15 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
     }
 
     const snapshot = {
+      today: todayStr,
       summary,
       members: memberRecords,
-      users: userRecords
+      users: userRecords,
+      // What the asking person sees in the calendar (duty roster and order of service only where they may)
+      events: await buildEventContext(appConfig, options.user).catch((err) => {
+        console.error('ai.js: event context error:', err);
+        return [];
+      })
     };
 
     if (canViewFinances) {
@@ -268,10 +275,10 @@ function sanitizeAiMessages(rawMessages, maxMessages = 50, maxCharPerMsg = 12000
 function buildSystemPrompt(appName, dbSnapshot, options = {}) {
   const canViewFinances = options.canViewFinances === true;
   if (!canViewFinances) {
-    return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, and general app usage. Be concise and helpful.
+    return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, events and general app usage. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.
 IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.\n\nCurrent database context:\n${dbSnapshot}`;
   }
-  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, and settings. Be concise and helpful.\n\nCurrent database context:\n${dbSnapshot}`;
+  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
 module.exports = {

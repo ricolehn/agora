@@ -5735,20 +5735,20 @@ function createEl(tag, className, text) {
     return created;
 }
 
-// A new chat: a friendly start with three questions the assistant can answer (it knows members, finances, requests)
+// A new chat: a friendly start with three questions the assistant can answer (members, finances, requests, events)
 function clearAiChat() {
     aiMessages = [];
     const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return;
     const admin = canViewFinances();
     const ideas = [1, 2, 3].map(n => admin
-        ? t(`ai_suggest_admin_${n}`, ['Who is behind with their fee?', 'What is the current balance?', 'Which requests are still open?'][n - 1])
-        : t(`ai_suggest_member_${n}`, ['Until when is my fee paid?', 'How do I report a payment?', 'How do I apply for a different status?'][n - 1]));
+        ? t(`ai_suggest_admin_${n}`, ['Who is behind with their fee?', 'What is coming up this week?', 'Which requests are still open?'][n - 1])
+        : t(`ai_suggest_member_${n}`, ['Until when is my fee paid?', 'What is coming up this week?', 'Where am I on duty next?'][n - 1]));
     messagesEl.innerHTML = `
         <div class="ai-chat-welcome">
             <div class="ai-chat-welcome-icon">${svgIcon('sparkles', 28, 1.8)}</div>
             <div class="ai-chat-welcome-text">${t('ai_chat_hello', 'How can I help?')}</div>
-            <div class="ai-chat-welcome-sub">${admin ? t('ai_chat_welcome_sub', 'Ask questions about your members, finances, or settings.') : t('ai_chat_welcome_sub_member', 'Ask questions about the church, members or how to use the app.')}</div>
+            <div class="ai-chat-welcome-sub">${admin ? t('ai_chat_welcome_sub', 'Ask about members, finances, events or duties.') : t('ai_chat_welcome_sub_member', 'Ask about events, duties, your fee or how the app works.')}</div>
             <div class="ai-chat-ideas">
                 ${ideas.map(idea => `<button type="button" class="ai-chat-idea" onclick="window.askAi(this.textContent)">${escapeHtml(idea)}</button>`).join('')}
             </div>

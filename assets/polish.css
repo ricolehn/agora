@@ -294,7 +294,6 @@ h1, h2, h3,
 @media (min-width: 769px) {
     .events-page-title { font-size: 2.1rem; }
     .events-subnav-segments { max-width: 460px; }
-    .events-month-header { top: calc(72px - var(--desktop-header-offset)); }
 }
 
 /* ==========================================================================
@@ -588,11 +587,6 @@ h1, h2, h3,
     background: var(--frost-bg);
     backdrop-filter: var(--frost);
     -webkit-backdrop-filter: var(--frost);
-}
-@media (min-width: 769px) {
-    .settings-paged[data-page] > .settings-nav,
-    #songbook > .polls-head,
-    #prayers > .polls-head { top: calc(72px - var(--desktop-header-offset)); }
 }
 
 /* Things floating above the page */
@@ -1338,3 +1332,30 @@ h1, h2, h3,
 /* The size follows the room the line really has (container units), so it always fits */
 .event-detail-modal-card:not(.detail-is-editing) .cell-when .event-detail-quad-body { container-type: inline-size; }
 .event-detail-modal-card:not(.detail-is-editing) .cell-when-value { font-size: min(0.9rem, 4.95cqw); letter-spacing: -0.01em; }
+
+/* ==========================================================================
+   Desktop: sticky heads follow the header — right below it while it is shown, at the very top when it
+   hides on scrolling down (offsets count from the content edge, see the 108px header padding)
+   ========================================================================== */
+@media (min-width: 769px) {
+    .events-month-header,
+    .settings-paged[data-page] > .settings-nav,
+    #songbook > .polls-head,
+    #prayers > .polls-head {
+        top: calc(72px - var(--desktop-header-offset));
+        transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .container:has(> .app-layout > .header.header-hidden) .events-month-header,
+    .container:has(> .app-layout > .header.header-hidden) .settings-paged[data-page] > .settings-nav,
+    .container:has(> .app-layout > .header.header-hidden) #songbook > .polls-head,
+    .container:has(> .app-layout > .header.header-hidden) #prayers > .polls-head { top: calc(0px - var(--desktop-header-offset)); }
+
+    /* Settings: one centred column like the chat and the prayers */
+    #settings,
+    #user-settings { max-width: 760px; margin-left: auto; margin-right: auto; }
+}
+@media (min-width: 1024px) {
+    /* The month calendar beside the list follows the header too */
+    .termine-cal { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .container:has(> .app-layout > .header.header-hidden) .termine-cal { top: calc(20px - var(--desktop-header-offset)); }
+}
