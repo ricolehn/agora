@@ -294,7 +294,7 @@ h1, h2, h3,
 @media (min-width: 769px) {
     .events-page-title { font-size: 2.1rem; }
     .events-subnav-segments { max-width: 460px; }
-    .events-month-header { top: 72px; }
+    .events-month-header { top: calc(72px - var(--desktop-header-offset)); }
 }
 
 /* ==========================================================================
@@ -592,7 +592,7 @@ h1, h2, h3,
 @media (min-width: 769px) {
     .settings-paged[data-page] > .settings-nav,
     #songbook > .polls-head,
-    #prayers > .polls-head { top: 72px; }
+    #prayers > .polls-head { top: calc(72px - var(--desktop-header-offset)); }
 }
 
 /* Things floating above the page */
@@ -654,11 +654,14 @@ h1, h2, h3,
 @keyframes sphere-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-1.5cqw, 1cqw, 0) scale(1.03); } }
 
 .home-next-fallback,
-.ct-event-card-fallback-cover { position: relative; overflow: hidden; isolation: isolate; container-type: inline-size; }
+.ct-event-card-fallback-cover,
+.event-detail-sphere-band { position: relative; overflow: hidden; isolation: isolate; container-type: inline-size; }
 .home-next-fallback > *,
-.ct-event-card-fallback-cover > * { position: relative; z-index: 2; }
+.ct-event-card-fallback-cover > *,
+.event-detail-sphere-band > * { position: relative; z-index: 2; }
 .home-next-fallback,
-.ct-event-card-fallback-cover {
+.ct-event-card-fallback-cover,
+.event-detail-sphere-band {
     --wash: var(--cat, var(--brand));
     background:
         radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--wash) 26%, transparent) 0%, transparent 62%),
@@ -666,10 +669,12 @@ h1, h2, h3,
         radial-gradient(70% 90% at 70% 100%, rgba(125, 211, 192, 0.16) 0%, transparent 65%),
         linear-gradient(135deg, color-mix(in srgb, var(--wash) 10%, var(--surface)) 0%, var(--surface-alt) 100%);
 }
-.ct-event-card-fallback-cover { --wash: var(--brand); }
+.ct-event-card-fallback-cover,
+.event-detail-sphere-band { --wash: var(--brand); }
 
 .home-next-fallback::before,
-.ct-event-card-fallback-cover::before {
+.ct-event-card-fallback-cover::before,
+.event-detail-sphere-band::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -694,7 +699,8 @@ h1, h2, h3,
     animation: sphere-drift 18s ease-in-out infinite alternate;
 }
 [data-theme="dark"] .home-next-fallback::before,
-[data-theme="dark"] .ct-event-card-fallback-cover::before {
+[data-theme="dark"] .ct-event-card-fallback-cover::before,
+[data-theme="dark"] .event-detail-sphere-band::before {
     background:
         radial-gradient(ellipse 22.0cqw 12.8cqw at 0.0cqw 30.8cqw, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%),
         radial-gradient(circle 40cqw at 12cqw 50cqw, rgba(255, 255, 255, 0) calc(40cqw - 1.4px), rgba(255, 255, 255, 0.32) calc(40cqw - 0.7px), rgba(255, 255, 255, 0) 40cqw),
@@ -713,7 +719,8 @@ h1, h2, h3,
         radial-gradient(circle 10cqw at 66cqw 42cqw, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.017) 72%, rgba(255, 255, 255, 0) 100%);
 }
 [data-theme="dark"] .home-next-fallback,
-[data-theme="dark"] .ct-event-card-fallback-cover {
+[data-theme="dark"] .ct-event-card-fallback-cover,
+[data-theme="dark"] .event-detail-sphere-band {
     background:
         radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--wash) 22%, transparent) 0%, transparent 62%),
         radial-gradient(80% 110% at 100% 0%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
@@ -721,7 +728,8 @@ h1, h2, h3,
 }
 @media (prefers-reduced-motion: reduce) {
     .home-next-fallback::before,
-    .ct-event-card-fallback-cover::before { animation: none; }
+    .ct-event-card-fallback-cover::before,
+    .event-detail-sphere-band::before { animation: none; }
 }
 
 /* ==========================================================================
@@ -1011,3 +1019,322 @@ h1, h2, h3,
 .person-avatar-initials { font-size: 0.82rem; }
 /* Finance history: the red expense badge sits over the edge of the picture, so nothing is cut off there */
 .trans-icon-wrapper.avatar { overflow: visible; }
+
+/* ==========================================================================
+   AI chat — calm like a modern assistant: the reply as plain text beside a small sparkle, the own message as
+   a soft tinted bubble, a friendly start with suggestions, a quiet "New chat"
+   ========================================================================== */
+.ai-chat-header-styled { gap: 8px; padding: 12px 0 10px; font-weight: 700; }
+.ai-chat-title { flex: 1; min-width: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+.ai-new-chat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+}
+@media (hover: hover) { .ai-new-chat-btn:hover { background: var(--surface-alt); } }
+
+.ai-chat-messages { gap: 18px; padding-top: 12px; }
+.ai-chat-welcome { gap: 10px; padding: 32px 8px; color: var(--text-secondary); }
+.ai-chat-welcome-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 22px;
+    color: var(--primary);
+    background:
+        radial-gradient(120% 120% at 0% 0%, rgba(167, 139, 250, 0.22) 0%, transparent 60%),
+        radial-gradient(120% 120% at 100% 100%, rgba(var(--brand-rgb), 0.22) 0%, transparent 60%),
+        var(--surface);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow);
+    margin-bottom: 4px;
+}
+.ai-chat-welcome-text { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+.ai-chat-welcome-sub { max-width: 340px; font-size: 0.92rem; }
+.ai-chat-ideas { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: 100%; max-width: 380px; margin-top: 14px; }
+.ai-chat-idea {
+    padding: 11px 16px;
+    border-radius: 16px;
+    border: 1px solid var(--hairline);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+@media (hover: hover) { .ai-chat-idea:hover { background: var(--surface-alt); border-color: rgba(var(--brand-rgb), 0.3); } }
+.ai-chat-idea:active { transform: scale(0.98); }
+
+.ai-chat-bubble { font-size: 0.95rem; line-height: 1.6; }
+.ai-chat-bubble-user {
+    max-width: 82%;
+    padding: 10px 15px;
+    border-radius: 20px 20px 6px 20px;
+    background: color-mix(in srgb, var(--brand) 13%, var(--surface));
+    color: var(--text);
+    border: 1px solid rgba(var(--brand-rgb), 0.16);
+}
+.ai-chat-row { display: flex; align-items: flex-start; gap: 10px; max-width: 100%; }
+.ai-chat-mark {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+    margin-top: 1px;
+}
+.ai-chat-row .ai-chat-bubble-assistant {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    padding: 3px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+}
+.ai-chat-row .ai-chat-bubble-error { padding: 10px 14px; border-radius: 16px; background: color-mix(in srgb, var(--danger) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent); }
+.ai-chat-typing { margin-left: 38px; background: var(--surface); border-color: var(--hairline); border-radius: 16px; }
+.ai-report-btn { margin-top: 8px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--hairline); background: transparent; opacity: 0.7; }
+
+/* Input: one rounded field, the send button turns teal once there is text */
+#ai-chat .chat-input { border-radius: 24px; border: 1px solid var(--hairline); background: var(--surface); box-shadow: var(--shadow); }
+#ai-chat .chat-input:focus-within { border-color: rgba(var(--brand-rgb), 0.45); box-shadow: var(--ring); }
+#ai-chat .ai-chat-send-btn { box-shadow: none; }
+#ai-chat .chat-input:has(textarea:placeholder-shown) .ai-chat-send-btn { background: var(--surface-alt); color: var(--text-secondary); }
+@media (max-width: 767px) {
+    #ai-chat .ai-chat-input-styled { border-top-color: var(--hairline); padding: 8px 12px 10px; }
+}
+@media (min-width: 768px) {
+    #ai-chat .ai-chat-input-styled { max-width: 760px; border-color: var(--hairline); box-shadow: var(--shadow-md); }
+    #ai-chat { max-width: 760px; }
+}
+
+/* ==========================================================================
+   Prayer requests — each request as its own quiet card: the words first and readable, who and when small
+   above; own requests show a "⋯"; a calm intro and a softer empty state
+   ========================================================================== */
+#prayers .polls-note {
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: color-mix(in srgb, #e11d48 5%, var(--surface));
+    border: 1px solid color-mix(in srgb, #e11d48 12%, var(--border-light));
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+#prayers .polls-note svg { color: #e11d48; margin-top: 2px; opacity: 0.8; }
+.polls-filter { border-color: var(--hairline); }
+.polls-filter-btn { font-weight: 600; }
+.polls-filter-btn.is-active { box-shadow: 0 1px 2px rgba(48, 38, 26, 0.1), 0 0 0 0.5px rgba(48, 38, 26, 0.06); }
+
+.prayer-list { gap: 10px; padding: 0; border: 0; background: none; box-shadow: none; border-radius: 0; }
+.prayer-row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 12px;
+    margin: 0;
+    padding: 14px 14px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--hairline);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+.prayer-row + .prayer-row::before { display: none; }
+@media (hover: hover) { .prayer-row.is-editable:hover { background: var(--surface); box-shadow: var(--shadow-md); } }
+.prayer-row.is-editable:active { transform: scale(0.99); }
+.prayer-avatar { width: 36px; height: 36px; }
+.prayer-avatar-initials { font-size: 0.76rem; }
+.prayer-row-main { gap: 6px; }
+.prayer-row-head { gap: 6px; }
+.prayer-row-name { font-size: 0.86rem; font-weight: 650; }
+.prayer-row-meta { font-size: 0.78rem; }
+.prayer-row-meta::before { content: '·'; margin-right: 6px; opacity: 0.6; }
+.prayer-row-text { font-size: 1rem; line-height: 1.6; letter-spacing: -0.005em; }
+.prayer-row-more {
+    align-self: start;
+    width: 30px;
+    height: 30px;
+    margin: -4px -6px 0 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+}
+@media (hover: hover) { .prayer-row.is-editable:hover .prayer-row-more { background: var(--surface-alt); color: var(--text); } }
+.prayer-row:not(.is-editable) .prayer-row-main { grid-column: 2 / 4; }
+
+/* Empty lists (prayers, songbook, polls): a soft card instead of a dashed box */
+.polls-empty { border: 1px solid var(--hairline); background: var(--surface); box-shadow: var(--shadow); padding: 40px 20px; gap: 8px; }
+.polls-empty-icon { border-radius: 50%; }
+#prayers .polls-empty-icon { color: #e11d48; background: color-mix(in srgb, #e11d48 10%, var(--surface)); }
+.polls-empty-title { font-weight: 650; letter-spacing: -0.015em; }
+/* The name stays whole; the time gives way */
+.prayer-row-name { flex-shrink: 0; max-width: 62%; }
+.prayer-row-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.prayer-row-text { font-size: 0.97rem; }
+@media (min-width: 769px) {
+    /* Reading width like the chat */
+    #prayers { max-width: 760px; margin-left: auto; margin-right: auto; }
+}
+
+/* Long prayer requests: four lines, "Read more" opens the rest */
+.prayer-row-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+.prayer-row-text.is-open { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.prayer-more {
+    align-self: flex-start;
+    margin-top: -2px;
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   Event detail (view mode) — date and place as one card with two rows, calmer section heads,
+   a soft fade from the picture into the page, a slim sphere band when there is no picture,
+   quiet management buttons
+   ========================================================================== */
+.event-detail-sphere-band { display: none; }
+#event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-sphere-band {
+    display: flex;
+    flex-shrink: 0;
+    height: 150px;
+    margin: calc(-12px - env(safe-area-inset-top, 0px)) -20px 0;
+    width: calc(100% + 40px);
+}
+@media (min-width: 769px) {
+    #event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-sphere-band {
+        height: 190px;
+        margin-top: -28px;
+        border-radius: 0 0 20px 20px;
+    }
+}
+/* The picture runs softly into the page on phones */
+@media (max-width: 768px) {
+    #event-detail-modal.modal-page .has-hero-image .event-detail-hero-banner { border: 0; }
+    #event-detail-modal.modal-page .has-hero-image .event-detail-hero-banner::after {
+        content: '';
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 34%;
+        background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg) 70%, transparent) 70%, var(--bg) 100%);
+        pointer-events: none;
+    }
+}
+
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-two-row-grid {
+    gap: 0;
+    border-radius: 18px;
+    border: 1px solid var(--hairline);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-cell {
+    padding: 12px 14px;
+    gap: 12px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-cell + .event-detail-quad-cell { border-top: 1px solid var(--hairline); }
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-cell:hover { background: transparent; border-color: var(--hairline); }
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-icon { width: 38px; height: 38px; border-radius: 12px; }
+.event-detail-quad-label { text-transform: none; letter-spacing: 0; font-size: 0.78rem; font-weight: 500; }
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-value { font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; }
+.event-detail-map-link { border-radius: 50%; }
+
+.event-detail-section-card { border-radius: 18px; border-color: var(--hairline); box-shadow: var(--shadow); }
+.event-detail-card-header { text-transform: none; letter-spacing: 0; font-size: 0.95rem; font-weight: 650; color: var(--text); }
+.event-detail-card-header svg { color: var(--text-secondary); }
+
+/* Management: no heavy grey box, two quiet buttons */
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-admin-bar {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.event-detail-admin-hint { text-transform: none; letter-spacing: 0; font-size: 0.8rem; font-weight: 600; }
+.event-detail-modal-card:not(.detail-is-editing) .event-admin-action-btn {
+    min-height: 42px;
+    border-radius: 999px;
+    font-weight: 600;
+    box-shadow: none;
+}
+.event-detail-modal-card:not(.detail-is-editing) .event-admin-action-btn.btn-edit { background: var(--surface); border: 1px solid var(--hairline); color: var(--text); box-shadow: var(--shadow); }
+.event-detail-modal-card:not(.detail-is-editing) .event-admin-action-btn.btn-delete { background: transparent; border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); color: var(--danger); }
+/* The info card keeps its height in the flex column (overflow: hidden would let it shrink) */
+.event-detail-two-row-grid { flex-shrink: 0; }
+/* Without a picture the back button and badges float over the sphere band, like over a cover picture */
+#event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-top-bar {
+    position: absolute;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: 16px;
+    right: 16px;
+    width: auto;
+    margin: 0;
+    padding: 0 0 0 44px;
+    background: transparent;
+    z-index: 10;
+    pointer-events: none;
+}
+#event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-top-bar > * { pointer-events: auto; }
+#event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-body { position: relative; }
+@media (min-width: 769px) {
+    #event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-top-bar { top: 28px; padding-left: 66px; }
+}
+/* Date and time stay on one line: the size follows the screen width on narrow phones */
+.event-detail-modal-card:not(.detail-is-editing) .cell-when-value { display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; white-space: nowrap; overflow: hidden; }
+.event-detail-modal-card:not(.detail-is-editing) .cell-when-value > span { white-space: nowrap; }
+@media (max-width: 768px) {
+    /* The sphere band fades into the page like a cover picture */
+    .event-detail-sphere-band::after {
+        content: '';
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 40%;
+        z-index: 1;
+        background: linear-gradient(180deg, transparent 0%, var(--bg) 100%);
+        pointer-events: none;
+    }
+}
+/* Date and place: back to the soft tinted surface (not plain white), values a size smaller */
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-two-row-grid {
+    background: var(--surface-alt);
+    border-color: var(--border-light);
+    box-shadow: none;
+}
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-cell { padding: 10px 14px; }
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-cell + .event-detail-quad-cell { border-top-color: var(--border-light); }
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-icon { width: 34px; height: 34px; border-radius: 10px; }
+.event-detail-modal-card:not(.detail-is-editing) .event-detail-quad-value { font-size: 0.9rem; font-weight: 650; letter-spacing: -0.005em; }
+.event-detail-quad-label { font-size: 0.74rem; }
+/* The size follows the room the line really has (container units), so it always fits */
+.event-detail-modal-card:not(.detail-is-editing) .cell-when .event-detail-quad-body { container-type: inline-size; }
+.event-detail-modal-card:not(.detail-is-editing) .cell-when-value { font-size: min(0.9rem, 4.95cqw); letter-spacing: -0.01em; }

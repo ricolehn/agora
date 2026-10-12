@@ -763,20 +763,14 @@
                     <button type="button" class="hub-back-btn" onclick="switchTab('hub')" data-i18n-aria-label="btn_back" aria-label="Back">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     </button>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span data-i18n="nav_ai">AI Support</span>
-                    <button class="btn btn-secondary btn-small" onclick="clearAiChat()" style="margin-left:auto;" data-i18n="btn_clear_chat">Clear History</button>
+                    <span class="ai-chat-title" data-i18n="nav_ai">AI Support</span>
+                    <button type="button" class="ai-new-chat-btn" onclick="clearAiChat()" data-i18n-title="ai_new_chat" title="New chat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+                        <span data-i18n="ai_new_chat">New chat</span>
+                    </button>
                 </div>
 
-                <div id="ai-chat-messages" class="ai-chat-messages ai-chat-messages-styled">
-                    <div class="ai-chat-welcome">
-                        <div class="ai-chat-welcome-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                        </div>
-                        <div class="ai-chat-welcome-text" data-i18n="ai_chat_ready">AI Assistant ready</div>
-                        <div class="ai-chat-welcome-sub" data-i18n="ai_chat_welcome_sub">Ask questions about your members, finances, or settings.</div>
-                    </div>
-                </div>
+                <div id="ai-chat-messages" class="ai-chat-messages ai-chat-messages-styled"></div>
 
                 <div class="chat-input-bar ai-chat-input-styled">
                     <div class="chat-input">
@@ -1689,10 +1683,6 @@
                 <input type="text" id="song-edit-artist" class="poll-editor-input" maxlength="120" data-i18n-placeholder="songbook_artist_ph" placeholder="Songwriter(s)">
                 <input type="text" id="song-edit-key" class="poll-editor-input" maxlength="4" autocapitalize="characters" oninput="previewSongEdit()" data-i18n-placeholder="songbook_key_ph" placeholder="Key, e.g. G">
             </div>
-            <div class="song-edit-row song-edit-row-even">
-                <input type="number" id="song-edit-capo" class="poll-editor-input" min="0" max="11" inputmode="numeric" data-i18n-placeholder="songbook_capo_ph" placeholder="Capo (fret)">
-                <input type="number" id="song-edit-tempo" class="poll-editor-input" min="20" max="300" inputmode="numeric" data-i18n-placeholder="songbook_tempo_ph" placeholder="Tempo (BPM)">
-            </div>
         </section>
         <section class="poll-editor-card">
             <div class="poll-editor-label"><span class="poll-editor-chip is-indigo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span><span data-i18n="songbook_text">Lyrics &amp; chords</span></div>
@@ -2469,6 +2459,8 @@
         <!-- Scrollable Modal Content Body -->
         <div class="event-detail-body">
             <!-- 16:9 Cover Hero Banner (Displayed ONLY when an image is uploaded) -->
+            <!-- Without a picture: a slim band of glass spheres (view mode only, see polish.css) -->
+            <div class="event-detail-sphere-band" aria-hidden="true"></div>
             <div id="detail-modal-cover-wrap" class="event-detail-hero-banner" style="display:none;">
                 <img id="detail-modal-cover-img" src="" alt="Event image" data-i18n-alt="events_cover_alt" class="event-detail-hero-img">
                 <div class="event-detail-hero-scrim"></div>

@@ -234,6 +234,7 @@ const ICONS = {
     pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect>',
     palette: '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.1 0 5.6-2.5 5.6-5.6C21.8 6 17.4 2 12 2z"/>',
+    more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
     poll: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-3"/>',
@@ -1358,6 +1359,7 @@ function prayerRow(p) {
                 <span class="prayer-row-head"><span class="prayer-row-name">${escapeHtml(name)}</span><span class="prayer-row-meta">${escapeHtml(meta)}</span></span>
                 <span class="prayer-row-text">${escapeHtml(p.text)}</span>
             </span>
+            ${editable ? `<span class="prayer-row-more" aria-hidden="true">${svgIcon('more', 18, 2.6)}</span>` : ''}
         </div>`;
 }
 
@@ -1384,6 +1386,20 @@ function renderPrayers() {
         return;
     }
     target.innerHTML = `<div class="prayer-list">${list.map(prayerRow).join('')}</div>`;
+    // Long requests show four lines; "Read more" opens the rest in place
+    target.querySelectorAll('.prayer-row-text').forEach(text => {
+        if (text.scrollHeight <= text.clientHeight + 2) return;
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'prayer-more';
+        more.textContent = t('prayers_read_more', 'Read more');
+        more.onclick = event => {
+            event.stopPropagation();
+            const open = text.classList.toggle('is-open');
+            more.textContent = open ? t('prayers_read_less', 'Show less') : t('prayers_read_more', 'Read more');
+        };
+        text.after(more);
+    });
 }
 
 const replacePrayer = updated => { prayers = prayers.map(p => (p.id === updated.id ? updated : p)); };
@@ -1575,8 +1591,7 @@ function renderSongsError(message) {
 function songMeta(song) {
     return [
         song.artist,
-        song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : '',
-        Number.isInteger(song.capo) && song.capo > 0 ? t('songbook_capo', 'Capo {fret}', { fret: song.capo }) : ''
+        song.key ? t('songbook_key_short', 'Key {key}', { key: song.key }) : ''
     ].filter(Boolean).join(' · ');
 }
 
@@ -1646,11 +1661,7 @@ function renderSongView() {
     const keyFact = songView.steps
         ? { text: key ? t('songbook_key_shifted', 'Key {key} ({shift})', { key, shift }) : t('songbook_transposed', 'Transposed by {steps} semitones', { steps: shift }), shifted: true }
         : (song.key ? { text: t('songbook_key_short', 'Key {key}', { key: song.key }) } : null);
-    const facts = [
-        keyFact,
-        Number.isInteger(song.capo) && song.capo > 0 ? { text: t('songbook_capo', 'Capo {fret}', { fret: song.capo }) } : null,
-        Number.isInteger(song.tempo) ? { text: t('songbook_tempo', '{bpm} BPM', { bpm: song.tempo }) } : null
-    ].filter(Boolean);
+    const facts = [keyFact].filter(Boolean);
     const sub = $('song-view-sub');
     if (sub) {
         sub.innerHTML = (song.artist ? `<span class="song-view-artist">${escapeHtml(song.artist)}</span>` : '')
@@ -1849,7 +1860,7 @@ function cycleSongSpeed() {
 }
 
 // --- Song editor (page like "New poll") ---
-const SONG_FIELDS = ['song-edit-name', 'song-edit-artist', 'song-edit-key', 'song-edit-capo', 'song-edit-tempo', 'song-edit-ccli', 'song-edit-copyright', 'song-edit-content'];
+const SONG_FIELDS = ['song-edit-name', 'song-edit-artist', 'song-edit-key', 'song-edit-ccli', 'song-edit-copyright', 'song-edit-content'];
 const songEditState = () => JSON.stringify(SONG_FIELDS.map(id => $(id)?.value || ''));
 
 function openSongEditor(song = null) {
@@ -1858,8 +1869,6 @@ function openSongEditor(song = null) {
     setValue('song-edit-name', song?.title || '');
     setValue('song-edit-artist', song?.artist || '');
     setValue('song-edit-key', song?.key || '');
-    setValue('song-edit-capo', Number.isInteger(song?.capo) && song.capo > 0 ? song.capo : '');
-    setValue('song-edit-tempo', Number.isInteger(song?.tempo) ? song.tempo : '');
     setValue('song-edit-ccli', song?.ccli || '');
     setValue('song-edit-copyright', song?.copyright || '');
     setValue('song-edit-content', song?.content || '');
@@ -1887,12 +1896,14 @@ const previewSongEdit = debounce(() => {
 }, 150);
 
 async function saveSong() {
+    const editedSong = songs.find(s => s.id === editSongId);
     const payload = {
         title: inputValue('song-edit-name'),
         artist: inputValue('song-edit-artist'),
         key: inputValue('song-edit-key').trim(),
-        capo: inputValue('song-edit-capo').trim(),
-        tempo: inputValue('song-edit-tempo').trim(),
+        // Capo and tempo are no longer shown or edited; a song keeps the values it already has
+        capo: editedSong?.capo ?? '',
+        tempo: editedSong?.tempo ?? '',
         ccli: inputValue('song-edit-ccli'),
         copyright: inputValue('song-edit-copyright'),
         content: $('song-edit-content')?.value || ''
@@ -2219,6 +2230,7 @@ function switchTab(tabName, source) {
     if (tabName === 'polls') loadPolls();
     if (tabName === 'songbook') loadSongs();
     if (tabName === 'prayers') loadPrayers();
+    if (tabName === 'ai-chat' && !aiMessages.length) clearAiChat();
     updateFabVisibility();
     if (tabName !== 'mentoring') {
         mentoringChatReturnHome = false;
@@ -5723,18 +5735,31 @@ function createEl(tag, className, text) {
     return created;
 }
 
+// A new chat: a friendly start with three questions the assistant can answer (it knows members, finances, requests)
 function clearAiChat() {
     aiMessages = [];
     const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return;
+    const admin = canViewFinances();
+    const ideas = [1, 2, 3].map(n => admin
+        ? t(`ai_suggest_admin_${n}`, ['Who is behind with their fee?', 'What is the current balance?', 'Which requests are still open?'][n - 1])
+        : t(`ai_suggest_member_${n}`, ['Until when is my fee paid?', 'How do I report a payment?', 'How do I apply for a different status?'][n - 1]));
     messagesEl.innerHTML = `
         <div class="ai-chat-welcome">
-            <div class="ai-chat-welcome-icon">
-                ${svgIcon('chat', 32)}
+            <div class="ai-chat-welcome-icon">${svgIcon('sparkles', 28, 1.8)}</div>
+            <div class="ai-chat-welcome-text">${t('ai_chat_hello', 'How can I help?')}</div>
+            <div class="ai-chat-welcome-sub">${admin ? t('ai_chat_welcome_sub', 'Ask questions about your members, finances, or settings.') : t('ai_chat_welcome_sub_member', 'Ask questions about the church, members or how to use the app.')}</div>
+            <div class="ai-chat-ideas">
+                ${ideas.map(idea => `<button type="button" class="ai-chat-idea" onclick="window.askAi(this.textContent)">${escapeHtml(idea)}</button>`).join('')}
             </div>
-            <div class="ai-chat-welcome-text">${t('ai_chat_ready', 'AI Assistant ready')}</div>
-            <div class="ai-chat-welcome-sub">${canViewFinances() ? t('ai_chat_welcome_sub', 'Ask questions about your members, finances, or settings.') : t('ai_chat_welcome_sub_member', 'Ask questions about the church, members or how to use the app.')}</div>
         </div>`;
+}
+
+function askAi(text) {
+    const inputEl = $('ai-chat-input');
+    if (!inputEl || aiStreaming) return;
+    inputEl.value = text;
+    sendAiMessage();
 }
 
 function adjustAiInputHeight(inputEl) {
@@ -5760,7 +5785,15 @@ function appendAiMessage(role, content) {
     const bubble = createEl('div', `ai-chat-bubble ai-chat-bubble-${role}`);
     if (role === 'assistant') bubble.appendChild(renderMarkdown(content));
     else bubble.textContent = content;
-    messagesEl.appendChild(bubble);
+    if (role === 'assistant') {
+        const row = createEl('div', 'ai-chat-row');
+        const mark = createEl('span', 'ai-chat-mark');
+        mark.innerHTML = svgIcon('sparkles', 15, 2);
+        row.append(mark, bubble);
+        messagesEl.appendChild(row);
+    } else {
+        messagesEl.appendChild(bubble);
+    }
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
 }
@@ -6124,7 +6157,7 @@ async function sendAiMessage() {
 }
 
 Object.assign(window, {
-    clearAiChat, sendAiMessage,
+    clearAiChat, sendAiMessage, askAi,
     handleAiChatInput: event => event?.target && adjustAiInputHeight(event.target),
     handleAiChatKey: chatKeyHandler(sendAiMessage, adjustAiInputHeight)
 });
