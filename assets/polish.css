@@ -262,18 +262,11 @@ h1, h2, h3,
 .events-filter-bar { margin-bottom: 6px; }
 .events-month-group { gap: 10px; }
 .events-month-header {
-    position: sticky;
-    top: 0;
-    z-index: 6;
-    margin: 0 -6px;
-    padding: 10px 8px 8px;
+    padding: 10px 2px 4px;
     font-size: 0.74rem;
     font-weight: 700;
     letter-spacing: 0.1em;
     color: var(--text);
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
 }
 .events-month-header::after { background: var(--hairline); }
 .events-month-count { font-weight: 600; letter-spacing: 0; color: var(--text-secondary); }
@@ -560,7 +553,6 @@ h1, h2, h3,
     .header,
     [data-theme="dark"] .header { background: var(--frost-surface); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
 }
-.events-month-header { background: var(--frost-bg); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
 
 /* Headers that stay on top inside pages and dialogs */
 .modal-header,
@@ -629,13 +621,11 @@ h1, h2, h3,
 @media (min-width: 769px) { .header::before { background: var(--frost-surface); } }
 .profile-dropdown { background: var(--frost-surface); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
 
-/* Phone: while the header is shown, the sticky labels and sub-page heads sit just below it instead of under it */
+/* Phone: while the header is shown, the sticky sub-page heads sit just below it instead of under it */
 @media (max-width: 768px) {
-    .events-month-header,
     .settings-paged[data-page] > .settings-nav,
     #songbook > .polls-head,
     #prayers > .polls-head { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
-    .container:has(> .app-layout > .header:not(.header-hidden)) .events-month-header,
     .container:has(> .app-layout > .header:not(.header-hidden)) .settings-paged[data-page] > .settings-nav,
     .container:has(> .app-layout > .header:not(.header-hidden)) #songbook > .polls-head,
     .container:has(> .app-layout > .header:not(.header-hidden)) #prayers > .polls-head { top: var(--mobile-header-h, 68px); }
@@ -1338,14 +1328,12 @@ h1, h2, h3,
    hides on scrolling down (offsets count from the content edge, see the 108px header padding)
    ========================================================================== */
 @media (min-width: 769px) {
-    .events-month-header,
     .settings-paged[data-page] > .settings-nav,
     #songbook > .polls-head,
     #prayers > .polls-head {
         top: calc(72px - var(--desktop-header-offset));
         transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
-    .container:has(> .app-layout > .header.header-hidden) .events-month-header,
     .container:has(> .app-layout > .header.header-hidden) .settings-paged[data-page] > .settings-nav,
     .container:has(> .app-layout > .header.header-hidden) #songbook > .polls-head,
     .container:has(> .app-layout > .header.header-hidden) #prayers > .polls-head { top: calc(0px - var(--desktop-header-offset)); }
