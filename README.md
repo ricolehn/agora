@@ -1,5 +1,8 @@
 <div align="center">
-  <img src="assets/icon.png" width="120" alt="Agora Logo" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg" />
+    <img src=".github/assets/logo.svg" width="120" alt="Agora Logo" />
+  </picture>
   <h1>Agora</h1>
   <p>
     <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPLv3" /></a>
