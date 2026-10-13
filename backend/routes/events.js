@@ -49,6 +49,7 @@ const { userLanguage, translate, requestLanguage, instanceLanguage } = require('
 const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
 const { createItemStore } = require('../itemStore');
 const { buildProgram } = require('../program');
+const { eventImageName, linkedEventImageNames, deleteUnlinkedEventImages } = require('../eventImages');
 
 const router = express.Router();
 // Order of service per event (key = event id), readable only by the server
@@ -427,6 +428,9 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
     }
 
     const updated = await updateEventRecord(context.appConfig, event.id, updates);
+    if (updates.imageUrl !== undefined && updates.imageUrl !== (event.imageUrl || '')) {
+      await releaseEventImage(event.imageUrl);
+    }
 
     if (Array.isArray(req.body.duties)) {
       try {
@@ -500,6 +504,7 @@ router.delete('/api/events/:id', verifyToken, async (req, res) => {
     await deleteEventRecord(context.appConfig, event.id);
     // Its order of service goes with it
     await programStore.update(context.appConfig, event.id, (program) => (program ? { remove: true } : {})).catch(() => {});
+    await releaseEventImage(event.imageUrl);
     broadcastDataUpdate('events');
     res.json({ success: true });
   } catch (err) {
@@ -1314,9 +1319,23 @@ let linkedImagesCache = { at: 0, names: new Set() };
 async function linkedEventImages() {
   if (Date.now() - linkedImagesCache.at < 60 * 1000) return linkedImagesCache.names;
   const events = await listEvents(context.appConfig).catch(() => []);
-  const names = new Set(events.map((ev) => String(ev.imageUrl || '').split('/api/events/images/')[1]).filter(Boolean));
+  const names = linkedEventImageNames(events);
   linkedImagesCache = { at: Date.now(), names };
   return names;
+}
+
+// A picture the event no longer shows (removed, replaced, event deleted) goes once no other event links it:
+// the dates of a recurring series share one picture. Without the event list nothing is deleted.
+async function releaseEventImage(imageUrl) {
+  const name = eventImageName(imageUrl);
+  if (!name) return;
+  try {
+    const linked = linkedEventImageNames(await listEvents(context.appConfig));
+    linkedImagesCache = { at: Date.now(), names: linked };
+    await deleteUnlinkedEventImages(eventImagesDir, [name], linked);
+  } catch (error) {
+    console.warn('[EventImages] Cleanup after an event change failed:', error.message);
+  }
 }
 
 const insideDir = (dir, name) => {

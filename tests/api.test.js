@@ -487,6 +487,35 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     await ok(call('owner', 'DELETE', `/api/songs/${song.id}`));
   });
 
+  test('event pictures: a removed or replaced picture and the picture of a deleted event leave the disk', async () => {
+    const uploadPicture = async () => {
+      const form = new FormData();
+      form.append('image', new Blob([PNG], { type: 'image/png' }), 'cover.png');
+      return (await ok(call('owner', 'POST', '/api/events/upload-image', form, { form: true }))).url;
+    };
+    const stored = (url) => fs.existsSync(path.join(dataRoot, 'data', 'event-images', url.split('/').pop()));
+    const first = await uploadPicture();
+    const unsaved = await uploadPicture();
+    // A recurring series shares one picture: it stays while one date still shows it
+    await ok(call('owner', 'POST', '/api/events', { title: 'Bilderserie', date: '2026-12-01', isRecurring: true, recurringRule: 'weekly', recurringCount: 2, imageUrl: first }));
+    const list = await ok(call('owner', 'GET', '/api/events'));
+    const [a, b] = (Array.isArray(list) ? list : list.events || []).filter((e) => e.title === 'Bilderserie');
+    assert.ok(a && b, 'both dates of the series');
+    await ok(call('owner', 'PATCH', `/api/events/${a.id}`, { imageUrl: '' }));
+    assert.ok(stored(first), 'the other date still shows it');
+    assert.equal((await call(null, 'GET', first)).status, 200);
+    const second = await uploadPicture();
+    await ok(call('owner', 'PATCH', `/api/events/${b.id}`, { imageUrl: second }));
+    assert.ok(!stored(first), 'replaced on the last date: gone');
+    assert.equal((await call(null, 'GET', first)).status, 404);
+    await ok(call('owner', 'PATCH', `/api/events/${b.id}`, { title: 'Bilderserie neu' }));
+    assert.ok(stored(second), 'other changes keep the picture');
+    await ok(call('owner', 'DELETE', `/api/events/${b.id}`));
+    assert.ok(!stored(second), 'deleted with its event');
+    assert.ok(stored(unsaved), 'a fresh upload whose dialog may still be open stays');
+    await ok(call('owner', 'DELETE', `/api/events/${a.id}`));
+  });
+
   test('songbook: only the songbook permission edits, every member reads', async () => {
     const song = { title: 'Amazing Grace', content: '[G]Amazing [C]grace, how [G]sweet the sound' };
     assert.equal((await call('max', 'POST', '/api/songs', song)).status, 403);

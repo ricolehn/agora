@@ -11,7 +11,8 @@ const {
   adminRateLimit,
   churchLogoFile,
   bundledChurchLogoFile,
-  resolvedFrontendDir
+  resolvedFrontendDir,
+  eventImagesDir
 } = require('./context');
 
 const { selectChurchLogoFilePath } = require('./logoStorage');
@@ -20,6 +21,7 @@ const { securityHeadersMiddleware } = require('./securityHeaders');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { runDutyReminders } = require('./dutyReminders');
 const { purgeExpiredRequests } = require('./requestRetention');
+const { purgeUnlinkedEventImages } = require('./eventImages');
 const { compressResponses, compressedStatic, sendCompressedFile } = require('./compression');
 const { translateResponses } = require('./i18n');
 
@@ -60,6 +62,7 @@ cron.schedule('0 5 * * *', () => {
   if (!context.setupMode && context.appConfig) {
     runAutomatedStandingOrders(context.appConfig);
     purgeExpiredRequests(context.appConfig);
+    purgeUnlinkedEventImages(context.appConfig, eventImagesDir);
   }
 });
 

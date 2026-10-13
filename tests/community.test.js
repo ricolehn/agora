@@ -329,6 +329,39 @@ describe('events', () => {
     assert.equal(createdWithoutImage.imageUrl, '');
   });
 
+  test('event pictures: only uploaded ones count, linked ones stay, unlinked ones go after the grace period', async (t) => {
+    const {
+      UNLINKED_GRACE_MS, eventImageName, linkedEventImageNames, deleteUnlinkedEventImages, staleUnlinkedEventImages
+    } = require('../backend/eventImages');
+    assert.equal(eventImageName('/api/events/images/a.jpg'), 'a.jpg');
+    assert.equal(eventImageName('https://agora.example/api/events/images/a.jpg?v=2'), 'a.jpg');
+    assert.equal(eventImageName('https://example.com/flyer.jpg'), '', 'external address');
+    assert.equal(eventImageName('/api/events/images/../config.json'), '');
+    assert.equal(eventImageName('/api/events/images/..'), '');
+    assert.equal(eventImageName(''), '');
+    assert.deepEqual([...linkedEventImageNames([{ imageUrl: '/api/events/images/a.jpg' }, { imageUrl: '' }, {}, null])], ['a.jpg']);
+
+    const dir = tempDir(t, 'agora-event-images-');
+    const now = Date.now();
+    const write = (name, ageMs) => {
+      fs.writeFileSync(path.join(dir, name), 'x');
+      const at = new Date(now - ageMs);
+      fs.utimesSync(path.join(dir, name), at, at);
+    };
+    write('linked.jpg', 2 * UNLINKED_GRACE_MS);
+    write('old.jpg', 2 * UNLINKED_GRACE_MS);
+    write('fresh.jpg', 60 * 1000);
+    fs.writeFileSync(path.join(path.dirname(dir), `${path.basename(dir)}-outside.jpg`), 'x');
+    t.after(() => fs.rmSync(path.join(path.dirname(dir), `${path.basename(dir)}-outside.jpg`), { force: true }));
+    const linked = new Set(['linked.jpg']);
+
+    assert.deepEqual(await staleUnlinkedEventImages(dir, linked, now), ['old.jpg'], 'a fresh upload may still be saved');
+    assert.equal(await deleteUnlinkedEventImages(dir, ['linked.jpg', 'missing.jpg', `../${path.basename(dir)}-outside.jpg`, 'old.jpg'], linked), 1);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['fresh.jpg', 'linked.jpg']);
+    assert.ok(fs.existsSync(path.join(path.dirname(dir), `${path.basename(dir)}-outside.jpg`)), 'nothing outside the folder');
+    assert.deepEqual(await staleUnlinkedEventImages(path.join(dir, 'gone'), linked, now), [], 'missing folder');
+  });
+
   test('Termine vs Events subtab filtering logic', () => {
     function filterEventsForTab(events, subTab, currentUserId) {
       return events.filter(ev => {
