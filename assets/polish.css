@@ -1347,3 +1347,10 @@ h1, h2, h3,
     .termine-cal { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
     .container:has(> .app-layout > .header.header-hidden) .termine-cal { top: calc(20px - var(--desktop-header-offset)); }
 }
+
+/* The app's own theme also for pictures: an SVG in <img> follows the page's color-scheme, so the default logo
+   (church-logo.svg) switches to its light green in dark mode even when the system is light - and back */
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+/* The report is white paper in both themes: its logo keeps the dark green */
+.report-preview-scale-container { color-scheme: light; }
