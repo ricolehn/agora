@@ -2,7 +2,7 @@
 // Same rules as GET /api/events (own events and those of their target groups), the duty roster and the
 // order of service only where the person may see them (canUserAccessEventDutyPlan), no attendee names.
 const { listEvents, listEventRegistrations, listEventDuties, listUserRecords, listGroupRecords } = require('./pocketbase');
-const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./context');
+const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./eventAccess');
 const { createItemStore } = require('./itemStore');
 const { toDateStr } = require('./utils/date');
 

@@ -5,6 +5,7 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { rateLimit } = require('express-rate-limit');
 const { isSafeSvg } = require('./svgValidation');
+const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./eventAccess');
 const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests, repairRequestAuthors } = require('./requestRetention');
@@ -1028,17 +1029,6 @@ async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUs
 }
 
 
-function userMatchesTargetGroups(user, targetGroups = []) {
-  if (!Array.isArray(targetGroups) || targetGroups.length === 0) return true;
-  if (!user) return false;
-  if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) return true;
-  const userGroups = Array.isArray(user.groups) ? user.groups : [];
-  return userGroups.some(g => {
-    const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-    const gname = typeof g === 'object' && g ? g.name : String(g);
-    return targetGroups.includes(gid) || targetGroups.includes(gname);
-  });
-}
 
 // Suggested duties until an instance saves its own list (in the instance's default language)
 const DEFAULT_DUTY_NAMES = ['Bistro team', 'Tech', 'Welcome', 'Host', 'Music / worship'];
@@ -1127,34 +1117,6 @@ function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid =
   return lines.join('\r\n') + '\r\n';
 }
 
-function canUserAccessEventDutyPlan(user, event, allEventDuties, groupMap) {
-  if (!user || !event) return false;
-  const currentUid = user.uid || user.id;
-
-  if (event.createdBy === currentUid) return true;
-
-  const canManage = user.canManageEvents === true || (Array.isArray(user.permissions) && user.permissions.includes('manage_events'));
-  if (canManage) {
-    return true;
-  }
-
-  const isEnteredOrRequested = Array.isArray(allEventDuties) && allEventDuties.some(d => {
-    if (d.event !== event.id) return false;
-    if (d.assignedUser === currentUid) return true;
-    if (d.requestedUser === currentUid) return true;
-    if (d.assignedGroup && Array.isArray(user.groups)) {
-      return user.groups.some(g => {
-        const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-        const gname = typeof g === 'object' && g ? g.name : String(g);
-        return gid === d.assignedGroup || gname === d.assignedGroup || (groupMap && groupMap.get(d.assignedGroup) === gname);
-      });
-    }
-    return false;
-  });
-  if (isEnteredOrRequested) return true;
-
-  return false;
-}
 
 function addDaysDriftFree(dateStr, daysToAdd) {
   const [y, m, d] = dateStr.split('-').map(Number);
