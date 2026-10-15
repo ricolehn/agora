@@ -1296,6 +1296,8 @@ h1, h2, h3,
 /* Date and time stay on one line: the size follows the screen width on narrow phones */
 .event-detail-modal-card:not(.detail-is-editing) .cell-when-value { display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; white-space: nowrap; overflow: hidden; }
 .event-detail-modal-card:not(.detail-is-editing) .cell-when-value > span { white-space: nowrap; }
+/* The place too: one line, a long address gets smaller (fitDetailWhere in app.js), ellipsis below the smallest size */
+.event-detail-modal-card:not(.detail-is-editing) .cell-where-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
 @media (max-width: 768px) {
     /* The sphere band fades into the page like a cover picture */
     .event-detail-sphere-band::after {

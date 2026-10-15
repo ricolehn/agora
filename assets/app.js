@@ -7610,6 +7610,26 @@ function setTextWithTitle(id, text) {
     target.title = text;
 }
 
+// The place stays on one line like the date: a long address makes the text smaller instead of
+// wrapping, ellipsis below the smallest size (watches the width of the box around it, as the greeting)
+let detailWhereObserver = null;
+let detailWhereWidth = 0;
+function fitDetailWhere(force = true) {
+    const el = $('detail-modal-info-where');
+    if (!el) return;
+    if (!detailWhereObserver && 'ResizeObserver' in window && el.parentElement) {
+        detailWhereObserver = new ResizeObserver(() => fitDetailWhere(false));
+        detailWhereObserver.observe(el.parentElement);
+    }
+    const width = el.clientWidth;
+    if (!width || (!force && width === detailWhereWidth)) return;
+    detailWhereWidth = width;
+    el.style.fontSize = '';
+    if (el.scrollWidth <= width) return;
+    const base = parseFloat(getComputedStyle(el).fontSize);
+    el.style.fontSize = `${Math.max(11, Math.floor(base * width / el.scrollWidth * 2) / 2)}px`;
+}
+
 function setDescriptionToggle(expanded) {
     setText('detail-desc-toggle-text', expanded ? t('events_show_less', 'Show less') : t('events_show_more', 'Show more'));
     const icon = $('detail-desc-toggle-icon');
@@ -8305,6 +8325,7 @@ async function openEventDetailModal(eventId) {
     show('detail-btn-delete', !!ev.canEdit, 'inline-flex');
     show('detail-modal-action-bar', !!ev.canEdit, 'flex');
     openModal('event-detail-modal');
+    fitDetailWhere();
 
     // Clamp long descriptions behind a "Mehr anzeigen" toggle
     requestAnimationFrame(() => {
