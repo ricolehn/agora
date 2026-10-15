@@ -413,6 +413,20 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call(null, 'POST', '/api/auth/login', { email: 'weg@test.local', password: PASSWORD })).status, 401);
   });
 
+  test('deleting a duplicate finance entry keeps the account; deleting the last one removes it', async () => {
+    const ben = await account('ben', 'Ben');
+    const hasAccount = async () => (await ok(call('owner', 'GET', '/api/admin/users'))).some((u) => u.uid === ben);
+    await ok(call('owner', 'PUT', '/api/db', { path: 'people/ben-duplicate', value: {
+      id: 'ben-duplicate', uid: ben, name: 'Ben Test', status: 'vollverdiener', memberSince: '2026-05-26', payments: [], statusHistory: []
+    } }));
+    await ok(call('owner', 'DELETE', '/api/db', { path: 'people/ben-duplicate' }));
+    assert.ok(await hasAccount(), 'the account stays: the other entry still uses it');
+    assert.equal((await read('owner', `people/${ben}`)).uid, ben);
+
+    await ok(call('owner', 'DELETE', '/api/db', { path: `people/${ben}` }));
+    assert.equal(await hasAccount(), false, 'the account goes with its last entry');
+  });
+
   test('mentoring conversations are only readable by mentor and mentee, not even by admins', async () => {
     const mentor = await account('mentor', 'Martha');
     const mentee = await account('mentee', 'Moritz');

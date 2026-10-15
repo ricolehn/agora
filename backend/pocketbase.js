@@ -25,8 +25,6 @@ const DEFAULT_SYSTEM_STATE = {
   superAdminUid: null
 };
 
-const MIGRATION_BATCH_SIZE = 10;
-
 const SUPERUSER_TOKEN_TTL_MS = 300_000; // 5 minutes
 let cachedSuperuserToken = null;
 let cachedSuperuserTokenExpiry = 0;
@@ -839,12 +837,6 @@ function buildStableChildKey(prefix, ownerKey, itemKey, index, value) {
   return crypto.createHash('sha256').update(`${prefix}:${ownerKey}:${stableSource}`).digest('hex').slice(0, 32);
 }
 
-async function runInBatches(items, batchSize, worker) {
-  for (let index = 0; index < items.length; index += batchSize) {
-    await Promise.all(items.slice(index, index + batchSize).map((item) => worker(item)));
-  }
-}
-
 function stripNormalizedPersonData(value) {
   if (!value || typeof value !== 'object') return null;
   const data = { ...value };
@@ -904,45 +896,6 @@ function groupRecordsBy(records, keyField) {
     }
   }
   return acc;
-}
-
-function mergeChildData(ownerKey, existingRecords, legacyItems, payloadBuilder, keyField) {
-  const merged = new Map();
-
-  for (const record of existingRecords) {
-    const key = record?.[keyField];
-    if (key && record?.data) {
-      merged.set(key, record.data);
-    }
-  }
-
-  normalizeRecordListInput(legacyItems).forEach((item, index) => {
-    const payload = payloadBuilder(ownerKey, item, index);
-    if (!merged.has(payload[keyField])) {
-      merged.set(payload[keyField], item);
-    }
-  });
-
-  return [...merged.values()];
-}
-
-function mergeExpenseData(existingRecords, legacyItems) {
-  const merged = new Map();
-
-  for (const record of existingRecords) {
-    if (record?.expenseKey && record?.data) {
-      merged.set(record.expenseKey, record.data);
-    }
-  }
-
-  normalizeRecordListInput(legacyItems).forEach((expense, index) => {
-    const payload = buildExpenseRecordPayload(expense, index);
-    if (!merged.has(payload.expenseKey)) {
-      merged.set(payload.expenseKey, expense);
-    }
-  });
-
-  return [...merged.values()];
 }
 
 function getChildRecordIdentity(record) {
@@ -1060,219 +1013,12 @@ async function syncPeopleChildRecords(appConfig, personKey, value, existingChild
   ]);
 }
 
-async function migrateLegacyPeopleData(appConfig) {
-  const records = await listAllRecords('people', '', appConfig);
-  const [allPayments, allStatusHistory] = await Promise.all([
-    listAllRecords('payments', '', appConfig),
-    listAllRecords('status_history', '', appConfig)
-  ]);
-  const paymentsByPersonKey = groupRecordsBy(allPayments, 'personKey');
-  const historyByPersonKey = groupRecordsBy(allStatusHistory, 'personKey');
-  await runInBatches(records, MIGRATION_BATCH_SIZE, async (record) => {
-    const value = record?.data && typeof record.data === 'object' ? record.data : {};
-    const existingPayments = paymentsByPersonKey[record.personKey] || [];
-    const existingStatusHistory = historyByPersonKey[record.personKey] || [];
-    const mergedPayments = mergeChildData(
-      record.personKey,
-      existingPayments,
-      value.payments,
-      buildPaymentRecordPayload,
-      'paymentKey'
-    );
-    const mergedStatusHistory = mergeChildData(
-      record.personKey,
-      existingStatusHistory,
-      value.statusHistory,
-      buildStatusHistoryRecordPayload,
-      'historyKey'
-    );
-    const nextValue = {
-      ...value,
-      payments: mergedPayments,
-      statusHistory: mergedStatusHistory
-    };
-    const hasLegacyArrays = (Array.isArray(value.payments) && value.payments.length > 0)
-      || (Array.isArray(value.statusHistory) && value.statusHistory.length > 0);
-    const totalPaid = calculateTotalPaid(nextValue.payments);
-    const recordTotalPaid = toFiniteNumber(record.totalPaid);
-    const needsScalarRefresh = record.status !== toOptionalText(nextValue.status)
-      || record.memberSince !== toOptionalText(nextValue.memberSince)
-      || record.originalMemberSince !== toOptionalText(nextValue.originalMemberSince || nextValue.memberSince)
-      || recordTotalPaid !== totalPaid;
-
-    if (hasLegacyArrays || needsScalarRefresh) {
-      await upsertPeopleRecord(appConfig, record.personKey, nextValue);
-    }
-  });
-}
-
-async function migrateLegacyExpensesData(appConfig) {
-  const stateRecord = await getStateRecord(appConfig, 'expenses');
-  const legacyExpenses = normalizeRecordListInput(stateRecord?.value);
-  if (!legacyExpenses.length) return;
-
-  const existingExpenses = await listAllRecords('expenses', '', appConfig);
-  const mergedExpenses = mergeExpenseData(existingExpenses, legacyExpenses);
-  await syncCollectionRecords(
-    'expenses',
-    'expenseKey',
-    existingExpenses,
-    mergedExpenses.map((expense, index) => buildExpenseRecordPayload(expense, index)),
-    appConfig
-  );
-
-  await upsertStateValue(appConfig, 'expenses', {});
-}
-
-
-async function migrateUserAndOwnerSchema(appConfig) {
-  const systemRecord = await getStateRecord(appConfig, 'system');
-  const system = systemRecord?.value || {};
-  let ownerUid = system.ownerUid || system.superAdminUid || null;
-  let systemNeedsUpdate = false;
-
-  if (system.superAdminUid && !system.ownerUid) {
-    system.ownerUid = system.superAdminUid;
-    systemNeedsUpdate = true;
-  }
-
-  const users = await listAllRecords('users', '', appConfig);
-
-  if (!ownerUid && users.length > 0) {
-    const existingOwner = users.find((u) => u.owner === true || u.superAdmin === true) || users[0];
-    ownerUid = existingOwner.id;
-    system.ownerUid = ownerUid;
-    systemNeedsUpdate = true;
-  }
-
-  if (systemNeedsUpdate) {
-    await upsertStateValue(appConfig, 'system', { ...DEFAULT_SYSTEM_STATE, ...system, ownerUid });
-  }
-
-  await runInBatches(users, MIGRATION_BATCH_SIZE, async (userRecord) => {
-    const isOwner = userRecord.id === ownerUid || userRecord.owner === true || userRecord.superAdmin === true;
-    const updates = {};
-    let needsPatch = false;
-
-    if (isOwner) {
-      if (userRecord.owner !== true) { updates.owner = true; needsPatch = true; }
-      if (userRecord.admin !== true) { updates.admin = true; needsPatch = true; }
-      if (userRecord.superAdmin !== true) { updates.superAdmin = true; needsPatch = true; }
-    } else {
-      if (userRecord.owner === undefined || userRecord.owner === null) { updates.owner = false; needsPatch = true; }
-      if (userRecord.superAdmin !== false && userRecord.superAdmin !== undefined) { updates.superAdmin = false; needsPatch = true; }
-    }
-
-    if (userRecord.pays !== true) {
-      updates.pays = true;
-      needsPatch = true;
-    }
-
-    if (userRecord.groups === undefined || userRecord.groups === null) {
-      updates.groups = [];
-      needsPatch = true;
-    }
-
-    const isPlaceholder = isPlaceholderEmail(userRecord.email);
-    if (!isPlaceholder) {
-      if (userRecord.isClaimed !== true) {
-        updates.isClaimed = true;
-        needsPatch = true;
-      }
-    } else {
-      if (userRecord.isClaimed !== false) {
-        updates.isClaimed = false;
-        needsPatch = true;
-      }
-    }
-
-    if (needsPatch) {
-      try {
-        await updateUserRecord(appConfig, userRecord.id, updates);
-      } catch (err) {
-        console.warn(`[PocketBase Migration] Could not patch user ${userRecord.id}:`, err.message);
-      }
-    }
-  });
-
-  // Ensure every person record has a corresponding user record in the users collection
-  try {
-    const people = await listPeopleRecords(appConfig);
-    const freshUsers = await listAllRecords('users', '', appConfig);
-
-    for (const p of people) {
-      const isDeleted = Boolean(p.isDeleted || p.data?.isDeleted);
-      const personName = (p.name || p.data?.name || '').trim();
-      const existingUid = p.uid || p.data?.uid;
-      let linkedUser = existingUid ? freshUsers.find(u => u.id === existingUid) : null;
-
-      if (!linkedUser && personName) {
-        const normPersonName = personName.toLowerCase();
-        linkedUser = freshUsers.find(u => {
-          const uFull = `${u.firstName || ''} ${u.lastName || ''}`.trim().toLowerCase();
-          const uName = String(u.name || '').trim().toLowerCase();
-          return uFull === normPersonName || uName === normPersonName;
-        });
-      }
-
-      if (isDeleted) {
-        // If an unclaimed or placeholder user exists for this deleted person, remove it so it does not linger
-        if (linkedUser && (linkedUser.isClaimed === false || isPlaceholderEmail(linkedUser.email))) {
-          try {
-            await deleteRecord('users', linkedUser.id, appConfig);
-            const userIdx = freshUsers.findIndex(u => u.id === linkedUser.id);
-            if (userIdx >= 0) freshUsers.splice(userIdx, 1);
-          } catch (cleanErr) {
-            console.warn(`[PocketBase Migration] Could not remove phantom user ${linkedUser.id} for deleted person:`, cleanErr.message);
-          }
-        }
-        continue;
-      }
-
-      if (linkedUser) {
-        if (p.uid !== linkedUser.id || p.data?.uid !== linkedUser.id) {
-          const existingData = p.data || {};
-          existingData.uid = linkedUser.id;
-          await upsertPeopleRecord(appConfig, p.personKey, existingData);
-        }
-      } else if (personName) {
-        const nameParts = personName.split(/\s+/);
-        const firstName = nameParts[0] || personName;
-        const lastName = nameParts.slice(1).join(' ');
-
-        const createdAuth = await registerUser({
-          email: '',
-          password: '',
-          firstName,
-          lastName,
-          admin: false,
-          owner: false,
-          pays: p.data?.pays !== false && p.pays !== false,
-          groups: [],
-          isClaimed: false
-        }, appConfig);
-
-        const newUid = createdAuth.user.id || createdAuth.user.uid;
-        const existingData = p.data || {};
-        existingData.uid = newUid;
-        await upsertPeopleRecord(appConfig, p.personKey, existingData);
-        freshUsers.push(createdAuth.created || { id: newUid, firstName, lastName, name: personName });
-      }
-    }
-  } catch (err) {
-    console.warn('[PocketBase Migration] Could not link or create user records for legacy people:', err.message);
-  }
-}
-
 async function ensurePocketBaseSchema(appConfig) {
   await ensureUsersCollection(appConfig);
   for (const spec of DEFAULT_COLLECTION_SPECS) {
     await ensureCollection(appConfig, spec);
   }
   await ensureStateDefaults(appConfig);
-  await migrateUserAndOwnerSchema(appConfig);
-  await migrateLegacyPeopleData(appConfig);
-  await migrateLegacyExpensesData(appConfig);
   await migrateStateToCollections(appConfig);
   await grantNewPermission(appConfig, 'manage_songbook', 'songbookPermissionMigrated', 'manage the songbook');
   await grantNewPermission(appConfig, 'manage_prayers', 'prayersPermissionMigrated', 'moderate prayer requests');
@@ -1606,9 +1352,13 @@ async function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated =
 async function removePeopleRecord(appConfig, personKey) {
   const existing = await getPeopleRecord(appConfig, personKey);
   if (existing) {
-    // 1. Delete corresponding auth user record from 'users' collection if uid exists
+    // 1. Delete the linked account, unless another active entry still uses it (a duplicate entry of the same
+    //    member) or it is the owner's: deleting the duplicate must not take the member's account with it
     const uid = existing.uid || (existing.data && existing.data.uid);
-    if (uid) {
+    const sharedWith = uid ? (await listAllRecords('people', pbFilterEquals('uid', uid), appConfig))
+      .filter((p) => p.personKey !== String(personKey) && !(p.isDeleted || p.data?.isDeleted)) : [];
+    const linkedUser = uid && !sharedWith.length ? await getUserRecord(appConfig, uid).catch(() => null) : null;
+    if (linkedUser && linkedUser.owner !== true && linkedUser.superAdmin !== true) {
       try {
         await deleteRecord('users', uid, appConfig);
       } catch (err) {
