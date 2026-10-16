@@ -6,6 +6,9 @@ function userMatchesTargetGroups(user, targetGroups = []) {
   if (!Array.isArray(targetGroups) || targetGroups.length === 0) return true;
   if (!user) return false;
   if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) return true;
+  // The event editor stores target groups by name, accounts their groups by id: the server adds the names of the
+  // user's groups (groupNames, resolveUserPermissions). Without them members never saw their own group's events.
+  if (Array.isArray(user.groupNames) && user.groupNames.some(name => targetGroups.includes(name))) return true;
   const userGroups = Array.isArray(user.groups) ? user.groups : [];
   return userGroups.some(g => {
     const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);

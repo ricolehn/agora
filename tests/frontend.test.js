@@ -111,6 +111,16 @@ describe('frontend', () => {
     assert.deepEqual([...calls].filter((name) => !known.has(name)).sort(), [], 'onclick & co. call a function that is not on window');
   });
 
+  test('signing out leaves nothing of the session behind for the next person on the device', () => {
+    const start = app.indexOf('async function logout()');
+    const logout = app.slice(start, app.indexOf('\n}\n', start));
+    assert.ok(start > 0, 'found logout()');
+    // the AI chat, the last open conversation and the loaded lists used to stay in the page for the next account
+    assert.match(logout, /location\.reload\(\)/);
+    // pushes are sent per device: unsubscribed while the token still works, before signOut
+    assert.ok(logout.includes('unsubscribeDevicePush()') && logout.indexOf('unsubscribeDevicePush()') < logout.indexOf('signOut('));
+  });
+
   test('files referenced by index.html, the manifest and the service worker exist', () => {
     // Only files (with an extension): extensionless links like /privacy are server routes
     const pageFiles = [...html.matchAll(/(?:src|href)="(?!https?:|data:|#|mailto:)([^"?#]+\.\w+)/g)].map((m) => m[1]);

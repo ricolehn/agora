@@ -18,6 +18,7 @@ Forgot your password or have questions? Contact the administrators of your churc
 - Your access (login, e-mail address, name, settings) and your profile picture
 - Your registrations for appointments; your duties are released again
 - Your mentoring conversations including their messages and your mentor profile
+- Your prayer requests, also the anonymous ones
 - Your finance requests as well as device tokens for push notifications
 
 ## What is kept

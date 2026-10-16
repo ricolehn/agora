@@ -134,7 +134,9 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) =>
       return res.status(403).json({ error: 'Finance management rights required' });
     }
 
-    const updated = await upsertPeopleRecord(context.appConfig, id, nextValue, currentVersion);
+    // The version this write is based on, checked again in the write queue (an empty one included: records from
+    // before the version field)
+    const updated = await upsertPeopleRecord(context.appConfig, id, nextValue, existing ? existing.updated || '' : null);
     broadcastDataUpdate();
     res.json({ value: updated.data, version: updated.updated });
   } catch (error) {

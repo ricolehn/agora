@@ -38,6 +38,7 @@ const {
   listRequestRecords,
   getRequestRecord,
   upsertRequestRecord,
+  queueRecordWrite,
   getMentorByUserId,
   toPublicUser,
   findUserByCalendarToken
@@ -320,6 +321,7 @@ function clearAuthCookie(req, res) {
 
 // Copies the permissions of the user's groups onto the user object (resolveUserPermissions result)
 function applyGroupPermissions(user, groupPerms) {
+  user.groupNames = groupPerms.groupNames || [];
   user.permissions = groupPerms.permissions;
   user.canManageFinances = groupPerms.canManageFinances;
   user.canViewFinances = groupPerms.canViewFinances;
@@ -864,9 +866,18 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
         else delete nextValue[key];
       }
     }
-    await upsertRequestRecord(context.appConfig, id, nextValue);
+    // A decision stands: a second treasurer or an outdated screen must not reject a request that was approved (and
+    // booked), or approve a rejected one. Checked and written in the request's write queue: an approval and a
+    // rejection at the same moment cannot both pass.
+    const before = await queueRecordWrite(`requests:${id}`, async () => {
+      const current = (await getRequestRecord(context.appConfig, id))?.data?.status || 'pending';
+      if ((current === 'approved' || current === 'rejected') && nextValue.status !== current) {
+        throw Object.assign(new Error('This request was already decided.'), { status: 409 });
+      }
+      await upsertRequestRecord(context.appConfig, id, nextValue);
+      return current;
+    });
     // Tell the author when a treasurer approved or rejected the request
-    const before = existing?.data?.status || 'pending';
     if (before === 'pending' && (nextValue.status === 'approved' || nextValue.status === 'rejected')) {
       notifyRequestDecision(nextValue, options.origin).catch((err) => console.warn('[Notify] request decision:', err.message));
     }

@@ -243,6 +243,25 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     await ok(call('owner', 'PATCH', '/api/events/settings', { allowMemberCreation: true }));
   });
 
+  test("a group's events reach its members (and only them), also after the group is renamed", async () => {
+    const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Jugend', permissions: [] }));
+    const jonas = await account('jonas', 'Jonas');
+    await account('nora', 'Nora');
+    // the account settings store the group by id, the event editor stores target groups by name
+    await ok(call('owner', 'PUT', `/api/admin/users/${jonas}/groups`, { groups: [group.id] }));
+    const created = await ok(call('owner', 'POST', '/api/events', { title: 'Jugendabend intern', date: '2026-11-20', startTime: '19:00', targetGroups: ['Jugend'] }));
+    const id = created.event?.id || created.id;
+    const sees = async (who) => {
+      const list = await ok(call(who, 'GET', '/api/events'));
+      return (Array.isArray(list) ? list : list.events || []).some((e) => e.id === id);
+    };
+    assert.equal(await sees('jonas'), true, 'the member of the group sees it');
+    assert.equal(await sees('nora'), false, 'other members do not');
+    await ok(call('owner', 'PUT', `/api/admin/groups/${group.id}`, { name: 'Jugendkreis' }));
+    assert.equal(await sees('jonas'), true, 'still there after the rename');
+    assert.equal(await sees('nora'), false, 'and still not for everyone');
+  });
+
   test('web app: page, security headers and the configured app name', async () => {
     const page = await call(null, 'GET', '/');
     assert.equal(page.status, 200);
@@ -349,6 +368,65 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.ok(Object.values(await read('max', 'requests')).some((r) => r.id === 'r-self'), 'still in the member\'s own list');
   });
 
+  test("registering with an unclaimed account's name never takes over a namesake's finance entry", async () => {
+    // Father and son share the name; the treasury added the son without e-mail (an unclaimed account)
+    await ok(call('owner', 'POST', '/api/admin/users', { firstName: 'Johann', lastName: 'Gleich', email: 'senior@test.local', password: PASSWORD, pays: true, status: 'vollverdiener', memberSince: '2015-01-01' }));
+    await login('senior', 'senior@test.local');
+    await ok(call('owner', 'POST', '/api/admin/users', { firstName: 'Johann', lastName: 'Gleich', pays: true, status: 'keinverdiener', memberSince: '2026-09-01' }));
+    // The son registers himself and claims his account
+    const inviteCode = await read('owner', 'system/inviteCode');
+    const junior = await ok(call(null, 'POST', '/api/auth/register', { email: 'junior@test.local', password: PASSWORD, firstName: 'Johann', lastName: 'Gleich', inviteCode }));
+    tokens.junior = junior.token;
+    const own = async (who) => Object.values(await read(who, 'people')).map((p) => p.memberSince);
+    assert.deepEqual(await own('senior'), ['2015-01-01'], "the father keeps his entry");
+    assert.deepEqual(await own('junior'), ['2026-09-01'], "the son sees only his own entry, not his father's payments");
+  });
+
+  test('two bookings for the same member at the same time: neither one is lost', async () => {
+    const key = await account('lea', 'Lea');
+    const latest = (who) => ok(call(who, 'GET', `/api/db?path=people/${key}&raw=1`));
+    // what runTransaction sends: the record it read plus one payment, with the version it read
+    const book = (who, raw, id, amount) => call(who, 'POST', '/api/db/transaction', {
+      path: `people/${key}`, currentVersion: raw.version,
+      value: { ...raw.value, payments: [...Object.values(raw.value.payments || {}), { id, amount, date: '2026-10-02', description: id }] }
+    });
+    // Both treasurers opened the record before either one booked
+    const [a, b] = [await latest('treasurer'), await latest('owner')];
+    assert.ok(a.version, 'person records have a version');
+    await ok(book('treasurer', a, 'cash', 50));
+    assert.equal((await book('owner', b, 'bank', 75)).status, 409, 'the second booking has to start from the new state');
+    await ok(book('owner', await latest('owner'), 'bank', 75));
+    // Exactly at the same moment: one is booked, the other one is told to try again (never both "booked")
+    const now = await latest('treasurer');
+    const results = await Promise.all([book('treasurer', now, 'card', 20), book('owner', now, 'box', 5)]);
+    const booked = ['card', 'box'].filter((id, i) => results[i].status === 200);
+    assert.equal(booked.length, 1, `statuses ${results.map((r) => r.status)}`);
+    const payments = (await read('treasurer', `people/${key}`)).payments.map((p) => p.id).sort();
+    assert.deepEqual(payments, ['bank', 'cash', ...booked].sort());
+  });
+
+  test('a decided request stays decided: an outdated screen cannot reject a booked request', async () => {
+    const id = `r-decided-${Date.now()}`;
+    await ok(call('max', 'PUT', '/api/db', { path: `requests/${id}`, value: { id, type: 'payment', userId: uids.max, personName: 'Max Test', data: { amount: 10, date: '2026-10-01' }, timestamp: Date.now() } }));
+    await ok(call('treasurer', 'PATCH', '/api/db', { path: `requests/${id}`, value: { status: 'approved' } }));
+    // the owner still has the request open on another screen
+    await call('owner', 'PATCH', '/api/db', { path: `requests/${id}`, value: { status: 'rejected', rejectionReason: 'Doppelt' } });
+    assert.equal((await read('treasurer', `requests/${id}`)).status, 'approved');
+    await ok(call('owner', 'PATCH', '/api/db', { path: `requests/${id}`, value: { status: 'approved' } }));
+  });
+
+  test('an approval and a rejection at the same moment: exactly one decision is made', async () => {
+    const id = `r-race-${Date.now()}`;
+    await ok(call('max', 'PUT', '/api/db', { path: `requests/${id}`, value: { id, type: 'payment', userId: uids.max, personName: 'Max Test', data: { amount: 10, date: '2026-10-01' }, timestamp: Date.now() } }));
+    const [approve, reject] = await Promise.all([
+      call('treasurer', 'PATCH', '/api/db', { path: `requests/${id}`, value: { status: 'approved' } }),
+      call('owner', 'PATCH', '/api/db', { path: `requests/${id}`, value: { status: 'rejected', rejectionReason: 'Doppelt' } })
+    ]);
+    const won = [approve, reject].filter((r) => r.status === 200);
+    assert.equal(won.length, 1, `statuses ${approve.status}/${reject.status}`);
+    assert.equal((await read('treasurer', `requests/${id}`)).status, approve.status === 200 ? 'approved' : 'rejected');
+  });
+
   test('uploads: only signed-in users and only pictures', async () => {
     const send = (who, filename, type, bytes = PNG) => {
       const form = new FormData();
@@ -411,6 +489,18 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call('weg', 'POST', '/api/auth/delete-account', {})).status, 400);
     await ok(call('weg', 'POST', '/api/auth/delete-account', { password: PASSWORD }));
     assert.equal((await call(null, 'POST', '/api/auth/login', { email: 'weg@test.local', password: PASSWORD })).status, 401);
+  });
+
+  test('deleting an account also removes its prayer requests, the anonymous ones too', async () => {
+    await account('gebet', 'Greta');
+    const named = await ok(call('gebet', 'POST', '/api/prayers', { text: 'Bitte betet für meine Operation', duration: 'quarter' }));
+    const anonymous = await ok(call('gebet', 'POST', '/api/prayers', { text: 'Bitte betet für meine Familie', anonymous: true, duration: 'week' }));
+    const shown = async () => (await ok(call('mia', 'GET', '/api/prayers'))).prayers.map((p) => p.id);
+    assert.ok((await shown()).includes(named.id));
+    await ok(call('gebet', 'POST', '/api/auth/delete-account', { password: PASSWORD }));
+    const left = await shown();
+    assert.ok(!left.includes(named.id), 'her name and request are no longer shown to everyone');
+    assert.ok(!left.includes(anonymous.id));
   });
 
   test('deleting a duplicate finance entry keeps the account; deleting the last one removes it', async () => {

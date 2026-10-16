@@ -17,6 +17,7 @@ const {
   buildSmtpTransport,
   configFile,
   profilesDir,
+  dataDir,
   newPersonRecord
 } = require('../context');
 const { deleteAccountData } = require('../accountDeletion');
@@ -44,6 +45,8 @@ const {
   deleteFcmToken,
   isPlaceholderEmail,
   resolveUserPermissions,
+  listEvents,
+  updateEventRecord,
   SYSTEM_PERMISSIONS
 } = require('../pocketbase');
 
@@ -340,7 +343,17 @@ router.put('/api/admin/groups/:id', verifyToken, verifyAdmin, async (req, res) =
     const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
     if (name !== undefined && !name) return res.status(400).json({ error: 'The group name must not be empty.' });
     const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : undefined;
+    const previousName = (await listGroupRecords(context.appConfig)).find((g) => g.id === id)?.name;
     const group = await updateGroupRecord(context.appConfig, id, { name, permissions });
+    // Events keep their target groups by name: they move along, so the group keeps seeing them (editing such an
+    // event used to drop the unknown old name, and the event was then visible to everyone)
+    if (previousName && group.name !== previousName) {
+      for (const ev of await listEvents(context.appConfig)) {
+        if (Array.isArray(ev.targetGroups) && ev.targetGroups.includes(previousName)) {
+          await updateEventRecord(context.appConfig, ev.id, { targetGroups: ev.targetGroups.map((g) => (g === previousName ? group.name : g)) });
+        }
+      }
+    }
     broadcastDataUpdate();
     res.json(group);
   } catch (error) {
@@ -572,7 +585,7 @@ router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, async (req, res
     }
 
     // By uid only (matching by name also deleted other members with the same name)
-    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir });
+    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
     console.log(`[Account] Admin ${req.user.uid} deleted user ${uid}`, summary);
 
     broadcastDataUpdate();

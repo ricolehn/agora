@@ -38,6 +38,7 @@ const {
   pbFilterEquals,
   listUserRecords,
   listGroupRecords,
+  resolveUserPermissions,
   getStateValue,
   upsertStateValue,
   getOrCreateUserCalendarToken,
@@ -279,9 +280,11 @@ router.post('/api/events', verifyToken, async (req, res) => {
       (async () => {
         try {
           const allUsers = await listUserRecords(context.appConfig);
+          const groups = await listGroupRecords(context.appConfig).catch(() => []);
           const targetGroupsList = Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [];
           const recipients = allUsers
-            .filter(u => u && u.id && u.id !== currentUid && userMatchesTargetGroups(u, targetGroupsList));
+            .filter(u => u && u.id && u.id !== currentUid
+              && userMatchesTargetGroups({ ...u, groupNames: resolveUserPermissions(u.groups, groups).groupNames }, targetGroupsList));
 
           if (recipients.length > 0) {
             const isTermin = firstEv.eventType === 'termin';

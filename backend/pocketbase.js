@@ -52,7 +52,11 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'memberSince', type: 'text' },
       { name: 'originalMemberSince', type: 'text' },
       { name: 'totalPaid', type: 'number' },
-      { name: 'data', type: 'json', required: true }
+      { name: 'data', type: 'json', required: true },
+      // The version that bookings compare (/api/db/transaction, standing orders). PocketBase 0.23+ no longer adds
+      // these fields on its own: without them every version was null and a booking could overwrite another one.
+      { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
+      { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true }
     ]
   },
   {
@@ -1323,30 +1327,56 @@ async function listPeopleRecords(appConfig, query = {}) {
   }));
 }
 
-async function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null) {
-  const existing = await getPeopleRecord(appConfig, personKey);
-  if (existing) {
-    if (expectedUpdated && existing.updated !== expectedUpdated) {
+// Writes of one record run one after the other (the app is a single process): a check and the write that depends on
+// it must not interleave with another write of the same record (two bookings both passed the version check and the
+// later one removed the other's payment; an approval and a rejection both passed the decision check)
+const recordWrites = new Map();
+function queueRecordWrite(key, write) {
+  const run = (recordWrites.get(key) || Promise.resolve()).then(write);
+  const settled = run.catch(() => {});
+  recordWrites.set(key, settled);
+  settled.then(() => { if (recordWrites.get(key) === settled) recordWrites.delete(key); });
+  return run;
+}
+
+/**
+ * True when a write based on version [expected] would overwrite a newer state. null / undefined: no check. Records
+ * from before the version field have an empty one until their next write: '' is a version too.
+ */
+function isOutdatedVersion(current, expected) {
+  return expected !== null && expected !== undefined && (current || '') !== expected;
+}
+
+function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null) {
+  return queueRecordWrite(`people:${personKey}`, async () => {
+    const payload = buildPersonRecordPayload(personKey, value);
+    // Checked before the payments change: a record PocketBase refuses must not leave them half written
+    if (!payload.name || !payload.data) throw Object.assign(new Error('A person record needs a name.'), { status: 400 });
+    const existing = await getPeopleRecord(appConfig, personKey);
+    if (existing) {
+      if (isOutdatedVersion(existing.updated, expectedUpdated)) {
+        const error = new Error('Conflict');
+        error.status = 409;
+        throw error;
+      }
+      const existingChildren = {
+        payments: existing._childPayments || [],
+        statusHistory: existing._childStatusHistory || []
+      };
+      // Payments first, the record (and with it the version) last: whoever reads the new version reads its payments
+      await syncPeopleChildRecords(appConfig, personKey, value, existingChildren);
+      await updateRecord('people', existing.id, payload, appConfig);
+      return getPeopleRecord(appConfig, personKey);
+    }
+    if (expectedUpdated) {
       const error = new Error('Conflict');
       error.status = 409;
       throw error;
     }
-    const existingChildren = {
-      payments: existing._childPayments || [],
-      statusHistory: existing._childStatusHistory || []
-    };
-    await updateRecord('people', existing.id, buildPersonRecordPayload(personKey, value), appConfig);
-    await syncPeopleChildRecords(appConfig, personKey, value, existingChildren);
+    await createRecord('people', payload, appConfig);
+    await syncPeopleChildRecords(appConfig, personKey, value, { payments: [], statusHistory: [] });
     return getPeopleRecord(appConfig, personKey);
-  }
-  if (expectedUpdated) {
-    const error = new Error('Conflict');
-    error.status = 409;
-    throw error;
-  }
-  await createRecord('people', buildPersonRecordPayload(personKey, value), appConfig);
-  await syncPeopleChildRecords(appConfig, personKey, value, { payments: [], statusHistory: [] });
-  return getPeopleRecord(appConfig, personKey);
+  });
 }
 
 async function removePeopleRecord(appConfig, personKey) {
@@ -1454,6 +1484,8 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
   const canManageMentoring = permissions.includes('manage_mentoring');
   const canManageEvents = permissions.includes('manage_events');
   return {
+    // Accounts keep their groups by id, events their target groups by name (eventAccess.js)
+    groupNames: matchingGroups.map((g) => g.name).filter(Boolean),
     permissions,
     canManageFinances,
     canViewFinances,
@@ -1955,6 +1987,8 @@ module.exports = {
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
+  queueRecordWrite,
+  isOutdatedVersion,
   removePeopleRecord,
   listExpenseRecords,
   syncExpenseRecords,

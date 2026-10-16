@@ -164,7 +164,7 @@ Every instance serves two public pages that app stores (e.g. Google Play) ask fo
 
 The same texts live in this repository for the store listing of the Android app, independent of any instance: [PRIVACY.md](PRIVACY.md) and [ACCOUNT_DELETION.md](ACCOUNT_DELETION.md) (linked from Google Play – keep them in sync with `privacy.html` / `account-deletion.html`).
 
-Members can also delete their account in the settings of the web app and the Android app (`POST /api/auth/delete-account`, confirmed with the password). This removes the login, profile picture, registrations, freed duty slots, mentoring profile and conversations, finance requests and push tokens; booked payments stay in the ledger for bookkeeping. The owner account cannot delete itself.
+Members can also delete their account in the settings of the web app and the Android app (`POST /api/auth/delete-account`, confirmed with the password). This removes the login, profile picture, registrations, freed duty slots, mentoring profile and conversations, prayer requests (also anonymous ones), finance requests and push tokens; booked payments stay in the ledger for bookkeeping. The owner account cannot delete itself.
 
 AI replies and mentoring conversations can be reported (`POST /api/reports`); admins get a push notification and can list reports via `GET /api/admin/reports`. Mentoring conversations can be blocked – only the person who blocked can reopen them.
 
@@ -220,7 +220,7 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
 | `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
 | `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
-| `finance.test.js` | standing orders, request retention, derived finance data |
+| `finance.test.js` | standing orders, request retention, derived finance data, what the web app books (`assets/finance.js`) |
 | `community.test.js` | events, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
 | `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events, prayer requests, order of service, songbook, page addresses |

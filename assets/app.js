@@ -1,6 +1,7 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
+import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
 const auth = getAuth();
@@ -81,8 +82,6 @@ function formatDateFast(dateInput) {
 const pad2 = n => String(n).padStart(2, '0');
 const toDateStr = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const getTodayStr = () => toDateStr(new Date());
-const normalizeAmount = raw => String(raw ?? '').replace(/\.(?=.*,)/g, '').replace(',', '.').trim();
-const parseAmount = raw => parseFloat(normalizeAmount(raw));
 
 function parseReceipts(receiptField) {
     if (Array.isArray(receiptField)) return receiptField.filter(Boolean);
@@ -2607,15 +2606,10 @@ async function loadData(silent = false, { freshUser = false } = {}) {
 
         people.forEach(preprocessPerson);
         if (canManageFinances()) {
-            const updates = [];
-            for (const person of people) {
-                const result = checkAndExecuteStandingOrders(person);
-                if (!result) continue;
-                const totalPaid = sumAmounts(result.payments);
-                updates.push(update(ref(db, 'people/' + person.id), { payments: result.payments, standingOrders: result.standingOrders, totalPaid }));
-                Object.assign(person, result, { totalPaid });
-            }
-            await Promise.all(updates);
+            // Booked on the latest copy of the record (a transaction): writing this screen's copy of the payments
+            // could drop a payment that someone else booked in the meantime
+            await Promise.all(people.filter(person => checkAndExecuteStandingOrders(person))
+                .map(person => mutatePerson(person.id, latest => checkAndExecuteStandingOrders(latest) || latest)));
         }
         await renderViews(!silent);
     } catch (err) {
@@ -2778,16 +2772,29 @@ async function attemptRegister() {
     }
 }
 
+// The server sends pushes per device: a device someone signs out on must not keep getting their pushes (with the
+// text of their mentoring messages) on a shared tablet or office PC
+async function unsubscribeDevicePush() {
+    if (!pushSupported()) return;
+    const subscription = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+    if (subscription) await api('/push/unsubscribe', 'POST', { endpoint: subscription.endpoint });
+}
+
 async function logout() {
     history.replaceState(null, '', '/');
     try {
         sseConnection?.close();
         sseConnection = null;
         applyProfilePicture(null);
+        // While still signed in; a slow network must not keep anyone from signing out
+        await Promise.race([unsubscribeDevicePush(), new Promise(resolve => setTimeout(resolve, 3000))]).catch(() => {});
         await signOut(auth);
     } catch (error) {
         console.error('Logout Error:', error);
     }
+    // A fresh page for the next person: the AI chat, the last open conversation and the loaded lists of this
+    // session used to stay in the page and showed up for whoever signed in next on the same device
+    location.reload();
 }
 
 async function changePassword(isUser = false) {
@@ -2819,7 +2826,6 @@ async function deleteOwnAccount(suffix = '') {
         if (input) input.value = '';
         alert(t('delete_account_done', 'Your account has been deleted.'));
         await logout();
-        location.reload();
     } catch (err) {
         alert(err.message || t('delete_account_failed', 'The account could not be deleted.'));
     }
@@ -4153,7 +4159,7 @@ function editRecordedPaymentByIndex(index) {
     }
     if (!payment) return console.error('editRecordedPayment: No payment structure resolved.', { personId, paymentId, targetIndex, type });
 
-    currentEditedPayment = { personId, targetIndex, type, paymentId };
+    currentEditedPayment = { personId, targetIndex, type, paymentId, original: payment };
     const isExpense = type === 'expense';
     setText('edit-payment-person', ({ donation: `[${t('report_type_donation', 'Donation')}] `, expense: `[${t('report_type_expense', 'Expense')}] ` }[type] || '') + (tx.personName || tx.who || t('status_unknown', 'Unknown')));
     setValue('edit-payment-amount', String(payment.amount ?? ''));
@@ -4176,7 +4182,7 @@ async function saveEditedPayment() {
     const date = inputValue('edit-payment-date');
     const description = inputValue('edit-payment-desc').trim();
     const issuer = inputValue('edit-payment-issuer').trim();
-    if (Number.isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount.'));
+    if (Number.isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
     if (!date) return alert(t('alert_please_enter_date', 'Please specify a date.'));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert(t('alert_invalid_date', 'Invalid date.'));
 
@@ -4185,14 +4191,15 @@ async function saveEditedPayment() {
         saveBtn.disabled = true;
         saveBtn.innerText = t('setup_btn_saving', 'Saving...');
     }
-    const { type, personId, paymentId, targetIndex } = currentEditedPayment;
+    const opened = currentEditedPayment;
+    const { type, personId, paymentId } = opened;
     try {
         if (type === 'payment') {
             await mutatePerson(personId, draft => {
                 const payments = draft.payments;
-                const idx = targetIndex >= 0 && targetIndex < payments.length ? targetIndex : payments.findIndex(matchesPaymentId(paymentId));
-                if (idx >= 0) payments[idx] = { ...payments[idx], amount, date, description };
-                else console.warn('saveEditedPayment: fallback payment match not found, mapping all', currentEditedPayment);
+                const idx = findPaymentIndex(payments, opened);
+                if (idx < 0) throw new Error('The payment was changed or deleted in the meantime');
+                payments[idx] = { ...payments[idx], amount, date, description };
                 return { ...draft, payments, totalPaid: sumAmounts(payments) };
             });
             showToast(t('toast_payment_updated', 'Payment updated'));
@@ -4272,12 +4279,15 @@ function deleteEditReceipt(filename) {
 
 async function confirmDeleteRecordedPayment() {
     if (!canManageFinances() || !currentEditedPayment) return;
-    const { type, personId, paymentId, targetIndex } = currentEditedPayment;
+    const opened = currentEditedPayment;
+    const { type, personId, paymentId } = opened;
     closeMultipleModals(['confirm-delete-modal', 'edit-payment-modal']);
     try {
         if (type === 'payment') {
             await mutatePerson(personId, draft => {
-                const payments = draft.payments.filter((entry, i) => i !== targetIndex && !matchesPaymentId(paymentId)(entry, i));
+                const idx = findPaymentIndex(draft.payments, opened);
+                if (idx < 0) throw new Error('The payment was changed or deleted in the meantime');
+                const payments = draft.payments.filter((entry, i) => i !== idx);
                 return { ...draft, payments, totalPaid: sumAmounts(payments) };
             });
         } else {
@@ -4294,43 +4304,46 @@ async function confirmDeleteRecordedPayment() {
 
 // --- Request approval ---
 const newId = () => Date.now().toString();
-const REQUEST_APPLIERS = {
-    payment: (person, data) => ({
-        ...person,
-        payments: [...person.payments, { id: newId(), amount: parseFloat(data.amount), date: data.date, description: data.note || t('req_payment_approved_desc', 'Payment (approved)') }],
-        totalPaid: (person.totalPaid || 0) + parseFloat(data.amount)
-    }),
-    status: (person, { date, newStatus }) => {
-        const changeDate = new Date(date);
-        const latest = person.statusHistory.slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
-        const currentStart = latest?.endDate || person.originalMemberSince || person.memberSince;
-        const statusHistory = person.statusHistory.filter(entry => new Date(entry.startDate) < changeDate);
-        if (new Date(currentStart) < changeDate) statusHistory.push({ status: person.status, startDate: currentStart, endDate: date });
-        return { ...person, status: newStatus, statusHistory };
-    },
-    standing_order: (person, data) => ({
-        ...person,
-        standingOrders: [...safeList(person.standingOrders), { id: newId(), amount: parseFloat(data.amount), startDate: data.date, note: data.note || 'Dauerauftrag (Genehmigt)', lastAutoPayment: null }]
-    })
-};
+
+// Another treasurer (or the same one on another device) may have decided the request since this screen was loaded
+async function requestStillPending(reqId) {
+    if ((await get(ref(db, 'requests/' + reqId))).val()?.status === 'pending') return true;
+    await showRequestAlreadyDecided();
+    return false;
+}
+
+async function showRequestAlreadyDecided() {
+    closeModal('request-detail-modal');
+    await loadData();
+    showToast(t('toast_request_already_decided', 'This request was already decided.'), 'error');
+}
 
 async function approveRequest(reqId = openRequestId) {
     const req = requests.find(r => r.id === reqId);
     if (!req) return;
     setRequestBusy(true);
     await attempt(async () => {
-        if (req.type === 'expense') {
-            const { amount, description, date, receipt } = req.data;
-            // The requester is the issuer of the expense, like for expenses booked by hand
-            await mutateCollection('expenses', list => [...list, { id: newId(), amount: parseFloat(amount), description, issuer: req.personName || '', date, receipt }]);
-        } else if (REQUEST_APPLIERS[req.type]) {
-            await mutatePerson(req.personId, person => REQUEST_APPLIERS[req.type](person, req.data));
+        if (!(await requestStillPending(reqId))) return;
+        // Bookings carry the request's id (assets/finance.js): approving it again cannot book the money twice
+        let before = null;
+        if (req.type === 'expense') await mutateCollection('expenses', list => addApprovedExpense(list, req));
+        else await mutatePerson(req.personId, person => {
+            before = { status: person.status, statusHistory: person.statusHistory };
+            return applyApprovedRequest(person, req, t('req_payment_approved_desc', 'Payment (approved)'));
+        });
+        try {
+            await update(ref(db, 'requests/' + reqId), { status: 'approved' });
+        } catch (err) {
+            if (err.status !== 409) throw err;
+            // Rejected by someone else between the check and now: the booking is taken back
+            if (req.type === 'expense') await mutateCollection('expenses', list => withoutApprovedExpense(list, req));
+            else await mutatePerson(req.personId, person => withoutApprovedRequest(person, req, before));
+            return showRequestAlreadyDecided();
         }
-        await update(ref(db, 'requests/' + reqId), { status: 'approved' });
         closeModal('request-detail-modal');
         await loadData();
         showToast(t('toast_request_approved', 'Request approved'));
-    }, t('alert_approve_failed', 'Could not approve request. Please try again.'));
+    }, err => (err?.key ? t(err.key, err.message) : t('alert_approve_failed', 'Could not approve request. Please try again.')));
     setRequestBusy(false);
 }
 
@@ -4339,7 +4352,13 @@ async function confirmRejectRequest(reqId = openRequestId) {
     const reason = inputValue('reqd-reject-reason').trim();
     setRequestBusy(true);
     await attempt(async () => {
-        await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
+        if (!(await requestStillPending(reqId))) return;
+        try {
+            await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
+        } catch (err) {
+            if (err.status === 409) return showRequestAlreadyDecided();
+            throw err;
+        }
         closeModal('request-detail-modal');
         await loadData();
         showToast(t('toast_request_rejected', 'Request rejected'));
@@ -5215,7 +5234,8 @@ async function addPayment() {
     const note = inputValue('payment-desc');
     const isStandingOrder = isChecked('payment-is-standing-order');
     try {
-        if (!currentPersonId || isNaN(amount)) return;
+        if (!currentPersonId) return;
+        if (isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
         const updated = await mutatePerson(currentPersonId, person => isStandingOrder
             ? { ...person, standingOrders: [...safeList(person.standingOrders), { id: newId(), amount, startDate: date, note, lastAutoPayment: null }] }
             : { ...person, payments: [...person.payments, { amount, date, description: note, id: Date.now() }], totalPaid: (person.totalPaid || 0) + amount });
@@ -5237,7 +5257,7 @@ async function addPayment() {
 async function addDonation() {
     if (!validateRequired(['donation-amount', 'donation-date', 'donation-name'])) return;
     const amount = parseAmount(inputValue('donation-amount'));
-    if (isNaN(amount)) return;
+    if (isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
     setButtonLoading('btn-add-donation', true, t('setup_btn_saving', 'Saving...'));
     try {
         const donation = { amount, name: inputValue('donation-name'), date: inputValue('donation-date'), description: inputValue('donation-desc').trim(), id: Date.now() };
@@ -5258,7 +5278,7 @@ async function addDonation() {
 async function addExpense() {
     if (!validateRequired(['expense-amount', 'expense-date', 'expense-issuer', 'expense-desc'])) return;
     const amount = parseAmount(inputValue('expense-amount'));
-    if (isNaN(amount)) return;
+    if (isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
     const [issuer, date, description] = ['expense-issuer', 'expense-date', 'expense-desc'].map(inputValue);
     setButtonLoading('btn-add-expense', true, t('setup_btn_saving', 'Saving...'));
     try {
@@ -5335,26 +5355,7 @@ async function deleteStandingOrderCompletely() {
     }, t('alert_delete_error', 'Error while deleting.'));
 }
 
-// --- Member status changes & status e-mail ---
-// Rewrites the status history so `newStatus` applies from `changeDateStr` (retroactive or future changes).
-function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
-    const memberSince = person.originalMemberSince || person.memberSince || changeDateStr;
-    const changeDate = new Date(changeDateStr);
-    if (changeDate < new Date(memberSince)) throw new Error(t('status_change_before_member_since', 'The change date is before the start of the membership.'));
-    if (changeDateStr <= memberSince) return { ...person, status: newStatus, statusHistory: [{ status: newStatus, startDate: memberSince }] };
-
-    const history = safeList(person.statusHistory)
-        .filter(entry => (entry.startDate ? new Date(entry.startDate) : new Date(memberSince)) < changeDate)
-        .map(entry => (entry.endDate && new Date(entry.endDate) <= changeDate ? { ...entry } : { ...entry, endDate: changeDateStr }));
-    const lastEnd = history[history.length - 1]?.endDate;
-    if (history.length === 0 || (lastEnd && lastEnd < changeDateStr)) {
-        const priorStart = lastEnd || memberSince;
-        if (priorStart < changeDateStr) history.push({ status: person.status || 'vollverdiener', startDate: priorStart, endDate: changeDateStr });
-    }
-    history.push({ status: newStatus, startDate: changeDateStr });
-    return { ...person, status: newStatus, statusHistory: history };
-}
-
+// --- Member status changes & status e-mail (applyStatusChangeToHistory: assets/finance.js) ---
 function openChangeStatusModal(id) {
     if (!canManageFinances()) return;
     currentPersonId = id;
@@ -5376,7 +5377,7 @@ async function saveStatusChange() {
         showToast(t('toast_status_changed', 'Status changed'));
     } catch (err) {
         console.error('Fehler bei der Statusänderung:', err);
-        alert(t('alert_status_change_failed', 'Status change failed: ') + err.message);
+        alert(t('alert_status_change_failed', 'Status change failed: ') + (err.key ? t(err.key, err.message) : err.message));
     }
 }
 
@@ -5577,21 +5578,24 @@ function openUserRequestModal(type) {
 // Validates the open request form; returns { type, data } or null after alerting the user.
 function collectRequestData(date) {
     const fillFields = () => alert(t('alert_fill_fields', 'Please fill out all fields.'));
-    const invalidAmount = amount => isNaN(parseFloat(amount)) || parseFloat(amount) <= 0;
+    const invalidAmount = () => alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
     if (currentRequestType === 'status') {
         const newStatus = $('req-status') ? inputValue('req-status') : 'vollverdiener';
         return newStatus ? { type: 'status', data: { newStatus, date } } : fillFields();
     }
-    const amount = normalizeAmount(inputValue('req-amount'));
+    const typed = inputValue('req-amount').trim();
+    const parsed = parseAmount(typed);
+    // Stored as a plain number text ("1500", "12.5") like before
+    const amount = String(parsed);
     if (currentRequestType === 'expense') {
         const description = inputValue('req-desc').trim();
-        if (!amount || !description) return fillFields();
-        if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Invalid amount.'));
+        if (!typed || !description) return fillFields();
+        if (!(parsed > 0)) return invalidAmount();
         return { type: 'expense', data: { amount, description, date } };
     }
     if (currentRequestType !== 'payment') return { type: 'payment', data: {} };
-    if (!amount) return fillFields();
-    if (invalidAmount(amount)) return alert(t('alert_invalid_amount', 'Invalid amount.'));
+    if (!typed) return fillFields();
+    if (!(parsed > 0)) return invalidAmount();
     return { type: isChecked('req-is-standing-order') ? 'standing_order' : 'payment', data: { amount, date, note: inputValue('req-note').trim() } };
 }
 

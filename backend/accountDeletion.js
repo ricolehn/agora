@@ -12,6 +12,8 @@ const {
   removePeopleRecord,
   deleteUserRecord
 } = require('./pocketbase');
+const { loadSecret } = require('./polls');
+const { isMine } = require('./prayers');
 
 // Which person record belongs to the account (same matching as the admin deletion)
 function linkedPeople(people, uid) {
@@ -36,8 +38,23 @@ async function deleteWhere(appConfig, collection, field, value) {
   return records;
 }
 
+// Prayer requests of the account: named ones by their author, anonymous ones by their owner hash (needs the secret).
+// They used to stay visible to everyone with name and text for up to three months after the account was deleted.
+async function deleteOwnPrayers(appConfig, uid, dataDir) {
+  let secret = null;
+  try {
+    if (dataDir) secret = loadSecret(dataDir, 'prayers-secret');
+  } catch (err) {
+    console.warn('[Account] Anonymous prayer requests cannot be matched:', err.message);
+  }
+  const own = (await listAllRecords('prayers', '', appConfig).catch(() => []))
+    .filter((record) => record.data && (record.data.authorUid === uid || (secret && isMine(record.data, uid, secret))));
+  for (const record of own) await deleteRecord('prayers', record.id, appConfig).catch(() => {});
+  return own.length;
+}
+
 /** Deletes the account of [uid] and its personal data. Returns a summary for logging. */
-async function deleteAccountData(appConfig, uid, { profilesDir } = {}) {
+async function deleteAccountData(appConfig, uid, { profilesDir, dataDir } = {}) {
   const summary = {};
 
   // Mentoring: mentor profile, own chats and their messages (private conversations)
@@ -72,6 +89,7 @@ async function deleteAccountData(appConfig, uid, { profilesDir } = {}) {
   summary.pushSubscriptions = (await deleteWhere(appConfig, 'push_subscriptions', 'user', uid)).length;
   summary.fcmTokens = (await deleteWhere(appConfig, 'fcm_tokens', 'user', uid)).length;
   summary.requests = (await deleteWhere(appConfig, 'requests', 'userId', uid)).length;
+  summary.prayers = await deleteOwnPrayers(appConfig, uid, dataDir);
 
   // Profile picture
   if (profilesDir && /^[a-zA-Z0-9_-]{1,64}$/.test(uid)) {

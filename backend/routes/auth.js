@@ -16,6 +16,7 @@ const {
   broadcastDataUpdate,
   configFile,
   profilesDir,
+  dataDir,
   newPersonRecord
 } = require('../context');
 const fs = require('fs');
@@ -206,12 +207,14 @@ router.post('/api/auth/register', authRateLimit, async (req, res) => {
       });
       auth = await loginUser(email, password);
 
+      // The account keeps its own finance entry. Only an account without one gets the entry with its name that no
+      // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
+      const uid = matchingUnclaimedUser.id;
       const people = await listPeopleRecords(context.appConfig);
-      const linkedPerson = people.find(p => p.uid === matchingUnclaimedUser.id || (p.name && p.name.trim().toLowerCase() === fullName.toLowerCase()));
-      if (linkedPerson) {
-        if (!linkedPerson.uid || linkedPerson.uid !== matchingUnclaimedUser.id) {
-          await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, { ...(linkedPerson.data || {}), uid: matchingUnclaimedUser.id, name: fullName });
-        }
+      const unusedEntry = !people.some(p => p.uid === uid || p.data?.uid === uid) && people.find(p => !p.uid && !p.data?.uid
+        && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === fullName.toLowerCase());
+      if (unusedEntry) {
+        await upsertPeopleRecord(context.appConfig, unusedEntry.personKey, { ...(unusedEntry.data || {}), uid, name: fullName });
       }
     } else {
       auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
@@ -282,7 +285,7 @@ router.post('/api/auth/delete-account', authRateLimit, verifyToken, async (req, 
     } catch {
       return res.status(403).json({ error: 'The password is not correct.' });
     }
-    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir });
+    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
     console.log(`[Account] User ${uid} deleted their account`, summary);
     clearAuthCookie(req, res);
     broadcastDataUpdate();
