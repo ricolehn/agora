@@ -251,6 +251,7 @@
   "This request was already decided.": "Diese Anfrage wurde bereits entschieden.",
   "Title is required": "Titel ist erforderlich",
   "Too many attempts. Please try again in a few minutes.": "Zu viele Versuche. Bitte versuche es in ein paar Minuten noch einmal.",
+  "Too many people are signed up with this e-mail address.": "Mit dieser E-Mail-Adresse sind schon zu viele Personen angemeldet.",
   "Too many setup requests. Please try again in a few minutes.": "Zu viele Anfragen zur Ersteinrichtung. Bitte versuchen Sie es in wenigen Minuten erneut.",
   "Too many sign-in attempts. Please wait a moment.": "Zu viele Anmeldeversuche. Bitte warten Sie einen Moment.",
   "Treasury: {type}": "Kasse: {type}",

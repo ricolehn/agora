@@ -13,6 +13,7 @@ const {
   newGuestKey,
   readGuestInput,
   isSameGuest,
+  isEmailFull,
   isEventOver,
   publicEventView,
   sendGuestEmail,
@@ -73,6 +74,7 @@ router.post('/api/public/events/:token/register', guestWriteRateLimit, async (re
     const result = await withEventSeats(event.id, async () => {
       const { memberRegs, guests } = await loadSeats(context.appConfig, event.id);
       if (guests.some((guest) => isSameGuest(guest, input))) return { duplicate: true };
+      if (isEmailFull(guests, input)) return { emailFull: true };
       const status = isBookedOut(event, seatCounts(memberRegs, guests).registered) ? 'waitlist' : 'registered';
       const guest = await createEventGuest(context.appConfig, {
         event: event.id,
@@ -87,6 +89,7 @@ router.post('/api/public/events/:token/register', guestWriteRateLimit, async (re
       return { guest };
     });
     if (result.duplicate) return res.status(409).json({ error: 'This person is already signed up for this event.' });
+    if (result.emailFull) return res.status(400).json({ error: 'Too many people are signed up with this e-mail address.' });
 
     broadcastDataUpdate('events');
     const { guest } = result;

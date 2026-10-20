@@ -818,6 +818,21 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await visitor('POST', '/api/public/guests/cancel', { key: second.key })).status, 404);
   });
 
+  test('guests: one e-mail address signs up a family, not a flood', async () => {
+    const id = await eventBy('owner', { title: 'Familientag', date: inDays(16), requiresRegistration: true });
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: true }));
+    const token = (await listed('owner', id)).publicToken;
+    for (let i = 1; i <= 10; i++) {
+      const res = await visitor('POST', `/api/public/events/${token}/register`, { name: `Kind Nummer ${i}`, email: 'eltern@example.org', age: i });
+      assert.equal(res.status, 201, `child ${i}`);
+    }
+    const eleventh = await visitor('POST', `/api/public/events/${token}/register`, { name: 'Kind Nummer 11', email: 'ELTERN@example.org', age: 11 });
+    assert.equal(eleventh.status, 400);
+    assert.equal((await visitor('POST', `/api/public/events/${token}/register`, { name: 'Kind Nummer 11', email: 'a@example.org,b@example.org', age: 11 })).status, 400, 'one recipient per address');
+    assert.equal((await listed('owner', id)).registeredCount, 10);
+    await ok(call('owner', 'DELETE', `/api/events/${id}`));
+  });
+
   test('share links: the page carries the event for link previews only while it is shared', async () => {
     const id = await eventBy('owner', { title: 'Lobpreis <Nacht>', date: inDays(30), startTime: '19:30', location: 'Kirche' });
     await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: true }));

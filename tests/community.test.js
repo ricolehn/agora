@@ -1331,8 +1331,8 @@ describe('order of service', () => {
 
 describe('event guests and places (backend/eventGuests.js, backend/eventSeats.js)', () => {
   const {
-    GUEST_RETENTION_DAYS, newPublicToken, newGuestKey, isPublicToken, isGuestKey, readGuestInput, isSameGuest,
-    publicEventView, guestPagePath, expiredGuests, linkPreviewHead
+    GUEST_RETENTION_DAYS, MAX_GUESTS_PER_EMAIL, newPublicToken, newGuestKey, isPublicToken, isGuestKey, readGuestInput, isSameGuest,
+    isEmailFull, publicEventView, guestPagePath, expiredGuests, linkPreviewHead
   } = require('../backend/eventGuests');
   const { seatCounts, isBookedOut, nextWaitlisted } = require('../backend/eventSeats');
 
@@ -1354,6 +1354,11 @@ describe('event guests and places (backend/eventGuests.js, backend/eventSeats.js
     assert.match(readGuestInput({ name: 'x'.repeat(101), email: 'a@example.org', age: 3 }).error, /full name/);
     assert.match(readGuestInput({ name: 'Anna Gast', email: 'anna@', age: 3 }).error, /e-mail/);
     assert.match(readGuestInput({ name: 'Anna Gast', email: 'anna gast@example.org', age: 3 }).error, /e-mail/);
+    // One address is one recipient: no lists, brackets or local names
+    for (const email of ['a@example.org,b@example.org', 'a@example.org;b@example.org', '<a@example.org>', 'a@localhost', '"a"@example.org']) {
+      assert.match(readGuestInput({ name: 'Anna Gast', email, age: 3 }).error, /e-mail/, email);
+    }
+    assert.equal(readGuestInput({ name: 'Ann O\'Brien', email: "o'brien+event@mail.example.co.uk", age: 3 }).error, undefined);
     for (const age of ['', 'zwölf', '-1', '3.5', '121', '2000-01-01', null]) {
       assert.match(readGuestInput({ name: 'Anna Gast', email: 'anna@example.org', age }).error, /age/, `age ${JSON.stringify(age)}`);
     }
@@ -1362,6 +1367,11 @@ describe('event guests and places (backend/eventGuests.js, backend/eventSeats.js
     const anna = { name: 'Anna Gast', email: 'Anna@Example.org' };
     assert.equal(isSameGuest(anna, { name: 'anna gast', email: 'anna@example.org' }), true);
     assert.equal(isSameGuest(anna, { name: 'Ben Gast', email: 'anna@example.org' }), false);
+    // ...but not a flood of sign-ups into someone's inbox
+    const family = Array.from({ length: MAX_GUESTS_PER_EMAIL }, (_, i) => ({ name: `Kind ${i}`, email: 'Eltern@example.org' }));
+    assert.equal(isEmailFull(family.slice(1), { name: 'X', email: 'eltern@example.org' }), false);
+    assert.equal(isEmailFull(family, { name: 'X', email: 'eltern@example.org' }), true);
+    assert.equal(isEmailFull(family, { name: 'X', email: 'other@example.org' }), false);
   });
 
   test('members and guests share the places; whoever waited longest moves up first', () => {

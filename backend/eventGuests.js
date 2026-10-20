@@ -9,6 +9,11 @@ const GUEST_RETENTION_DAYS = 30;
 const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_LENGTH = 254;
 const MAX_AGE = 120;
+// A family signs up several children with one address; more than this per event is someone else's inbox
+const MAX_GUESTS_PER_EMAIL = 10;
+// The rule browsers use for <input type="email"> (and a dot in the domain): no commas, spaces or brackets, so an
+// address can never name more recipients than one
+const EMAIL = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
 // Share links and guests' keys are random and URL safe (like the calendar feed's token); nothing else is ever
 // looked up with them
@@ -27,14 +32,18 @@ function readGuestInput(body) {
   const email = String(body?.email ?? '').trim();
   const age = String(body?.age ?? '').trim();
   if (name.length < 2 || name.length > MAX_NAME_LENGTH) return { error: 'Please enter your full name.' };
-  if (email.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Please enter a valid e-mail address.' };
+  if (email.length > MAX_EMAIL_LENGTH || !EMAIL.test(email)) return { error: 'Please enter a valid e-mail address.' };
   if (!/^\d{1,3}$/.test(age) || Number(age) > MAX_AGE) return { error: 'Please enter your age as a number.' };
   return { name, email, age: Number(age) };
 }
 
+const sameEmail = (guest, input) => String(guest.email || '').trim().toLowerCase() === input.email.toLowerCase();
+
 /** The same person signed up twice: same name and e-mail address (a parent may sign up several children). */
-const isSameGuest = (guest, input) => String(guest.name || '').trim().toLowerCase() === input.name.toLowerCase()
-  && String(guest.email || '').trim().toLowerCase() === input.email.toLowerCase();
+const isSameGuest = (guest, input) => String(guest.name || '').trim().toLowerCase() === input.name.toLowerCase() && sameEmail(guest, input);
+
+/** True once [MAX_GUESTS_PER_EMAIL] people of one event share the address of [input]. */
+const isEmailFull = (guests, input) => guests.filter((guest) => sameEmail(guest, input)).length >= MAX_GUESTS_PER_EMAIL;
 
 /**
  * What everyone with the link sees of an event: what, when, where and the places. Never the organiser, the groups,
@@ -182,6 +191,7 @@ async function purgeExpiredGuests(appConfig, today = todayUtc()) {
 
 module.exports = {
   GUEST_RETENTION_DAYS,
+  MAX_GUESTS_PER_EMAIL,
   newPublicToken,
   newGuestKey,
   isPublicToken,
@@ -190,6 +200,7 @@ module.exports = {
   isEventOver,
   readGuestInput,
   isSameGuest,
+  isEmailFull,
   publicEventView,
   slugify,
   guestPagePath,
