@@ -2488,10 +2488,6 @@
                 <button type="button" class="close-btn event-detail-close-btn" onclick="closeModal('event-detail-modal')" aria-label="Back" title="Back" data-i18n-aria-label="btn_back" data-i18n-title="btn_back">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                 </button>
-                <!-- Share: the back button's twin, pinned at the top right (link, copy, system share sheet) -->
-                <button type="button" class="close-btn event-detail-close-btn event-detail-share-btn detail-view-only" id="detail-share-btn" onclick="window.openEventShare()" aria-label="Share" title="Share" data-i18n-aria-label="events_share" data-i18n-title="events_share">
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-                </button>
                 <!-- Edit mode: page heading next to the back button ("Neues Event", "Termin bearbeiten") -->
                 <span class="detail-edit-heading detail-edit-only" id="detail-edit-heading" data-i18n="events_btn_new">New Event</span>
                 <div class="event-detail-pre-title">
@@ -2570,7 +2566,19 @@
                     <input type="hidden" id="detail-edit-type" value="event">
                 </div>
 
-                <h2 id="detail-modal-title" class="event-detail-title-main detail-view-only">Event</h2>
+                <!-- Title and organizer; on their right the share icon (link, copy, system share sheet), no button around it -->
+                <div class="event-detail-title-row detail-view-only">
+                    <div class="event-detail-title-text">
+                        <h2 id="detail-modal-title" class="event-detail-title-main detail-view-only">Event</h2>
+                        <div class="event-detail-organizer-pill detail-view-only" id="detail-modal-organizer-pill">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            <span><span data-i18n="events_organizer">Organizer:</span> <strong id="detail-creator-name">Member</strong></span>
+                        </div>
+                    </div>
+                    <button type="button" class="event-detail-share-btn" id="detail-share-btn" onclick="window.openEventShare()" aria-label="Share" title="Share" data-i18n-aria-label="events_share" data-i18n-title="events_share">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                    </button>
+                </div>
 
                 <!-- Edit mode: clearly recognized title input field with unmistakable label -->
                 <div class="detail-edit-only detail-title-form-group">
@@ -2581,10 +2589,6 @@
                     <input type="text" id="detail-edit-title" class="detail-edit-input detail-title-input" placeholder="e.g. bistro evening, youth night, prayer meeting..." data-i18n-placeholder="events_title_placeholder" required>
                 </div>
 
-                <div class="event-detail-organizer-pill detail-view-only" id="detail-modal-organizer-pill">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                    <span><span data-i18n="events_organizer">Organizer:</span> <strong id="detail-creator-name">Member</strong></span>
-                </div>
                 <!-- Target groups as text, like the organizer ("Event für die Gruppe „Technik“") -->
                 <div class="event-detail-organizer-pill event-detail-groups-line detail-view-only" id="detail-modal-groups-line" style="display:none;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>

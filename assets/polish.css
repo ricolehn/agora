@@ -1360,13 +1360,17 @@ h1, h2, h3,
 /* ==========================================================================
    Sharing an event (v3.2): the share button, the share sheet and the page guests see without an account
    ========================================================================== */
-/* The back button's twin, pinned at the top right while the page scrolls */
-#event-detail-modal.modal-page .event-detail-share-btn { left: auto; right: 20px; }
-#event-detail-modal.modal-page .event-detail-share-btn:focus { color: var(--text); }
-#event-detail-modal.modal-page .event-detail-share-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 50%; }
-/* The badges on the picture (highlight) stay left of it */
-#event-detail-modal.modal-page .event-detail-modal-card:not(.detail-is-editing) .event-detail-top-bar,
-#event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-top-bar { padding-right: 54px; }
+/* Right of the title and the organizer: only the icon shows, no button around it (its 40px tap area is invisible;
+   the icon ends where the cards below end) */
+.event-detail-title-row { display: flex; align-items: center; gap: 12px; }
+.event-detail-title-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.event-detail-share-btn {
+    flex-shrink: 0; width: 40px; height: 40px; margin-right: -9px; padding: 0; border: 0; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: none; color: var(--text-secondary); cursor: pointer; transition: color 0.2s ease;
+}
+.event-detail-share-btn:hover { color: var(--primary); }
+.event-detail-share-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 .share-sheet { max-width: 440px; }
 .share-sheet-badge { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
@@ -1397,7 +1401,7 @@ h1, h2, h3,
 .event-detail-modal-card.is-guest-view #detail-modal-action-bar,
 .event-detail-modal-card.is-guest-view #detail-modal-attendees-details { display: none !important; }
 /* Signed out there is no app behind the page: nothing to go back to */
-.event-detail-modal-card.is-guest-anon .event-detail-close-btn:not(.event-detail-share-btn) { display: none !important; }
+.event-detail-modal-card.is-guest-anon .event-detail-close-btn { display: none !important; }
 /* A link that does not work (any more): only the message */
 .event-detail-modal-card.is-guest-view:not(.is-guest-missing) #guest-event-message,
 .event-detail-modal-card.is-guest-missing .event-detail-title-block,
