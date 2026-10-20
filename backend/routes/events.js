@@ -30,6 +30,9 @@ const {
   deleteEventRecord,
   listEventRegistrations,
   upsertEventRegistration,
+  listEventGuests,
+  getEventGuest,
+  deleteEventGuest,
   listEventDuties,
   getEventDuty,
   createEventDuty,
@@ -51,6 +54,8 @@ const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
 const { createItemStore } = require('../itemStore');
 const { buildProgram } = require('../program');
 const { eventImageName, linkedEventImageNames, deleteUnlinkedEventImages } = require('../eventImages');
+const { seatCounts, isBookedOut, withEventSeats, loadSeats, fillFreeSeats } = require('../eventSeats');
+const { newPublicToken, sendGuestEmail, tellPromotedGuests } = require('../eventGuests');
 
 const router = express.Router();
 // Order of service per event (key = event id), readable only by the server
@@ -67,6 +72,7 @@ router.get('/api/events', verifyToken, async (req, res) => {
     const currentUid = req.user.uid || req.user.id;
     const allEvents = await listEvents(context.appConfig, '', '+date,+startTime');
     const allRegs = await listEventRegistrations(context.appConfig);
+    const allGuests = await listEventGuests(context.appConfig).catch(() => []);
     const allDuties = await listEventDuties(context.appConfig);
     const users = await listUserRecords(context.appConfig);
     const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
@@ -89,11 +95,11 @@ router.get('/api/events', verifyToken, async (req, res) => {
       const isOfficial = Boolean(ev.eventType === 'termin' || ev.isRecurring);
 
       const evRegs = allRegs.filter(r => r.event === ev.id);
-      const registeredCount = evRegs.filter(r => r.status === 'registered').length;
-      const waitlistCount = evRegs.filter(r => r.status === 'waitlist').length;
+      // Guests without an account take places like members
+      const { registered: registeredCount, waitlist: waitlistCount } = seatCounts(evRegs, allGuests.filter(g => g.event === ev.id));
       const myReg = evRegs.find(r => r.user === currentUid && r.status !== 'cancelled') || null;
 
-      const isFull = typeof ev.maxParticipants === 'number' && ev.maxParticipants > 0 && registeredCount >= ev.maxParticipants;
+      const isFull = isBookedOut(ev, registeredCount);
 
       const allEvDuties = allDuties.filter(d => d.event === ev.id);
       const canAccessDutyPlan = canUserAccessEventDutyPlan(req.user, ev, allEvDuties, groupMap);
@@ -153,7 +159,10 @@ router.get('/api/events', verifyToken, async (req, res) => {
         myRegistration: myReg ? { id: myReg.id, status: myReg.status } : null,
         isFull,
         canEdit,
-        canAccessDutyPlan
+        canAccessDutyPlan,
+        // Share switch: the link with this key shows the event to people without an account
+        isPublic: ev.isPublic === true,
+        publicToken: ev.isPublic === true ? ev.publicToken || '' : ''
       };
     });
 
@@ -405,7 +414,8 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
       maxParticipants,
       targetGroups,
       imageUrl,
-      status
+      status,
+      isPublic
     } = req.body || {};
 
     const updates = {};
@@ -422,6 +432,11 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
     if (maxParticipants !== undefined) updates.maxParticipants = Number(maxParticipants) > 0 ? Number(maxParticipants) : 0;
     if (targetGroups !== undefined) updates.targetGroups = Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [];
     if (status !== undefined) updates.status = String(status).trim();
+    if (isPublic !== undefined) {
+      updates.isPublic = isPublic === true;
+      // The link keeps its key when the switch goes off and on again: links shared before work again
+      if (updates.isPublic && !event.publicToken) updates.publicToken = newPublicToken();
+    }
 
     if (canManageEvents) {
       if (eventType !== undefined) updates.eventType = eventType === 'termin' ? 'termin' : 'event';
@@ -433,6 +448,11 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
     const updated = await updateEventRecord(context.appConfig, event.id, updates);
     if (updates.imageUrl !== undefined && updates.imageUrl !== (event.imageUrl || '')) {
       await releaseEventImage(event.imageUrl);
+    }
+    // More places: the waiting list moves up right away
+    if (updates.maxParticipants !== undefined && updates.maxParticipants !== event.maxParticipants) {
+      const promoted = await withEventSeats(event.id, () => fillFreeSeats(context.appConfig, updated));
+      tellPromotedGuests(promoted, updated, originOf(req));
     }
 
     if (Array.isArray(req.body.duties)) {
@@ -583,32 +603,26 @@ router.post('/api/events/:id/register', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'This event is already over. Registration is no longer possible.' });
     }
 
-    const evRegs = await listEventRegistrations(context.appConfig, pbFilterEquals('event', event.id));
-
+    // Members and guests share the places: checked and written one after another (withEventSeats)
     if (action === 'cancel') {
-      const myReg = evRegs.find(r => r.user === currentUid && r.status !== 'cancelled');
-      if (myReg) {
+      const promoted = await withEventSeats(event.id, async () => {
+        const { memberRegs } = await loadSeats(context.appConfig, event.id);
+        if (!memberRegs.some(r => r.user === currentUid && r.status !== 'cancelled')) return [];
         await upsertEventRegistration(context.appConfig, event.id, currentUid, 'cancelled');
-
-        const remainingActive = evRegs.filter(r => r.id !== myReg.id && r.status === 'registered').length;
-        if (typeof event.maxParticipants === 'number' && event.maxParticipants > 0 && remainingActive < event.maxParticipants) {
-          const firstWaitlist = evRegs.find(r => r.id !== myReg.id && r.status === 'waitlist');
-          if (firstWaitlist) {
-            await upsertEventRegistration(context.appConfig, event.id, firstWaitlist.user, 'registered');
-          }
-        }
-      }
+        return fillFreeSeats(context.appConfig, event);
+      });
       broadcastDataUpdate('events');
-      return res.json({ success: true, status: 'cancelled' });
+      res.json({ success: true, status: 'cancelled' });
+      tellPromotedGuests(promoted, event, originOf(req));
+      return;
     }
 
-    const registeredCount = evRegs.filter(r => r.status === 'registered' && r.user !== currentUid).length;
-    let nextStatus = 'registered';
-    if (typeof event.maxParticipants === 'number' && event.maxParticipants > 0 && registeredCount >= event.maxParticipants) {
-      nextStatus = 'waitlist';
-    }
-
-    const reg = await upsertEventRegistration(context.appConfig, event.id, currentUid, nextStatus);
+    const { reg, nextStatus } = await withEventSeats(event.id, async () => {
+      const { memberRegs, guests } = await loadSeats(context.appConfig, event.id);
+      const othersRegistered = seatCounts(memberRegs.filter(r => r.user !== currentUid), guests).registered;
+      const status = isBookedOut(event, othersRegistered) ? 'waitlist' : 'registered';
+      return { reg: await upsertEventRegistration(context.appConfig, event.id, currentUid, status), nextStatus: status };
+    });
     broadcastDataUpdate('events');
     res.json({ success: true, registration: reg, status: nextStatus, isWaitlist: nextStatus === 'waitlist' });
   } catch (err) {
@@ -1142,27 +1156,33 @@ router.get('/api/events/:id/attendees', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'No access to this event' });
     }
 
-    const evRegs = await listEventRegistrations(context.appConfig, pbFilterEquals('event', event.id));
+    const { memberRegs: evRegs, guests } = await loadSeats(context.appConfig, event.id);
     const users = await listUserRecords(context.appConfig);
     const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+    // Everyone sees who comes; how to reach a guest (and their age) only those who may edit the event
+    const canEdit = isCreator || hasEventPermission(req.user);
 
-    const registered = [];
-    const waitlist = [];
-
-    for (const r of evRegs) {
-      const item = {
+    const people = [
+      ...evRegs.map(r => ({
         id: r.id,
         userId: r.user,
         name: userMap.get(r.user) || translate(requestLanguage(req), 'Member'),
         status: r.status,
         created: r.created
-      };
-      if (r.status === 'registered') {
-        registered.push(item);
-      } else if (r.status === 'waitlist') {
-        waitlist.push(item);
-      }
-    }
+      })),
+      ...guests.map(g => ({
+        id: g.id,
+        // No account: removing a guest takes the same address as a member (DELETE .../attendees/guest:<id>)
+        userId: `guest:${g.id}`,
+        name: g.name,
+        status: g.status,
+        created: g.created,
+        guest: true,
+        ...(canEdit ? { email: g.email, age: g.age } : {})
+      }))
+    ].sort((a, b) => String(a.created || '').localeCompare(String(b.created || '')));
+    const registered = people.filter(p => p.status === 'registered');
+    const waitlist = people.filter(p => p.status === 'waitlist');
 
     res.json({
       eventId: event.id,
@@ -1190,20 +1210,29 @@ router.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res)
       return res.status(403).json({ error: 'Keine Berechtigung' });
     }
 
-    const targetUid = req.params.userId;
-    await upsertEventRegistration(context.appConfig, event.id, targetUid, 'cancelled');
-
-    const evRegs = await listEventRegistrations(context.appConfig, pbFilterEquals('event', event.id));
-    const remainingActive = evRegs.filter(r => r.user !== targetUid && r.status === 'registered').length;
-    if (typeof event.maxParticipants === 'number' && event.maxParticipants > 0 && remainingActive < event.maxParticipants) {
-      const firstWaitlist = evRegs.find(r => r.user !== targetUid && r.status === 'waitlist');
-      if (firstWaitlist) {
-        await upsertEventRegistration(context.appConfig, event.id, firstWaitlist.user, 'registered');
-      }
+    const targetUid = String(req.params.userId || '');
+    const guestId = targetUid.startsWith('guest:') ? targetUid.slice('guest:'.length) : null;
+    let removedGuest = null;
+    if (guestId !== null) {
+      removedGuest = /^[A-Za-z0-9]{1,32}$/.test(guestId) ? await getEventGuest(context.appConfig, guestId) : null;
+      if (!removedGuest || removedGuest.event !== event.id) return res.status(404).json({ error: 'Participant not found' });
     }
+
+    const { promoted, gone } = await withEventSeats(event.id, async () => {
+      if (removedGuest) {
+        // Cancelled in the meantime: nothing left to remove, nobody to tell
+        if (!(await getEventGuest(context.appConfig, removedGuest.id))) return { promoted: [], gone: true };
+        await deleteEventGuest(context.appConfig, removedGuest.id);
+      } else {
+        await upsertEventRegistration(context.appConfig, event.id, targetUid, 'cancelled');
+      }
+      return { promoted: await fillFreeSeats(context.appConfig, event), gone: false };
+    });
 
     broadcastDataUpdate('events');
     res.json({ success: true });
+    if (removedGuest && !gone) sendGuestEmail(removedGuest, event, 'removed', originOf(req));
+    tellPromotedGuests(promoted, event, originOf(req));
   } catch (err) {
     console.error('Failed to remove attendee:', err);
     res.status(500).json({ error: 'The participant could not be removed' });

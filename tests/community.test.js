@@ -1328,3 +1328,107 @@ describe('order of service', () => {
     assert.notEqual(dup[0].id, dup[1].id);
   });
 });
+
+describe('event guests and places (backend/eventGuests.js, backend/eventSeats.js)', () => {
+  const {
+    GUEST_RETENTION_DAYS, newPublicToken, newGuestKey, isPublicToken, isGuestKey, readGuestInput, isSameGuest,
+    publicEventView, guestPagePath, expiredGuests, linkPreviewHead
+  } = require('../backend/eventGuests');
+  const { seatCounts, isBookedOut, nextWaitlisted } = require('../backend/eventSeats');
+
+  test('share links and guest keys are random, URL safe and the only thing looked up', () => {
+    const token = newPublicToken();
+    const key = newGuestKey();
+    assert.ok(isPublicToken(token) && isGuestKey(key));
+    assert.notEqual(newPublicToken(), token);
+    for (const bad of ['', 'short', '__proto__', 'a'.repeat(65), 'abc"def"ghijklmnop', 'abc def ghijklmnopq', null, 42, ['x'.repeat(20)]]) {
+      assert.equal(isPublicToken(bad), false, `token ${JSON.stringify(bad)}`);
+      assert.equal(isGuestKey(bad), false, `key ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test('sign-up form: full name, e-mail address and age as a number (no birth date)', () => {
+    assert.deepEqual(readGuestInput({ name: '  Anna   Gast ', email: ' anna@example.org ', age: ' 34 ' }), { name: 'Anna Gast', email: 'anna@example.org', age: 34 });
+    assert.deepEqual(readGuestInput({ name: 'Ben Kind', email: 'eltern@example.org', age: 0 }).age, 0, 'a baby is 0');
+    assert.match(readGuestInput({ name: 'A', email: 'a@example.org', age: 3 }).error, /full name/);
+    assert.match(readGuestInput({ name: 'x'.repeat(101), email: 'a@example.org', age: 3 }).error, /full name/);
+    assert.match(readGuestInput({ name: 'Anna Gast', email: 'anna@', age: 3 }).error, /e-mail/);
+    assert.match(readGuestInput({ name: 'Anna Gast', email: 'anna gast@example.org', age: 3 }).error, /e-mail/);
+    for (const age of ['', 'zwölf', '-1', '3.5', '121', '2000-01-01', null]) {
+      assert.match(readGuestInput({ name: 'Anna Gast', email: 'anna@example.org', age }).error, /age/, `age ${JSON.stringify(age)}`);
+    }
+    assert.match(readGuestInput(null).error, /full name/);
+    // The same person twice is the same name and address; a parent signs up several children with one address
+    const anna = { name: 'Anna Gast', email: 'Anna@Example.org' };
+    assert.equal(isSameGuest(anna, { name: 'anna gast', email: 'anna@example.org' }), true);
+    assert.equal(isSameGuest(anna, { name: 'Ben Gast', email: 'anna@example.org' }), false);
+  });
+
+  test('members and guests share the places; whoever waited longest moves up first', () => {
+    const members = [
+      { id: 'r1', user: 'max', status: 'registered', created: '2026-10-01T10:00:00.000Z' },
+      { id: 'r2', user: 'mia', status: 'waitlist', created: '2026-10-03T10:00:00.000Z' },
+      { id: 'r3', user: 'tom', status: 'cancelled', created: '2026-09-01T10:00:00.000Z' }
+    ];
+    const guests = [
+      { id: 'g1', name: 'Anna', status: 'registered', created: '2026-10-02T10:00:00.000Z' },
+      { id: 'g2', name: 'Ben', status: 'waitlist', created: '2026-10-02T12:00:00.000Z' }
+    ];
+    assert.deepEqual(seatCounts(members, guests), { registered: 2, waitlist: 2 });
+    assert.equal(isBookedOut({ maxParticipants: 2 }, 2), true);
+    assert.equal(isBookedOut({ maxParticipants: 3 }, 2), false);
+    assert.equal(isBookedOut({ maxParticipants: 0 }, 99), false, 'no limit');
+    assert.deepEqual(nextWaitlisted(members, guests), { kind: 'guest', record: guests[1] }, 'the guest signed up before Mia');
+    assert.deepEqual(nextWaitlisted(members, []).record.id, 'r2');
+    assert.equal(nextWaitlisted([], []), null);
+  });
+
+  test('the public page shows what, when, where and the places, never who organises or comes', () => {
+    const event = {
+      id: 'ev1', title: 'Jugendfreizeit', date: '2026-11-07', endDate: '2026-11-09', startTime: '', endTime: '', location: 'Freizeitheim',
+      description: 'Drei Tage', imageUrl: '/api/events/images/a.jpg', eventType: 'event', isPinned: true, status: 'scheduled',
+      requiresRegistration: true, minParticipants: 5, maxParticipants: 30, createdBy: 'olga', targetGroups: ['Jugend'],
+      isPublic: true, publicToken: 'x'.repeat(22)
+    };
+    const view = publicEventView(event, { registered: 30, waitlist: 4 }, '2026-11-01');
+    assert.equal(view.title, 'Jugendfreizeit');
+    assert.equal(view.isFull, true);
+    assert.equal(view.registrationOpen, true);
+    assert.equal(view.isPast, false);
+    for (const hidden of ['id', 'createdBy', 'createdByName', 'targetGroups', 'publicToken', 'isPublic', 'duties', 'waitlistCount']) {
+      assert.equal(hidden in view, false, hidden);
+    }
+    assert.equal(publicEventView(event, { registered: 0 }, '2026-11-09').isPast, false, 'the last day still counts');
+    assert.equal(publicEventView(event, { registered: 0 }, '2026-11-10').registrationOpen, false, 'over');
+    assert.equal(publicEventView({ ...event, status: 'cancelled' }, { registered: 0 }, '2026-11-01').registrationOpen, false);
+    assert.equal(publicEventView({ ...event, requiresRegistration: false }, { registered: 0 }, '2026-11-01').registrationOpen, false);
+    assert.equal(publicEventView({ ...event, eventType: '', isRecurring: true }, { registered: 0 }).eventType, 'termin');
+    assert.equal(guestPagePath({ title: 'Grill & Chill 2026' }, 'k'.repeat(32)), `/events/Grill_Chill_2026?guest=${'k'.repeat(32)}`);
+  });
+
+  test(`guests' details go ${GUEST_RETENTION_DAYS} days after their event (or with it)`, () => {
+    const events = new Map([
+      ['old', { id: 'old', date: '2026-08-01', endDate: '2026-08-31' }],
+      ['recent', { id: 'recent', date: '2026-09-25' }],
+      ['undated', { id: 'undated', date: '' }]
+    ]);
+    const guests = ['old', 'recent', 'undated', 'deleted'].map((event) => ({ id: `g-${event}`, event }));
+    assert.deepEqual(expiredGuests(guests, events, '2026-10-01').map((g) => g.id), ['g-old', 'g-deleted']);
+    assert.deepEqual(expiredGuests(guests, events, '2026-09-30').map((g) => g.id), ['g-deleted'], 'multi-day events count from their last day');
+    assert.deepEqual(expiredGuests(guests, events, '2026-10-26').map((g) => g.id), ['g-old', 'g-recent', 'g-deleted']);
+  });
+
+  test('link previews carry the event, escaped, and only an uploaded picture', () => {
+    const head = linkPreviewHead({ title: 'Grill "&" <Chill>', location: 'Garten', imageUrl: '/api/events/images/a.jpg' }, {
+      origin: 'https://agora.example', appName: 'Gemeinde', when: 'Sa., 7. Nov. 2026, 18:00', url: 'https://agora.example/events/x?share=abc'
+    });
+    assert.match(head, /<title>Grill &quot;&amp;&quot; &lt;Chill&gt; · Gemeinde<\/title>/);
+    assert.match(head, /property="og:title" content="Grill &quot;&amp;&quot; &lt;Chill&gt;"/);
+    assert.match(head, /property="og:description" content="Sa\., 7\. Nov\. 2026, 18:00 · Garten"/);
+    assert.match(head, /property="og:image" content="https:\/\/agora\.example\/api\/events\/images\/a\.jpg"/);
+    assert.match(head, /name="robots" content="noindex, nofollow"/);
+    assert.match(head, /summary_large_image/);
+    const external = linkPreviewHead({ title: 'X', imageUrl: 'https://tracker.example/pixel.gif' }, { origin: 'https://agora.example' });
+    assert.ok(!external.includes('og:image'), 'no outside pictures in our previews');
+  });
+});

@@ -498,7 +498,8 @@ async function changeAppLanguage(lang) {
     if (currentUser) loadMentoringData();
 }
 
-loadLanguage(currentLang);
+// Pages rendered before any data (a shared event for visitors) wait for the texts
+const languageReady = loadLanguage(currentLang);
 
 // --- Toasts & dialogs (callers pass already translated texts via t()) ---
 let toastTimeout;
@@ -2387,12 +2388,21 @@ async function applyRoute(path) {
 }
 
 async function openEventFromRoute(slug) {
-    let ev = findBySlug(appEvents, slug, eventDay);
+    // A shared link also names the event by its share key: the title, and with it the address, may have changed
+    const shareToken = linkParam('share');
+    const find = () => (shareToken && appEvents.find(ev => ev.publicToken === shareToken)) || findBySlug(appEvents, slug, eventDay);
+    let ev = find();
     if (!ev) {
         await loadEventsData();
-        ev = findBySlug(appEvents, slug, eventDay);
+        ev = find();
     }
-    if (ev) await openEventDetailModal(ev.id);
+    if (ev) {
+        // A member gets their own page; the link's keys leave the address
+        if (hasGuestLink()) history.replaceState(history.state, '', window.location.pathname);
+        await openEventDetailModal(ev.id);
+    }
+    // Not one of the member's events (another group's, a guest's link from an e-mail): the page guests see
+    else if (hasGuestLink()) await openGuestEvent(false);
     else showToast(t('events_link_missing', 'This event no longer exists.'), 'error');
 }
 
@@ -2684,6 +2694,9 @@ async function bootstrapSuperAdmin(user) {
 
 onAuthStateChanged(auth, async user => {
     if (user) {
+        // Signed in from a shared event's page: the app takes over (the route opens the event as a member)
+        closeGuestSignIn();
+        leaveGuestView();
         showAuthLoader(t('auth_loading_profile', 'Loading profile...'));
         localStorage.setItem('agora-is-logged-in', 'true');
         const profile = await fetchUserProfile(user.uid, 2);
@@ -2708,8 +2721,13 @@ onAuthStateChanged(auth, async user => {
         advancedConfigLoaded = false;
         advancedConfigAppName = null;
         currentUser = null;
-        $('login-modal')?.classList.add('show');
         show('loading-overlay', false);
+        // A shared event's link: visitors without an account see the event (members can sign in from there)
+        if (hasGuestLink()) {
+            openGuestEvent(true);
+            return;
+        }
+        $('login-modal')?.classList.add('show');
         showAuthForm(true);
     }
 });
@@ -7649,9 +7667,8 @@ function toggleDetailDescription() {
     setDescriptionToggle(expand);
 }
 
-// Registration card: "1 von 2 Plätzen belegt · 1 frei", capacity bar, then my status or the register button
-function renderRegistrationSection(ev) {
-    const status = ev.myRegistration?.status;
+// Registration card head: "1 von 2 Plätzen belegt · 1 frei" and the capacity bar (members and guests)
+function renderCapacity(ev) {
     const max = ev.maxParticipants || 0;
     const count = ev.registeredCount || 0;
     const min = ev.minParticipants || 0;
@@ -7668,18 +7685,26 @@ function renderRegistrationSection(ev) {
         capacity.classList.toggle('is-full', max > 0 && free === 0);
         capacity.querySelector('.event-progress-bar').style.width = `${max > 0 ? Math.min(100, Math.round((count / max) * 100)) : 0}%`;
     }
-    const toggle = current => `window.toggleEventRegistration('${ev.id}', '${current}')`;
-    const banner = (cls, icon, title, sub, action = '') => `
+}
+
+// A status band of the registration card (texts already escaped by the caller)
+const regBanner = (cls, icon, title, sub, action = '') => `
         <div class="event-reg-status ${cls}">
             <span class="event-reg-status-icon">${svgIcon(icon, 16, 2.5)}</span>
             <div class="event-reg-status-text"><strong>${title}</strong>${sub ? `<span>${sub}</span>` : ''}</div>
             ${action}
         </div>`;
+
+// Registration card: capacity, then my status or the register button, then the attendees
+function renderRegistrationSection(ev) {
+    const status = ev.myRegistration?.status;
+    renderCapacity(ev);
+    const toggle = current => `window.toggleEventRegistration('${ev.id}', '${current}')`;
     const leave = (current, label) => `<button type="button" class="event-reg-status-action" onclick="${toggle(current)}">${label}</button>`;
     $('detail-modal-reg-action-wrap').innerHTML = isEventPast(ev)
-        ? banner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? t('events_reg_was_registered', 'You were registered') : t('events_reg_closed', 'Registration has closed'), t('events_reg_event_over', 'The event is over.'))
-        : status === 'registered' ? banner('is-registered', 'check', t('events_reg_you_are_registered', 'You are registered'), t('events_reg_looking_forward', 'We look forward to seeing you!'), leave('registered', t('events_reg_unregister', 'Unregister')))
-        : status === 'waitlist' ? banner('is-waitlist', 'clock', t('events_reg_on_waitlist', 'You are on the waiting list'), t('events_reg_waitlist_hint', 'You will move up as soon as a place becomes free.'), leave('waitlist', t('events_reg_leave', 'Leave')))
+        ? regBanner('is-past', status === 'registered' ? 'check' : 'clock', status === 'registered' ? t('events_reg_was_registered', 'You were registered') : t('events_reg_closed', 'Registration has closed'), t('events_reg_event_over', 'The event is over.'))
+        : status === 'registered' ? regBanner('is-registered', 'check', t('events_reg_you_are_registered', 'You are registered'), t('events_reg_looking_forward', 'We look forward to seeing you!'), leave('registered', t('events_reg_unregister', 'Unregister')))
+        : status === 'waitlist' ? regBanner('is-waitlist', 'clock', t('events_reg_on_waitlist', 'You are on the waiting list'), t('events_reg_waitlist_hint', 'You will move up as soon as a place becomes free.'), leave('waitlist', t('events_reg_leave', 'Leave')))
         : ev.isFull ? `<button type="button" class="btn btn-secondary btn-block" onclick="${toggle('none')}">${svgIcon('clock', 15, 2)}<span>${t('events_reg_join_waitlist', 'Join the waiting list')}</span></button>`
         : `<button type="button" class="btn btn-primary btn-block" onclick="${toggle('none')}">${svgIcon('check', 15, 2.5)}<span>${t('events_reg_register', 'Register')}</span></button>`;
     const attendees = $('detail-modal-attendees-details');
@@ -8237,6 +8262,56 @@ async function openEventDetailModal(eventId) {
     }
     if (!ev) return;
     currentDetailEvent = ev;
+    leaveGuestView();
+    renderDetailBasics(ev);
+
+    const creator = ev.createdByName?.trim() || '';
+    const creatorEl = $('detail-creator-name');
+    if (creatorEl) {
+        creatorEl.textContent = ev.createdByName || t('events_member_fallback', 'Member');
+        creatorEl.title = creator || t('events_member_fallback', 'Member');
+    }
+    show('detail-modal-organizer-pill', !!creator, 'inline-flex');
+
+    // Target groups: a text line under the organizer instead of tags on the picture
+    const groupNames = (Array.isArray(ev.targetGroups) ? ev.targetGroups : []).map(g => findGroup(g)?.name || g).filter(Boolean);
+    const groupsText = $('detail-modal-groups-text');
+    if (groupsText) {
+        const quoted = groupNames.map(name => `<strong>${t('detail_groups_quoted', '“{name}”', { name: escapeHtml(name) })}</strong>`);
+        const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} ${t('detail_groups_and', 'and')} ${quoted[quoted.length - 1]}` : quoted.join('');
+        const isEventType = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
+        const kind = isEventType ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Appointment');
+        groupsText.innerHTML = quoted.length === 1 ? `${kind} ${t('detail_groups_for_one', 'for the group')} ${list}`
+            : `${kind} ${t('detail_groups_for_many', 'for the groups')} ${list}`;
+    }
+    show('detail-modal-groups-line', groupNames.length > 0, 'flex');
+
+    show('detail-modal-reg-box', !!ev.requiresRegistration, 'block');
+    if (ev.requiresRegistration) renderRegistrationSection(ev);
+
+    const dutiesBox = $('detail-modal-duties-box');
+    show(dutiesBox, !!ev.canAccessDutyPlan, 'block');
+    if (ev.canAccessDutyPlan && dutiesBox) {
+        const dutiesDetails = $('detail-modal-duties-details');
+        if (dutiesDetails) dutiesDetails.open = false;
+        show('detail-modal-add-duty-wrap', !!ev.canEdit, 'block');
+        const duties = Array.isArray(ev.duties) ? ev.duties : [];
+        setText('detail-modal-duties-count', dutySummary(duties) || t('duty_no_tasks', 'No tasks yet'));
+        updateDutyProgress(duties);
+        renderGroupedDuties(duties, ev);
+    }
+    renderProgramBox(ev);
+
+    show('detail-btn-edit', !!ev.canEdit, 'inline-flex');
+    show('detail-btn-delete', !!ev.canEdit, 'inline-flex');
+    show('detail-modal-action-bar', !!ev.canEdit, 'flex');
+    openModal('event-detail-modal');
+    fitDetailWhere();
+    clampDetailDescription();
+}
+
+// What, when and where, the picture and the description: the same page for members and for guests of a shared event
+function renderDetailBasics(ev) {
     const modalBody = document.querySelector('.event-detail-body');
     if (modalBody) modalBody.scrollTop = 0;
     detailCard()?.classList.remove('detail-is-editing', 'detail-is-new');
@@ -8273,31 +8348,11 @@ async function openEventDetailModal(eventId) {
         mapLink.style.display = isPlace ? 'inline-flex' : 'none';
     }
 
-    const creator = ev.createdByName?.trim() || '';
-    const creatorEl = $('detail-creator-name');
-    if (creatorEl) {
-        creatorEl.textContent = ev.createdByName || t('events_member_fallback', 'Member');
-        creatorEl.title = creator || t('events_member_fallback', 'Member');
-    }
-    show('detail-modal-organizer-pill', !!creator, 'inline-flex');
-
-    // Target groups: a text line under the organizer instead of tags on the picture
     const tags = $('detail-modal-tags');
     if (tags) {
         tags.innerHTML = '';
         tags.style.display = 'none';
     }
-    const groupNames = (Array.isArray(ev.targetGroups) ? ev.targetGroups : []).map(g => findGroup(g)?.name || g).filter(Boolean);
-    const groupsText = $('detail-modal-groups-text');
-    if (groupsText) {
-        const quoted = groupNames.map(name => `<strong>${t('detail_groups_quoted', '“{name}”', { name: escapeHtml(name) })}</strong>`);
-        const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} ${t('detail_groups_and', 'and')} ${quoted[quoted.length - 1]}` : quoted.join('');
-        const isEventType = ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin;
-        const kind = isEventType ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Appointment');
-        groupsText.innerHTML = quoted.length === 1 ? `${kind} ${t('detail_groups_for_one', 'for the group')} ${list}`
-            : `${kind} ${t('detail_groups_for_many', 'for the groups')} ${list}`;
-    }
-    show('detail-modal-groups-line', groupNames.length > 0, 'flex');
 
     const description = ev.description?.trim();
     const descCard = $('detail-modal-desc-card');
@@ -8308,30 +8363,11 @@ async function openEventDetailModal(eventId) {
         setDescriptionToggle(false);
     }
     if (descCard) descCard.style.display = description ? 'block' : 'none';
+}
 
-    show('detail-modal-reg-box', !!ev.requiresRegistration, 'block');
-    if (ev.requiresRegistration) renderRegistrationSection(ev);
-
-    const dutiesBox = $('detail-modal-duties-box');
-    show(dutiesBox, !!ev.canAccessDutyPlan, 'block');
-    if (ev.canAccessDutyPlan && dutiesBox) {
-        const dutiesDetails = $('detail-modal-duties-details');
-        if (dutiesDetails) dutiesDetails.open = false;
-        show('detail-modal-add-duty-wrap', !!ev.canEdit, 'block');
-        const duties = Array.isArray(ev.duties) ? ev.duties : [];
-        setText('detail-modal-duties-count', dutySummary(duties) || t('duty_no_tasks', 'No tasks yet'));
-        updateDutyProgress(duties);
-        renderGroupedDuties(duties, ev);
-    }
-    renderProgramBox(ev);
-
-    show('detail-btn-edit', !!ev.canEdit, 'inline-flex');
-    show('detail-btn-delete', !!ev.canEdit, 'inline-flex');
-    show('detail-modal-action-bar', !!ev.canEdit, 'flex');
-    openModal('event-detail-modal');
-    fitDetailWhere();
-
-    // Clamp long descriptions behind a "Mehr anzeigen" toggle
+// Long descriptions are clamped behind a "Mehr anzeigen" toggle (measured once the page is shown)
+function clampDetailDescription() {
+    const descCard = $('detail-modal-desc-card');
     requestAnimationFrame(() => {
         const wrap = $('detail-modal-desc-wrap');
         if (wrap && descCard && descCard.style.display !== 'none' && wrap.scrollHeight > 120) {
@@ -8355,17 +8391,23 @@ async function loadEventAttendees(eventId) {
         const stack = $('detail-attendees-stack');
         if (stack) {
             const shown = registered.slice(0, 5);
-            stack.innerHTML = shown.map(att => renderAvatarWrap(att.userId, att.name, { wrapClass: 'avatar-stack-item' })).join('')
+            stack.innerHTML = shown.map(att => renderAvatarWrap(att.guest ? '' : att.userId, att.name, { wrapClass: 'avatar-stack-item' })).join('')
                 + (registered.length > shown.length ? `<span class="avatar-stack-more">+${registered.length - shown.length}</span>` : '');
             stack.style.display = shown.length ? 'flex' : 'none';
         }
         const itemsEl = $('detail-attendees-items');
         if (!itemsEl) return;
         const canManage = currentDetailEvent && currentDetailEvent.canEdit;
+        // Guests signed up without an account (shared link): marked; the e-mail address and age only reach editors
+        const guestInfo = att => `
+                <span class="event-attendee-info">
+                    <span class="event-attendee-name">${escapeHtml(att.name)} <span class="event-attendee-guest">${t('events_attendee_guest', 'Guest')}</span></span>
+                    ${att.email ? `<span class="event-attendee-contact"><a href="mailto:${escapeHtml(att.email)}">${escapeHtml(att.email)}</a>${Number.isFinite(att.age) ? ` · ${t('events_attendee_age', 'Age {age}', { age: att.age })}` : ''}</span>` : ''}
+                </span>`;
         const row = (att, isWaitlist) => `
             <div class="event-attendee-row ${isWaitlist ? 'is-waitlist' : ''}">
-                ${renderAvatarWrap(att.userId, att.name, { wrapClass: 'event-attendee-avatar' })}
-                <span class="event-attendee-name">${escapeHtml(att.name)}</span>
+                ${renderAvatarWrap(att.guest ? '' : att.userId, att.name, { wrapClass: 'event-attendee-avatar' })}
+                ${att.guest ? guestInfo(att) : `<span class="event-attendee-name">${escapeHtml(att.name)}</span>`}
                 ${canManage ? `
                 <button type="button" class="event-attendee-remove" onclick="window.removeEventAttendee(${jsArg(eventId)}, ${jsArg(att.userId)})" title="${isWaitlist ? t('events_attendee_remove_waitlist', 'Remove from waiting list') : t('events_attendee_remove', 'Remove participant')}" aria-label="${t('btn_remove', 'Remove')}">
                     ${svgIcon('x', 13, 2.5)}
@@ -8386,6 +8428,356 @@ async function removeEventAttendee(eventId, userId) {
         after: () => loadEventAttendees(eventId)
     });
 }
+
+// --- Sharing an event: the share button opens the link to copy or to hand to the system share sheet. Whoever may
+// edit the event decides with a switch whether people without an account can open it: they see the event and sign
+// up as guests (full name, e-mail address, age). The link then carries the event's share key (?share=). ---
+const GUEST_KEYS_STORAGE = 'agora_guest_keys';
+// Same as the server (backend/eventGuests.js): a guest's details are deleted this many days after the event
+const GUEST_RETENTION_DAYS = 30;
+const linkParam = name => new URLSearchParams(window.location.search).get(name) || '';
+// A shared event's link, or the link in a guest's e-mails (?guest= their own key)
+const hasGuestLink = () => !!(linkParam('share') || linkParam('guest'));
+// While the page shows a shared event to a visitor: { anon (nobody signed in), token, event, mine, formOpen }
+let guestView = null;
+
+/** The link of an event: the members' address, with the share key while people without an account may open it. */
+function eventShareUrl(ev) {
+    const base = `${window.location.origin}/events/${encodeURIComponent(eventSlug(ev))}`;
+    return ev.isPublic && ev.publicToken ? `${base}?share=${encodeURIComponent(ev.publicToken)}` : base;
+}
+
+// A guest knows the event's title only: the address gets the same readable name, the share key finds the event
+const guestShareUrl = (ev, token) => `${window.location.origin}/events/${encodeURIComponent(slugify(ev.title) || 'event')}?share=${encodeURIComponent(token)}`;
+
+/** What the share sheet offers: the event a member has open, or the shared event a guest is looking at. */
+function shareTarget() {
+    if (guestView) return guestView.event && guestView.token ? { ev: guestView.event, url: guestShareUrl(guestView.event, guestView.token), isPublic: true, canEdit: false } : null;
+    const ev = currentDetailEvent;
+    return ev ? { ev, url: eventShareUrl(ev), isPublic: ev.isPublic === true, canEdit: ev.canEdit === true } : null;
+}
+
+const canShareNatively = url => typeof navigator.share === 'function' && (typeof navigator.canShare !== 'function' || navigator.canShare({ url }));
+
+function renderEventShare() {
+    const target = shareTarget();
+    if (!target) return;
+    const { ev, url, isPublic, canEdit } = target;
+    setText('event-share-sub', [ev.title, formatEventDateSpanCompact(ev.date, ev.endDate)].filter(Boolean).join(' · '));
+    show('event-share-public-section', canEdit, 'flex');
+    const toggle = $('event-share-public');
+    if (toggle) toggle.checked = isPublic;
+    setText('event-share-public-desc', ev.requiresRegistration
+        ? t('events_share_public_desc_reg', 'Anyone with the link sees the event and can sign up – no account needed.')
+        : t('events_share_public_desc', 'Anyone with the link sees the event – no account needed.'));
+    setValue('event-share-link', url);
+    const hint = $('event-share-hint');
+    if (hint) {
+        hint.classList.toggle('is-public', isPublic);
+        hint.innerHTML = `${svgIcon(isPublic ? 'eye' : 'lock', 14, 2)}<span>${isPublic
+            ? t('events_share_hint_public', 'Anyone with this link can see the event.')
+            : t('events_share_hint_members', 'Only members can open this link.')}</span>`;
+    }
+    show('event-share-send', canShareNatively(url), 'inline-flex');
+}
+
+function openEventShare() {
+    if (!shareTarget()) return;
+    renderEventShare();
+    openModal('event-share-modal');
+}
+
+// The switch (only for those who may edit the event; the server checks it again). Off and on again keeps the link.
+async function toggleEventPublic(isPublic) {
+    const ev = currentDetailEvent;
+    const toggle = $('event-share-public');
+    if (!ev?.canEdit || !toggle) return;
+    toggle.disabled = true;
+    try {
+        const data = await apiJson(`/events/${encodeURIComponent(ev.id)}`, 'PATCH', { isPublic }, t('events_share_switch_failed', 'The setting could not be saved.'));
+        ev.isPublic = data.event?.isPublic === true;
+        ev.publicToken = ev.isPublic ? data.event?.publicToken || '' : '';
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        toggle.disabled = false;
+        renderEventShare();
+    }
+}
+
+// The clipboard API needs https: installations on plain http copy the selected field instead
+async function copyText(text, field) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch { /* the selected field below */ }
+    try {
+        field?.focus();
+        field?.select();
+        return document.execCommand('copy');
+    } catch {
+        return false;
+    }
+}
+
+async function copyEventShareLink() {
+    const field = $('event-share-link');
+    if (!field) return;
+    if (await copyText(field.value, field)) showToast(t('events_share_copied', 'Link copied'));
+    else showToast(t('events_share_copy_failed', 'The link could not be copied. It is selected, copy it by hand.'), 'error');
+}
+
+async function sendEventShareLink() {
+    const target = shareTarget();
+    if (!target) return;
+    try {
+        await navigator.share({ title: target.ev.title, url: target.url });
+    } catch (err) {
+        if (err?.name !== 'AbortError') showToast(t('events_share_failed', 'The link could not be shared.'), 'error');
+    }
+}
+
+// --- Visitors without an account: the page of a shared event, signing up as a guest, their own places ---
+function storedGuestKeys() {
+    try {
+        const keys = JSON.parse(localStorage.getItem(GUEST_KEYS_STORAGE) || '[]');
+        return Array.isArray(keys) ? keys.filter(key => typeof key === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function storeGuestKeys(keys) {
+    try {
+        localStorage.setItem(GUEST_KEYS_STORAGE, JSON.stringify([...new Set(keys)].slice(0, 20)));
+    } catch { /* private mode: the link in the e-mail still leads to the registration */ }
+}
+
+// The API without an account (no token); answers come in the page's language
+async function publicApi(path, method = 'GET', body) {
+    const res = await fetch(API + path, {
+        method,
+        headers: { 'Accept-Language': uiLang, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error || t('error_connection', 'Connection error')), { status: res.status });
+    return data;
+}
+
+// A failed fetch (offline) has no text for people
+const guestError = err => (err instanceof TypeError ? t('error_connection', 'Connection error') : err.message);
+
+/**
+ * What a visitor may see: the event of the share link, or of their own registration (the link in their e-mails),
+ * and their places on this device. Registrations that are gone (cancelled, removed, over) leave the device.
+ */
+async function loadGuestView(anon) {
+    const token = linkParam('share');
+    const ownKey = linkParam('guest');
+    const keys = [...new Set([ownKey, ...storedGuestKeys()].filter(Boolean))];
+    const found = keys.length ? (await publicApi('/public/guests/lookup', 'POST', { keys })).registrations || [] : [];
+    const own = ownKey ? found.find(reg => reg.key === ownKey) || null : null;
+    storeGuestKeys(found.map(reg => reg.key));
+    const view = { anon, token: '', event: null, mine: [], formOpen: false, ownKeyGone: !!ownKey && !own };
+    if (token) {
+        try {
+            view.event = await publicApi(`/public/events/${encodeURIComponent(token)}`);
+            view.token = token;
+        } catch (err) {
+            if (err.status !== 404) throw err;
+        }
+    }
+    if (!view.event && own) {
+        view.event = own.event;
+        view.token = own.shareToken || '';
+    }
+    view.mine = view.token ? found.filter(reg => reg.shareToken === view.token) : own ? [own] : [];
+    return view;
+}
+
+async function openGuestEvent(anon) {
+    await languageReady;
+    try {
+        guestView = await loadGuestView(anon);
+    } catch (err) {
+        console.warn('Shared event could not be loaded:', err);
+        guestView = { anon, token: '', event: null, mine: [], formOpen: false, failed: true };
+    }
+    if (!anon) {
+        // A member closes it like any page and is back in the app: the link's keys leave the address first (the
+        // page's own history entry comes after it)
+        history.replaceState(history.state, '', window.location.pathname);
+        const modal = $('event-detail-modal');
+        if (modal) modal._customOnClose = leaveGuestView;
+    }
+    renderGuestView();
+}
+
+function renderGuestView() {
+    const view = guestView;
+    const card = detailCard();
+    if (!view || !card) return;
+    currentDetailEvent = null;
+    card.classList.add('is-guest-view');
+    card.classList.toggle('is-guest-anon', view.anon);
+    card.classList.toggle('is-guest-missing', !view.event);
+    setText('guest-event-app-name', APP_NAME);
+    show('guest-sign-in-btn', view.anon, '');
+    show('detail-share-btn', !!(view.event && view.token), '');
+    if (view.event) {
+        renderDetailBasics(view.event);
+        show('detail-modal-reg-box', !!view.event.requiresRegistration, 'block');
+        if (view.event.requiresRegistration) {
+            renderCapacity(view.event);
+            renderGuestRegistration();
+        }
+        document.title = `${view.event.title} · ${APP_NAME}`;
+        // Once the share link is known the address shows it, not the guest's own key: copied from the address bar
+        // it shares the event, never the registration
+        if (view.token && linkParam('guest')) history.replaceState(history.state, '', guestShareUrl(view.event, view.token).slice(window.location.origin.length));
+    } else {
+        // The link does not work (any more): switched off or the event deleted; or the registration is gone
+        renderDetailBasics({ title: '' });
+        const [title, text] = view.failed
+            ? [t('guest_load_failed', 'The event could not be loaded'), t('guest_load_failed_text', 'Please check the connection and try again.')]
+            : view.ownKeyGone
+                ? [t('guest_reg_gone', 'This registration no longer exists'), t('guest_reg_gone_text', 'It was cancelled, or the event is over.')]
+                : [t('guest_link_inactive', 'This link is not active'), t('guest_link_inactive_text', 'Only members can see this event. Ask whoever sent you the link.')];
+        setText('guest-event-message-title', title);
+        setText('guest-event-message-text', text);
+        document.title = APP_NAME;
+    }
+    if (!$('event-detail-modal')?.classList.contains('show')) openModal('event-detail-modal');
+    fitDetailWhere();
+    clampDetailDescription();
+}
+
+// The registration card of a guest: their places on this device (cancel), then the form or why it is closed
+function renderGuestRegistration() {
+    const view = guestView;
+    const ev = view?.event;
+    const wrap = $('detail-modal-reg-action-wrap');
+    if (!ev || !wrap) return;
+    const places = view.mine.map(reg => {
+        const waiting = reg.status === 'waitlist';
+        const title = waiting ? t('guest_reg_waitlist', '{name} is on the waiting list', { name: reg.name }) : t('guest_reg_registered', '{name} is registered', { name: reg.name });
+        const sub = waiting ? t('events_reg_waitlist_hint', 'You will move up as soon as a place becomes free.') : t('events_reg_looking_forward', 'We look forward to seeing you!');
+        const cancel = ev.isPast ? '' : `<button type="button" class="event-reg-status-action" onclick="window.cancelGuestRegistration(${jsArg(reg.key)})">${t('events_reg_unregister', 'Unregister')}</button>`;
+        return regBanner(waiting ? 'is-waitlist' : 'is-registered', waiting ? 'clock' : 'check', escapeHtml(title), sub, cancel);
+    });
+    const action = ev.status === 'cancelled' ? regBanner('is-past', 'x', t('guest_event_cancelled', 'This event was cancelled.'), '')
+        : ev.isPast ? regBanner('is-past', 'clock', t('events_reg_closed', 'Registration has closed'), t('events_reg_event_over', 'The event is over.'))
+        // The link was switched off: own places only, nobody new
+        : !view.token ? ''
+        : view.mine.length && !view.formOpen ? `<button type="button" class="guest-link-btn guest-reg-another" onclick="window.openGuestForm()">${svgIcon('plus', 15, 2.5)}<span>${t('guest_reg_another', 'Sign up another person')}</span></button>`
+        : guestFormHtml(ev);
+    wrap.innerHTML = `<div class="guest-reg">${places.join('')}${action}</div>`;
+}
+
+const guestFormHtml = ev => `
+    <form class="guest-reg-form" onsubmit="event.preventDefault(); window.submitGuestRegistration()">
+        ${ev.isFull ? `<p class="guest-reg-full">${svgIcon('clock', 14, 2)}<span>${t('guest_reg_full', 'Fully booked: you can join the waiting list.')}</span></p>` : ''}
+        <label class="guest-reg-field"><span>${t('guest_reg_name', 'Full name')}</span>
+            <input type="text" id="guest-reg-name" class="form-input" autocomplete="name" maxlength="100" required placeholder="${escapeHtml(t('guest_reg_name_ph', 'First and last name'))}"></label>
+        <div class="guest-reg-row">
+            <label class="guest-reg-field"><span>${t('guest_reg_email', 'E-mail address')}</span>
+                <input type="email" id="guest-reg-email" class="form-input" autocomplete="email" maxlength="254" required></label>
+            <label class="guest-reg-field"><span>${t('guest_reg_age', 'Age')}</span>
+                <input type="number" id="guest-reg-age" class="form-input" inputmode="numeric" min="0" max="120" step="1" required></label>
+        </div>
+        <input type="text" id="guest-reg-hp" class="guest-reg-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <p id="guest-reg-error" class="guest-reg-error" role="alert" hidden></p>
+        <p class="guest-reg-note">${t('guest_reg_note', 'Your details are only used for this event and deleted {days} days after it.', { days: GUEST_RETENTION_DAYS })} <a href="/privacy" target="_blank" rel="noopener">${t('guest_privacy', 'Privacy')}</a></p>
+        <button type="submit" id="guest-reg-submit" class="btn ${ev.isFull ? 'btn-secondary' : 'btn-primary'} btn-block">${svgIcon(ev.isFull ? 'clock' : 'check', 15, 2.5)}<span>${ev.isFull ? t('events_reg_join_waitlist', 'Join the waiting list') : t('events_reg_register', 'Register')}</span></button>
+    </form>`;
+
+function openGuestForm() {
+    if (!guestView) return;
+    guestView.formOpen = true;
+    renderGuestRegistration();
+    $('guest-reg-name')?.focus();
+}
+
+async function submitGuestRegistration() {
+    const view = guestView;
+    if (!view?.token) return;
+    const button = $('guest-reg-submit');
+    const error = $('guest-reg-error');
+    if (error) error.hidden = true;
+    if (button) button.disabled = true;
+    try {
+        const data = await publicApi(`/public/events/${encodeURIComponent(view.token)}/register`, 'POST', {
+            name: inputValue('guest-reg-name'), email: inputValue('guest-reg-email'), age: inputValue('guest-reg-age'), website: inputValue('guest-reg-hp')
+        });
+        storeGuestKeys([data.key, ...storedGuestKeys()]);
+        view.mine = [...view.mine, { key: data.key, name: data.name, status: data.status, shareToken: view.token }];
+        if (data.event) view.event = data.event;
+        view.formOpen = false;
+        renderCapacity(view.event);
+        renderGuestRegistration();
+        const done = data.status === 'waitlist' ? t('guest_reg_waitlist_done', 'You are on the waiting list.') : t('guest_reg_done', 'You are registered.');
+        showToast(data.emailed ? `${done} ${t('guest_reg_emailed', 'A confirmation is on its way by e-mail.')}` : done);
+    } catch (err) {
+        if (error) {
+            error.textContent = guestError(err);
+            error.hidden = false;
+        }
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function cancelGuestRegistration(key) {
+    const view = guestView;
+    const reg = view?.mine.find(entry => entry.key === key);
+    if (!reg || !confirmAction(t('guest_reg_cancel_confirm', 'Do you really want to cancel the registration of {name}?', { name: reg.name }))) return;
+    try {
+        await publicApi('/public/guests/cancel', 'POST', { key });
+        storeGuestKeys(storedGuestKeys().filter(stored => stored !== key));
+        view.mine = view.mine.filter(entry => entry.key !== key);
+        // Fresh places (someone may have moved up); without the share link only the own places change
+        if (view.token) view.event = await publicApi(`/public/events/${encodeURIComponent(view.token)}`).catch(() => view.event);
+        renderCapacity(view.event);
+        renderGuestRegistration();
+        showToast(t('guest_reg_cancelled', 'The registration is cancelled.'));
+    } catch (err) {
+        showToast(guestError(err), 'error');
+    }
+}
+
+// Members who open the link signed out (another browser, the phone) sign in; the app then opens the event
+function showGuestSignIn() {
+    const login = $('login-modal');
+    if (!login) return;
+    login.style.zIndex = '2600';
+    show('login-back-to-event', true, 'inline-flex');
+    showAuthForm(true);
+    login.classList.add('show');
+}
+
+function closeGuestSignIn() {
+    const login = $('login-modal');
+    if (login) {
+        login.classList.remove('show');
+        login.style.zIndex = '2000';
+    }
+    show('login-back-to-event', false);
+}
+
+// Back to the members' page: an event opened the normal way, or signed in
+function leaveGuestView() {
+    if (!guestView) return;
+    guestView = null;
+    detailCard()?.classList.remove('is-guest-view', 'is-guest-anon', 'is-guest-missing');
+    show('detail-share-btn', true, '');
+    document.title = APP_NAME;
+}
+
+// Signed out there is no app behind the shared event: the page stays (back gesture, Escape)
+modalCloseGuards['event-detail-modal'] = () => !guestView?.anon;
 
 // --- Duty planner (tasks grouped by role) ---
 function renderGroupedDuties(duties, ev) {
@@ -8849,6 +9241,8 @@ function autoResizeDetailTextarea(textarea) {
 }
 
 Object.assign(window, {
+    openEventShare, toggleEventPublic, copyEventShareLink, sendEventShareLink, openGuestForm, submitGuestRegistration, cancelGuestRegistration,
+    showGuestSignIn, closeGuestSignIn,
     switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, 
      openAssignDutyModalForRole, switchAssignDutyTab, selectDutyAssignee, toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
     enterDetailEditMode, cancelDetailEditMode, saveDetailEditMode, openNewEventDetailModal, setDetailEditType, toggleDetailMultiDay,

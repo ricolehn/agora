@@ -41,7 +41,8 @@ function originOf(req) {
   return `${protocol}://${host}`;
 }
 
-function buildEmail({ appName, recipientName, heading, lines = [], rows = [], actionLabel, url, accent = '#0891b2', lang = BASE_LANGUAGE }) {
+// [footer]: the small print under the message; members get the hint where they choose their e-mails
+function buildEmail({ appName, recipientName, heading, lines = [], rows = [], actionLabel, url, accent = '#0891b2', footer, lang = BASE_LANGUAGE }) {
   const tr = translator(lang);
   const name = appName || 'Agora';
   const greeting = recipientName ? tr('Hello {name},', { name: recipientName }) : tr('Hello,');
@@ -71,7 +72,7 @@ function buildEmail({ appName, recipientName, heading, lines = [], rows = [], ac
         ${url ? `<a href="${escapeHtml(url)}" style="display:inline-block; padding:12px 22px; border-radius:12px; background:${accent}; color:#ffffff; font-size:15px; font-weight:700; text-decoration:none;">${escapeHtml(openLabel)}</a>` : ''}
       </div>
       <div style="padding:16px 28px; background:#f8fafc; border-top:1px solid #e2e8f0; font-size:12px; line-height:1.5; color:#94a3b8;">
-        ${escapeHtml(tr('This message was sent automatically by {app}. You choose which messages you get by e-mail in the app under Settings → Notifications.', { app: name }))}
+        ${escapeHtml(footer || tr('This message was sent automatically by {app}. You choose which messages you get by e-mail in the app under Settings → Notifications.', { app: name }))}
       </div>
     </div>
   </div>`;
@@ -79,7 +80,7 @@ function buildEmail({ appName, recipientName, heading, lines = [], rows = [], ac
 }
 
 /** Sends one e-mail if SMTP is set up; failures are logged, never thrown. Texts are in the recipient's language. */
-async function sendNotificationEmail(user, { subject, heading, lines, rows, actionLabel, path, accent }, origin = '', lang = userLanguage(user)) {
+async function sendNotificationEmail(user, { subject, heading, lines, rows, actionLabel, path, accent, footer }, origin = '', lang = userLanguage(user)) {
   const { context } = require('./context');
   const appConfig = context.appConfig;
   if (!user?.email || !context.transporter || !appConfig?.smtp?.user) return false;
@@ -88,7 +89,7 @@ async function sendNotificationEmail(user, { subject, heading, lines, rows, acti
     const { text, html } = buildEmail({
       appName: appConfig.appName,
       recipientName: user.firstName || user.name || '',
-      heading: heading || subject, lines, rows, actionLabel, url, accent, lang
+      heading: heading || subject, lines, rows, actionLabel, url, accent, footer, lang
     });
     await context.transporter.sendMail({
       from: `"${appConfig.appName || 'Agora'}" <${appConfig.smtp.user}>`,

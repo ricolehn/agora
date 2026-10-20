@@ -7,7 +7,7 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
-const { REPO_ROOT, BACKEND_DIR } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, assertHas } = require('./helpers');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
 const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
@@ -664,6 +664,193 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.ok(!body.includes(poll.id), `${key} is not readable through /api/db`);
     }
     await ok(call('max', 'DELETE', `/api/polls/${poll.id}`));
+  });
+
+  // --- Sharing an event: the switch, the public page and guests without an account ---
+  const inDays = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  const eventBy = async (who, payload) => {
+    const created = await ok(call(who, 'POST', '/api/events', payload));
+    return created.event?.id || created.id;
+  };
+  const listed = async (who, id) => (await ok(call(who, 'GET', '/api/events'))).find((e) => e.id === id);
+  // People without an account, each from an own address (the sign-up limit per address stays out of the way)
+  let visitors = 0;
+  async function visitor(method, url, body) {
+    visitors += 1;
+    const res = await fetch(base + url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `10.43.${Math.floor(visitors / 250)}.${(visitors % 250) + 1}` },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const text = await res.text();
+    let parsed = text;
+    try { parsed = JSON.parse(text); } catch { /* text body */ }
+    return { status: res.status, body: parsed, headers: res.headers };
+  }
+  const guestPlaces = async (...keys) => (await visitor('POST', '/api/public/guests/lookup', { keys })).body.registrations;
+
+  test('sharing: only who may edit the event switches the link on; it shows what, when and where - nothing else', async () => {
+    const id = await eventBy('owner', { title: 'Gemeindefest', date: inDays(20), startTime: '15:00', location: 'Gemeindehaus', description: 'Mit Kuchen', requiresRegistration: true, maxParticipants: 2 });
+    assert.equal((await call('max', 'PATCH', `/api/events/${id}`, { isPublic: true })).status, 403, 'members who may not edit it');
+    assertHas(await listed('mia', id), { isPublic: false, publicToken: '' });
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: true }));
+    const shared = await listed('mia', id);
+    assert.equal(shared.isPublic, true);
+    assert.match(shared.publicToken, /^[A-Za-z0-9_-]{22}$/, 'everyone who sees the event can share the link');
+
+    const page = await visitor('GET', `/api/public/events/${shared.publicToken}`);
+    assert.equal(page.status, 200);
+    assertHas(page.body, { title: 'Gemeindefest', location: 'Gemeindehaus', startTime: '15:00', requiresRegistration: true, maxParticipants: 2, registeredCount: 0, registrationOpen: true });
+    const text = JSON.stringify(page.body);
+    for (const secret of [id, uids.owner, 'Olga', shared.publicToken]) assert.ok(!text.includes(secret), `no ${secret}`);
+
+    // Off: the link stops working. On again: the links shared before work again
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: false }));
+    assert.equal((await visitor('GET', `/api/public/events/${shared.publicToken}`)).status, 404);
+    assert.equal((await listed('mia', id)).publicToken, '');
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: true }));
+    assert.equal((await listed('mia', id)).publicToken, shared.publicToken);
+    // Whoever created an event may share it too
+    const own = await eventBy('max', { title: 'Spieleabend', date: inDays(21) });
+    await ok(call('max', 'PATCH', `/api/events/${own}`, { isPublic: true }));
+    assert.equal((await listed('max', own)).isPublic, true);
+    for (const token of ['nope', '__proto__', 'x'.repeat(22), `${shared.publicToken}" || "1"="1`]) {
+      assert.equal((await visitor('GET', `/api/public/events/${encodeURIComponent(token)}`)).status, 404, token);
+    }
+    await ok(call('owner', 'DELETE', `/api/events/${id}`));
+    await ok(call('max', 'DELETE', `/api/events/${own}`));
+  });
+
+  test('guests: sign up without an account, share the places with members, wait and move up', async () => {
+    const id = await eventBy('owner', { title: 'Grillabend', date: inDays(14), startTime: '18:00', requiresRegistration: true, maxParticipants: 2 });
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: true }));
+    const token = (await listed('owner', id)).publicToken;
+    const signUp = (body) => visitor('POST', `/api/public/events/${token}/register`, body);
+    assert.equal((await signUp({ name: 'A', email: 'anna@example.org', age: 34 })).status, 400, 'full name');
+    assert.equal((await signUp({ name: 'Anna Gast', email: 'anna@', age: 34 })).status, 400, 'e-mail address');
+    assert.equal((await signUp({ name: 'Anna Gast', email: 'anna@example.org', age: 'vierunddreißig' })).status, 400, 'age as a number');
+    assert.equal((await signUp({ name: 'Anna Gast', email: 'anna@example.org', age: 34, website: 'https://spam.example' })).status, 400, 'the field only bots fill in');
+
+    const anna = await signUp({ name: 'Anna Gast', email: 'anna@example.org', age: 34 });
+    assert.equal(anna.status, 201);
+    assertHas(anna.body, { name: 'Anna Gast', status: 'registered' });
+    assert.match(anna.body.key, /^[A-Za-z0-9_-]{32}$/);
+    assert.equal(anna.body.event.registeredCount, 1);
+    assert.equal((await signUp({ name: 'anna  gast', email: 'ANNA@example.org', age: 34 })).status, 409, 'the same person twice');
+    await ok(call('max', 'POST', `/api/events/${id}/register`, { action: 'register' }));
+    // A parent signs up a child with their own address: full, members and guests share the places
+    const ben = await signUp({ name: 'Ben Gast', email: 'anna@example.org', age: 9 });
+    assert.equal(ben.body.status, 'waitlist');
+    assertHas(await listed('mia', id), { registeredCount: 2, waitlistCount: 1, isFull: true });
+
+    // Everyone sees who comes; how to reach a guest and their age only those who may edit the event
+    const seenByMember = await ok(call('mia', 'GET', `/api/events/${id}/attendees`));
+    const annaRow = seenByMember.registered.find((p) => p.name === 'Anna Gast');
+    assertHas(annaRow, { guest: true, userId: `guest:${annaRow.id}` });
+    assert.equal('email' in annaRow || 'age' in annaRow, false);
+    assert.deepEqual(seenByMember.waitlist.map((p) => p.name), ['Ben Gast']);
+    assertHas((await ok(call('owner', 'GET', `/api/events/${id}/attendees`))).registered.find((p) => p.guest), { email: 'anna@example.org', age: 34 });
+
+    // A member's place frees up: the waiting guest moves up
+    await ok(call('max', 'POST', `/api/events/${id}/register`, { action: 'cancel' }));
+    assert.deepEqual((await guestPlaces(ben.body.key)).map((r) => r.status), ['registered']);
+    const [annasPlace] = await guestPlaces(anna.body.key, 'not-a-key', anna.body.key);
+    assertHas(annasPlace, { name: 'Anna Gast', status: 'registered', shareToken: token });
+    assert.equal(annasPlace.event.title, 'Grillabend');
+
+    // A guest's place frees up: the waiting member moves up
+    assert.equal((await ok(call('mia', 'POST', `/api/events/${id}/register`, { action: 'register' }))).status, 'waitlist');
+    assert.equal((await visitor('POST', '/api/public/guests/cancel', { key: anna.body.key })).status, 200);
+    assert.equal((await visitor('POST', '/api/public/guests/cancel', { key: anna.body.key })).status, 404, 'cancelled is gone');
+    assert.deepEqual(await guestPlaces(anna.body.key), []);
+    assert.equal((await listed('mia', id)).myRegistration.status, 'registered');
+
+    // The organisers remove a guest, other members cannot
+    const benRow = (await ok(call('owner', 'GET', `/api/events/${id}/attendees`))).registered.find((p) => p.name === 'Ben Gast');
+    assert.equal((await call('mia', 'DELETE', `/api/events/${id}/attendees/${benRow.userId}`)).status, 403);
+    await ok(call('owner', 'DELETE', `/api/events/${id}/attendees/${benRow.userId}`));
+    assert.deepEqual(await guestPlaces(ben.body.key), []);
+    for (const odd of ['guest:missing123', 'guest:..%2Fx', 'guest:']) {
+      assert.equal((await call('owner', 'DELETE', `/api/events/${id}/attendees/${odd}`)).status, 404, odd);
+    }
+    await ok(call('owner', 'DELETE', `/api/events/${id}`));
+  });
+
+  test('guests: nothing to sign up for, cancelled or over; a switched-off link; more places; a deleted event', async () => {
+    const carla = { name: 'Carla Gast', email: 'carla@example.org', age: 51 };
+    const open = await eventBy('owner', { title: 'Offener Abend', date: inDays(10) });
+    await ok(call('owner', 'PATCH', `/api/events/${open}`, { isPublic: true }));
+    const openToken = (await listed('owner', open)).publicToken;
+    assertHas((await visitor('GET', `/api/public/events/${openToken}`)).body, { requiresRegistration: false, registrationOpen: false });
+    assert.equal((await visitor('POST', `/api/public/events/${openToken}/register`, carla)).status, 400, 'no registration');
+    await ok(call('owner', 'PATCH', `/api/events/${open}`, { requiresRegistration: true, status: 'cancelled' }));
+    assert.equal((await visitor('GET', `/api/public/events/${openToken}`)).body.status, 'cancelled');
+    assert.equal((await visitor('POST', `/api/public/events/${openToken}/register`, carla)).status, 400, 'cancelled');
+    await ok(call('owner', 'DELETE', `/api/events/${open}`));
+
+    const past = await eventBy('owner', { title: 'Vorbei', date: inDays(-2), requiresRegistration: true });
+    await ok(call('owner', 'PATCH', `/api/events/${past}`, { isPublic: true }));
+    const pastToken = (await listed('owner', past)).publicToken;
+    assertHas((await visitor('GET', `/api/public/events/${pastToken}`)).body, { isPast: true, registrationOpen: false });
+    assert.equal((await visitor('POST', `/api/public/events/${pastToken}/register`, carla)).status, 400, 'over');
+    await ok(call('owner', 'DELETE', `/api/events/${past}`));
+
+    // One place: Carla gets it, Dana waits; a second place lets Dana move up
+    const small = await eventBy('owner', { title: 'Kleiner Kreis', date: inDays(12), requiresRegistration: true, maxParticipants: 1 });
+    await ok(call('owner', 'PATCH', `/api/events/${small}`, { isPublic: true }));
+    const smallToken = (await listed('owner', small)).publicToken;
+    const first = (await visitor('POST', `/api/public/events/${smallToken}/register`, carla)).body;
+    const second = (await visitor('POST', `/api/public/events/${smallToken}/register`, { name: 'Dana Gast', email: 'dana@example.org', age: 23 })).body;
+    assert.deepEqual([first.status, second.status], ['registered', 'waitlist']);
+    await ok(call('owner', 'PATCH', `/api/events/${small}`, { maxParticipants: 2 }));
+    assert.deepEqual((await guestPlaces(second.key)).map((r) => r.status), ['registered'], 'more places: the waiting list moves up');
+
+    // Switched off: no new guests, but Carla still sees her place (without the share link) and can cancel it
+    await ok(call('owner', 'PATCH', `/api/events/${small}`, { isPublic: false }));
+    assert.equal((await visitor('GET', `/api/public/events/${smallToken}`)).status, 404);
+    assert.equal((await visitor('POST', `/api/public/events/${smallToken}/register`, { name: 'Emil Gast', email: 'emil@example.org', age: 30 })).status, 404);
+    const [carlasPlace] = await guestPlaces(first.key);
+    assertHas(carlasPlace, { status: 'registered', shareToken: '' });
+    assert.equal(carlasPlace.event.title, 'Kleiner Kreis');
+    // Deleting the event deletes its guests
+    await ok(call('owner', 'DELETE', `/api/events/${small}`));
+    assert.deepEqual(await guestPlaces(first.key, second.key), []);
+    assert.equal((await visitor('POST', '/api/public/guests/cancel', { key: second.key })).status, 404);
+  });
+
+  test('share links: the page carries the event for link previews only while it is shared', async () => {
+    const id = await eventBy('owner', { title: 'Lobpreis <Nacht>', date: inDays(30), startTime: '19:30', location: 'Kirche' });
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: true }));
+    const token = (await listed('owner', id)).publicToken;
+    const page = async (url) => {
+      const res = await fetch(base + url, { headers: { 'X-Forwarded-For': '10.42.9.2' } });
+      return { status: res.status, html: await res.text(), robots: res.headers.get('x-robots-tag') || '' };
+    };
+    const shared = await page(`/events/Lobpreis_Nacht?share=${token}`);
+    assert.equal(shared.status, 200);
+    assert.ok(shared.html.includes('<base href="/">') && shared.html.includes('app.js'), 'still the app');
+    assert.match(shared.html, /<title>Lobpreis &lt;Nacht&gt; · Testgemeinde<\/title>/);
+    assert.match(shared.html, /property="og:title" content="Lobpreis &lt;Nacht&gt;"/);
+    assert.match(shared.html, /property="og:description" content="[^"]*19:30 · Kirche"/);
+    assert.match(shared.robots, /noindex/);
+    await ok(call('owner', 'PATCH', `/api/events/${id}`, { isPublic: false }));
+    const off = await page(`/events/Lobpreis_Nacht?share=${token}`);
+    assert.equal(off.status, 200);
+    assert.ok(!off.html.includes('Lobpreis') && !off.html.includes('og:title'), 'switched off: nothing of the event');
+    assert.ok(!(await page(`/events/x?share=${'A'.repeat(22)}`)).html.includes('og:title'));
+    await ok(call('owner', 'DELETE', `/api/events/${id}`));
+  });
+
+  test('signing up without an account is limited per address', async () => {
+    const statuses = [];
+    for (let i = 0; i < 31; i++) {
+      const res = await fetch(`${base}/api/public/events/${'B'.repeat(22)}/register`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '10.44.0.1' }, body: '{}'
+      });
+      statuses.push(res.status);
+    }
+    assert.equal(statuses[0], 404);
+    assert.equal(statuses[30], 429);
   });
 
   test('malformed input gets a client error, never a crash', async () => {

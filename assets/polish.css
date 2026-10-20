@@ -1356,3 +1356,107 @@ h1, h2, h3,
 :root[data-theme="light"] { color-scheme: light; }
 /* The report is white paper in both themes: its logo keeps the dark green */
 .report-preview-scale-container { color-scheme: light; }
+
+/* ==========================================================================
+   Sharing an event (v3.2): the share button, the share sheet and the page guests see without an account
+   ========================================================================== */
+/* The back button's twin, pinned at the top right while the page scrolls */
+#event-detail-modal.modal-page .event-detail-share-btn { left: auto; right: 20px; }
+#event-detail-modal.modal-page .event-detail-share-btn:focus { color: var(--text); }
+#event-detail-modal.modal-page .event-detail-share-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 50%; }
+/* The badges on the picture (highlight) stay left of it */
+#event-detail-modal.modal-page .event-detail-modal-card:not(.detail-is-editing) .event-detail-top-bar,
+#event-detail-modal.modal-page .event-detail-modal-card:not(.has-hero-image):not(.detail-is-editing) .event-detail-top-bar { padding-right: 54px; }
+
+.share-sheet { max-width: 440px; }
+.share-sheet-badge { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+.share-public-section { padding-top: 0; border-top: none; }
+.share-public-section .plan-switch-row { align-items: flex-start; }
+.share-public-section .switch { margin-top: 2px; }
+.share-public-section .prayer-anon-text { flex: 1; }
+.share-public-icon {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface-alt); color: var(--primary);
+}
+.share-link-section { display: flex; flex-direction: column; gap: 6px; }
+.share-link-input { font-size: 0.86rem; text-overflow: ellipsis; background: var(--surface-alt); cursor: text; }
+.share-link-hint { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 0.78rem; line-height: 1.4; color: var(--text-secondary); }
+.share-link-hint svg { flex-shrink: 0; }
+.share-link-hint.is-public { color: var(--primary-dark); }
+[data-theme="dark"] .share-link-hint.is-public { color: var(--primary); }
+.share-sheet-footer .btn,
+.share-sheet-footer .btn-primary { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+/* Guests: no organiser, groups, attendees, duty roster or management on the page */
+.guest-only { display: none !important; }
+.event-detail-modal-card.is-guest-view .guest-only { display: flex !important; }
+.event-detail-modal-card.is-guest-view #detail-modal-organizer-pill,
+.event-detail-modal-card.is-guest-view #detail-modal-groups-line,
+.event-detail-modal-card.is-guest-view #detail-modal-duties-box,
+.event-detail-modal-card.is-guest-view #detail-modal-action-bar,
+.event-detail-modal-card.is-guest-view #detail-modal-attendees-details { display: none !important; }
+/* Signed out there is no app behind the page: nothing to go back to */
+.event-detail-modal-card.is-guest-anon .event-detail-close-btn:not(.event-detail-share-btn) { display: none !important; }
+/* A link that does not work (any more): only the message */
+.event-detail-modal-card.is-guest-view:not(.is-guest-missing) #guest-event-message,
+.event-detail-modal-card.is-guest-missing .event-detail-title-block,
+.event-detail-modal-card.is-guest-missing .event-detail-two-row-grid,
+.event-detail-modal-card.is-guest-missing #detail-modal-desc-card,
+.event-detail-modal-card.is-guest-missing #detail-modal-reg-box,
+.event-detail-modal-card.is-guest-missing .event-detail-pre-title { display: none !important; }
+
+.guest-message-card {
+    flex-direction: column; align-items: center; text-align: center; gap: 8px;
+    margin-top: 8px; padding: 28px 22px; border-radius: 20px;
+    border: 1px solid var(--border-light); background: var(--surface);
+}
+.guest-message-icon {
+    width: 48px; height: 48px; border-radius: 50%; margin-bottom: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface-alt); color: var(--text-secondary);
+}
+.guest-message-card strong { font-size: 1.08rem; color: var(--text); }
+.guest-message-card span:last-child { font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary); max-width: 34ch; }
+
+/* Signing up: places of this device, then the form */
+.guest-reg { display: flex; flex-direction: column; gap: 10px; }
+.guest-reg-form { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.guest-reg-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 0.74rem; font-weight: 700; color: var(--text-secondary); }
+.guest-reg-field .form-input { font-weight: 500; }
+.guest-reg-row { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 10px; }
+.guest-reg-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.guest-reg-full { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600; color: #d97706; }
+.guest-reg-error { margin: 0; font-size: 0.84rem; font-weight: 600; color: var(--danger); }
+.guest-reg-note { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--text-secondary); }
+.guest-reg-note a { color: var(--primary); font-weight: 600; }
+.guest-reg .btn { gap: 8px; }
+.guest-link-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none;
+    font: inherit; font-size: 0.86rem; font-weight: 700; color: var(--primary); cursor: pointer; text-decoration: none;
+}
+.guest-link-btn:hover { text-decoration: underline; }
+.guest-reg-another { align-self: flex-start; padding: 4px 0; }
+
+/* Whose page it is, sign in for members, privacy */
+.guest-event-footer {
+    align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px;
+    margin-top: 6px; padding: 14px 2px 0; border-top: 1px solid var(--border-light);
+    font-size: 0.84rem; color: var(--text-secondary);
+}
+.guest-event-community { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; color: var(--text); }
+.guest-event-logo { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
+.guest-event-links { display: inline-flex; align-items: center; gap: 16px; }
+.login-back-to-event { margin: 14px auto 0; }
+
+/* Participants: guests are marked; editors see how to reach them */
+.event-attendee-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.event-attendee-info .event-attendee-name { flex: none; }
+.event-attendee-guest {
+    display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
+    font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+    background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary-dark);
+}
+[data-theme="dark"] .event-attendee-guest { color: var(--primary); }
+.event-attendee-contact { font-size: 0.76rem; font-weight: 500; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-attendee-contact a { color: inherit; }

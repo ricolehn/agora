@@ -1,9 +1,10 @@
 // Events for the AI assistant: exactly what the asking person can see in the app, in a compact form.
 // Same rules as GET /api/events (own events and those of their target groups), the duty roster and the
 // order of service only where the person may see them (canUserAccessEventDutyPlan), no attendee names.
-const { listEvents, listEventRegistrations, listEventDuties, listUserRecords, listGroupRecords } = require('./pocketbase');
+const { listEvents, listEventRegistrations, listEventGuests, listEventDuties, listUserRecords, listGroupRecords } = require('./pocketbase');
 const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./eventAccess');
 const { createItemStore } = require('./itemStore');
+const { seatCounts } = require('./eventSeats');
 const { toDateStr } = require('./utils/date');
 
 const programStore = createItemStore('event_programs');
@@ -36,9 +37,10 @@ async function buildEventContext(appConfig, user) {
   const from = addDays(new Date(), -PAST_DAYS);
   const until = addDays(new Date(), FUTURE_DAYS);
 
-  const [events, registrations, duties, users, groups] = await Promise.all([
+  const [events, registrations, guests, duties, users, groups] = await Promise.all([
     listEvents(appConfig, '', '+date,+startTime').catch(() => []),
     listEventRegistrations(appConfig).catch(() => []),
+    listEventGuests(appConfig).catch(() => []),
     listEventDuties(appConfig).catch(() => []),
     listUserRecords(appConfig).catch(() => []),
     listGroupRecords(appConfig).catch(() => [])
@@ -55,7 +57,9 @@ async function buildEventContext(appConfig, user) {
   const result = [];
   for (const ev of visible) {
     const evRegs = registrations.filter((r) => r.event === ev.id);
-    const registered = evRegs.filter((r) => r.status === 'registered').length;
+    // Guests without an account count, but stay anonymous like all attendees
+    const seats = seatCounts(evRegs, guests.filter((g) => g.event === ev.id));
+    const registered = seats.registered;
     const mine = evRegs.find((r) => r.user === uid && r.status !== 'cancelled');
     const evDuties = duties.filter((d) => d.event === ev.id);
     const seesPlan = canUserAccessEventDutyPlan(user, ev, evDuties, groupMap);
@@ -76,7 +80,7 @@ async function buildEventContext(appConfig, user) {
       entry.registration = {
         registered,
         ...(ev.maxParticipants > 0 ? { maxParticipants: ev.maxParticipants, full: registered >= ev.maxParticipants } : {}),
-        waitlist: evRegs.filter((r) => r.status === 'waitlist').length,
+        waitlist: seats.waitlist,
         me: mine ? mine.status : 'not registered'
       };
     }

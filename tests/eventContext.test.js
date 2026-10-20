@@ -35,6 +35,8 @@ const registrations = [
   { event: 'ev1', user: 'max', status: 'registered' },
   { event: 'ev1', user: 'mia', status: 'registered' }
 ];
+// Signed up without an account through the event's share link
+const guests = [{ event: 'ev1', name: 'Gina Gast', email: 'gina@example.org', age: 41, status: 'waitlist' }];
 const programs = {
   ev1: { items: [{ title: '', songId: 's1', songKey: 'G', minutes: 5, who: 'Band' }, { title: 'Begrüßung', minutes: 3 }] },
   ev4: { items: [{ title: 'Andacht', minutes: 10 }] },
@@ -44,6 +46,7 @@ const programs = {
 stub('pocketbase', {
   listEvents: async () => events,
   listEventRegistrations: async () => registrations,
+  listEventGuests: async () => guests,
   listEventDuties: async () => duties,
   listUserRecords: async () => [{ id: 'olga', name: 'Olga Owner' }, { id: 'max', name: 'Max Mitglied' }, { id: 'mia', name: 'Mia Mentorin' }],
   listGroupRecords: async () => [{ id: 'lead', name: 'Leitung' }, { id: 'band', name: 'Band' }]
@@ -69,6 +72,7 @@ test('a member gets open upcoming events with their own registration and duty', 
   assert.equal(fest.organizer, 'Olga Owner');
   assert.equal(fest.registration.me, 'registered');
   assert.equal(fest.registration.full, true);
+  assert.equal(fest.registration.waitlist, 1, 'guests without an account wait in line too');
   assert.equal(fest.myDuty.role, 'Grill');
 });
 
@@ -107,6 +111,7 @@ test('attendee names never reach the AI', async () => {
     const fest = byTitle(await buildEventContext({}, user), 'Sommerfest');
     const text = JSON.stringify(fest.registration);
     assert.equal(text.includes('Max') || text.includes('Mia'), false);
+    assert.equal(/Gina|gina@|41/.test(JSON.stringify(fest)), false, 'nor who a guest is');
   }
 });
 

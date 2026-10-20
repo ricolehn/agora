@@ -5,6 +5,7 @@ const cron = require('node-cron');
 
 const {
   context,
+  formatEventMoment,
   loadConfig,
   logoAssetRateLimit,
   pageRateLimit,
@@ -22,12 +23,16 @@ const { runAutomatedStandingOrders } = require('./standingOrders');
 const { runDutyReminders } = require('./dutyReminders');
 const { purgeExpiredRequests } = require('./requestRetention');
 const { purgeUnlinkedEventImages } = require('./eventImages');
+const { purgeExpiredGuests, isPublicToken, linkPreviewHead } = require('./eventGuests');
+const { findEventByPublicToken } = require('./pocketbase');
+const { originOf } = require('./notify');
 const { compressResponses, compressedStatic, sendCompressedFile } = require('./compression');
-const { translateResponses } = require('./i18n');
+const { translateResponses, instanceLanguage } = require('./i18n');
 
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
 const eventsRouter = require('./routes/events');
+const publicEventsRouter = require('./routes/publicEvents');
 const mentoringRouter = require('./routes/mentoring');
 const financeRouter = require('./routes/finance');
 const aiRouter = require('./routes/ai');
@@ -63,6 +68,7 @@ cron.schedule('0 5 * * *', () => {
     runAutomatedStandingOrders(context.appConfig);
     purgeExpiredRequests(context.appConfig);
     purgeUnlinkedEventImages(context.appConfig, eventImagesDir);
+    purgeExpiredGuests(context.appConfig);
   }
 });
 
@@ -136,6 +142,7 @@ app.use('/api/admin', adminRateLimit);
 app.use(authRouter);
 app.use(usersRouter);
 app.use(eventsRouter);
+app.use(publicEventsRouter);
 app.use(mentoringRouter);
 app.use(financeRouter);
 app.use(aiRouter);
@@ -144,6 +151,29 @@ app.use(systemRouter);
 if (features.polls) app.use(pollsRouter);
 app.use(songbookRouter);
 app.use(prayersRouter);
+
+// A shared event's page (the share switch is on): the app as always, its head carrying the event for link previews
+app.get('/events/:slug', pageRateLimit, async (req, res, next) => {
+  const token = typeof req.query.share === 'string' ? req.query.share : '';
+  if (!isPublicToken(token)) return next();
+  try {
+    const event = await findEventByPublicToken(context.appConfig, token);
+    if (!event || event.isPublic !== true) return next();
+    const html = await fs.promises.readFile(path.join(frontendDir, 'index.html'), 'utf8');
+    const origin = originOf(req);
+    const head = linkPreviewHead(event, {
+      origin,
+      appName: context.appConfig?.appName || 'Agora',
+      when: formatEventMoment(event, instanceLanguage()),
+      url: origin ? `${origin}${req.path}?share=${encodeURIComponent(token)}` : ''
+    });
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.type('html').send(html.replace(/<title>[^<]*<\/title>/, () => head));
+  } catch (error) {
+    console.warn('[Share] Link preview failed:', error.message);
+    next();
+  }
+});
 
 app.get('*', pageRateLimit, (req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/data/')) {

@@ -254,7 +254,8 @@ const DEFAULT_COLLECTION_SPECS = [
     indexes: [
       'CREATE INDEX idx_events_date ON events (date)',
       'CREATE INDEX idx_events_status ON events (status)',
-      'CREATE INDEX idx_events_series ON events (seriesId)'
+      'CREATE INDEX idx_events_series ON events (seriesId)',
+      'CREATE INDEX idx_events_public_token ON events (publicToken)'
     ],
     fields: [
       { name: 'title', type: 'text', required: true },
@@ -276,6 +277,36 @@ const DEFAULT_COLLECTION_SPECS = [
       { name: 'eventType', type: 'text' },
       { name: 'imageUrl', type: 'text' },
       { name: 'createdBy', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' },
+      // Share switch: people without an account see the event (and sign up) through the link with publicToken
+      { name: 'isPublic', type: 'bool' },
+      { name: 'publicToken', type: 'text' }
+    ]
+  },
+  // Guests who signed up for a public event without an account. Readable only by the server (no rules =
+  // superuser only): their e-mail address and age never reach a member's PocketBase token
+  {
+    name: 'event_guests',
+    type: 'base',
+    listRule: null,
+    viewRule: null,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
+    indexes: [
+      'CREATE INDEX idx_event_guests_event ON event_guests (event)',
+      'CREATE UNIQUE INDEX idx_event_guests_key ON event_guests (key)'
+    ],
+    fields: [
+      { name: 'event', type: 'text', required: true },
+      { name: 'name', type: 'text', required: true },
+      { name: 'email', type: 'text', required: true },
+      { name: 'age', type: 'number' },
+      { name: 'status', type: 'text', required: true },
+      // The guest's own random key (their browser and e-mails): see the place, cancel it
+      { name: 'key', type: 'text', required: true },
+      { name: 'language', type: 'text' },
       { name: 'created', type: 'text' },
       { name: 'updated', type: 'text' }
     ]
@@ -1808,6 +1839,11 @@ async function deleteEventRecord(appConfig, id) {
     for (const d of duties) {
       await pocketBaseRequest(`/api/collections/event_duties/records/${encodeURIComponent(d.id)}`, { method: 'DELETE', token }).catch(() => {});
     }
+    // Guests' details are only kept for their event
+    const guests = await listAllRecords('event_guests', pbFilterEquals('event', id), appConfig);
+    for (const g of guests) {
+      await pocketBaseRequest(`/api/collections/event_guests/records/${encodeURIComponent(g.id)}`, { method: 'DELETE', token }).catch(() => {});
+    }
   } catch (err) {
     console.warn('[PocketBase] Failed to clean up event children:', err.message);
   }
@@ -1838,6 +1874,38 @@ async function upsertEventRegistration(appConfig, eventId, userId, status) {
     created: now,
     updated: now
   }, appConfig);
+}
+
+// The event a share link names (only token-shaped values get here, see eventGuests.isPublicToken)
+async function findEventByPublicToken(appConfig, publicToken) {
+  return await getFirstRecord('events', pbFilterEquals('publicToken', publicToken), appConfig);
+}
+
+// Event guests (people without an account, signed up through a public event's link)
+async function listEventGuests(appConfig, filter = '') {
+  return await listAllRecords('event_guests', filter, appConfig, '+created');
+}
+
+async function getEventGuest(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/event_guests/records/${encodeURIComponent(id)}`, { token, allow404: true });
+}
+
+async function findEventGuestByKey(appConfig, key) {
+  return await getFirstRecord('event_guests', pbFilterEquals('key', key), appConfig);
+}
+
+async function createEventGuest(appConfig, data) {
+  const now = new Date().toISOString();
+  return await createRecord('event_guests', { created: now, updated: now, ...data }, appConfig);
+}
+
+async function updateEventGuest(appConfig, id, data) {
+  return await updateRecord('event_guests', id, { updated: new Date().toISOString(), ...data }, appConfig);
+}
+
+async function deleteEventGuest(appConfig, id) {
+  return await deleteRecord('event_guests', id, appConfig);
 }
 
 // Event Duties
@@ -2021,6 +2089,13 @@ module.exports = {
   listEventRegistrations,
   getEventRegistration,
   upsertEventRegistration,
+  findEventByPublicToken,
+  listEventGuests,
+  getEventGuest,
+  findEventGuestByKey,
+  createEventGuest,
+  updateEventGuest,
+  deleteEventGuest,
   listEventDuties,
   getEventDuty,
   createEventDuty,
