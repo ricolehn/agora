@@ -1,5 +1,5 @@
 // Bumped: older caches could hold API responses of a previous user, the activate step deletes them
-const CACHE_NAME = 'agora-v1.0.80';
+const CACHE_NAME = 'agora-v1.0.81';
 const URLS_TO_CACHE = [
     './',
     './index.html',
@@ -107,7 +107,9 @@ self.addEventListener('push', event => {
         body: payload.body || '',
         icon: payload.icon || './assets/icon-notification.png',
         badge: payload.badge || './assets/badge-monochrome.png',
-        tag: payload.tag || 'agora-notification',
+        // A message about the same thing (same tag) replaces the older one and still alerts; without a tag each
+        // message stays on its own
+        ...(payload.tag ? { tag: payload.tag, renotify: true } : {}),
         data: payload.data || {},
         vibrate: [100, 50, 100],
         requireInteraction: false

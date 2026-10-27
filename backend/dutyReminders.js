@@ -103,20 +103,26 @@ function communityTimeZone(users) {
   return best || configured || validTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
 }
 
-/** Push for one person, in [lang] (English source texts, see i18n.js). */
+/** Push for one person, in [lang] (English source texts, see i18n.js): "Your duty at 10:00: Sound" - "Sunday service · Main hall". */
 function buildDutyReminderPush({ event, duty, time }, lang = BASE_LANGUAGE) {
   const tr = translator(lang);
+  const { pushLine } = require('./context');
   const dutyName = duty?.roleName || duty?.section || tr('Duty');
-  const eventTitle = event?.title || 'Event';
-  const body = time
-    ? tr('Your duty "{duty}" at "{event}" starts at {time}.', { duty: dutyName, event: eventTitle, time })
-    : tr('Your duty "{duty}" at "{event}" is today.', { duty: dutyName, event: eventTitle });
   return {
-    title: tr('Reminder: {duty}', { duty: dutyName }),
-    body: event?.location ? `${body} ${tr('Location')}: ${event.location}` : body,
+    title: time ? tr('Your duty at {time}: {duty}', { time, duty: dutyName }) : tr('Your duty today: {duty}', { duty: dutyName }),
+    body: pushLine(event?.title || 'Event', event?.location),
     data: { url: '/#events', eventId: event?.id || '' },
     tag: `agora-duty-reminder-${duty?.id || ''}`
   };
+}
+
+/** The sentence for the e-mail (the push itself is shorter). */
+function dutyReminderSentence({ event, duty, time }, tr) {
+  const dutyName = duty?.roleName || duty?.section || tr('Duty');
+  const eventTitle = event?.title || 'Event';
+  return time
+    ? tr('Your duty "{duty}" at "{event}" starts at {time}.', { duty: dutyName, event: eventTitle, time })
+    : tr('Your duty "{duty}" at "{event}" is today.', { duty: dutyName, event: eventTitle });
 }
 
 /**
@@ -171,7 +177,7 @@ async function sendDueDutyReminders(appConfig, now = Date.now(), deps = {}) {
           return {
             subject: push.title,
             heading: push.title,
-            lines: [push.body],
+            lines: [dutyReminderSentence({ event, duty, time }, tr)],
             rows: [[tr('Event'), event.title || 'Event'], [tr('Date'), formatEventMoment(event, userLanguage(user))],
               ...(event.location ? [[tr('Location'), event.location]] : []), ...(duty.notes ? [[tr('Notes'), duty.notes]] : [])],
             actionLabel: tr('View the duty roster'),

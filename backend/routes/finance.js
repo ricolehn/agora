@@ -216,9 +216,10 @@ router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, async (req
     const recipients = (await financeManagers(context.appConfig)).filter((u) => u.id !== req.user?.uid);
     await notifyUsers(context.appConfig, recipients, 'finances', {
       origin: originOf(req),
+      // "New request: Payment" - "From Ben Fischer"
       push: (tr) => ({
-        title: tr('Treasury: {type}', { type: typeOf(tr) }),
-        body: tr('{name} filed a request.', { name: personName }),
+        title: tr('New request: {type}', { type: typeOf(tr) }),
+        body: tr('From {name}', { name: personName }),
         data: { url: '/#requests' }
       }),
       email: (tr) => ({

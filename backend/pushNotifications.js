@@ -166,7 +166,9 @@ async function sendPushToUser(appConfig, userId, payload = {}) {
     icon: payload.icon || './assets/icon-notification.png',
     badge: payload.badge || './assets/badge-monochrome.png',
     data: payload.data || {},
-    tag: payload.tag || 'agora-notification'
+    // Only messages about the same thing replace each other (a newer reminder, the next chat message); without a
+    // tag every message stays on its own - one shared default tag let a second duty request hide the first
+    ...(payload.tag ? { tag: payload.tag } : {})
   };
 
   await Promise.all([

@@ -949,6 +949,22 @@ function formatEventMoment(event, lang) {
   return start ? `${date}, ${start}${event.endTime ? ` – ${event.endTime}` : ''}` : date;
 }
 
+/**
+ * The short form for push messages: "Sun 1 Nov, 10:00" ("So., 1. Nov., 10:00"), with the year only when it is not
+ * this year's; no end time. '' without a date.
+ */
+function formatEventShort(event, lang, now = new Date()) {
+  const [y, m, d] = String(event?.date || '').split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const options = { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC', ...(y !== now.getUTCFullYear() ? { year: 'numeric' } : {}) };
+  const date = new Intl.DateTimeFormat(localeOf(lang), options).format(new Date(Date.UTC(y, m - 1, d)));
+  const start = event?.startTime || event?.time;
+  return start ? `${date}, ${start}` : date;
+}
+
+/** Push bodies are facts, not sentences: "Sunday service · Sun 1 Nov, 10:00 · Main hall" (empty parts left out). */
+const pushLine = (...parts) => parts.filter(Boolean).join(' · ');
+
 // Push and e-mail to the member whose request was decided (kind "requests")
 async function notifyRequestDecision(request, origin = '') {
   const { notifyUsers } = require('./notify');
@@ -965,11 +981,13 @@ async function notifyRequestDecision(request, origin = '') {
   };
   await notifyUsers(context.appConfig, [author], 'requests', {
     origin,
+    // "Expense rejected" - "50,00 € · Reason: receipt missing"
     push: (tr) => {
-      const { type, what } = texts(tr);
+      const { type, amount } = texts(tr);
       return {
-        title: approved ? tr('Request approved: {type}', { type }) : tr('Request rejected: {type}', { type }),
-        body: approved ? tr('Your {what} was approved.', { what }) : tr('Your {what} was rejected.', { what }) + (reason ? ' ' + tr('Reason: {reason}', { reason }) : ''),
+        title: approved ? tr('{type} approved', { type }) : tr('{type} rejected', { type }),
+        body: pushLine(amount, !approved && reason ? tr('Reason: {reason}', { reason }) : '')
+          || (approved ? tr('Your request was approved') : tr('Your request was rejected')),
         data: { url: '/#requests' },
         tag: `agora-request-${request.id || ''}`
       };
@@ -1005,10 +1023,12 @@ async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUs
     const eventTitle = event.title || 'Event';
 
     if (userWantsNotification(recipient, 'duties')) {
+      // "Anna Becker asks you: Sound" - "Sunday service · Sun 1 Nov, 10:00 · Main hall"
       sendPushToUser(appConfig, recipientUserId, {
-        title: tr('Duty request: {duty}', { duty: dutyName }),
-        body: tr('{name} asked you to do "{duty}" at "{event}".', { name: requesterName, duty: dutyName, event: eventTitle }),
-        data: { url: '/#events' }
+        title: tr('{name} asks you: {duty}', { name: requesterName, duty: dutyName }),
+        body: pushLine(eventTitle, formatEventShort(event, lang), event.location),
+        data: { url: '/#events', eventId: event.id || '' },
+        tag: `agora-duty-request-${duty.id || ''}`
       }).catch(err => console.warn('[WebPush] Failed sending duty push:', err.message));
     }
 
@@ -1228,6 +1248,8 @@ async function authenticateCalendarFeed(req, res, next) {
 
 module.exports = {
   formatEventMoment,
+  formatEventShort,
+  pushLine,
   context,
   sseClients,
   broadcastDataUpdate,

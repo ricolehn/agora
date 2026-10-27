@@ -19,7 +19,9 @@ const {
   getNextRecurringDate,
   sendDutyRequestNotificationEmail,
   authenticateCalendarFeed,
-  formatEventMoment
+  formatEventMoment,
+  formatEventShort,
+  pushLine
 } = require('../context');
 
 const {
@@ -314,7 +316,7 @@ router.post('/api/events', verifyToken, async (req, res) => {
                 const x = texts(tr, user);
                 return {
                   title: x.title,
-                  body: [x.moment, firstEv.location, x.repeats].filter(Boolean).join(' • '),
+                  body: pushLine(formatEventShort(firstEv, userLanguage(user)), firstEv.location, x.repeats),
                   data: { url: '/#events', eventId: firstEv.id },
                   tag: `agora-event-${firstEv.id}`
                 };
@@ -991,7 +993,16 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
             };
             notifyUsers(context.appConfig, [requesterUser], 'duties', {
               origin: originOf(req),
-              push: (tr) => { const x = texts(tr); return { title: x.title, body: x.body, data: { url: '/#events' } }; },
+              // "Clara Schmidt accepted: Sound" - "Sunday service · Sun 1 Nov, 10:00"
+              push: (tr) => {
+                const x = texts(tr);
+                return {
+                  title: tr('{name} accepted: {duty}', { name: x.responderName, duty: x.dutyName }),
+                  body: pushLine(x.eventTitle, formatEventShort(event, userLanguage(requesterUser))),
+                  data: { url: '/#events', eventId: event?.id || '' },
+                  tag: `agora-duty-answer-${duty.id}`
+                };
+              },
               email: (tr) => {
                 const x = texts(tr);
                 return {
@@ -1038,7 +1049,16 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, async (req, res) 
             };
             notifyUsers(context.appConfig, [requesterUser], 'duties', {
               origin: originOf(req),
-              push: (tr) => { const x = texts(tr); return { title: x.title, body: x.body, data: { url: '/#events' } }; },
+              // "Clara Schmidt declined: Sound" - "Sunday service · Sun 1 Nov, 10:00"
+              push: (tr) => {
+                const x = texts(tr);
+                return {
+                  title: tr('{name} declined: {duty}', { name: x.responderName, duty: x.dutyName }),
+                  body: pushLine(x.eventTitle, formatEventShort(event, userLanguage(requesterUser))),
+                  data: { url: '/#events', eventId: event?.id || '' },
+                  tag: `agora-duty-answer-${duty.id}`
+                };
+              },
               email: (tr) => {
                 const x = texts(tr);
                 return {

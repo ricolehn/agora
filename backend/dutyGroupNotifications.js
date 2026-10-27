@@ -24,16 +24,15 @@ function groupDutyRecipients(users, groupId, groupName, excludeUserId) {
     .map(u => u.id);
 }
 
-/** Push for one group member, in [lang] (English source texts, see i18n.js). */
+/** Push for one group member, in [lang] (English source texts, see i18n.js): "Tech team is on duty: Sound" -
+ * "Sunday service · Sun 1 Nov, 10:00 · Main hall". */
 function buildGroupDutyPush({ groupName, event, duty }, lang = BASE_LANGUAGE) {
   const tr = translator(lang);
   const dutyName = duty?.roleName || duty?.section || tr('Duty');
-  const { formatEventMoment } = require('./context');
+  const { formatEventShort, pushLine } = require('./context');
   return {
-    title: tr('Duty for {group}: {duty}', { group: groupName, duty: dutyName }),
-    body: tr('Your group "{group}" is assigned to "{duty}" at "{event}" ({when}).', {
-      group: groupName, duty: dutyName, event: event?.title || 'Event', when: formatEventMoment(event, lang)
-    }),
+    title: tr('{group} is on duty: {duty}', { group: groupName, duty: dutyName }),
+    body: pushLine(event?.title || 'Event', formatEventShort(event, lang), event?.location),
     data: { url: '/#events', eventId: event?.id || '' },
     tag: `agora-duty-${duty?.id || ''}`
   };
@@ -61,7 +60,9 @@ async function notifyGroupDutyAssigned({ appConfig, groupId, event, duty, assign
         return {
           subject: push.title,
           heading: push.title,
-          lines: [push.body],
+          lines: [tr('Your group "{group}" is assigned to "{duty}" at "{event}" ({when}).', {
+            group: groupName, duty: duty?.roleName || duty?.section || tr('Duty'), event: event?.title || 'Event', when: formatEventMoment(event, userLanguage(user))
+          })],
           rows: [[tr('Event'), event?.title || 'Event'], ...(event?.date ? [[tr('Date'), formatEventMoment(event, userLanguage(user))]] : []), ...(event?.location ? [[tr('Location'), event.location]] : [])],
           actionLabel: tr('View the duty roster'),
           path: '/#events',

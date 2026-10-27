@@ -288,11 +288,11 @@ describe('fcmNotifications', () => {
 
     assert.equal(calls.fcmSends.length, 1);
     assert.equal(calls.fcmSends[0].token, 'token-1');
+    // No shared default tag: without its own tag a message never replaces another one
     assert.deepEqual(calls.fcmSends[0].data, {
       title: 'Dienstanfrage',
       body: 'Bitte bestätigen',
-      url: '/#events',
-      tag: 'agora-notification'
+      url: '/#events'
     });
   });
 
@@ -421,20 +421,21 @@ describe('dutyGroupNotifications', () => {
     assert.deepEqual(groupDutyRecipients(users, 'g1', 'Technik', 'me'), ['a', 'c']);
   });
 
-  test('buildGroupDutyPush names group, duty, event and time in the recipient language', () => {
+  test('buildGroupDutyPush: group and duty in the title, event, time and place as a short line', () => {
     const input = {
       groupName: 'Technik',
-      event: { id: 'e1', title: 'Gottesdienst', date: '2026-09-30', startTime: '10:00' },
+      event: { id: 'e1', title: 'Gottesdienst', date: '2026-09-30', startTime: '10:00', location: 'Saal' },
       duty: { id: 'd1', roleName: 'Ton' }
     };
-    for (const [lang, word] of [['en', 'Duty'], ['de', 'Dienst']]) {
+    for (const [lang, title] of [['en', 'Technik is on duty: Ton'], ['de', 'Technik hat Dienst: Ton']]) {
       const push = buildGroupDutyPush(input, lang);
-      assert.ok(push.title.includes(word) && push.title.includes('Technik') && push.title.includes('Ton'), `${lang} title: ${push.title}`);
-      for (const part of ['Technik', 'Gottesdienst', 'Ton', '10:00', '2026']) assert.ok(push.body.includes(part), `${lang} body has ${part}: ${push.body}`);
+      assert.equal(push.title, title);
+      assert.match(push.body, /^Gottesdienst · .+, 10:00 · Saal$/, `${lang} body: ${push.body}`);
+      assert.ok(!push.body.includes('Ton') && !push.body.includes('Technik'), `${lang}: the body does not repeat the title`);
       assert.deepEqual(push.data, { url: '/#events', eventId: 'e1' });
       assert.equal(push.tag, 'agora-duty-d1');
     }
-    assert.ok(buildGroupDutyPush(input).title.startsWith('Duty'), 'English without a language');
+    assert.equal(buildGroupDutyPush(input).title, 'Technik is on duty: Ton', 'English without a language');
   });
 });
 
@@ -490,14 +491,16 @@ describe('dutyReminders', () => {
     assert.equal(communityTimeZone([]), 'UTC', 'UTC when nothing else is known');
   });
 
-  test('buildDutyReminderPush names duty, event, time and place in the recipient language', () => {
+  test('buildDutyReminderPush: time and duty in the title, event and place as a short line', () => {
     const input = { event: { id: 'e1', title: 'Gottesdienst', location: 'Saal' }, duty: { id: 'd1', roleName: 'Ton' }, time: '10:00' };
-    for (const [lang, word] of [['en', 'Reminder'], ['de', 'Erinnerung']]) {
+    for (const [lang, title, today] of [['en', 'Your duty at 10:00: Ton', 'Your duty today: Ton'], ['de', 'Dein Dienst um 10:00 Uhr: Ton', 'Dein Dienst heute: Ton']]) {
       const push = buildDutyReminderPush(input, lang);
-      assert.ok(push.title.startsWith(word) && push.title.includes('Ton'), `${lang} title: ${push.title}`);
-      for (const part of ['Gottesdienst', 'Ton', '10:00', 'Saal']) assert.ok(push.body.includes(part), `${lang} body has ${part}: ${push.body}`);
+      assert.equal(push.title, title);
+      assert.equal(push.body, 'Gottesdienst · Saal');
       assert.equal(push.tag, 'agora-duty-reminder-d1');
+      assert.equal(buildDutyReminderPush({ ...input, time: '' }, lang).title, today, `${lang}: events without a time`);
     }
+    assert.equal(buildDutyReminderPush({ ...input, event: { title: 'Gottesdienst' } }).body, 'Gottesdienst', 'no place, no dot');
   });
 
   test('sendDueDutyReminders: 3 hours before for everyone (also members abroad), once per start', async (t) => {
@@ -528,5 +531,23 @@ describe('dutyReminders', () => {
     assert.equal(await sendDueDutyReminders({}, at('2026-07-01T17:01:00Z'), deps), 0, 'not after the start');
     duty.status = 'open';
     assert.equal(await sendDueDutyReminders({}, at('2026-07-01T20:00:00Z'), deps), 0, 'open duties are nobody\'s');
+  });
+});
+
+describe('push texts', () => {
+  const { formatEventShort, pushLine } = require('../backend/context');
+  const now = new Date('2026-10-27T12:00:00Z');
+
+  test('formatEventShort: weekday, day, month and start; the year only when it is not this year', () => {
+    const event = { date: '2026-11-01', startTime: '10:00', endTime: '11:30' };
+    assert.equal(formatEventShort(event, 'en', now), 'Sun 1 Nov, 10:00');
+    assert.equal(formatEventShort(event, 'de', now), 'So., 1. Nov., 10:00');
+    assert.equal(formatEventShort({ date: '2027-01-03' }, 'en', now), 'Sun, 3 Jan 2027', 'next year, no time');
+    assert.equal(formatEventShort({ date: '' }, 'en', now), '');
+  });
+
+  test('pushLine joins the facts with dots and leaves empty ones out', () => {
+    assert.equal(pushLine('Gottesdienst', '', 'So., 1. Nov., 10:00', null, 'Saal'), 'Gottesdienst · So., 1. Nov., 10:00 · Saal');
+    assert.equal(pushLine('', undefined), '');
   });
 });

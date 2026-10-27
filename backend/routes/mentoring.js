@@ -359,7 +359,8 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
         push: (tr) => ({
           title: `Mentoring: ${menteeAlias || tr('Seeker')}`,
           body: initialMessage ? String(initialMessage).trim() : tr('You received a new mentoring request.'),
-          data: { url: '/#mentoring' }
+          data: { url: '/#mentoring' },
+          tag: `agora-chat-${thread.id}`
         }),
         email: (tr) => ({
           subject: tr('New mentoring request'),
@@ -487,7 +488,7 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
       const recipientUser = await getUserRecord(context.appConfig, recipientUid);
       notifyUsers(context.appConfig, [recipientUser], 'messages', {
         origin: originOf(req),
-        push: (tr) => ({ title: `Mentoring: ${senderOf(tr)}`, body: String(text).trim(), data: { url: '/#mentoring' } }),
+        push: (tr) => ({ title: `Mentoring: ${senderOf(tr)}`, body: String(text).trim(), data: { url: '/#mentoring' }, tag: `agora-chat-${thread.id}` }),
         email: (tr) => ({
           subject: `Mentoring: ${senderOf(tr)}`,
           heading: tr('New message in mentoring'),
