@@ -2432,20 +2432,40 @@ window.addEventListener('hashchange', followLegacyHash);
 
 function closeProfileMenu() {
     $('profileDropdown')?.classList.remove('show');
+    $('profile-scrim')?.classList.remove('show');
     document.querySelector('.profile-btn')?.setAttribute('aria-expanded', 'false');
 }
 
+/** The profile menu like the Android app's (a simple fade instead of its animation): the panel hangs 4px over the button's top right
+ * corner and stays 12px inside the window; the button's picture is shown at its top left, next to name and e-mail. */
 function toggleProfileMenu() {
     const menu = $('profileDropdown');
     const btn = document.querySelector('.profile-btn');
     if (!menu || !btn) return;
-    menu.classList.toggle('show');
-    btn.setAttribute('aria-expanded', menu.classList.contains('show'));
+    if (menu.classList.contains('show')) return closeProfileMenu();
+    const picture = btn.cloneNode(true);
+    picture.removeAttribute('onclick');
+    picture.tabIndex = -1;
+    for (const el of [picture, ...picture.querySelectorAll('[id]')]) el.removeAttribute('id');
+    $('profile-menu-pic')?.replaceChildren(picture);
+    const box = btn.getBoundingClientRect();
+    const right = document.documentElement.clientWidth - box.right - 4;
+    menu.style.top = `${Math.max(4, box.top - 4)}px`;
+    menu.style.right = `${Math.max(12, right)}px`;
+    menu.classList.add('show');
+    $('profile-scrim')?.classList.add('show');
+    btn.setAttribute('aria-expanded', 'true');
 }
 
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !$('profileDropdown')?.classList.contains('show')) return;
+    closeProfileMenu();
+    document.querySelector('.profile-btn')?.focus();
+});
+// Placed for the window it was opened in
+window.addEventListener('resize', closeProfileMenu);
+
 document.addEventListener('click', e => {
-    const container = document.querySelector('.profile-menu-container');
-    if (container && !container.contains(e.target) && $('profileDropdown')?.classList.contains('show')) closeProfileMenu();
     const dropdown = $('mentoring-chat-menu-dropdown');
     if (dropdown?.style.display === 'block' && !$('mentoring-chat-menu-btn')?.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
 });
@@ -3266,7 +3286,7 @@ async function confirmProfileCrop() {
 }
 
 Object.assign(window, {
-    switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
+    switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
     generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),

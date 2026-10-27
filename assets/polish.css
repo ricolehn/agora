@@ -600,8 +600,8 @@ h1, h2, h3,
 .settings-paged[data-page] > .settings-nav .settings-nav-head { margin-bottom: 0; }
 .settings-paged[data-page] > .settings-nav { margin-bottom: 12px; }
 
-/* The header's glass sits on its own layer (::before): a backdrop filter on the header itself would stop the
-   profile menu inside it from blurring the page below (nested backdrop filters only see their parent) */
+/* The header's glass sits on its own layer (::before): a backdrop filter on the header itself would stop anything
+   inside it from blurring the page below (nested backdrop filters only see their parent) */
 .header,
 [data-theme="dark"] .header {
     background: transparent !important;
@@ -619,7 +619,6 @@ h1, h2, h3,
     -webkit-backdrop-filter: var(--frost);
 }
 @media (min-width: 769px) { .header::before { background: var(--frost-surface); } }
-.profile-dropdown { background: var(--frost-surface); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); }
 
 /* Phone: while the header is shown, the sticky sub-page heads sit just below it instead of under it */
 @media (max-width: 768px) {

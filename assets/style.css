@@ -143,40 +143,49 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 }
 .profile-btn:active { transform: scale(0.95); }
 
-/* Profile menu like the Android app: name + e-mail, hairline, bold items; 20px card, no arrow */
-.profile-dropdown {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border-light);
-    border-radius: 20px;
-    box-shadow: 0 12px 32px rgba(28, 25, 23, 0.16), 0 2px 6px rgba(28, 25, 23, 0.06);
-    min-width: 240px;
-    max-width: calc(100vw - 32px);
-    padding: 8px 0;
-    display: flex;
-    flex-direction: column;
+/* Profile menu like the Android app (a simple fade instead of its animation): a panel with 28px corners that hangs a little over the
+   profile picture, the same picture at its top left next to name and e-mail, then the entries - icons centred under
+   the picture, labels in line with the name, rows that light up with round corners. The page behind is dimmed.
+   Menu and dimming simply fade in and out */
+.profile-scrim, .profile-dropdown {
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-6px) scale(0.98);
-    transform-origin: top right;
-    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s 0.18s;
-    z-index: 100;
+    pointer-events: none;
+    transition: opacity 0.15s ease, visibility 0s linear 0.15s;
 }
-.profile-dropdown.show {
+.profile-scrim.show, .profile-dropdown.show {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0) scale(1);
-    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s;
+    pointer-events: auto;
+    transition: opacity 0.15s ease;
 }
-.profile-dropdown-header {
-    padding: 8px 20px 10px;
-    min-width: 0;
+.profile-scrim { position: fixed; inset: 0; z-index: 1100; background: rgba(28, 25, 23, 0.16); }
+[data-theme="dark"] .profile-scrim { background: rgba(0, 0, 0, 0.42); }
+.profile-dropdown {
+    --profile-pic: 44px;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 1101;
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+    min-width: 240px;
+    max-width: min(300px, calc(100vw - 24px));
+    padding: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: 28px;
+    box-shadow: 0 8px 28px rgba(28, 25, 23, 0.2);
 }
+.profile-dropdown-header { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.profile-dropdown-pic { display: flex; flex-shrink: 0; }
+.profile-dropdown-pic .profile-btn { pointer-events: none; }
+/* The picture is in the menu now: the button under the glass is not shown twice */
+.profile-menu-container .profile-btn[aria-expanded="true"] { visibility: hidden; }
+.profile-dropdown-who { flex: 1; min-width: 0; padding-right: 8px; }
 .profile-dropdown-name {
-    font-size: 0.98rem;
+    font-size: 0.95rem;
     font-weight: 800;
     color: var(--text);
     white-space: nowrap;
@@ -189,31 +198,30 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 2px;
+    margin-top: 1px;
 }
-.profile-dropdown-divider {
-    height: 1px;
-    margin: 0 12px 6px;
-    background: var(--border-light);
-}
+.profile-dropdown-divider { height: 1px; margin: 8px 0 4px; background: var(--border-light); }
 .dropdown-item {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 12px 20px;
+    gap: calc(var(--profile-pic) / 2);
+    min-height: 48px;
+    padding: 0 12px 0 calc(var(--profile-pic) / 2 - 12px);
     background: transparent;
     border: none;
-    border-radius: 0;
+    border-radius: 20px;
     color: var(--text);
-    font-size: 0.97rem;
+    font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
     text-align: left;
-    transition: background 0.15s ease;
     width: 100%;
 }
-.dropdown-item:hover { background: var(--surface-alt); }
-.dropdown-item:active { background: var(--bg); }
+.dropdown-item svg { flex-shrink: 0; }
+.dropdown-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropdown-item:hover, .dropdown-item:active { background: rgba(28, 25, 23, 0.07); }
+[data-theme="dark"] .dropdown-item:hover, [data-theme="dark"] .dropdown-item:active { background: rgba(255, 255, 255, 0.08); }
+.dropdown-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .dropdown-item.text-danger { color: var(--danger); }
 
 /* --- Hero & Stats --- */
@@ -1838,6 +1846,8 @@ input:checked + .slider:before { transform: translateX(22px); }
         align-items: center;
         height: 38px;
     }
+
+    .profile-dropdown { --profile-pic: 38px; }
 
     .profile-btn {
         width: 38px;
