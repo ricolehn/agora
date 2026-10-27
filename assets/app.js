@@ -907,7 +907,7 @@ function renderAvatarWrap(userId, userName, { wrapClass = 'duty-assignee-avatar-
     return `
         <div class="avatar ${wrapClass}" ${style ? `style="${style}"` : ''}>
             <span class="avatar-initials ${initialsClass}">${escapeHtml(getInitials(name))}</span>
-            ${userId ? `<img src="${API}/profile/picture/${encodeURIComponent(userId)}" alt="${escapeHtml(name)}" class="avatar-img ${imgClass}" onerror="this.remove()">` : ''}
+            ${profilePictureSrc(userId) ? `<img src="${profilePictureSrc(userId)}" alt="${escapeHtml(name)}" class="avatar-img ${imgClass}" loading="lazy" onerror="this.remove()">` : ''}
         </div>`;
 }
 
@@ -2695,6 +2695,7 @@ async function loadData(silent = false, { freshUser = false } = {}) {
         advancedConfigLoaded = false;
         advancedConfigAppName = null;
         // Events and conversations do not depend on the finance data: start them right away
+        const pictures = isAuthenticated ? (picturesReady = loadPictureVersions()) : null;
         if (isAuthenticated) {
             loadMentoringThreads(false);
             loadEventsData();
@@ -2724,6 +2725,7 @@ async function loadData(silent = false, { freshUser = false } = {}) {
         if (!routeReady) applyInitialRoute();
         else if (!document.querySelector('.tab-content.active')) switchTab('user-overview');
 
+        await pictures;
         people.forEach(preprocessPerson);
         if (canManageFinances()) {
             // Booked on the latest copy of the record (a transaction): writing this screen's copy of the payments
@@ -2814,16 +2816,19 @@ onAuthStateChanged(auth, async user => {
         leaveGuestView();
         showAuthLoader(t('auth_loading_profile', 'Loading profile...'));
         localStorage.setItem('agora-is-logged-in', 'true');
-        const profile = await fetchUserProfile(user.uid, 2);
-        if (!profile) setLoadingMessage(t('auth_profile_not_found', 'Profile not found, please contact an admin.'));
-        // The signed-in account over the stored profile, like refreshCurrentUser did. Only /auth/me (opening the app)
-        // carries the computed fields (mentor status); after a fresh login loadData still asks it
+        // /auth/me carries the whole profile plus the computed fields (permissions, mentor status). Opening the app
+        // already restored the session with it: no second round trip before the data; after a fresh login it is
+        // asked once (it used to be the stored profile first and /auth/me afterwards, one after the other)
         const { getIdToken, ...account } = user;
+        const complete = 'isApprovedMentor' in account;
+        const profile = complete ? null
+            : await apiJson('/auth/me').then(data => data?.user || null).catch(() => null) || await fetchUserProfile(user.uid, 2);
+        if (!complete && !profile) setLoadingMessage(t('auth_profile_not_found', 'Profile not found, please contact an admin.'));
         currentUser = { ...(profile || { role: 'user', email: user.email, uid: user.uid }), ...account };
         $('login-modal').classList.remove('show');
         isAuthenticated = true;
         connectSSE();
-        loadData(false, { freshUser: 'isApprovedMentor' in account });
+        loadData(false, { freshUser: complete || 'isApprovedMentor' in (profile || {}) });
         bootstrapSuperAdmin(user);
         loadCurrentProfilePicture();
         ensurePushNotificationSubscription();
@@ -3227,8 +3232,29 @@ window.addEventListener('beforeinstallprompt', e => e.preventDefault());
 window.addEventListener('appinstalled', () => setupPwaPushAutoPrompt());
 
 // --- Profile pictures ---
+// Who has a picture and its version (from the server, once per load): only those are requested, under an address
+// with the version that the browser keeps until the picture changes. null = not known (yet): ask like before.
+let pictureVersions = null;
+// Lists that render on their own (events, chats) wait for it, so they never fall back to asking for every picture
+let picturesReady = Promise.resolve();
+async function loadPictureVersions() {
+    try {
+        pictureVersions = await apiJson('/profile/pictures');
+    } catch {
+        pictureVersions = null;
+    }
+}
+function profilePictureSrc(uid) {
+    if (!uid) return '';
+    if (pictureVersions && !pictureVersions[uid]) return '';
+    const version = pictureVersions?.[uid];
+    return `${API}/profile/picture/${encodeURIComponent(uid)}${version ? `?v=${version}` : ''}`;
+}
+
 async function fetchProfilePicUrl(uid) {
-    const res = await api(`/profile/picture/${encodeURIComponent(uid)}`);
+    const src = profilePictureSrc(uid);
+    if (!src) return null;
+    const res = await api(src.slice(API.length));
     if (res.ok && res.status === 200) {
         const blob = await res.blob();
         if (blob && blob.size > 0) return URL.createObjectURL(blob);
@@ -3405,13 +3431,13 @@ async function confirmProfileCrop() {
     if (!blob) return showToast(t('toast_image_processing_failed', 'Error processing image.'), 'error');
     setButtonLoading('btn-confirm-crop', true, t('btn_saving', 'Saving...'));
     try {
-        await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), t('toast_upload_failed_short', 'Upload failed'));
+        const saved = await apiJson('/profile/picture', 'POST', toFormData({ picture: new File([blob], 'profile.jpg', { type: 'image/jpeg' }) }), t('toast_upload_failed_short', 'Upload failed'));
         closeModal('profile-crop-modal');
         showToast(t('toast_profile_pic_saved', 'Profile picture saved!'), 'success');
-        // Pictures are cached by the browser for a few minutes: replace the own entry right away
+        // A new version: a new address, so no list shows the old picture from the browser's cache
         const uid = currentUid();
+        if (pictureVersions) pictureVersions[uid] = saved?.version || Date.now();
         profilePicCache.delete(uid);
-        await fetchWithAuth(`${API}/profile/picture/${encodeURIComponent(uid)}`, { cache: 'reload' }).catch(() => {});
         await loadCurrentProfilePicture();
     } catch (e) {
         console.error('Profile upload error:', e);
@@ -6539,7 +6565,7 @@ function renderMentorsGrid() {
     }
     grid.innerHTML = visible.map(m => {
         const name = m.name || m.mentorName || t('mentoring_partner_mentor', 'Mentor');
-        const avatarUrl = m.avatar_url || (m.user_id ? `${API}/profile/picture/${encodeURIComponent(m.user_id)}` : '');
+        const avatarUrl = m.avatar_url || profilePictureSrc(m.user_id);
         const isSelf = isSelfCard(m);
         const { max, active, isFull } = mentorCapacity(m);
         return `
@@ -6664,6 +6690,7 @@ async function loadMentoringThreads(shouldSelect = false, selectThreadId = null,
         const res = await api('/mentoring/threads');
         if (!res.ok) return console.warn('Failed to fetch mentoring threads, status:', res.status);
         const data = await res.json();
+        await picturesReady;
         mentoringThreads = Array.isArray(data) ? data : [];
         updateMentoringUnreadBadge();
         setCountBadge('mentoring-threads-count-badge', mentoringThreads.length);
@@ -7230,6 +7257,7 @@ const cardIcon = name => svgIcon(name, 12, name === 'chevronRight' ? 2.5 : 2);
 
 // Whether members may create events (system setting); the server refuses it otherwise, so the "+" is not offered
 let memberEventCreation = true;
+let eventSettingsLoadedAt = 0;
 const canCreateEvents = () => canManageEvents() || memberEventCreation;
 
 // Until the first answer: a spinner, after a failed first load an error with "Try again" (an empty list said
@@ -7240,12 +7268,16 @@ let eventsLoadError = '';
 async function loadEventsData() {
     if (!currentUser) return;
     try {
+        // Groups and the event settings rarely change: a live update of the events reuses them for a few minutes
+        // (each refresh used to reload both and redraw the whole account list)
+        const settingsFresh = Date.now() - eventSettingsLoadedAt < 5 * 60 * 1000;
         const [eventsRes, requestsRes, settingsRes] = await Promise.all([
             api('/events'),
             api('/events/my-requests').catch(() => null),
-            api('/events/settings').catch(() => null),
-            loadSystemGroups()
+            settingsFresh ? null : api('/events/settings').catch(() => null),
+            loadSystemGroups(5 * 60 * 1000)
         ]);
+        await picturesReady;
         if (eventsRes.ok) {
             appEvents = await eventsRes.json();
             eventsLoaded = true;
@@ -7256,6 +7288,7 @@ async function loadEventsData() {
         myDutyRequests = requestsRes?.ok ? await requestsRes.json() : [];
         if (settingsRes?.ok) {
             memberEventCreation = (await settingsRes.json())?.allowMemberCreation !== false;
+            eventSettingsLoadedAt = Date.now();
             updateFabVisibility();
         }
         renderMyDutyRequests();
@@ -9267,6 +9300,8 @@ async function saveEventSystemSettings() {
     };
     try {
         const res = await api('/events/settings', 'PATCH', payload);
+        // Read again with the next refresh (this device at once, others within a few minutes)
+        if (res.ok) eventSettingsLoadedAt = 0;
         showToast(res.ok ? t('events_settings_saved', 'Event settings saved successfully!') : t('events_settings_save_error', 'Failed to save the event settings'), res.ok ? 'success' : 'error');
     } catch {
         showToast(t('error_connection', 'Connection error'), 'error');

@@ -73,16 +73,29 @@ const seesAllEvents = (user) => hasEventPermission(user) || user.admin === true 
 router.get('/api/events', verifyToken, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
-    const allEvents = await listEvents(context.appConfig, '', '+date,+startTime');
-    const allRegs = await listEventRegistrations(context.appConfig);
-    const allGuests = await listEventGuests(context.appConfig).catch(() => []);
-    const allDuties = await listEventDuties(context.appConfig);
-    const users = await listUserRecords(context.appConfig);
+    // All at once, and grouped by event once (it was one scan of every sign-up and duty per event)
+    const [allEvents, allRegs, allGuests, allDuties, users, allGroups] = await Promise.all([
+      listEvents(context.appConfig, '', '+date,+startTime'),
+      listEventRegistrations(context.appConfig),
+      listEventGuests(context.appConfig).catch(() => []),
+      listEventDuties(context.appConfig),
+      listUserRecords(context.appConfig),
+      listGroupRecords(context.appConfig).catch(() => [])
+    ]);
     const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
     const managerUserIds = new Set(users.filter(hasEventPermission).map(u => u.id));
-    let allGroups = [];
-    try { allGroups = await listGroupRecords(context.appConfig); } catch {}
     const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+    const byEvent = (list) => {
+      const map = new Map();
+      for (const item of list) {
+        if (!map.has(item.event)) map.set(item.event, []);
+        map.get(item.event).push(item);
+      }
+      return map;
+    };
+    const regsByEvent = byEvent(allRegs);
+    const guestsByEvent = byEvent(allGuests);
+    const dutiesByEvent = byEvent(allDuties);
 
     const visibleEvents = allEvents.filter(ev => {
       const isCreator = ev.createdBy === currentUid;
@@ -97,14 +110,14 @@ router.get('/api/events', verifyToken, async (req, res) => {
       const isCreatorManager = managerUserIds.has(ev.createdBy);
       const isOfficial = Boolean(ev.eventType === 'termin' || ev.isRecurring);
 
-      const evRegs = allRegs.filter(r => r.event === ev.id);
+      const evRegs = regsByEvent.get(ev.id) || [];
       // Guests without an account take places like members
-      const { registered: registeredCount, waitlist: waitlistCount } = seatCounts(evRegs, allGuests.filter(g => g.event === ev.id));
+      const { registered: registeredCount, waitlist: waitlistCount } = seatCounts(evRegs, guestsByEvent.get(ev.id) || []);
       const myReg = evRegs.find(r => r.user === currentUid && r.status !== 'cancelled') || null;
 
       const isFull = isBookedOut(ev, registeredCount);
 
-      const allEvDuties = allDuties.filter(d => d.event === ev.id);
+      const allEvDuties = dutiesByEvent.get(ev.id) || [];
       const canAccessDutyPlan = canUserAccessEventDutyPlan(req.user, ev, allEvDuties, groupMap);
 
       let evDuties = [];

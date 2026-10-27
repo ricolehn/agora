@@ -233,7 +233,9 @@ const DEFAULT_COLLECTION_SPECS = [
     updateRule: '@request.auth.id != ""',
     deleteRule: '@request.auth.id != ""',
     indexes: [
-      'CREATE INDEX idx_mentoring_messages_thread ON mentoring_messages (thread)'
+      'CREATE INDEX idx_mentoring_messages_thread ON mentoring_messages (thread)',
+      // The unread count of a conversation is asked on every chat list load
+      'CREATE INDEX idx_mentoring_messages_unread ON mentoring_messages (thread, read)'
     ],
     fields: [
       { name: 'thread', type: 'text', required: true },
@@ -340,7 +342,10 @@ const DEFAULT_COLLECTION_SPECS = [
     updateRule: '@request.auth.id != ""',
     deleteRule: '@request.auth.id != ""',
     indexes: [
-      'CREATE INDEX idx_event_duties_event ON event_duties (event)'
+      'CREATE INDEX idx_event_duties_event ON event_duties (event)',
+      // A person's duties and requests (account deletion, duty requests)
+      'CREATE INDEX idx_event_duties_assigned ON event_duties (assignedUser)',
+      'CREATE INDEX idx_event_duties_requested ON event_duties (requestedUser)'
     ],
     fields: [
       { name: 'event', type: 'text', required: true },
@@ -547,7 +552,78 @@ function buildPocketBaseError(response, fallback) {
   return error;
 }
 
+// --- Read cache ---
+// The apps only reach PocketBase through this server, and every request goes through pocketBaseRequest: record
+// reads (as superuser) are kept in memory per collection and dropped the moment anything in that collection is
+// written. Each collection has a generation: a read that started before a write is not kept. READ_CACHE_TTL_MS
+// covers changes made outside the app (PocketBase's admin page). The answer is kept as PocketBase's JSON text and
+// parsed for every caller: each gets its own objects (three times faster than copying them).
+const READ_CACHE_TTL_MS = 30 * 1000;
+const READ_CACHE_MAX_ENTRIES = 400;
+const readCache = new Map();
+const readGenerations = new Map();
+const recordsPath = /^\/api\/collections\/([^/?]+)\/records(?:[/?]|$)/;
+
+function collectionOf(path) {
+  return recordsPath.exec(path)?.[1] || null;
+}
+
+/** Forgets the cached reads of [collection] (all collections without one). */
+function invalidateReadCache(collection) {
+  if (!collection) {
+    readCache.clear();
+    for (const key of readGenerations.keys()) readGenerations.set(key, (readGenerations.get(key) || 0) + 1);
+    return;
+  }
+  readCache.delete(collection);
+  readGenerations.set(collection, (readGenerations.get(collection) || 0) + 1);
+}
+
+const parseCached = (text) => (text === null ? null : JSON.parse(text));
+
+async function cachedRead(collection, key, load) {
+  let entries = readCache.get(collection);
+  const hit = entries?.get(key);
+  if (hit && Date.now() - hit.at < READ_CACHE_TTL_MS) return parseCached(await hit.value);
+  const generation = readGenerations.get(collection) || 0;
+  const value = load();
+  if (!entries) readCache.set(collection, (entries = new Map()));
+  if (entries.size >= READ_CACHE_MAX_ENTRIES) entries.clear();
+  const entry = { at: Date.now(), value };
+  entries.set(key, entry);
+  try {
+    const result = await value;
+    // Written meanwhile (or failed): not kept
+    if ((readGenerations.get(collection) || 0) !== generation && readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
+    return parseCached(result);
+  } catch (err) {
+    if (readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
+    throw err;
+  }
+}
+
 async function pocketBaseRequest(path, options = {}) {
+  const method = options.method || 'GET';
+  const collection = collectionOf(path);
+  if (method === 'GET' && collection && options.token && options.token === cachedSuperuserToken) {
+    return cachedRead(collection, `${path}|${options.allow404 ? 1 : 0}`, () => sendPocketBaseRequest(path, { ...options, rawText: true }));
+  }
+  if (method !== 'GET') {
+    // Records of one collection (also its auth actions: a login only touches "users"); schema changes and batches
+    // touch everything. Before and after: a read running alongside the write is not kept either way
+    const own = /^\/api\/collections\/([^/?]+)\/[^/?]/.exec(path)?.[1];
+    const touched = collection || own || (path.startsWith('/api/collections') || path.startsWith('/api/batch') ? undefined : null);
+    if (touched !== null) invalidateReadCache(touched);
+    try {
+      return await sendPocketBaseRequest(path, options);
+    } finally {
+      if (touched !== null) invalidateReadCache(touched);
+    }
+  }
+  return sendPocketBaseRequest(path, options);
+}
+
+async function sendPocketBaseRequest(path, options = {}) {
   const {
     method = 'GET',
     token,
@@ -569,6 +645,9 @@ async function pocketBaseRequest(path, options = {}) {
   });
 
   const text = await response.text();
+  // The read cache keeps the text itself (see cachedRead)
+  if (options.rawText && response.ok) return text || 'null';
+  if (options.rawText && allow404 && response.status === 404) return null;
   const payload = text ? (() => {
     try {
       return JSON.parse(text);
@@ -739,20 +818,24 @@ async function ensureCollection(appConfig, spec) {
 
 async function listAllRecords(collectionName, filter, appConfig, sort = '') {
   const token = await authenticateSuperuser(appConfig);
-  const items = [];
-  let page = 1;
-  const perPage = 200;
-
-  while (true) {
+  // PocketBase's largest page. The first page counts the records (one COUNT), the others come in parallel
+  // without counting - they used to be 200 at a time, one after another, each with its own COUNT
+  const perPage = 1000;
+  const pageUrl = (page, count) => {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+    if (!count) params.set('skipTotal', '1');
     if (filter) params.set('filter', filter);
-    if (sort) params.set('sort', sort);
-    const result = await pocketBaseRequest(`/api/collections/${collectionName}/records?${params.toString()}`, { token });
-    items.push(...(result.items || []));
-    if (page >= (result.totalPages || 1)) break;
-    page += 1;
+    // Pages fetched side by side need a fixed order: without a sort it is PocketBase's own (insertion) order, named
+    params.set('sort', sort || '@rowid');
+    return `/api/collections/${collectionName}/records?${params.toString()}`;
+  };
+  const first = await pocketBaseRequest(pageUrl(1, true), { token });
+  const items = [...(first.items || [])];
+  const pages = Number(first.totalPages) || 1;
+  if (pages > 1) {
+    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => pocketBaseRequest(pageUrl(i + 2, false), { token })));
+    for (const result of rest) items.push(...(result.items || []));
   }
-
   return items;
 }
 
@@ -762,7 +845,7 @@ function pbFilterEquals(field, value) {
 
 async function getFirstRecord(collectionName, filter, appConfig) {
   const token = await authenticateSuperuser(appConfig);
-  const params = new URLSearchParams({ page: '1', perPage: '1', filter });
+  const params = new URLSearchParams({ page: '1', perPage: '1', skipTotal: '1', filter });
   const result = await pocketBaseRequest(`/api/collections/${collectionName}/records?${params.toString()}`, { token });
   return result.items?.[0] || null;
 }
@@ -1785,9 +1868,8 @@ async function markMentoringMessagesRead(appConfig, threadId, currentRole) {
   const otherRole = currentRole === 'mentor' ? 'mentee' : 'mentor';
   const filter = `${pbFilterEquals('thread', threadId)} && ${pbFilterEquals('sender_role', otherRole)} && read = false`;
   const unreadMessages = await listAllRecords('mentoring_messages', filter, appConfig, '');
-  for (const msg of unreadMessages) {
-    await updateRecord('mentoring_messages', msg.id, { read: true }, appConfig).catch(() => {});
-  }
+  // Side by side (one after another took a round trip per message when a long conversation is opened)
+  await Promise.all(unreadMessages.map((msg) => updateRecord('mentoring_messages', msg.id, { read: true }, appConfig).catch(() => {})));
 }
 
 // Events
@@ -2003,6 +2085,7 @@ async function deleteFcmToken(appConfig, token, userId = null) {
 }
 
 module.exports = {
+  invalidateReadCache,
   getPushSubscriptionByEndpoint,
   upsertPushSubscription,
   deletePushSubscription,

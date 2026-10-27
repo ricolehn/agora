@@ -94,6 +94,8 @@ describe('fcmNotifications', () => {
    */
   function installFetchMock(t, { users = [], fcmTokens = [], fcmResponder = () => jsonResponse(200, { name: 'ok' }) } = {}) {
     const calls = { tokenRequests: 0, fcmSends: [], deleted: [] };
+    // Every test answers with its own records: nothing of an earlier test may come from the server's read cache
+    require('../backend/pocketbase').invalidateReadCache();
     const originalFetch = global.fetch;
     global.fetch = async (url, options = {}) => {
       const href = String(url);
