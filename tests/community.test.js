@@ -1442,3 +1442,43 @@ describe('event guests and places (backend/eventGuests.js, backend/eventSeats.js
     assert.ok(!external.includes('og:image'), 'no outside pictures in our previews');
   });
 });
+
+describe('calendar file (.ics) of the real generator', () => {
+  const { generateIcsCalendar } = require('../backend/context');
+  const lines = (ics) => ics.split('\r\n');
+  const one = (event, uid, duties) => lines(generateIcsCalendar([event], 'Test', uid, duties, 'en'));
+
+  test('multi-day events without a time span all their days (the end date is the day after the last one)', () => {
+    const ics = one({ id: 'e1', title: 'Camp', date: '2026-12-27', endDate: '2026-12-30' });
+    assert.ok(ics.includes('DTSTART;VALUE=DATE:20261227'));
+    assert.ok(ics.includes('DTEND;VALUE=DATE:20261231'));
+    assert.ok(one({ id: 'e2', title: 'Day', date: '2026-12-27' }).includes('DTEND;VALUE=DATE:20261228'), 'one day');
+  });
+
+  test('timed events: multi-day end on the last day, an end before the start is the next day', () => {
+    assert.ok(one({ id: 'e1', title: 'Camp', date: '2026-07-01', endDate: '2026-07-03', startTime: '18:00', endTime: '12:00' })
+      .includes('DTEND;TZID=Europe/Berlin:20260703T120000'));
+    assert.ok(one({ id: 'e2', title: 'Night', date: '2026-07-01', startTime: '20:00', endTime: '01:00' })
+      .includes('DTEND;TZID=Europe/Berlin:20260702T010000'));
+    assert.ok(one({ id: 'e3', title: 'Late', date: '2026-07-01', startTime: '23:30' })
+      .includes('DTEND;TZID=Europe/Berlin:20260702T003000'), 'one hour past midnight');
+  });
+
+  test('my duties by their name; declined requests and other people\'s duties are left out', () => {
+    const duties = [
+      { event: 'e1', roleName: 'Sound', assignedUser: 'me', status: 'confirmed' },
+      { event: 'e1', roleName: 'Welcome', requestedUser: 'me', status: 'requested' },
+      { event: 'e1', roleName: 'Blessing', requestedUser: 'me', status: 'declined' },
+      { event: 'e1', roleName: 'Coffee', assignedUser: 'other', status: 'confirmed' }
+    ];
+    const text = one({ id: 'e1', title: 'Service', date: '2026-11-01', startTime: '10:00' }, 'me', duties).join('\n');
+    assert.match(text, /Sound \(assigned\)/);
+    assert.match(text, /Welcome \(request pending\)/);
+    assert.doesNotMatch(text, /Blessing|Coffee|• Duty/);
+  });
+
+  test('cancelled events are marked cancelled', () => {
+    assert.ok(one({ id: 'e1', title: 'Off', date: '2026-11-01', status: 'cancelled' }).includes('STATUS:CANCELLED'));
+    assert.ok(one({ id: 'e2', title: 'On', date: '2026-11-01' }).includes('STATUS:CONFIRMED'));
+  });
+});

@@ -170,6 +170,8 @@ async function sendDueDutyReminders(appConfig, now = Date.now(), deps = {}) {
     await io.saveReminded(duty, reminded);
     for (const { user, time } of due) {
       const content = {
+        // No request to take the address from: the configured public address gives the e-mail its button
+        origin: require('./notify').normalizePublicUrl(appConfig?.publicUrl) || '',
         push: () => buildDutyReminderPush({ event, duty, time }, userLanguage(user)),
         email: (tr) => {
           const push = buildDutyReminderPush({ event, duty, time }, userLanguage(user));

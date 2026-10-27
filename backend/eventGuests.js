@@ -22,9 +22,11 @@ const newGuestKey = () => crypto.randomBytes(24).toString('base64url');
 const isPublicToken = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(value);
 const isGuestKey = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{24,64}$/.test(value);
 
-const todayUtc = () => new Date().toISOString().split('T')[0];
+// Today in the community's time zone (the server's TZ, see the README): an event is over after its day there, not
+// after midnight UTC - between 0:00 and 1:00 / 2:00 in Berlin yesterday's event still took sign-ups
+const localToday = (now = new Date()) => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 const lastDay = (event) => String(event?.endDate || '').trim() || String(event?.date || '').trim();
-const isEventOver = (event, today = todayUtc()) => lastDay(event) !== '' && lastDay(event) < today;
+const isEventOver = (event, today = localToday()) => lastDay(event) !== '' && lastDay(event) < today;
 
 /** { name, email, age } of a sign-up form, or { error } with the first thing that is missing or wrong. */
 function readGuestInput(body) {
@@ -49,7 +51,7 @@ const isEmailFull = (guests, input) => guests.filter((guest) => sameEmail(guest,
  * What everyone with the link sees of an event: what, when, where and the places. Never the organiser, the groups,
  * the participants, the duty roster or any id.
  */
-function publicEventView(event, counts, today = todayUtc()) {
+function publicEventView(event, counts, today = localToday()) {
   const max = typeof event.maxParticipants === 'number' && event.maxParticipants > 0 ? event.maxParticipants : 0;
   const cancelled = event.status === 'cancelled';
   const over = isEventOver(event, today);
@@ -163,7 +165,7 @@ function tellPromotedGuests(promoted, event, origin) {
 }
 
 /** Guests whose event ended more than GUEST_RETENTION_DAYS ago or no longer exists. */
-function expiredGuests(guests, eventsById, today = todayUtc()) {
+function expiredGuests(guests, eventsById, today = localToday()) {
   const [y, m, d] = today.split('-').map(Number);
   const cutoff = new Date(Date.UTC(y, m - 1, d - GUEST_RETENTION_DAYS)).toISOString().split('T')[0];
   return guests.filter((guest) => {
@@ -175,7 +177,7 @@ function expiredGuests(guests, eventsById, today = todayUtc()) {
 }
 
 /** Daily cleanup: deletes the details of guests whose event is over for the retention period (or deleted). */
-async function purgeExpiredGuests(appConfig, today = todayUtc()) {
+async function purgeExpiredGuests(appConfig, today = localToday()) {
   if (!appConfig) return 0;
   try {
     const [guests, events] = await Promise.all([listEventGuests(appConfig), listEvents(appConfig)]);
@@ -196,7 +198,7 @@ module.exports = {
   newGuestKey,
   isPublicToken,
   isGuestKey,
-  todayUtc,
+  localToday,
   isEventOver,
   readGuestInput,
   isSameGuest,

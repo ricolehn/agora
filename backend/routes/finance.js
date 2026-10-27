@@ -30,7 +30,8 @@ const {
 const {
   getPeopleRecord,
   upsertPeopleRecord,
-  normalizeDataPath
+  normalizeDataPath,
+  listRequestRecords
 } = require('../pocketbase');
 
 
@@ -174,12 +175,18 @@ function loadReceiptOwners() {
   return receiptOwners;
 }
 
+// Writes one after another, each through a temporary file: two uploads at once used to write the file in parallel
+// (an older state could win, or a half-written file be read after a restart)
+let receiptOwnersWrite = Promise.resolve();
 function rememberReceiptOwner(filename, uid) {
   if (!filename || !uid) return;
   const owners = loadReceiptOwners();
   owners[filename] = uid;
-  fs.promises.writeFile(receiptOwnersFile, JSON.stringify(owners), 'utf8')
-    .catch((err) => console.warn('[Receipts] Could not store the uploader:', err.message));
+  receiptOwnersWrite = receiptOwnersWrite.then(async () => {
+    const temp = `${receiptOwnersFile}.tmp`;
+    await fs.promises.writeFile(temp, JSON.stringify(owners), 'utf8');
+    await fs.promises.rename(temp, receiptOwnersFile);
+  }).catch((err) => console.warn('[Receipts] Could not store the uploader:', err.message));
 }
 
 const ownsReceipt = (user, filename) => loadReceiptOwners()[filename] === user.uid;
@@ -205,13 +212,21 @@ const notifyAdminsRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, sta
 
 router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, async (req, res) => {
   try {
-    const { reqType, personName } = req.body;
-    if (!reqType || !personName) {
-      return res.status(400).json({ error: 'Missing required fields: reqType, personName' });
-    }
-
+    const { reqType } = req.body || {};
     const typeLabels = { payment: 'Payment', status: 'Status change', expense: 'Expense', standing_order: 'Standing order' };
-    const typeOf = (tr) => (typeLabels[reqType] ? tr(typeLabels[reqType]) : reqType);
+    if (!typeLabels[reqType]) {
+      return res.status(400).json({ error: 'Unknown request type' });
+    }
+    // Only about a request the member really just filed, with the name stored in it - the text comes from the
+    // server, never from the caller (anyone could otherwise send any name to every treasurer)
+    const uid = req.user.uid || req.user.id;
+    const recent = Date.now() - 15 * 60 * 1000;
+    const filed = (await listRequestRecords(context.appConfig, { orderByChild: 'userId', equalTo: uid }))
+      .filter((r) => r.status === 'pending' && r.type === reqType && Number(r.timestamp || r.requestKey) >= recent)
+      .sort((a, b) => Number(b.timestamp || b.requestKey) - Number(a.timestamp || a.requestKey))[0];
+    if (!filed) return res.json({ success: true, notified: 0 });
+    const personName = filed.personName || req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    const typeOf = (tr) => tr(typeLabels[reqType]);
     // Admins, owner and treasurers (groups with manage_finances), each over the channels they chose and in their language
     const recipients = (await financeManagers(context.appConfig)).filter((u) => u.id !== req.user?.uid);
     await notifyUsers(context.appConfig, recipients, 'finances', {

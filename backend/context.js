@@ -759,8 +759,9 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     const ownerUid = system?.ownerUid || system?.superAdminUid || null;
     const isTargetOwner = id === ownerUid || existing.owner === true || existing.superAdmin === true;
 
+    // Like the admin routes: only the owner changes the owner's rights - also groups (they carry the permissions)
     if (isTargetOwner && !user.owner && id !== user.uid) {
-      if (value && typeof value === 'object' && (value.admin === false || value.owner === false)) {
+      if (value && typeof value === 'object' && ['admin', 'owner', 'pays', 'groups'].some((field) => value[field] !== undefined)) {
         throw Object.assign(new Error('Forbidden: Cannot modify owner permissions'), { status: 403 });
       }
     }
@@ -1108,26 +1109,29 @@ function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid =
     lines.push(`UID:event-${ev.id}@agora`);
     lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
 
+    // Multi-day events end on their last day; an end before the start (an evening into the night) is the next day
+    const lastDay = (ev.endDate && ev.endDate > ev.date) ? ev.endDate : ev.date;
     if (ev.startTime) {
+      const [h, m] = ev.startTime.split(':').map(Number);
+      const endTime = ev.endTime || `${String(((h || 0) + 1) % 24).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
+      const endDay = lastDay === ev.date && endTime <= ev.startTime ? addDaysDriftFree(ev.date, 1) : lastDay;
       lines.push(`DTSTART;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, ev.startTime)}`);
-      if (ev.endTime) {
-        lines.push(`DTEND;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, ev.endTime)}`);
-      } else {
-        const [h, m] = (ev.startTime || '10:00').split(':').map(Number);
-        const endHour = String(((h || 10) + 1) % 24).padStart(2, '0');
-        lines.push(`DTEND;TZID=Europe/Berlin:${formatIcsDateTime(ev.date, `${endHour}:${String(m || 0).padStart(2, '0')}`)}`);
-      }
+      lines.push(`DTEND;TZID=Europe/Berlin:${formatIcsDateTime(endDay, endTime)}`);
     } else {
+      // All-day: the end date is exclusive, the day after the last one
       lines.push(`DTSTART;${formatIcsDateTime(ev.date, '')}`);
+      lines.push(`DTEND;${formatIcsDateTime(addDaysDriftFree(lastDay, 1), '')}`);
     }
 
+    // My duties: the ones I do, and open requests to me (not declined ones)
     let dutiesInfo = '';
     if (currentUid && Array.isArray(allDuties)) {
-      const myDuties = allDuties.filter(d => d.event === ev.id && (d.assignedUser === currentUid || d.requestedUser === currentUid));
+      const myDuties = allDuties.filter(d => d.event === ev.id && d.status !== 'declined'
+        && (d.assignedUser === currentUid || (d.requestedUser === currentUid && d.status === 'requested')));
       if (myDuties.length > 0) {
         dutiesInfo = myDuties.map(d => {
-          const isReq = d.requestedUser === currentUid && d.assignedUser !== currentUid;
-          return `• ${d.role || tr('Duty')} (${isReq ? tr('request pending') : tr('assigned')})`;
+          const isReq = d.assignedUser !== currentUid;
+          return `• ${d.roleName || d.section || tr('Duty')} (${isReq ? tr('request pending') : tr('assigned')})`;
         }).join('\n');
       }
     }
@@ -1140,7 +1144,7 @@ function generateIcsCalendar(events, calendarName = 'Agora Events', currentUid =
     }
     if (descriptionText) lines.push(`DESCRIPTION:${escapeIcsText(descriptionText)}`);
     if (ev.location) lines.push(`LOCATION:${escapeIcsText(ev.location)}`);
-    lines.push('STATUS:CONFIRMED');
+    lines.push(ev.status === 'cancelled' ? 'STATUS:CANCELLED' : 'STATUS:CONFIRMED');
     lines.push('END:VEVENT');
   }
 

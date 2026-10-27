@@ -7,6 +7,7 @@ const {
   broadcastDataUpdate
 } = require('../context');
 const { createItemStore } = require('../itemStore');
+const { queueRecordWrite } = require('../pocketbase');
 const { loadSecret } = require('../polls');
 const { canModerate, buildPrayer, canCreate, ownerUpdate, isMine, isGone, publicPrayer, visiblePrayers } = require('../prayers');
 
@@ -53,9 +54,13 @@ router.post('/api/prayers', protectedActionRateLimit, verifyToken, async (req, r
   try {
     const { prayer, error } = buildPrayer(req.body, { uid: userId(req), name: userName(req), secret: prayerSecret() });
     if (error) return res.status(400).json({ error });
-    const limit = canCreate(await store.list(context.appConfig), { uid: userId(req), secret: prayerSecret() });
+    // Checked and saved one after another per person: parallel posts cannot get past the limit
+    const limit = await queueRecordWrite(`prayers-new:${userId(req)}`, async () => {
+      const over = canCreate(await store.list(context.appConfig), { uid: userId(req), secret: prayerSecret() });
+      if (!over) await store.update(context.appConfig, prayer.id, () => ({ save: prayer }));
+      return over;
+    });
     if (limit) return res.status(limit.status).json({ error: limit.error });
-    await store.update(context.appConfig, prayer.id, () => ({ save: prayer }));
     broadcastDataUpdate('prayers');
     res.status(201).json(viewOf(prayer, req));
   } catch (err) {

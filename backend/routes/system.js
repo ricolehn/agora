@@ -22,6 +22,7 @@ const {
 } = require('../context');
 const { deleteAccountData } = require('../accountDeletion');
 const { normalizePublicUrl } = require('../notify');
+const { wantsNotification } = require('../notificationPrefs');
 
 const {
   DEFAULT_SYSTEM_STATE,
@@ -648,21 +649,6 @@ router.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmi
       return res.status(400).json({ error: 'Missing required fields: to, subject' });
     }
 
-    try {
-      const allUsers = await listUserRecords(context.appConfig);
-      const recipientUser = allUsers.find(u => u.email && u.email.toLowerCase() === String(to).toLowerCase());
-      if (recipientUser) {
-        const tr = translator(userLanguage(recipientUser));
-        sendPushToUser(context.appConfig, recipientUser.id, {
-          title: subject || tr('New message'),
-          body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : tr('You received a new notification.'),
-          data: { url: '/' }
-        }).catch(e => console.warn('[WebPush] Send-email push error:', e.message));
-      }
-    } catch (e) {
-      console.warn('[WebPush] Error checking user for send-email push:', e.message);
-    }
-
     if (!context.transporter || !context.appConfig?.smtp?.user) {
       return res.status(500).json({ error: 'SMTP not configured' });
     }
@@ -674,6 +660,22 @@ router.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmi
       text,
       html
     });
+
+    // The member also gets a push - only once the e-mail went out, and only if they want finance messages by push
+    try {
+      const allUsers = await listUserRecords(context.appConfig);
+      const recipientUser = allUsers.find(u => u.email && u.email.toLowerCase() === String(to).toLowerCase());
+      if (recipientUser && wantsNotification(recipientUser, 'finances', 'push')) {
+        const tr = translator(userLanguage(recipientUser));
+        sendPushToUser(context.appConfig, recipientUser.id, {
+          title: subject || tr('New message'),
+          body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : tr('You received a new notification.'),
+          data: { url: '/' }
+        }).catch(e => console.warn('[WebPush] Send-email push error:', e.message));
+      }
+    } catch (e) {
+      console.warn('[WebPush] Error checking user for send-email push:', e.message);
+    }
 
     console.log('Email sent: %s', info.messageId);
     res.status(200).json({ success: true, messageId: info.messageId });

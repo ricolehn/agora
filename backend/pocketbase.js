@@ -1865,7 +1865,9 @@ async function upsertEventRegistration(appConfig, eventId, userId, status) {
   const existing = await getEventRegistration(appConfig, eventId, userId);
   const now = new Date().toISOString();
   if (existing) {
-    return await updateRecord('event_registrations', existing.id, { status, updated: now }, appConfig);
+    // Signing up again after cancelling starts at the end of the waiting list: "created" is the place in the queue
+    const rejoins = !['registered', 'waitlist'].includes(existing.status) && ['registered', 'waitlist'].includes(status);
+    return await updateRecord('event_registrations', existing.id, { status, updated: now, ...(rejoins ? { created: now } : {}) }, appConfig);
   }
   return await createRecord('event_registrations', {
     event: eventId,

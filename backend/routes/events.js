@@ -47,7 +47,8 @@ const {
   getStateValue,
   upsertStateValue,
   getOrCreateUserCalendarToken,
-  regenerateUserCalendarToken
+  regenerateUserCalendarToken,
+  queueRecordWrite
 } = require('../pocketbase');
 
 const { notifyUsers, originOf } = require('../notify');
@@ -57,7 +58,7 @@ const { createItemStore } = require('../itemStore');
 const { buildProgram } = require('../program');
 const { eventImageName, linkedEventImageNames, deleteUnlinkedEventImages } = require('../eventImages');
 const { seatCounts, isBookedOut, withEventSeats, loadSeats, fillFreeSeats } = require('../eventSeats');
-const { newPublicToken, sendGuestEmail, tellPromotedGuests } = require('../eventGuests');
+const { newPublicToken, sendGuestEmail, tellPromotedGuests, localToday } = require('../eventGuests');
 
 const router = express.Router();
 // Order of service per event (key = event id), readable only by the server
@@ -599,7 +600,7 @@ router.post('/api/events/:id/register', verifyToken, async (req, res) => {
     }
 
     const { action } = req.body || {};
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localToday();
     const eventEndDate = (event.endDate && event.endDate.trim()) ? event.endDate.trim() : (event.date ? event.date.trim() : '');
     if (action !== 'cancel' && eventEndDate && eventEndDate < todayStr) {
       return res.status(400).json({ error: 'This event is already over. Registration is no longer possible.' });
@@ -1147,18 +1148,28 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
       return res.json({ success: true, duty: updated });
     }
 
-    if (duty.assignedUser && duty.assignedUser !== currentUid) {
-      return res.status(409).json({ error: 'This duty is already taken' });
+    // Taking a duty: only who may see the event, and only a duty that is open or was asked of this person - not one
+    // asked of someone else or given to a group. Read and written in the duty's queue: two at once cannot both get it
+    const event = await getEventRecord(context.appConfig, duty.event);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (event.createdBy !== currentUid && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+      return res.status(403).json({ error: 'You do not have access to this event' });
     }
-
-    const updated = await updateEventDuty(context.appConfig, duty.id, {
-      assignedUser: currentUid,
-      requestedUser: '',
-      requestedBy: '',
-      status: 'confirmed'
+    const result = await queueRecordWrite(`duty:${duty.id}`, async () => {
+      const current = await getEventDuty(context.appConfig, duty.id);
+      if (!current) return { status: 404, error: 'Duty not found' };
+      if (current.assignedUser === currentUid) return { duty: current };
+      const askedOfMe = current.status === 'requested' && current.requestedUser === currentUid;
+      if (current.assignedUser || current.assignedGroup || !(current.status === 'open' || askedOfMe)) {
+        return { status: 409, error: 'This duty is already taken' };
+      }
+      return {
+        duty: await updateEventDuty(context.appConfig, duty.id, { assignedUser: currentUid, requestedUser: '', requestedBy: '', status: 'confirmed' })
+      };
     });
+    if (result.error) return res.status(result.status).json({ error: result.error });
     broadcastDataUpdate('events');
-    res.json({ success: true, duty: updated });
+    res.json({ success: true, duty: result.duty });
   } catch (err) {
     console.error('Failed to claim duty:', err);
     res.status(500).json({ error: 'The duty could not be taken over' });
@@ -1263,6 +1274,11 @@ router.get('/api/events/:id/export.ics', verifyToken, async (req, res) => {
   try {
     const event = await getEventRecord(context.appConfig, req.params.id);
     if (!event) return res.status(404).send('Event not found');
+    // Who may see the event (like signing up): its creator and its target groups
+    const currentUid = req.user.uid || req.user.id;
+    if (event.createdBy !== currentUid && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+      return res.status(404).send('Event not found');
+    }
 
     const appName = context.appConfig?.appName || 'Agora';
     const icsContent = generateIcsCalendar([event], `${appName} - ${event.title || 'Event'}`);
@@ -1326,7 +1342,8 @@ router.get('/api/events/calendar.ics', authenticateCalendarFeed, async (req, res
 
     const userAssignedEventIds = new Set(
       allDuties
-        .filter(d => (d.assignedUser === currentUid || d.requestedUser === currentUid))
+        // A declined request no longer puts the event into my calendar
+        .filter(d => d.assignedUser === currentUid || (d.requestedUser === currentUid && d.status === 'requested'))
         .map(d => d.event)
     );
 

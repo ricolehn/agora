@@ -38,6 +38,28 @@ async function deleteWhere(appConfig, collection, field, value) {
   return records;
 }
 
+// Each sign-up goes in its event's write queue; a freed place moves the next one up and tells guests who moved up
+async function deleteRegistrations(appConfig, uid) {
+  const { withEventSeats, fillFreeSeats } = require('./eventSeats');
+  const { getEventRecord } = require('./pocketbase');
+  const { tellPromotedGuests } = require('./eventGuests');
+  const { normalizePublicUrl } = require('./notify');
+  const records = await listAllRecords('event_registrations', pbFilterEquals('user', uid), appConfig).catch(() => []);
+  for (const record of records) {
+    try {
+      const event = await getEventRecord(appConfig, record.event).catch(() => null);
+      const promoted = await withEventSeats(record.event, async () => {
+        await deleteRecord('event_registrations', record.id, appConfig).catch(() => {});
+        return event && record.status === 'registered' ? fillFreeSeats(appConfig, event) : [];
+      });
+      if (event) tellPromotedGuests(promoted, event, normalizePublicUrl(appConfig.publicUrl) || '');
+    } catch (err) {
+      console.warn('[Account] Freeing a place failed:', err.message);
+    }
+  }
+  return records.length;
+}
+
 // Prayer requests of the account: named ones by their author, anonymous ones by their owner hash (needs the secret).
 // They used to stay visible to everyone with name and text for up to three months after the account was deleted.
 async function deleteOwnPrayers(appConfig, uid, dataDir) {
@@ -70,8 +92,8 @@ async function deleteAccountData(appConfig, uid, { profilesDir, dataDir } = {}) 
   }
   summary.mentoringThreads = threads;
 
-  // Events: registrations go, duty slots of the user are freed
-  summary.registrations = (await deleteWhere(appConfig, 'event_registrations', 'user', uid)).length;
+  // Events: registrations go (a freed place goes to the waiting list, like a cancellation), duty slots are freed
+  summary.registrations = await deleteRegistrations(appConfig, uid);
   let duties = 0;
   for (const field of ['assignedUser', 'requestedUser', 'requestedBy']) {
     const list = await listAllRecords('event_duties', pbFilterEquals(field, uid), appConfig).catch(() => []);

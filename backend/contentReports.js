@@ -1,7 +1,7 @@
 // Reports of objectionable content (Google Play AI-generated content and user-generated content policies):
 // users flag an AI reply or a chat message; admins get a push and can list the reports.
 const crypto = require('crypto');
-const { getStateValue, upsertStateValue } = require('./pocketbase');
+const { getStateValue, upsertStateValue, queueRecordWrite } = require('./pocketbase');
 
 const REPORT_TYPES = ['ai', 'chat'];
 const MAX_STORED_REPORTS = 500;
@@ -33,11 +33,17 @@ function buildReport(body, user, now = Date.now()) {
   };
 }
 
+// The reports are one list: storing and resolving read and write it one after another, so a report filed while
+// another one is resolved (or two at once) is not lost
+const withReports = (change) => queueRecordWrite('state:content_reports', change);
+
 async function storeReport(appConfig, report) {
-  const list = await getStateValue(appConfig, 'content_reports', []);
-  const next = [report, ...(Array.isArray(list) ? list : [])].slice(0, MAX_STORED_REPORTS);
-  await upsertStateValue(appConfig, 'content_reports', next);
-  return report;
+  return withReports(async () => {
+    const list = await getStateValue(appConfig, 'content_reports', []);
+    const next = [report, ...(Array.isArray(list) ? list : [])].slice(0, MAX_STORED_REPORTS);
+    await upsertStateValue(appConfig, 'content_reports', next);
+    return report;
+  });
 }
 
 async function listReports(appConfig) {
@@ -46,10 +52,12 @@ async function listReports(appConfig) {
 }
 
 async function resolveReport(appConfig, id) {
-  const list = await listReports(appConfig);
-  const next = list.map(r => (r.id === id ? { ...r, status: 'resolved', resolved: Date.now() } : r));
-  await upsertStateValue(appConfig, 'content_reports', next);
-  return next.find(r => r.id === id) || null;
+  return withReports(async () => {
+    const list = await listReports(appConfig);
+    const next = list.map(r => (r.id === id ? { ...r, status: 'resolved', resolved: Date.now() } : r));
+    await upsertStateValue(appConfig, 'content_reports', next);
+    return next.find(r => r.id === id) || null;
+  });
 }
 
 module.exports = { REPORT_TYPES, buildReport, storeReport, listReports, resolveReport };
