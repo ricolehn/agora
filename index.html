@@ -1757,59 +1757,64 @@
     </div>
 </div>
 
+<!-- One entry of the duty roster in three questions: what (a task, or a song found while typing), who (people and
+     groups picked right here) and when (during the event, or a place in the order of service) -->
 <div id="plan-entry-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="plan-entry-title">
     <div class="modal-content modal-content-enhanced plan-sheet">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
                 <div>
-                    <div id="plan-entry-title" class="modal-title-main" data-i18n="plan_new_entry">New entry</div>
+                    <div id="plan-entry-title" class="modal-title-main" data-i18n="plan_new_entry">Add to the roster</div>
                     <div id="plan-entry-sub" class="modal-subtitle"></div>
                 </div>
             </div>
             <button type="button" class="close-btn" onclick="closeModal('plan-entry-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body-enhanced plan-sheet-body">
-            <div id="plan-entry-kind" class="settings-pills plan-kind" role="radiogroup" data-i18n-aria-label="plan_kind" aria-label="Kind of entry">
-                <button type="button" role="radio" class="settings-pill is-active" data-kind="task" aria-checked="true" onclick="setPlanKind('task')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span data-i18n="plan_kind_task">Task / item</span></button>
-                <button type="button" role="radio" class="settings-pill" data-kind="song" aria-checked="false" onclick="setPlanKind('song')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span data-i18n="plan_kind_song">Song</span></button>
-            </div>
-            <input type="text" id="plan-entry-name" class="form-input plan-input" maxlength="80" data-i18n-placeholder="plan_name_ph" placeholder="e.g. Sermon, tech, welcome" data-i18n-aria-label="plan_name" aria-label="Name">
-            <div id="plan-entry-song" class="plan-entry-song" hidden>
+            <div id="plan-what-section" class="plan-sheet-section plan-what-section">
+                <label class="plan-sheet-label" for="plan-entry-name" data-i18n="plan_what">What?</label>
                 <div id="plan-entry-song-chosen" class="plan-song-chosen" hidden></div>
-                <input type="search" id="program-song-search" class="form-input plan-input" data-i18n-placeholder="program_song_search" placeholder="Search the songbook…" oninput="renderProgramSongPicker()">
-                <div id="program-song-results" class="program-song-results"></div>
+                <input type="text" id="plan-entry-name" class="form-input plan-input" maxlength="80" autocomplete="off" data-i18n-placeholder="plan_what_ph" placeholder="A task, or the title of a song" oninput="renderPlanSuggestions()">
+                <div id="plan-entry-suggest" class="plan-suggest" hidden></div>
             </div>
 
             <div class="plan-sheet-section plan-who-section">
                 <span class="plan-sheet-label" data-i18n="plan_who">Who?</span>
-                <div id="plan-entry-person"></div>
-                <button type="button" id="plan-entry-person-btn" class="plan-link-btn" onclick="pickPlanPerson()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span id="plan-entry-person-label" data-i18n="plan_ask_person">Ask a person or group</span></button>
+                <div id="plan-entry-person" class="plan-who-chips"></div>
+                <div id="plan-who-picker" class="plan-who-picker" hidden>
+                    <div class="input-with-icon plan-who-search-wrap">
+                        <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+                        <input type="text" id="plan-who-search" class="form-input plan-input plan-who-search" autocomplete="off" data-i18n-placeholder="plan_who_search" placeholder="Search a person or group" data-i18n-aria-label="plan_who_search" aria-label="Search a person or group" oninput="renderPlanWhoList()">
+                    </div>
+                    <div id="plan-who-list" class="plan-who-list"></div>
+                </div>
             </div>
 
             <div class="plan-sheet-section">
-                <label class="plan-switch-row" for="plan-entry-in-program">
-                    <span class="plan-sheet-label" data-i18n="plan_in_program">In the order of service</span>
-                    <span class="switch"><input type="checkbox" id="plan-entry-in-program" role="switch" onchange="togglePlanInProgram()"><span class="slider"></span></span>
-                </label>
-                <div id="plan-entry-program-fields" class="plan-sheet-fields" hidden>
-                    <label class="plan-field is-position"><span data-i18n="plan_position_label">Position</span>
-                        <select id="plan-entry-position" class="form-select plan-input" onchange="updatePlanOrder()"></select>
-                    </label>
-                    <label class="plan-field is-minutes"><span data-i18n="plan_duration">Duration (min)</span>
-                        <input type="number" id="plan-entry-minutes" inputmode="numeric" min="0" max="600" placeholder="0" class="form-input plan-input" oninput="updatePlanOrder()">
-                    </label>
-                    <label class="plan-field is-key" id="plan-entry-key-field" hidden><span data-i18n="songbook_key_label">Key</span>
-                        <input type="text" id="plan-entry-key" maxlength="3" class="form-input plan-input">
-                    </label>
+                <span class="plan-sheet-label" id="plan-when-label" data-i18n="plan_when">When?</span>
+                <div id="plan-entry-when" class="segmented-control plan-when" role="radiogroup" aria-labelledby="plan-when-label">
+                    <button type="button" role="radio" class="segmented-tab" data-when="event" aria-checked="true" onclick="setPlanWhen(false)" data-i18n="plan_when_event">During the event</button>
+                    <button type="button" role="radio" class="segmented-tab" data-when="order" aria-checked="false" onclick="setPlanWhen(true)" data-i18n="plan_when_order">In the order</button>
+                </div>
+                <div id="plan-entry-program-fields" class="plan-order-fields" hidden>
+                    <div id="plan-entry-order" class="plan-order"></div>
+                    <span class="plan-sheet-label plan-sublabel" data-i18n="plan_how_long">How long?</span>
+                    <div id="plan-entry-durations" class="plan-durations"></div>
+                    <input type="number" id="plan-entry-minutes" inputmode="numeric" min="0" max="600" class="form-input plan-input plan-minutes-input" data-i18n-placeholder="plan_minutes_ph" placeholder="Minutes" data-i18n-aria-label="plan_duration" aria-label="Duration (min)" oninput="updatePlanOrder()" hidden>
                     <p id="plan-entry-start" class="plan-sheet-hint"></p>
-                    <input type="text" id="plan-entry-note" class="form-input plan-input plan-field-wide" maxlength="300" data-i18n-placeholder="program_note_ph" placeholder="Note (optional)" data-i18n-aria-label="program_note_ph" aria-label="Note (optional)">
+                    <div class="plan-sheet-fields">
+                        <label class="plan-field is-key" id="plan-entry-key-field" hidden><span data-i18n="songbook_key_label">Key</span>
+                            <input type="text" id="plan-entry-key" maxlength="3" class="form-input plan-input">
+                        </label>
+                        <input type="text" id="plan-entry-note" class="form-input plan-input plan-field-wide" maxlength="300" data-i18n-placeholder="program_note_ph" placeholder="Note (optional)" data-i18n-aria-label="program_note_ph" aria-label="Note (optional)">
+                    </div>
                 </div>
             </div>
         </div>
         <div class="modal-footer-enhanced plan-sheet-footer">
             <button type="button" id="plan-entry-delete" class="plan-delete" onclick="deletePlanEntry()" data-i18n-aria-label="plan_delete_entry" aria-label="Delete entry" data-i18n-title="plan_delete_entry" title="Delete entry" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
             <button type="button" class="btn btn-secondary" onclick="closeModal('plan-entry-modal')" data-i18n="btn_cancel">Cancel</button>
-            <button type="button" id="plan-entry-save" class="btn btn-primary" onclick="savePlanEntry()" data-i18n="btn_save">Save</button>
+            <button type="button" id="plan-entry-save" class="btn btn-primary" onclick="savePlanEntry()" data-i18n="plan_add">Add</button>
         </div>
     </div>
 </div>
@@ -2906,58 +2911,6 @@
         </div>
     </div>
 </div>
-
-<!-- Assign / Request Group or Person for Duty Modal -->
-<div id="assign-duty-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-assign-duty">
-    <div class="modal-content modal-content-enhanced" style="max-width: 440px;">
-        <div class="modal-header-enhanced">
-            <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-event">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                </div>
-                <div>
-                    <div id="title-assign-duty" class="modal-title-main" data-i18n="duty_assign_title">Assign person or group</div>
-                    <div id="subtitle-assign-duty" class="modal-subtitle" data-i18n="duty_task_fallback">Task</div>
-                </div>
-            </div>
-            <button class="close-btn" onclick="closeModal('assign-duty-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
-        </div>
-        <div class="modal-body-enhanced" style="padding-top: 14px;">
-            <input type="hidden" id="assign-duty-role-encoded" value="">
-            <input type="hidden" id="assign-duty-replace-id" value="">
-            <input type="hidden" id="assign-duty-active-tab" value="user">
-
-            <!-- Tabs: Personen vs Gruppen -->
-            <div class="segmented-control" id="assign-duty-segmented" style="margin-bottom: 12px;">
-                <button type="button" class="segmented-tab is-active" id="assign-tab-user" onclick="window.switchAssignDutyTab('user')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                    <span data-i18n="nav_people">Members</span>
-                </button>
-                <button type="button" class="segmented-tab" id="assign-tab-group" onclick="window.switchAssignDutyTab('group')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                    <span data-i18n="groups_sidebar_title">Groups</span>
-                </button>
-            </div>
-
-            <!-- Search input -->
-            <div class="input-with-icon search-bar-wrapper" style="margin-bottom: 12px;">
-                <span class="input-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                </span>
-                <input type="text" id="assign-duty-search-input" class="form-input search-input" placeholder="Search person..." data-i18n-placeholder="duty_search_person" oninput="window.filterAssignDutyModalList(this.value)" style="width: 100%; box-sizing: border-box; font-size: 0.88rem; padding: 9px 14px 9px 40px; border-radius: 999px;">
-            </div>
-
-            <!-- Scrollable list of People or Groups -->
-            <div id="assign-duty-popup-list" class="duty-popup-picker-list" style="max-height: 290px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
-                <!-- Dynamically rendered -->
-            </div>
-        </div>
-        <div class="modal-footer-enhanced">
-            <button type="button" class="btn btn-secondary" onclick="closeModal('assign-duty-modal')" data-i18n="btn_cancel">Cancel</button>
-        </div>
-    </div>
-</div>
-
 
 <script>
     // Optimistic UI: Check if we expect to be logged in to avoid flash of login screen

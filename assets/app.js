@@ -3267,7 +3267,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, setPlanKind, renderProgramSongPicker, choosePlanSong, togglePlanInProgram, updatePlanOrder, pickPlanPerson, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
@@ -7712,8 +7712,8 @@ function renderRegistrationSection(ev) {
     loadEventAttendees(ev.id);
 }
 
-// --- One plan per event: duty roster and order of service merged. One "+" adds an entry (a task or a song, a person
-// to ask, and a switch "in the order of service"); entries in the order get their time from the start and the
+// --- One plan per event: duty roster and order of service merged. One "+" adds an entry (what: a task or a song, who:
+// people or groups to ask, when: during the event or in the order of service); entries in the order get their time from the start and the
 // durations, the others follow as "during the whole event". People are always asked through the duty roster, so
 // requests, answers, reminders and the apps keep working. Songs open in the band's key.
 let programEvent = null;
@@ -7914,49 +7914,54 @@ function openProgramSong(itemId) {
     openSong(song.id, { steps: keySteps(song.key, item.songKey) || 0 });
 }
 
-// --- One entry of the plan (page like the other editors) ---
-// mode 'new': a task or song, optionally a person to ask, optionally in the order. mode 'edit': an existing task
-// (role) and / or order item; people are then changed in the list itself.
+// --- One entry of the plan: what (a task, or a song found while typing), who (people and groups picked right in the
+// dialog) and when (during the event, or a place in the order of service). Everyone chosen is asked when saving; an
+// existing entry also shows its people with "remove".
 let planEntry = null;
-let assignPickHandler = null;
+let planWhoOptions = new Map();
+let planWhoToken = 0;
+const PLAN_DURATIONS = [2, 5, 10, 15, 30];
 
 const planRoles = () => [...new Set((currentDetailEvent?.duties || []).map(d => (d.roleName || '').trim()).filter(Boolean))];
-const planEventId = () => currentDetailEvent?.id || programEvent?.id;
+/** The people of the edited entry's task. */
+const planDuties = () => (currentDetailEvent?.duties || []).filter(d => planEntry?.role && sameName(d.roleName, planEntry.role) && hasDutyAssignee(d));
+const planAssigneeKey = data => (data.targetGroupId ? `g:${data.targetGroupId}` : `u:${data.targetUserId}`);
 
 function openPlanEntry(entry = { mode: 'new' }) {
     if (!currentDetailEvent?.canEdit) return;
     if (programEvent?.id !== currentDetailEvent.id) programItems = [];
     const item = entry.itemId ? programItems.find(i => i.id === entry.itemId) : (entry.role ? programItems.find(i => itemTask(i, [entry.role])) : null);
-    const kind = item?.songId ? 'song' : 'task';
-    planEntry = { mode: entry.mode, role: entry.role || (item ? itemTask(item, planRoles()) : null), itemId: item?.id || null, kind, songId: item?.songId || '', assignees: [] };
-    const existingName = entry.mode === 'edit' ? (entry.role || (item ? programItemTitle(item) : '')) : '';
-    setText('plan-entry-title', entry.mode === 'new' ? t('plan_new_entry', 'New entry') : existingName || t('plan_edit_entry', 'Edit entry'));
+    const editing = entry.mode === 'edit';
+    const index = item ? programItems.indexOf(item) : -1;
+    planEntry = {
+        mode: entry.mode, role: entry.role || (item ? itemTask(item, planRoles()) : null), itemId: item?.id || null, songId: item?.songId || '',
+        assignees: [], inProgram: !!item, place: index > -1 ? index : programItems.length,
+        // Without minutes an entry only sets the order; a duration gives it a time
+        customMinutes: !!item?.minutes && !PLAN_DURATIONS.includes(item.minutes), taskText: ''
+    };
+    const existingName = editing ? (entry.role || (item ? programItemTitle(item) : '')) : '';
+    setText('plan-entry-title', editing ? existingName || t('plan_edit_entry', 'Edit entry') : t('plan_new_entry', 'Add to the roster'));
     setText('plan-entry-sub', [currentDetailEvent.title, formatEventDateSpanCompact(currentDetailEvent.date, currentDetailEvent.endDate), currentDetailEvent.startTime].filter(Boolean).join(' · '));
-    setValue('plan-entry-name', item ? (item.title || '') : (entry.role || ''));
-    const nameInput = $('plan-entry-name');
-    if (nameInput) nameInput.readOnly = entry.mode === 'edit';
-    setPlanKind(kind);
-    show('plan-entry-kind', entry.mode === 'new', 'flex');
-    document.querySelector('#plan-entry-modal .plan-sheet')?.classList.toggle('is-edit', entry.mode === 'edit');
-    if (entry.mode === 'edit') {
-        show('plan-entry-name', false);
-        const songBox = $('plan-entry-song');
-        if (songBox) songBox.hidden = true;
-    }
-    const inProgram = $('plan-entry-in-program');
-    if (inProgram) inProgram.checked = !!item;
-    // Without minutes an entry only sets the order; a duration gives it a time
+    document.querySelector('#plan-entry-modal .plan-sheet')?.classList.toggle('is-edit', editing);
+    const what = $('plan-what-section');
+    if (what) what.hidden = editing;
+    setValue('plan-entry-name', '');
     setValue('plan-entry-minutes', item?.minutes || '');
     setValue('plan-entry-key', item?.songKey || '');
     setValue('plan-entry-note', item?.note || '');
-    togglePlanInProgram();
+    setValue('plan-who-search', '');
+    const picker = $('plan-who-picker');
+    if (picker) picker.hidden = true;
+    renderPlanSong();
+    renderPlanSuggestions();
     renderPlanPerson();
-    updatePlanOrder();
+    setPlanWhen(planEntry.inProgram);
     const del = $('plan-entry-delete');
-    if (del) del.hidden = entry.mode === 'new';
-    if (!songbookLoaded) loadSongs().then(renderProgramSongPicker);
+    if (del) del.hidden = !editing;
+    if (!songbookLoaded) loadSongs().then(() => { renderPlanSong(); renderPlanSuggestions(); });
+    loadEventCandidates();
     openModal('plan-entry-modal');
-    if (entry.mode === 'new') setTimeout(() => $('plan-entry-name')?.focus(), 150);
+    if (!editing) setTimeout(() => $('plan-entry-name')?.focus(), 150);
 }
 
 function openPlanEntryForItem(itemId) {
@@ -7966,56 +7971,45 @@ function openPlanEntryForRole(encodedRole) {
     openPlanEntry({ mode: 'edit', role: decodeURIComponent(encodedRole) });
 }
 
-function setPlanKind(kind) {
-    if (!planEntry) return;
-    planEntry.kind = kind;
-    $('plan-entry-kind')?.querySelectorAll('.settings-pill').forEach(pill => {
-        const on = pill.dataset.kind === kind;
-        pill.classList.toggle('is-active', on);
-        pill.setAttribute('aria-checked', String(on));
-    });
-    show('plan-entry-name', kind === 'task');
-    const songBox = $('plan-entry-song');
-    if (songBox) songBox.hidden = kind !== 'song';
-    const keyField = $('plan-entry-key-field');
-    if (keyField) keyField.hidden = kind !== 'song';
-    if (kind === 'song') {
-        setValue('program-song-search', '');
-        renderProgramSongPicker();
-    }
+/** The name the entry gets: the edited one's, else the chosen song or the typed task. */
+function planEntryName() {
+    if (!planEntry) return '';
+    if (planEntry.mode === 'edit') return planEntry.role || programItemTitle(programItems.find(i => i.id === planEntry.itemId) || {});
+    return (planEntry.songId && songs.find(s => s.id === planEntry.songId)?.title) || inputValue('plan-entry-name').trim();
 }
 
-function renderProgramSongPicker() {
-    const chosen = $('plan-entry-song-chosen');
+/** A chosen song takes the place of the name field (a new entry can take it back with "x"). */
+function renderPlanSong() {
     const song = planEntry?.songId ? songs.find(s => s.id === planEntry.songId) : null;
+    const chosen = $('plan-entry-song-chosen');
     if (chosen) {
         chosen.hidden = !song;
-        chosen.innerHTML = song ? `${svgIcon('music', 15)}<span>${escapeHtml(song.title)}</span>${song.key ? `<span class="program-key">${escapeHtml(song.key)}</span>` : ''}` : '';
+        chosen.innerHTML = song ? `${svgIcon('music', 15)}<span>${escapeHtml(song.title)}</span>${song.key ? `<span class="program-key">${escapeHtml(song.key)}</span>` : ''}
+            <button type="button" class="plan-entry-remove" onclick="window.clearPlanSong()" aria-label="${escapeHtml(t('btn_remove', 'Remove'))}" title="${escapeHtml(t('btn_remove', 'Remove'))}">${svgIcon('x', 14, 2.5)}</button>` : '';
     }
-    const target = $('program-song-results');
-    if (!target) return;
-    // Editing keeps its song; a new song entry shows the songbook to choose from
-    const search = $('program-song-search');
-    if (search) search.hidden = planEntry?.mode === 'edit';
-    if (planEntry?.mode === 'edit') {
-        target.innerHTML = '';
-        return;
-    }
-    if (!songbookLoaded) {
-        target.innerHTML = '<div class="polls-loading"><span class="spinner"></span></div>';
-        return;
-    }
-    const query = normalizeSearch(inputValue('program-song-search').trim());
-    if (planEntry?.songId && !query) {
-        target.innerHTML = '';
-        return;
-    }
-    const found = (query ? songs.filter(s => s._search.includes(query)) : songs).slice(0, 30);
-    target.innerHTML = found.map(s => `
-        <button type="button" class="program-song-pick${s.id === planEntry?.songId ? ' is-chosen' : ''}" onclick="window.choosePlanSong(${jsArg(s.id)})">
-            <span class="program-song-pick-title">${escapeHtml(s.title)}</span>
-            <span class="program-song-pick-meta">${escapeHtml([s.artist, s.key].filter(Boolean).join(' · '))}</span>
-        </button>`).join('') || `<p class="program-empty">${t('songbook_no_match', 'No song found')}</p>`;
+    show('plan-entry-name', !song);
+    const keyField = $('plan-entry-key-field');
+    if (keyField) keyField.hidden = !planEntry?.songId;
+}
+
+/** While typing: the matching songs of the songbook, and the typed text as a task of its own. */
+function renderPlanSuggestions() {
+    const box = $('plan-entry-suggest');
+    if (!box || !planEntry) return;
+    const text = inputValue('plan-entry-name').trim();
+    const query = normalizeSearch(text);
+    const found = query && songbookLoaded && !planEntry.songId && text !== planEntry.taskText ? songs.filter(s => normalizeSearch(`${s.title} ${s.artist || ''}`).includes(query)).slice(0, 4) : [];
+    box.hidden = !found.length;
+    box.innerHTML = found.length ? found.map(s => `
+        <button type="button" class="plan-suggest-option" onclick="window.choosePlanSong(${jsArg(s.id)})">
+            <span class="plan-suggest-icon is-song">${svgIcon('music', 15)}</span>
+            <span class="plan-suggest-text"><span class="plan-suggest-title"><span>${escapeHtml(s.title)}</span>${s.key ? `<span class="program-key">${escapeHtml(s.key)}</span>` : ''}</span><span class="plan-suggest-sub">${escapeHtml([t('plan_kind_song', 'Song'), s.artist].filter(Boolean).join(' · '))}</span></span>
+        </button>`).join('') + `
+        <button type="button" class="plan-suggest-option" onclick="window.keepPlanTask()">
+            <span class="plan-suggest-icon">${svgIcon('plus', 15, 2.5)}</span>
+            <span class="plan-suggest-text"><span class="plan-suggest-title"><span>${escapeHtml(t('plan_as_task', '"{name}" as a task', { name: text }))}</span></span></span>
+        </button>` : '';
+    updatePlanOrder();
 }
 
 function choosePlanSong(songId) {
@@ -8023,51 +8017,30 @@ function choosePlanSong(songId) {
     planEntry.songId = songId;
     const song = songs.find(s => s.id === songId);
     if (song && !inputValue('plan-entry-key')) setValue('plan-entry-key', song.key || '');
-    setValue('program-song-search', '');
-    renderProgramSongPicker();
+    setValue('plan-entry-name', '');
+    renderPlanSong();
+    renderPlanSuggestions();
+    // Songs are sung at a moment of the event: they go into the order right away
+    setPlanWhen(true);
 }
 
-function togglePlanInProgram() {
-    const on = !!$('plan-entry-in-program')?.checked;
-    const fields = $('plan-entry-program-fields');
-    if (fields) fields.hidden = !on;
-    fillPlanPositions();
-    updatePlanOrder();
-}
-
-/** The place in the order: "At the start" or "After …" each other item (the entry itself left out). */
-function fillPlanPositions() {
-    const select = $('plan-entry-position');
-    if (!select || !planEntry) return;
-    const others = programItems.filter(i => i.id !== planEntry.itemId);
-    const index = planEntry.itemId ? programItems.findIndex(i => i.id === planEntry.itemId) : -1;
-    const current = index > -1 ? index : others.length;
-    select.innerHTML = [`<option value="0">${escapeHtml(t('plan_at_start', 'At the start'))}</option>`]
-        .concat(others.map((item, i) => `<option value="${i + 1}">${escapeHtml(t('plan_after', 'After "{name}"', { name: programItemTitle(item) }))}</option>`))
-        .join('');
-    select.value = String(current);
-}
-
-/** The time this entry would start at (only when the event has a start time). */
-function updatePlanOrder() {
+function clearPlanSong() {
     if (!planEntry) return;
-    const others = programItems.filter(i => i.id !== planEntry.itemId);
-    const place = Math.min(Number(inputValue('plan-entry-position') || others.length), others.length);
-    const start = currentDetailEvent?.startTime || '';
-    const hint = $('plan-entry-start');
-    if (!hint) return;
-    const minutes = parseInt(inputValue('plan-entry-minutes'), 10) || 0;
-    if (!/^\d{1,2}:\d{2}$/.test(start)) {
-        hint.textContent = '';
-        return;
-    }
-    const time = addMinutes(start, programTotal(others.slice(0, place)));
-    hint.textContent = minutes
-        ? t('plan_starts_hint', 'Starts at {time}, until {end}', { time, end: addMinutes(time, minutes) })
-        : t('plan_order_only', 'Without a duration it only sets the order.');
+    planEntry.songId = '';
+    setValue('plan-entry-key', '');
+    renderPlanSong();
+    renderPlanSuggestions();
+    $('plan-entry-name')?.focus();
 }
 
-/** After a change from the entry page: fresh data in the list behind it, the page stays open. */
+function keepPlanTask() {
+    if (!planEntry) return;
+    planEntry.taskText = inputValue('plan-entry-name').trim();
+    renderPlanSuggestions();
+    $('plan-entry-name')?.focus();
+}
+
+/** After a change from the entry dialog: fresh data in the list behind it, the dialog stays open. */
 async function reloadPlanEvent() {
     await loadEventsData();
     const ev = appEvents.find(e => e.id === currentDetailEvent?.id);
@@ -8077,37 +8050,6 @@ async function reloadPlanEvent() {
     updateDutyProgress(ev.duties || []);
     renderGroupedDuties(ev.duties || [], ev);
     updateDutyPlanHeader();
-}
-
-/** The task an existing entry asks people for: its own, else one named after the item (the item then points to it). */
-async function ensurePlanRole() {
-    if (planEntry.role) return planEntry.role;
-    const item = programItems.find(i => i.id === planEntry.itemId);
-    if (!item) return null;
-    const role = programItemTitle(item).trim();
-    if (!sameName(item.who, role)) {
-        const items = programItems.map(i => (i.id === item.id ? { ...i, who: role } : i));
-        const data = await apiJson(`/events/${encodeURIComponent(currentDetailEvent.id)}/program`, 'PUT', { items }, t('program_save_failed', 'The order of service could not be saved'));
-        programItems = data.items || items;
-    }
-    planEntry.role = role;
-    return role;
-}
-
-/** Existing entry: ask right away (an open place of the task is filled first). */
-async function askPlanPerson(data) {
-    try {
-        const role = await ensurePlanRole();
-        if (!role) return;
-        const slot = (currentDetailEvent.duties || []).find(d => sameName(d.roleName, role) && d.status === 'open');
-        await apiJson(slot ? `/events/duties/${slot.id}/assign` : `/events/${encodeURIComponent(currentDetailEvent.id)}/duties`, 'POST',
-            slot ? { ...data, sendEmail: true } : { roleName: role, ...data, sendEmail: true }, t('duty_assign_error', 'Failed to assign'));
-        showToast(data.targetGroupId ? t('duty_group_assigned', 'Group assigned successfully!') : t('duty_request_sent', 'Duty request sent & email delivered!'));
-        await reloadPlanEvent();
-        renderPlanPerson();
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
 }
 
 async function removePlanPerson(dutyId) {
@@ -8121,70 +8063,209 @@ async function removePlanPerson(dutyId) {
         if ((ev.duties || []).filter(d => sameName(d.roleName, duty.roleName)).length === 1) await api(`/events/${ev.id}/duties`, 'POST', { roleName: duty.roleName });
         await reloadPlanEvent();
         renderPlanPerson();
+        if (!$('plan-who-picker')?.hidden) renderPlanWhoList();
     } catch (err) {
         showToast(err.message, 'error');
     }
 }
 
-/** Who: new entries keep the one person / group to ask; existing entries show their people with "remove". */
+const planAssigneeBadge = data => (data.targetGroupId
+    ? `<span class="plan-person-icon">${svgIcon('users', 11, 2.5)}</span>`
+    : renderAvatarWrap(data.targetUserId, planWhoOptions.get(planAssigneeKey(data))?.label, { wrapClass: 'plan-person-avatar', imgClass: 'plan-person-img', initialsClass: 'plan-person-initials' }));
+
+/** Who: the people already on the entry (with "remove"), the ones chosen to be asked when saving, and "+ Ask …". */
 function renderPlanPerson() {
     const box = $('plan-entry-person');
-    const editing = planEntry?.mode === 'edit';
-    show('plan-entry-person-btn', true, 'flex');
-    const asked = editing ? (currentDetailEvent?.duties || []).some(d => planEntry.role && sameName(d.roleName, planEntry.role) && hasDutyAssignee(d)) : planEntry?.assignees.length > 0;
-    setText('plan-entry-person-label', asked ? t('plan_ask_more', 'Ask someone else') : t('plan_ask_person', 'Ask a person or group'));
-    if (!box) return;
-    if (editing) {
-        const people = (currentDetailEvent?.duties || []).filter(d => planEntry.role && sameName(d.roleName, planEntry.role) && hasDutyAssignee(d));
-        box.innerHTML = people.map(d => `
-            <span class="plan-entry-person-row">
-                ${planPeople([d])}
-                <button type="button" class="plan-entry-remove" onclick="window.removePlanPerson(${jsArg(d.id)})" aria-label="${escapeHtml(t('duty_remove_entry', 'Remove entry'))}" title="${escapeHtml(t('duty_remove_entry', 'Remove entry'))}">${svgIcon('x', 14, 2.5)}</button>
-            </span>`).join('') || `<span class="plan-open">${t('plan_open', 'still open')}</span>`;
-        return;
+    if (!box || !planEntry) return;
+    const existing = planEntry.mode === 'edit' ? planDuties() : [];
+    const remove = (onclick, label) => `<button type="button" class="plan-chip-remove" onclick="${onclick}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${svgIcon('x', 12, 2.6)}</button>`;
+    const chips = existing.map(d => `<span class="plan-chip">${planPeople([d])}${remove(`window.removePlanPerson(${jsArg(d.id)})`, t('duty_remove_entry', 'Remove entry'))}</span>`)
+        .concat(planEntry.assignees.map((a, index) => `<span class="plan-chip is-new"><span class="plan-person">${planAssigneeBadge(a.data)}<span>${escapeHtml(a.label)}</span></span>${remove(`window.clearPlanPerson(${index})`, t('btn_remove', 'Remove'))}</span>`));
+    if ($('plan-who-picker')?.hidden !== false) {
+        const label = chips.length ? t('plan_ask_more', 'Ask someone else') : t('plan_ask_person', 'Ask a person or group');
+        chips.push(`<button type="button" class="plan-chip is-add" onclick="window.pickPlanPerson()">${svgIcon('plus', 13, 2.6)}<span>${escapeHtml(label)}</span></button>`);
     }
-    // New entry: everyone chosen so far (asked when saving), each can go again
-    box.innerHTML = (planEntry?.assignees || []).map((a, index) => `
-        <span class="plan-entry-person-row">
-            <span class="plan-person">${a.data.targetGroupId ? `<span class="plan-person-icon">${svgIcon('users', 11, 2.5)}</span>` : renderAvatarWrap(a.data.targetUserId, a.label, { wrapClass: 'plan-person-avatar', imgClass: 'plan-person-img', initialsClass: 'plan-person-initials' })}<span>${escapeHtml(a.label)}</span></span>
-            <button type="button" class="plan-entry-remove" onclick="window.clearPlanPerson(${index})" aria-label="${escapeHtml(t('btn_remove', 'Remove'))}" title="${escapeHtml(t('btn_remove', 'Remove'))}">${svgIcon('x', 14, 2.5)}</button>
-        </span>`).join('');
+    box.innerHTML = chips.join('');
+    box.hidden = !chips.length;
+    updatePlanSaveLabel();
 }
 
+/** Opens the list of people and groups right in the dialog (no second pop-up). */
 function pickPlanPerson() {
-    const name = planEntry?.kind === 'song' ? songs.find(s => s.id === planEntry.songId)?.title : inputValue('plan-entry-name').trim();
-    openAssignDutyModalForRole(encodeURIComponent(name || t('duty_task_fallback', 'Task')));
-    // New entries keep the choice until saving; existing ones ask right away
-    assignPickHandler = data => {
-        const { label, ...rest } = data;
-        if (planEntry.mode === 'edit') return askPlanPerson(rest);
-        const same = a => (rest.targetUserId && a.data.targetUserId === rest.targetUserId) || (rest.targetGroupId && a.data.targetGroupId === rest.targetGroupId);
-        if (!planEntry.assignees.some(same)) planEntry.assignees.push({ data: rest, label: label || t('details_person', 'Person') });
-        renderPlanPerson();
-    };
+    const picker = $('plan-who-picker');
+    if (!picker || !planEntry) return;
+    picker.hidden = false;
+    renderPlanPerson();
+    renderPlanWhoList();
+    $('plan-who-search')?.focus();
+}
+
+/** People and groups in one list: tapping one chooses it (or takes it back); people get a request, groups are set. */
+async function renderPlanWhoList() {
+    const list = $('plan-who-list');
+    if (!list || !planEntry) return;
+    const token = ++planWhoToken;
+    if (!eventCandidatesCache) {
+        list.innerHTML = `<div class="plan-who-empty">${t('loading_short', 'Loading...')}</div>`;
+        await loadEventCandidates();
+        if (token !== planWhoToken || !planEntry) return;
+    }
+    const term = normalizeSearch(inputValue('plan-who-search').trim());
+    const matches = (...texts) => !term || texts.some(text => normalizeSearch(text || '').includes(term));
+    const taken = new Set((planEntry.mode === 'edit' ? planDuties() : []).filter(d => d.status !== 'declined')
+        .map(d => (d.status === 'assigned' && d.assignedGroup ? `g:${d.assignedGroup}` : `u:${d.requestedUser || d.assignedUser}`)));
+    const people = (Array.isArray(eventCandidatesCache) ? eventCandidatesCache : []).map(c => {
+        const label = c.name || c.email || t('events_member_fallback', 'Member');
+        return { key: `u:${c.id}`, data: { targetUserId: c.id, sendEmail: true }, label, search: [label, term ? c.email : ''], sub: t('plan_who_person', 'Gets a request') };
+    });
+    const groups = (Array.isArray(eventGroupsCache) && eventGroupsCache.length ? eventGroupsCache : groupList()).map(g => {
+        const label = g.name || g.id;
+        return { key: `g:${g.id || g.name}`, data: { targetGroupId: g.id || g.name }, label, search: [label], sub: t('plan_who_group', 'Group · assigned directly'), group: true };
+    });
+    planWhoOptions = new Map([...people, ...groups].map(o => [o.key, o]));
+    const shown = [...people, ...groups].filter(o => matches(...o.search));
+    list.innerHTML = shown.map(o => {
+        const done = taken.has(o.key);
+        const chosen = done || planEntry.assignees.some(a => planAssigneeKey(a.data) === o.key);
+        const badge = o.group ? `<span class="plan-who-avatar is-group">${svgIcon('users', 15, 2.2)}</span>`
+            : renderAvatarWrap(o.data.targetUserId, o.label, { wrapClass: 'plan-who-avatar', imgClass: 'plan-person-img', initialsClass: 'plan-who-initials' });
+        return `<button type="button" class="plan-who-option${chosen ? ' is-chosen' : ''}" role="checkbox" aria-checked="${chosen}"${done ? ' disabled' : ` onclick="window.togglePlanWho(${jsArg(o.key)})"`}>
+            ${badge}<span class="plan-who-text"><span class="plan-who-name">${escapeHtml(o.label)}</span><span class="plan-who-sub">${escapeHtml(done ? t('plan_who_already', 'Already on this entry') : o.sub)}</span></span>
+            <span class="plan-who-check">${svgIcon('check', 13, 3)}</span>
+        </button>`;
+    }).join('') || `<div class="plan-who-empty">${t('plan_who_none', 'Nobody found')}</div>`;
+}
+
+function togglePlanWho(key) {
+    const option = planWhoOptions.get(key);
+    if (!planEntry || !option) return;
+    const index = planEntry.assignees.findIndex(a => planAssigneeKey(a.data) === key);
+    if (index > -1) planEntry.assignees.splice(index, 1);
+    else planEntry.assignees.push({ data: option.data, label: option.label });
+    renderPlanPerson();
+    renderPlanWhoList();
 }
 
 function clearPlanPerson(index) {
     if (!planEntry) return;
     planEntry.assignees.splice(index, 1);
     renderPlanPerson();
+    if (!$('plan-who-picker')?.hidden) renderPlanWhoList();
+}
+
+/** The button says what happens: "Add", "Add & ask Clara", "Save & ask 3 people". */
+function updatePlanSaveLabel() {
+    const btn = $('plan-entry-save');
+    if (!btn || !planEntry) return;
+    const asked = planEntry.assignees;
+    const who = asked.length > 1 ? t('plan_ask_count', '{count} people', { count: asked.length })
+        : asked[0]?.data.targetGroupId ? asked[0].label : String(asked[0]?.label || '').split(/\s+/)[0];
+    btn.textContent = planEntry.mode === 'edit'
+        ? (asked.length ? t('plan_save_ask', 'Save & ask {who}', { who }) : t('btn_save', 'Save'))
+        : (asked.length ? t('plan_add_ask', 'Add & ask {who}', { who }) : t('plan_add', 'Add'));
+}
+
+/** When: during the whole event, or at a place in the order of service. */
+function setPlanWhen(inProgram) {
+    if (!planEntry) return;
+    planEntry.inProgram = !!inProgram;
+    $('plan-entry-when')?.querySelectorAll('.segmented-tab').forEach(tab => {
+        const on = (tab.dataset.when === 'order') === planEntry.inProgram;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-checked', String(on));
+    });
+    const fields = $('plan-entry-program-fields');
+    if (fields) fields.hidden = !planEntry.inProgram;
+    updatePlanOrder();
+}
+
+function setPlanPlace(place) {
+    if (!planEntry) return;
+    planEntry.place = place;
+    updatePlanOrder();
+}
+
+/** A duration pill: again on the chosen one takes it back (the entry then only sets the order); "Other" types it. */
+function setPlanMinutes(minutes) {
+    if (!planEntry) return;
+    planEntry.customMinutes = minutes === 'other';
+    if (planEntry.customMinutes) {
+        updatePlanOrder();
+        $('plan-entry-minutes')?.focus();
+        return;
+    }
+    setValue('plan-entry-minutes', (parseInt(inputValue('plan-entry-minutes'), 10) || 0) === minutes ? '' : String(minutes));
+    updatePlanOrder();
+}
+
+/** The order with this entry as a highlighted slot between the others (tap a gap to move it), the duration pills and
+ * the times that follow from them (only when the event has a start time). */
+function updatePlanOrder() {
+    if (!planEntry) return;
+    const others = programItems.filter(i => i.id !== planEntry.itemId);
+    const place = Math.min(Math.max(0, planEntry.place), others.length);
+    planEntry.place = place;
+    const minutes = Math.max(0, parseInt(inputValue('plan-entry-minutes'), 10) || 0);
+    const start = currentDetailEvent?.startTime || '';
+    const timed = /^\d{1,2}:\d{2}$/.test(start);
+    const list = [...others];
+    list.splice(place, 0, { minutes });
+    const times = programTimes(list, start);
+    const when = i => escapeHtml(times[i] || `${i + 1}.`);
+    const order = $('plan-entry-order');
+    if (order) {
+        const parts = [];
+        for (let p = 0; p <= others.length; p++) {
+            if (p === place) {
+                parts.push(`<div class="plan-order-slot"><span class="plan-order-time">${when(place)}</span><span class="plan-order-title">${escapeHtml(planEntryName() || t('plan_this_entry', 'This entry'))}</span><span class="plan-order-here">${t('plan_here', 'here')}</span></div>`);
+            } else {
+                const label = p === 0 ? t('plan_at_start', 'At the start') : t('plan_after', 'After "{name}"', { name: programItemTitle(others[p - 1]) });
+                parts.push(`<button type="button" class="plan-order-gap" onclick="window.setPlanPlace(${p})" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span>${svgIcon('plus', 11, 3)}</span></button>`);
+            }
+            if (p < others.length) parts.push(`<div class="plan-order-row"><span class="plan-order-time">${when(p < place ? p : p + 1)}</span><span class="plan-order-title">${escapeHtml(programItemTitle(others[p]))}</span></div>`);
+        }
+        order.innerHTML = parts.join('');
+        const slot = order.querySelector('.plan-order-slot');
+        if (slot && order.scrollHeight > order.clientHeight) order.scrollTop = slot.offsetTop - (order.clientHeight - slot.offsetHeight) / 2;
+    }
+    const custom = planEntry.customMinutes || (minutes > 0 && !PLAN_DURATIONS.includes(minutes));
+    const pills = $('plan-entry-durations');
+    if (pills) {
+        const pill = (arg, label, on) => `<button type="button" class="plan-duration${on ? ' is-active' : ''}" aria-pressed="${on}" onclick="window.setPlanMinutes(${arg})">${escapeHtml(label)}</button>`;
+        pills.innerHTML = PLAN_DURATIONS.map(m => pill(m, String(m), !custom && m === minutes)).join('') + pill(jsArg('other'), t('plan_minutes_other', 'Other'), custom);
+    }
+    const input = $('plan-entry-minutes');
+    if (input) input.hidden = !custom;
+    const hint = $('plan-entry-start');
+    if (hint) {
+        hint.textContent = !timed ? ''
+            : minutes ? t('plan_starts_hint', 'Starts at {time}, until {end}', { time: times[place], end: addMinutes(times[place], minutes) })
+                : t('plan_order_only', 'Without a duration it only sets the order.');
+    }
+}
+
+/** Asks everyone chosen for the task: an open place of it is filled first, then new places are added. */
+async function askPlanPeople(eventId, roleName) {
+    const open = (currentDetailEvent?.duties || []).filter(d => sameName(d.roleName, roleName) && d.status === 'open');
+    for (const a of planEntry.assignees) {
+        const slot = open.shift();
+        await apiJson(slot ? `/events/duties/${slot.id}/assign` : `/events/${encodeURIComponent(eventId)}/duties`, 'POST',
+            slot ? { ...a.data, sendEmail: true } : { roleName, ...a.data, sendEmail: true }, t('duty_assign_error', 'Failed to assign'));
+    }
 }
 
 async function savePlanEntry() {
     const ev = currentDetailEvent;
     if (!planEntry || !ev) return;
-    const song = planEntry.kind === 'song' ? songs.find(s => s.id === planEntry.songId) : null;
-    if (planEntry.kind === 'song' && !song && planEntry.mode === 'new') return showToast(t('plan_song_missing', 'Please choose a song.'), 'error');
+    const song = planEntry.songId ? songs.find(s => s.id === planEntry.songId) : null;
     const existingItem = planEntry.itemId ? programItems.find(i => i.id === planEntry.itemId) : null;
-    const name = planEntry.mode === 'edit'
-        ? (planEntry.role || programItemTitle(existingItem || {}))
-        : (song ? song.title : inputValue('plan-entry-name').trim());
+    const name = planEntryName();
     if (!name) {
         showToast(t('plan_name_missing', 'Please enter a name.'), 'error');
         $('plan-entry-name')?.focus();
         return;
     }
-    const inProgram = !!$('plan-entry-in-program')?.checked;
+    const inProgram = planEntry.inProgram;
     const minutesValue = inputValue('plan-entry-minutes');
     const minutes = minutesValue === '' ? null : Math.max(0, Math.min(600, parseInt(minutesValue, 10) || 0));
     const fields = { minutes, note: inputValue('plan-entry-note').trim(), songKey: song || existingItem?.songId ? inputValue('plan-entry-key').trim() : '' };
@@ -8194,11 +8275,10 @@ async function savePlanEntry() {
         const roles = planRoles();
         const roleName = planEntry.role || roles.find(r => sameName(r, name)) || name;
         const hasTask = roles.some(r => sameName(r, roleName));
+        const asking = planEntry.assignees.length > 0;
         // People are asked through the duty roster (requests, reminders, apps)
-        if (planEntry.assignees.length) {
-            for (const a of planEntry.assignees) {
-                await apiJson(`/events/${encodeURIComponent(ev.id)}/duties`, 'POST', { roleName, ...a.data, sendEmail: true }, t('duty_assign_error', 'Failed to assign'));
-            }
+        if (asking) {
+            await askPlanPeople(ev.id, roleName);
         } else if (!hasTask && (!inProgram || planEntry.mode === 'edit')) {
             // A task without a moment always stays on the roster (also when it leaves the order)
             await apiJson(`/events/${encodeURIComponent(ev.id)}/duties`, 'POST', { roleName }, t('duty_task_add_error', 'Failed to create the task'));
@@ -8206,12 +8286,12 @@ async function savePlanEntry() {
         let items = programItems.map(i => ({ ...i }));
         const linked = existingItem || items.find(i => itemTask(i, [roleName]));
         if (inProgram) {
+            // An item that gets its first people points to their task
             const entry = linked
-                ? { ...linked, ...fields }
-                : { id: '', title: song ? '' : name, who: planEntry.assignees.length || hasTask || planEntry.mode === 'edit' ? roleName : '', songId: song?.id || '', ...fields };
+                ? { ...linked, ...fields, ...(asking && !itemTask(linked, roles) && !sameName(linked.who, roleName) ? { who: roleName } : {}) }
+                : { id: '', title: song ? '' : name, who: asking || hasTask || planEntry.mode === 'edit' ? roleName : '', songId: song?.id || '', ...fields };
             items = items.filter(i => i !== linked && i.id !== linked?.id);
-            const place = Math.min(Math.max(0, Number(inputValue('plan-entry-position') || items.length)), items.length);
-            items.splice(place, 0, entry);
+            items.splice(Math.min(planEntry.place, items.length), 0, entry);
         } else if (linked) {
             items = items.filter(i => i.id !== linked.id);
         }
@@ -8220,7 +8300,7 @@ async function savePlanEntry() {
             programItems = data.items || items;
         }
         closeModal('plan-entry-modal', false, true);
-        showToast(planEntry.assignees.length ? t('duty_request_sent', 'Duty request sent & email delivered!') : t('plan_saved', 'Saved'));
+        showToast(planEntry.assignees.some(a => a.data.targetUserId) ? t('duty_request_sent', 'Duty request sent & email delivered!') : t('plan_saved', 'Saved'));
         await loadEventsData();
         refreshDetailEvent(true);
     } catch (err) {
@@ -8786,102 +8866,6 @@ function renderGroupedDuties(duties, ev) {
     container.innerHTML = renderDutyPlan(duties || [], programEvent?.id === ev.id ? programItems : [], ev);
 }
 
-// --- Assign duty pop-up (persons / groups) ---
-function openAssignDutyModalForRole(encodedRoleName) {
-    assignPickHandler = null;
-    setValue('assign-duty-role-encoded', encodedRoleName);
-    setValue('assign-duty-replace-id', '');
-    setText('subtitle-assign-duty', t('duty_assign_subtitle', 'Task: {name}', { name: decodeURIComponent(encodedRoleName) }));
-    setValue('assign-duty-search-input', '');
-    switchAssignDutyTab('user');
-    openModal('assign-duty-modal');
-}
-
-function switchAssignDutyTab(type) {
-    setValue('assign-duty-active-tab', type);
-    $('assign-tab-user')?.classList.toggle('is-active', type === 'user');
-    $('assign-tab-group')?.classList.toggle('is-active', type === 'group');
-    const search = $('assign-duty-search-input');
-    if (search) search.placeholder = type === 'user' ? t('duty_search_person', 'Search person...') : t('duty_search_group', 'Search group...');
-    renderAssignDutyModalList(search ? search.value : '');
-}
-
-const pickerOption = ({ name, subtitle, badgeHtml, btnText, btnClass, onclick }) => `
-    <div class="duty-picker-option" onclick="${onclick}">
-        <div class="duty-picker-option-left">
-            ${badgeHtml}
-            <div class="duty-picker-option-info">
-                <span class="duty-picker-option-name">${escapeHtml(name || '')}</span>
-                ${subtitle ? `<span class="duty-picker-option-sub">${escapeHtml(subtitle)}</span>` : ''}
-            </div>
-        </div>
-        <button type="button" class="btn ${btnClass} duty-picker-btn-action">${escapeHtml(btnText)}</button>
-    </div>`;
-
-let dutyPickerToken = 0;
-async function renderAssignDutyModalList(filterText = '') {
-    const listEl = $('assign-duty-popup-list');
-    if (!listEl) return;
-    const token = ++dutyPickerToken;
-    const isUserTab = (inputValue('assign-duty-active-tab') || 'user') === 'user';
-    const term = (filterText || '').trim().toLowerCase();
-    const matches = text => !term || (text || '').toLowerCase().includes(term);
-    const notice = text => `<div style="padding: 14px; font-size: 0.8rem; color: var(--text-secondary); text-align: center;">${text}</div>`;
-    listEl.innerHTML = notice(t('loading_short', 'Loading...'));
-    await loadEventCandidates();
-    if (token !== dutyPickerToken) return;
-    if (isUserTab) {
-        const matched = (Array.isArray(eventCandidatesCache) ? eventCandidatesCache : []).filter(c => matches(c.name) || (term && matches(c.email)));
-        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_person', 'No matching person found.')) : matched.map(c => {
-            const name = c.name || c.email || t('events_member_fallback', 'Member');
-            return pickerOption({
-                name,
-                subtitle: c.email || '',
-                badgeHtml: renderAvatarWrap(c.id, name, { style: 'width: 36px; height: 36px; font-size: 0.8rem;' }),
-                btnText: t('duty_btn_request', 'Request'),
-                btnClass: 'btn-primary',
-                onclick: `window.selectDutyAssignee({ targetUserId: ${jsArg(c.id)}, sendEmail: true, label: ${jsArg(name)} })`
-            });
-        }).join('');
-    } else {
-        const groups = Array.isArray(eventGroupsCache) && eventGroupsCache.length > 0 ? eventGroupsCache : groupList();
-        const matched = groups.filter(g => matches(g.name || g.id));
-        listEl.innerHTML = matched.length === 0 ? notice(t('duty_no_matching_group', 'No matching group found.')) : matched.map(g => pickerOption({
-            name: g.name || g.id,
-            subtitle: t('duty_assign_group_fixed', 'Assign group directly'),
-            badgeHtml: '<div class="duty-assignee-group-badge" style="width: 34px; height: 34px; font-size: 0.95rem;">👥</div>',
-            btnText: t('admin_assign_short', 'Assign'),
-            btnClass: 'btn-secondary',
-            onclick: `window.selectDutyAssignee({ targetGroupId: ${jsArg(g.id || g.name || g.id)}, label: ${jsArg(g.name || g.id)} })`
-        })).join('');
-    }
-}
-
-function selectDutyAssignee(assignData) {
-    if (assignPickHandler) {
-        const pick = assignPickHandler;
-        assignPickHandler = null;
-        closeModal('assign-duty-modal');
-        pick(assignData);
-        return;
-    }
-    const encodedRoleName = inputValue('assign-duty-role-encoded');
-    const replaceDutyId = inputValue('assign-duty-replace-id');
-    closeModal('assign-duty-modal');
-    if (currentDetailEvent && encodedRoleName) assignToDutyRole(currentDetailEvent.id, encodedRoleName, assignData, replaceDutyId);
-}
-
-async function assignToDutyRole(eventId, encodedRoleName, { label, ...assignData }, replaceDutyId = '') {
-    if (!eventId) return;
-    const roleName = decodeURIComponent(encodedRoleName);
-    // Fill an existing open slot of this task before creating a new one
-    const slotId = replaceDutyId || (Array.isArray(currentDetailEvent?.duties) ? currentDetailEvent.duties.find(d => (d.roleName || '').trim() === roleName.trim() && d.status === 'open')?.id : null);
-    await eventAction(slotId ? `/events/duties/${slotId}/assign` : `/events/${eventId}/duties`, 'POST', slotId ? { ...assignData, sendEmail: true } : { roleName, ...assignData, sendEmail: true }, {
-        success: assignData.targetGroupId ? t('duty_group_assigned', 'Group assigned successfully!') : t('duty_request_sent', 'Duty request sent & email delivered!'),
-        error: t('duty_assign_error', 'Failed to assign')
-    });
-}
-
 async function toggleEventRegistration(eventId, currentStatus) {
     if (!currentUser) return;
     const cancel = currentStatus === 'registered' || currentStatus === 'waitlist';
@@ -9244,7 +9228,7 @@ Object.assign(window, {
     openEventShare, toggleEventPublic, copyEventShareLink, sendEventShareLink, openGuestForm, submitGuestRegistration, cancelGuestRegistration,
     showGuestSignIn, closeGuestSignIn,
     switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, 
-     openAssignDutyModalForRole, switchAssignDutyTab, selectDutyAssignee, toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
+     toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
     enterDetailEditMode, cancelDetailEditMode, saveDetailEditMode, openNewEventDetailModal, setDetailEditType, toggleDetailMultiDay,
     toggleDetailRegFields, autoResizeDetailTextarea,
     handleEventsSearchInput: setEventsSearch,
@@ -9256,7 +9240,6 @@ Object.assign(window, {
         showPastEvents = !showPastEvents;
         renderEvents();
     },
-    filterAssignDutyModalList: renderAssignDutyModalList,
     deleteCurrentEventFromDetail: () => {
         if (!currentDetailEvent) return;
         const eventId = currentDetailEvent.id;
