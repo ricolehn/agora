@@ -295,6 +295,9 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
     margin: 10px 0 10px 5px; text-transform: uppercase; letter-spacing: 0.5px;
     display: flex; align-items: center; gap: 8px;
 }
+.list-section-title[hidden] { display: none; }
+.people-no-match { margin: 8px 0; padding: 24px 12px; text-align: center; font-size: 0.9rem; color: var(--text-secondary); }
+.people-no-match[hidden] { display: none; }
 .list-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); opacity: 0.6; }
 
 /* Wrapper for the whole card item */
@@ -9487,6 +9490,12 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 .notif-channels { display: flex; flex-direction: column; border: 1px solid var(--border-light); border-radius: 16px; overflow: hidden; }
 .notif-channel, .notif-kind { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--surface); min-width: 0; }
 .notif-channel + .notif-channel, .notif-kind + .notif-kind { border-top: 1px solid var(--border-light); }
+/* Push on this device (installed app): a quiet status line under the push switch, with "Allow" or "Send test" */
+.notif-device { display: flex; align-items: center; gap: 12px; padding: 10px 14px 12px; background: var(--surface); min-width: 0; }
+.notif-device-dot { width: 8px; height: 8px; margin: 0 13px; flex-shrink: 0; border-radius: 50%; background: var(--border); }
+.notif-device.is-active .notif-device-dot { background: var(--success); }
+.notif-device .btn { flex-shrink: 0; }
+.notif-device + .notif-channel { border-top: 1px solid var(--border-light); }
 .notif-channel-icon {
     width: 38px;
     height: 38px;

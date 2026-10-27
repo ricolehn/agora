@@ -111,8 +111,9 @@ function debounce(fn, wait) {
 }
 
 /**
- * Runs an action and reports a failure (alert, or a toast with `toast`): the message is a string or a function of
- * the error. `button` shows the loading state on a button meanwhile. Resolves to true on success.
+ * Runs an action and reports a failure as a toast (of type `toast`, an error by default - no blocking browser
+ * dialog): the message is a string or a function of the error. `button` shows the loading state on a button
+ * meanwhile. Resolves to true on success.
  */
 async function attempt(action, failure, { toast = null, button = null, loading = t('setup_btn_saving', 'Saving...') } = {}) {
     if (button) setButtonLoading(button, true, loading);
@@ -122,8 +123,7 @@ async function attempt(action, failure, { toast = null, button = null, loading =
     } catch (err) {
         console.error(err);
         const message = typeof failure === 'function' ? failure(err) : failure;
-        if (toast) showToast(message, toast);
-        else alert(message);
+        showToast(message, toast || 'error');
         return false;
     } finally {
         if (button) setButtonLoading(button, false);
@@ -907,9 +907,17 @@ async function flushRemoteUpdates() {
     }
 }
 
+let lastRefreshErrorAt = 0;
+// After a lost connection the changes made in the meantime never arrive as live updates: reload everything
+let sseLost = false;
+
 function connectSSE() {
     if (sseConnection) return;
     sseConnection = new EventSource(API + '/stream', { withCredentials: true });
+    sseConnection.onopen = () => {
+        if (sseLost) queueRemoteUpdate('all');
+        sseLost = false;
+    };
     sseConnection.addEventListener('data_update', e => {
         let scope = 'all';
         try {
@@ -919,11 +927,20 @@ function connectSSE() {
     });
     sseConnection.onerror = () => {
         console.log('SSE error, reconnecting...');
+        sseLost = true;
         sseConnection.close();
         sseConnection = null;
         setTimeout(connectSSE, 5000);
     };
 }
+
+// Back in the app after a while (phone locked, another app open): catch up, like the Android app does on resume
+let hiddenSince = 0;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') return void (hiddenSince = Date.now());
+    if (hiddenSince && Date.now() - hiddenSince > 2 * 60 * 1000 && isAuthenticated) queueRemoteUpdate('all');
+    hiddenSince = 0;
+});
 
 function syncInviteCards() {
     const allowed = canManageRegistrationCode();
@@ -1571,7 +1588,7 @@ async function shareSong() {
             await navigator.share({ title: song.title, url });
             return;
         }
-        await navigator.clipboard.writeText(url);
+        if (!(await copyText(url))) throw new Error('copy');
         showToast(t('songbook_link_copied', 'Link copied'));
     } catch (err) {
         if (err?.name !== 'AbortError') showToast(t('songbook_link_failed', 'The link could not be shared.'), 'error');
@@ -2121,7 +2138,7 @@ const HUB_TABS = ['ai-chat', 'polls', 'songbook', 'prayers'];
 
 function updateFabVisibility() {
     const financesFab = currentActiveTab === 'finances' && canManageFinances();
-    const eventsFab = currentActiveTab === 'events' && !!currentUser;
+    const eventsFab = currentActiveTab === 'events' && !!currentUser && canCreateEvents();
     // Polls: the same "+" opens the create page directly (one action, no menu)
     const pollsFab = currentActiveTab === 'polls' && !!currentUser;
     const songbookFab = currentActiveTab === 'songbook' && songbookCanManage;
@@ -2644,7 +2661,12 @@ async function loadData(silent = false, { freshUser = false } = {}) {
         await renderViews(!silent);
     } catch (err) {
         console.error('Ladefehler:', err);
-        alert(t('alert_error_loading_data', 'Failed to load data. Please reload the page.'));
+        // A background refresh (live update) keeps what is shown and says so quietly - at most once a minute
+        if (!silent) showToast(t('alert_error_loading_data', 'Failed to load data. Please reload the page.'), 'error');
+        else if (Date.now() - lastRefreshErrorAt > 60000) {
+            lastRefreshErrorAt = Date.now();
+            showToast(t('toast_refresh_failed', 'Could not refresh - check your connection.'), 'error');
+        }
     } finally {
         if (loader && !silent) loader.style.display = 'none';
     }
@@ -2839,17 +2861,18 @@ async function changePassword(isUser = false) {
     const [newId, oldId] = isUser ? ['user-new-password', 'user-old-password'] : ['new-password', 'old-password'];
     const pw = $(newId).value;
     const oldPw = $(oldId).value;
-    if (!oldPw) return alert(t('alert_enter_old_password', 'Please enter your old password.'));
-    if (!pw || pw.length < 6) return alert(t('alert_new_password_length', 'New password must be at least 6 characters long.'));
+    // Messages as toasts like everywhere else (no blocking browser dialog); the server signs out after a change
+    if (!oldPw) return showToast(t('alert_enter_old_password', 'Please enter your old password.'), 'error');
+    if (!pw || pw.length < 6) return showToast(t('alert_new_password_length', 'New password must be at least 6 characters long.'), 'error');
     try {
-        if (!auth.currentUser) return alert(t('alert_no_user_logged_in', 'No user logged in.'));
+        if (!auth.currentUser) return showToast(t('alert_no_user_logged_in', 'No user logged in.'), 'error');
         await updatePassword(auth.currentUser, oldPw, pw);
-        showToast(t('toast_password_changed', 'Password successfully changed'));
+        showToast(t('toast_password_changed', 'Password changed – please sign in again.'));
         setValue(newId, '');
         setValue(oldId, '');
     } catch (error) {
         console.error(error);
-        alert(t('alert_password_change_failed', 'Error changing password: ') + error.message);
+        showToast(t('alert_password_change_failed', 'Error changing password: ') + error.message, 'error');
     }
 }
 
@@ -2857,7 +2880,7 @@ async function changePassword(isUser = false) {
 async function deleteOwnAccount(suffix = '') {
     const input = $(`delete-account-password${suffix}`);
     const password = input?.value || '';
-    if (!password) return alert(t('delete_account_need_password', 'Please enter your password to confirm.'));
+    if (!password) return showToast(t('delete_account_need_password', 'Please enter your password to confirm.'), 'error');
     if (!confirmAction(t('delete_account_confirm', 'Your account and your personal data will be deleted permanently. This cannot be undone. Continue?'))) return;
     try {
         await apiJson('/auth/delete-account', 'POST', { password }, t('delete_account_failed', 'The account could not be deleted.'));
@@ -2865,13 +2888,13 @@ async function deleteOwnAccount(suffix = '') {
         alert(t('delete_account_done', 'Your account has been deleted.'));
         await logout();
     } catch (err) {
-        alert(err.message || t('delete_account_failed', 'The account could not be deleted.'));
+        showToast(err.message || t('delete_account_failed', 'The account could not be deleted.'), 'error');
     }
 }
 
 // --- Registration code ---
 async function generateNewCode() {
-    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'You don\'t have permission to manage the registration code.'));
+    if (!canManageRegistrationCode()) return showToast(t('alert_no_permission', 'You don\'t have permission to manage the registration code.'), 'error');
     const newCode = String(100000 + (window.crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
     await attempt(async () => {
         await set(ref(db, 'system/inviteCode'), newCode);
@@ -2880,13 +2903,12 @@ async function generateNewCode() {
 }
 
 async function copyInviteCode() {
-    if (!canManageRegistrationCode()) return alert(t('alert_no_permission', 'You don\'t have permission to manage the registration code.'));
+    if (!canManageRegistrationCode()) return showToast(t('alert_no_permission', 'You don\'t have permission to manage the registration code.'), 'error');
     const code = inputValue('admin-invite-code') || inputValue('user-invite-code');
     if (!code || code === '------') return;
-    await attempt(async () => {
-        await navigator.clipboard.writeText(code);
-        showToast(t('toast_code_copied', 'Code copied!'));
-    }, t('toast_copy_failed', 'Copy failed'));
+    const field = [$('admin-invite-code'), $('user-invite-code')].find(el => el?.offsetParent && el.value === code);
+    if (await copyText(code, field)) showToast(t('toast_code_copied', 'Code copied!'));
+    else showToast(t('toast_copy_failed', 'Copy failed'), 'error');
 }
 
 // --- Notification preferences & web push ---
@@ -2965,6 +2987,7 @@ function renderNotificationSettings() {
         </div>
         <div class="notif-channels">
             ${channelRow('push', 'bell', t('notif_channel_push_title', 'Push'), t('notif_channel_push_desc', 'To the installed app (Android app or home screen app)'))}
+            ${push ? pushDeviceRow() : ''}
             ${channelRow('email', 'mail', t('notif_channel_email_title', 'E-mail'), currentUser.email ? t('notif_channel_email_desc', 'To {email}', { email: escapeHtml(currentUser.email) }) : t('notif_channel_email_desc_none', 'To your e-mail address'))}
         </div>
         ${!push && !email ? `<div class="notif-off">${svgIcon('bellOff', 18)}<span>${t('notif_all_off', 'You get no notifications. Turn on push or e-mail above.')}</span></div>` : `
@@ -2977,6 +3000,46 @@ function renderNotificationSettings() {
         </div>
         <div class="notif-kinds">${kinds}</div>`}`;
     targets.forEach(el => { el.innerHTML = html; });
+}
+
+/** Push on this device (installed app only, like the Android app's "This device"): working, blocked or not yet
+ * allowed - with "Allow notifications" or "Send test". In a browser tab push never arrives, so nothing is shown. */
+function pushDeviceRow() {
+    if (!isInstalledApp()) return '';
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    const permission = supported ? Notification.permission : 'unsupported';
+    const status = {
+        granted: t('push_active', 'Active – notifications arrive instantly.'),
+        denied: t('push_blocked', 'Blocked – allow notifications for this app in the device settings.'),
+        default: t('push_not_set_up', 'Push is not active on this device yet.'),
+        unsupported: t('push_unsupported', 'This device does not support push.')
+    }[permission];
+    const action = permission === 'granted' ? `<button type="button" class="btn btn-secondary btn-small" onclick="window.sendTestPush(this)">${t('push_test', 'Send test')}</button>`
+        : permission === 'default' ? `<button type="button" class="btn btn-primary btn-small" onclick="window.allowPushOnDevice()">${t('allow_notifications', 'Allow notifications')}</button>` : '';
+    return `
+        <div class="notif-device${permission === 'granted' ? ' is-active' : ''}">
+            <span class="notif-device-dot" aria-hidden="true"></span>
+            <span class="notif-channel-text">
+                <span class="notif-channel-title">${t('notif_device_title', 'This device')}</span>
+                <span class="notif-channel-desc">${status}</span>
+            </span>
+            ${action}
+        </div>`;
+}
+
+async function allowPushOnDevice() {
+    await ensurePushNotificationSubscription(true);
+    renderNotificationSettings();
+}
+
+async function sendTestPush(button) {
+    if (button) button.disabled = true;
+    // Subscribed again first: a subscription the browser dropped would otherwise make the test silently go nowhere
+    await ensurePushNotificationSubscription(false);
+    const sent = await attempt(() => apiJson('/push/test', 'POST', {}, t('push_test_failed', 'The test could not be sent.')),
+        t('push_test_failed', 'The test could not be sent.'), { toast: 'error' });
+    if (sent) showToast(t('push_test_sent', 'Test notification sent'));
+    if (button) button.disabled = false;
 }
 
 async function saveNotificationSettings(settings) {
@@ -3286,7 +3349,7 @@ async function confirmProfileCrop() {
 }
 
 Object.assign(window, {
-    switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
+    switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, allowPushOnDevice, sendTestPush, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
     generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
@@ -3400,7 +3463,7 @@ async function submitQuickAddGroup() {
         showToast(t('toast_group_created', 'Group created successfully'), 'success');
         await refreshGroupsAndUsers(false);
     } catch (err) {
-        alert(err.message || t('admin_group_create_failed', 'Failed to create the group'));
+        showToast(err.message || t('admin_group_create_failed', 'Failed to create the group'), 'error');
     }
 }
 
@@ -3431,7 +3494,7 @@ function openGroupModal(group) {
 async function submitSaveGroup() {
     const id = inputValue('manage-group-id');
     const name = inputValue('manage-group-name').trim();
-    if (!name) return alert(t('admin_group_name_required', 'Please enter a group name.'));
+    if (!name) return showToast(t('admin_group_name_required', 'Please enter a group name.'), 'error');
     await attempt(async () => {
         const permissions = checkedValues('#manage-group-permissions-list .group-permission-cb');
         await apiJson(id ? `/admin/groups/${id}` : '/admin/groups', id ? 'PUT' : 'POST', { name, permissions }, t('admin_group_save_failed', 'Failed to save the group'));
@@ -3655,8 +3718,8 @@ function openCreateUserModal() {
 async function submitCreateUser() {
     const [firstName, lastName, email] = ['new-user-first-name', 'new-user-last-name', 'new-user-email'].map(id => inputValue(id).trim());
     const password = inputValue('new-user-password');
-    if (!firstName || !lastName) return alert(t('admin_user_name_required', 'Please enter first and last name.'));
-    if (password && password.length < 6) return alert(t('setup_admin_password_invalid', 'Password must be at least 6 characters long.'));
+    if (!firstName || !lastName) return showToast(t('admin_user_name_required', 'Please enter first and last name.'), 'error');
+    if (password && password.length < 6) return showToast(t('setup_admin_password_invalid', 'Password must be at least 6 characters long.'), 'error');
     await attempt(async () => {
         await apiJson('/admin/users', 'POST', {
             firstName, lastName, email, password,
@@ -3681,7 +3744,7 @@ function openResetPasswordModal(uid, name) {
 
 async function submitResetPassword() {
     const password = inputValue('reset-password-new');
-    if (password.length < 6) return alert(t('setup_admin_password_invalid', 'Password must be at least 6 characters long.'));
+    if (password.length < 6) return showToast(t('setup_admin_password_invalid', 'Password must be at least 6 characters long.'), 'error');
     await attempt(async () => {
         await apiJson(`/admin/users/${inputValue('reset-password-uid')}/password`, 'PUT', { password }, t('admin_password_reset_failed_short', 'Password reset failed'));
         closeModal('reset-password-modal');
@@ -3801,7 +3864,7 @@ async function saveAiConfig() {
 async function uploadChurchLogo() {
     if (!isSuperAdminUser()) return;
     const fileInput = $('super-admin-logo-file');
-    if (!fileInput?.files?.length) return alert(t('alert_please_select_svg', 'Please select an SVG file.'));
+    if (!fileInput?.files?.length) return showToast(t('alert_please_select_svg', 'Please select an SVG file.'), 'error');
     try {
         const res = await api('/admin/logo', 'POST', toFormData({ logo: fileInput.files[0] }));
         if (!res.ok) throw new Error((await readErrorText(res)) || `HTTP ${res.status}`);
@@ -3812,7 +3875,7 @@ async function uploadChurchLogo() {
     } catch (err) {
         const errMsg = err.message || err.code || t('error_unknown', 'Unknown error');
         console.error('Fehler beim Logo-Upload:', errMsg, err);
-        alert(t('alert_logo_update_failed', 'Logo could not be updated: ') + errMsg);
+        showToast(t('alert_logo_update_failed', 'Logo could not be updated: ') + errMsg, 'error');
         showToast(t('toast_logo_update_failed', 'Logo could not be updated'), 'error');
     }
 }
@@ -4168,8 +4231,8 @@ async function assignUserToPerson(uid) {
     const select = $(`link-select-${uid}`);
     if (!select) return;
     const person = select.value && findPerson(select.value);
-    if (!select.value) return alert(t('unlinked_alert_select_person', 'Please select a person.'));
-    if (!person) return alert(t('toast_person_not_found', 'Person not found.'));
+    if (!select.value) return showToast(t('unlinked_alert_select_person', 'Please select a person.'), 'error');
+    if (!person) return showToast(t('toast_person_not_found', 'Person not found.'), 'error');
     await attempt(async () => {
         await update(ref(db, 'people/' + select.value), { uid });
         person.uid = uid;
@@ -4220,9 +4283,9 @@ async function saveEditedPayment() {
     const date = inputValue('edit-payment-date');
     const description = inputValue('edit-payment-desc').trim();
     const issuer = inputValue('edit-payment-issuer').trim();
-    if (Number.isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
-    if (!date) return alert(t('alert_please_enter_date', 'Please specify a date.'));
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert(t('alert_invalid_date', 'Invalid date.'));
+    if (Number.isNaN(amount)) return showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
+    if (!date) return showToast(t('alert_please_enter_date', 'Please specify a date.'), 'error');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return showToast(t('alert_invalid_date', 'Invalid date.'), 'error');
 
     const saveBtn = document.querySelector('#edit-payment-modal button.btn-primary');
     if (saveBtn) {
@@ -4247,7 +4310,7 @@ async function saveEditedPayment() {
                     currentEditedReceipts.push(await uploadReceipt(file, issuer || 'Beleg', date));
                 } catch (uploadErr) {
                     console.error('Error uploading new receipt in edit:', uploadErr);
-                    alert(t('alert_upload_error_for', 'Failed to upload: ') + file.name + ' - ' + uploadErr.message);
+                    showToast(t('alert_upload_error_for', 'Failed to upload: ') + file.name + ' - ' + uploadErr.message, 'error');
                     throw uploadErr;
                 }
             }
@@ -4570,13 +4633,14 @@ function renderPeople() {
     const overdue = payingPeople.filter(p => p._statusMeta?.isOverdue).sort(byName);
     const current = payingPeople.filter(p => !p._statusMeta?.isOverdue).sort(byName);
     const section = (items, color, key, fallback) => items.length
-        ? `<h3 class="list-section-title" style="color:var(${color})">${t(key, fallback)} (${items.length})</h3>` + items.map(generatePersonHTML).join('')
+        ? `<h3 class="list-section-title" style="color:var(${color})">${t(key, fallback)} (<span class="list-section-count">${items.length}</span>)</h3>` + items.map(generatePersonHTML).join('')
         : '';
     list.innerHTML = `
         <div class="people-grid-container">
             <div class="people-column overdue-column">${section(overdue, '--danger', 'overdue_header', 'Overdue')}</div>
             <div class="people-column valid-column">${section(current, '--success', 'current_members_header', 'Current Members')}</div>
-        </div>`;
+        </div>
+        <p id="people-no-match" class="people-no-match" hidden>${t('people_no_match', 'No member matches your search.')}</p>`;
     filterPeopleSync();
 }
 
@@ -4727,11 +4791,27 @@ function toggleDetails(id) {
     header.closest('.person-wrapper')?.classList.add('active');
 }
 
+// Search: the counts in the headings follow what is shown, an empty group hides, and nothing found says so
 function filterPeopleSync() {
     const term = $('people-search')?.value.toLowerCase() || '';
-    document.querySelectorAll('.person-wrapper').forEach(item => {
-        item.style.display = item.querySelector('.person-name')?.textContent.toLowerCase().includes(term) ? 'block' : 'none';
+    let shown = 0;
+    document.querySelectorAll('#peopleList .people-column').forEach(column => {
+        let count = 0;
+        column.querySelectorAll('.person-wrapper').forEach(item => {
+            const match = item.querySelector('.person-name')?.textContent.toLowerCase().includes(term);
+            item.style.display = match ? 'block' : 'none';
+            if (match) count++;
+        });
+        const title = column.querySelector('.list-section-title');
+        if (title) {
+            title.hidden = count === 0;
+            const counter = title.querySelector('.list-section-count');
+            if (counter) counter.textContent = count;
+        }
+        shown += count;
     });
+    const none = $('people-no-match');
+    if (none) none.hidden = shown > 0 || !term;
 }
 
 async function renderStats() {
@@ -5213,7 +5293,7 @@ async function downloadReportPdf() {
     await loadScriptOnce(HTML2PDF_SRC).catch(() => {});
     if (typeof html2pdf === 'undefined') {
         setButtonLoading('btn-download-pdf', false, null);
-        return alert(t('report_pdf_lib_error', 'PDF library failed to load.'));
+        return showToast(t('report_pdf_lib_error', 'PDF library failed to load.'), 'error');
     }
     // Render an unscaled off-screen A4-width clone to avoid a blank first page
     const printContainer = document.createElement('div');
@@ -5236,7 +5316,7 @@ async function downloadReportPdf() {
     }).from(clone).save().then(done).catch(err => {
         console.error('PDF generation failed:', err);
         done();
-        alert(t('report_pdf_error', 'Failed to generate PDF.'));
+        showToast(t('report_pdf_error', 'Failed to generate PDF.'), 'error');
     });
 }
 
@@ -5273,11 +5353,11 @@ async function addPayment() {
     const isStandingOrder = isChecked('payment-is-standing-order');
     try {
         if (!currentPersonId) return;
-        if (isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
+        if (isNaN(amount)) return showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
         const updated = await mutatePerson(currentPersonId, person => isStandingOrder
             ? { ...person, standingOrders: [...safeList(person.standingOrders), { id: newId(), amount, startDate: date, note, lastAutoPayment: null }] }
             : { ...person, payments: [...person.payments, { amount, date, description: note, id: Date.now() }], totalPaid: (person.totalPaid || 0) + amount });
-        if (!updated) return alert(t('alert_person_not_found', 'Person not found.'));
+        if (!updated) return showToast(t('alert_person_not_found', 'Person not found.'), 'error');
         closeModal('add-payment-modal');
         if (currentUser && !currentUser.admin) renderUserView();
         else refreshFinanceViews();
@@ -5286,7 +5366,7 @@ async function addPayment() {
         showToast(t('toast_payment_booked', 'Payment booked'));
     } catch (err) {
         console.error('Fehler beim Speichern der Zahlung:', err);
-        alert(t('alert_save_payment_failed', 'Payment could not be saved. Please try again.'));
+        showToast(t('alert_save_payment_failed', 'Payment could not be saved. Please try again.'), 'error');
     } finally {
         setButtonLoading('btn-add-payment', false);
     }
@@ -5295,7 +5375,7 @@ async function addPayment() {
 async function addDonation() {
     if (!validateRequired(['donation-amount', 'donation-date', 'donation-name'])) return;
     const amount = parseAmount(inputValue('donation-amount'));
-    if (isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
+    if (isNaN(amount)) return showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
     setButtonLoading('btn-add-donation', true, t('setup_btn_saving', 'Saving...'));
     try {
         const donation = { amount, name: inputValue('donation-name'), date: inputValue('donation-date'), description: inputValue('donation-desc').trim(), id: Date.now() };
@@ -5307,7 +5387,7 @@ async function addDonation() {
         showToast(t('toast_donation_saved', 'Donation saved'));
     } catch (err) {
         console.error('Fehler beim Speichern der Spende:', err);
-        alert(t('alert_save_donation_failed', 'Donation could not be saved. Please try again.'));
+        showToast(t('alert_save_donation_failed', 'Donation could not be saved. Please try again.'), 'error');
     } finally {
         setButtonLoading('btn-add-donation', false);
     }
@@ -5316,7 +5396,7 @@ async function addDonation() {
 async function addExpense() {
     if (!validateRequired(['expense-amount', 'expense-date', 'expense-issuer', 'expense-desc'])) return;
     const amount = parseAmount(inputValue('expense-amount'));
-    if (isNaN(amount)) return alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
+    if (isNaN(amount)) return showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
     const [issuer, date, description] = ['expense-issuer', 'expense-date', 'expense-desc'].map(inputValue);
     setButtonLoading('btn-add-expense', true, t('setup_btn_saving', 'Saving...'));
     try {
@@ -5327,7 +5407,7 @@ async function addExpense() {
                 receipt = await uploadAll(pendingUploads.expense.files, issuer, date);
             } catch (err) {
                 console.error(err);
-                return alert(t('alert_receipt_upload_error', 'Failed to upload receipt: ') + err.message);
+                return showToast(t('alert_receipt_upload_error', 'Failed to upload receipt: ') + err.message, 'error');
             }
         }
         await mutateCollection('expenses', list => [...list, { amount, issuer, description, date, id: Date.now(), receipt }]);
@@ -5339,7 +5419,7 @@ async function addExpense() {
         showToast(t('toast_expense_saved', 'Expense saved'));
     } catch (err) {
         console.error('Fehler beim Speichern der Ausgabe:', err);
-        alert(t('alert_save_expense_failed', 'Expense could not be saved. Please try again.'));
+        showToast(t('alert_save_expense_failed', 'Expense could not be saved. Please try again.'), 'error');
     } finally {
         setButtonLoading('btn-add-expense', false);
     }
@@ -5361,7 +5441,7 @@ function openEndStandingOrderModal(personId, soId) {
 async function saveStandingOrderEnd() {
     if (!editingPersonId || !editingSoId) return;
     const endDate = inputValue('end-so-date');
-    if (!endDate) return alert(t('alert_please_choose_date', 'Please choose a date.'));
+    if (!endDate) return showToast(t('alert_please_choose_date', 'Please choose a date.'), 'error');
     const isThisOrder = so => String(so.id) === String(editingSoId);
     try {
         await mutatePerson(editingPersonId, person => {
@@ -5379,7 +5459,7 @@ async function saveStandingOrderEnd() {
         showToast(t('toast_so_updated', 'Standing order updated'));
     } catch (err) {
         console.error('Fehler beim Beenden:', err);
-        alert(t('alert_save_error', 'Error while saving.'));
+        showToast(t('alert_save_error', 'Error while saving.'), 'error');
     }
 }
 
@@ -5406,16 +5486,16 @@ function openChangeStatusModal(id) {
 async function saveStatusChange() {
     if (!currentPersonId) return;
     const changeDate = inputValue('change-status-date');
-    if (!changeDate) return alert(t('alert_please_enter_date', 'Please specify a date.'));
+    if (!changeDate) return showToast(t('alert_please_enter_date', 'Please specify a date.'), 'error');
     try {
         const updated = await mutatePerson(currentPersonId, person => applyStatusChangeToHistory(person, inputValue('change-status-select'), changeDate));
-        if (!updated) return alert(t('alert_person_not_found', 'Person not found.'));
+        if (!updated) return showToast(t('alert_person_not_found', 'Person not found.'), 'error');
         await renderViews();
         closeModal('change-status-modal');
         showToast(t('toast_status_changed', 'Status changed'));
     } catch (err) {
         console.error('Fehler bei der Statusänderung:', err);
-        alert(t('alert_status_change_failed', 'Status change failed: ') + (err.key ? t(err.key, err.message) : err.message));
+        showToast(t('alert_status_change_failed', 'Status change failed: ') + (err.key ? t(err.key, err.message) : err.message), 'error');
     }
 }
 
@@ -5523,7 +5603,7 @@ const REQUEST_FORMS = {
                     <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Standing Order')}</label>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" id="req-date-label" for="req-date" style="display:none;">${t('modal_date', 'Date')}</label>
+                    <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Date')}</label>
                     ${requestDateInput()}
                 </div>`)
             + modalSection('📝', t('req_section_note', 'Note / Reference'), `
@@ -5615,8 +5695,8 @@ function openUserRequestModal(type) {
 
 // Validates the open request form; returns { type, data } or null after alerting the user.
 function collectRequestData(date) {
-    const fillFields = () => alert(t('alert_fill_fields', 'Please fill out all fields.'));
-    const invalidAmount = () => alert(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'));
+    const fillFields = () => showToast(t('alert_fill_fields', 'Please fill out all fields.'), 'error');
+    const invalidAmount = () => showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
     if (currentRequestType === 'status') {
         const newStatus = $('req-status') ? inputValue('req-status') : 'vollverdiener';
         return newStatus ? { type: 'status', data: { newStatus, date } } : fillFields();
@@ -5643,7 +5723,7 @@ async function submitUserRequest() {
     const personId = person ? person.id : (currentUser.uid || currentUser.id || 'unknown');
     const personName = person ? person.name : (fullName(currentUser) || currentUser.name || currentUser.email || t('user_fallback_name', 'User'));
     const date = $('req-date') ? inputValue('req-date') : getTodayStr();
-    if (!date) return alert(t('alert_fill_fields', 'Please fill out all fields.'));
+    if (!date) return showToast(t('alert_fill_fields', 'Please fill out all fields.'), 'error');
     const request = collectRequestData(date);
     if (!request) return;
 
@@ -5654,7 +5734,7 @@ async function submitUserRequest() {
             try {
                 request.data.receipt = await uploadAll(files, personName, date);
             } catch (err) {
-                alert(t('alert_upload_error', 'Upload failed: ') + err.message);
+                showToast(t('alert_upload_error', 'Upload failed: ') + err.message, 'error');
                 return setButtonLoading('btn-submit-request', false);
             }
         }
@@ -5674,7 +5754,7 @@ async function submitUserRequest() {
         api('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Fehler beim Senden der Admin-Info über Backend', e));
     } catch (err) {
         console.error('Fehler beim Senden der Anfrage:', err);
-        alert(t('alert_send_request_failed', 'Request could not be sent. Please try again.') + (err.message ? ` ${err.message}` : ''));
+        showToast(t('alert_send_request_failed', 'Request could not be sent. Please try again.') + (err.message ? ` ${err.message}` : ''), 'error');
     } finally {
         setButtonLoading('btn-submit-request', false);
     }
@@ -5855,7 +5935,7 @@ function addAiReportButton(bubble, answer, prompt) {
             btn.disabled = true;
             btn.querySelector('span').textContent = t('report_sent', 'Reported – thank you!');
         } catch (err) {
-            alert(err.message);
+            showToast(err.message, 'error');
         }
     };
     bubble.appendChild(btn);
@@ -6437,8 +6517,8 @@ async function submitMentorContact(e) {
     e?.preventDefault?.();
     const mentorId = inputValue('mentor-contact-user-id');
     const message = inputValue('mentor-contact-message').trim();
-    if (!mentorId) return alert(t('mentor_contact_error_no_mentor', 'No mentor selected.'));
-    if (!message) return alert(t('mentor_contact_error_no_msg', 'Please enter a first message for the mentor.'));
+    if (!mentorId) return showToast(t('mentor_contact_error_no_mentor', 'No mentor selected.'), 'error');
+    if (!message) return showToast(t('mentor_contact_error_no_msg', 'Please enter a first message for the mentor.'), 'error');
     try {
         const res = await api('/mentoring/threads', 'POST', { mentor: mentorId, mentorId, message, initialMessage: message });
         const data = await res.json().catch(() => ({}));
@@ -6461,7 +6541,7 @@ async function submitMentorContact(e) {
             loadMentoringThreads(true);
         }
     } catch (err) {
-        alert(err.message || t('mentoring_req_error', 'Failed to send the request.'));
+        showToast(err.message || t('mentoring_req_error', 'Failed to send the request.'), 'error');
     }
 }
 
@@ -6595,7 +6675,10 @@ async function openMentoringThread(threadId) {
     show('mentoring-chat-menu-dropdown', false);
     if ($('mentoring-chat-actions')) {
         show('mentoring-chat-actions', true, 'flex');
-        show('mentoring-chat-menu-btn', !isClosed, 'inline-flex');
+        // Like the Android app: "Report" always; "Block" until blocked, "End" while it is open
+        show('mentoring-chat-menu-btn', true, 'inline-flex');
+        show('mentoring-menu-block', !thread?.blocked, 'flex');
+        show('mentoring-menu-end', !isClosed, 'flex');
     }
     show('mentoring-chat-input-container', !isClosed, 'block');
     show('mentoring-chat-closed-bar', isClosed, 'flex');
@@ -6670,7 +6753,7 @@ async function loadMentoringMessages(threadId, isPoll = false) {
         }
         messagesEl.innerHTML = messages.map(m => {
             const isMe = isCurrentUser(m.sender);
-            const time = m.created ? new Date(m.created).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' }) : '';
+            const time = chatTime(m.created);
             return `
                 <div class="mentoring-message ${isMe ? 'outgoing msg-mine' : 'incoming msg-other'}">
                     ${!isMe ? `<div class="mentoring-message-sender">${escapeHtml(m.sender_name || t('mentoring_partner_generic', 'Conversation partner'))}</div>` : ''}
@@ -6682,6 +6765,14 @@ async function loadMentoringMessages(threadId, isPoll = false) {
     } catch (err) {
         console.warn('Failed to load messages:', err);
     }
+}
+
+/** Time of a chat message: "14:05" today, "3 Nov, 14:05" before (only the time made old messages look new). */
+function chatTime(iso) {
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d)) return '';
+    const time = d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' })}, ${time}`;
 }
 
 async function sendMentoringMessage() {
@@ -6704,9 +6795,13 @@ async function sendMentoringMessage() {
         await loadMentoringMessages(activeMentoringThreadId);
         loadMentoringThreads(false);
     } catch (err) {
-        const time = pending.querySelector('.mentoring-message-time');
-        if (time) time.innerHTML = `<span style="color:#ef4444;">⚠️ ${t('mentoring_send_error', 'Failed to send')}</span>`;
-        alert(err.message || t('mentoring_send_failed', 'The message could not be sent.'));
+        // Like the Android app: the text is not lost - it goes back into the field to try again
+        pending.remove();
+        if (!input.value.trim()) {
+            input.value = text;
+            autoResizeMentoringInput(input);
+        }
+        showToast(err.message || t('mentoring_send_failed', 'The message could not be sent.'), 'error');
     }
 }
 
@@ -6725,7 +6820,7 @@ async function withActiveThread(action) {
     try {
         await action(thread);
     } catch (err) {
-        alert(err.message || t('mentoring_status_error', 'Failed to update.'));
+        showToast(err.message || t('mentoring_status_error', 'Failed to update.'), 'error');
     }
 }
 
@@ -6775,7 +6870,7 @@ async function submitMentorApplication(e) {
     e?.preventDefault?.();
     const bio = inputValue('mentor-app-bio').trim();
     const max_mentees = $('mentor-app-max') ? parseInt(inputValue('mentor-app-max'), 10) : 3;
-    if (!bio) return alert(t('mentor_app_error_no_bio', 'Please enter a short personal introduction.'));
+    if (!bio) return showToast(t('mentor_app_error_no_bio', 'Please enter a short personal introduction.'), 'error');
     const isUpdate = !!myMentorProfile;
     try {
         const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees }, t('mentor_app_error_generic', 'The application failed.'));
@@ -6784,7 +6879,7 @@ async function submitMentorApplication(e) {
         showToast(isUpdate ? t('mentor_app_toast_updated', 'Mentor profile updated!') : t('mentor_app_toast_submitted', 'Application submitted successfully! The leadership will review it.'), 'success');
         loadMentoringData();
     } catch (err) {
-        alert(err.message || t('mentor_app_error_generic', 'The application failed.'));
+        showToast(err.message || t('mentor_app_error_generic', 'The application failed.'), 'error');
     }
 }
 
@@ -6859,7 +6954,7 @@ async function setMentorStatus(mentorId, status) {
         loadMentoringReviewList();
         loadMentoringData();
     } catch (err) {
-        alert(err.message || t('mentoring_status_error', 'Failed to update.'));
+        showToast(err.message || t('mentoring_status_error', 'Failed to update.'), 'error');
     }
 }
 
@@ -7047,16 +7142,25 @@ const eventImage = ev => {
 };
 const cardIcon = name => svgIcon(name, 12, name === 'chevronRight' ? 2.5 : 2);
 
+// Whether members may create events (system setting); the server refuses it otherwise, so the "+" is not offered
+let memberEventCreation = true;
+const canCreateEvents = () => canManageEvents() || memberEventCreation;
+
 async function loadEventsData() {
     if (!currentUser) return;
     try {
-        const [eventsRes, requestsRes] = await Promise.all([
+        const [eventsRes, requestsRes, settingsRes] = await Promise.all([
             api('/events'),
             api('/events/my-requests').catch(() => null),
+            api('/events/settings').catch(() => null),
             loadSystemGroups()
         ]);
         if (eventsRes.ok) appEvents = await eventsRes.json();
         myDutyRequests = requestsRes?.ok ? await requestsRes.json() : [];
+        if (settingsRes?.ok) {
+            memberEventCreation = (await settingsRes.json())?.allowMemberCreation !== false;
+            updateFabVisibility();
+        }
         renderMyDutyRequests();
         renderEvents();
         renderHomeDutiesCard();
@@ -7335,7 +7439,8 @@ function getFilteredEvents(todayStr) {
         if (currentEventsSubTab === 'termine') {
             if (isEventPast(ev, todayStr)) return false;
             const isRegistered = ev.myRegistration?.status === 'registered' || ev.myRegistration?.status === 'waitlist';
-            const hasDuty = duties.some(d => d.assignedUser === currentUser?.id || d.requestedUser === currentUser?.id);
+            // Mine like on the home page: my duties, my group's, and open requests to me (not declined ones)
+            const hasDuty = duties.some(d => isMyDuty(d) || (isCurrentUser(d.requestedUser) && d.status === 'requested'));
             // Registration events only show up in "Termine" for participants; pinned highlights live on the events tab
             if (ev.requiresRegistration ? !isRegistered && !hasDuty : ev.isPinned && ev.eventType !== 'termin' && !hasDuty) return false;
         } else if (ev.eventType === 'termin' && !ev.isPinned) {
@@ -7395,10 +7500,10 @@ function renderEvents() {
             <div class="card" style="padding: 48px 20px; text-align: center; color: var(--text-secondary); border-radius: 16px;">
                 <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
                 <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? t('events_empty_events', 'No upcoming events found') : t('events_empty_termine', 'No matching appointments found')}</div>
-                <div style="font-size: 0.88rem; margin-bottom: 14px;">${t('events_empty_hint', 'Try resetting the filters or create a new entry.')}</div>
-                <div>
-                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab ? 'event' : 'termin'}')">+ ${isEventsTab ? t('events_btn_new', 'New Event') : t('events_new_termin', 'New Appointment')}</button>
-                </div>
+                ${eventsSearchQuery ? `<div style="font-size: 0.88rem; margin-bottom: 14px;">${t('events_empty_search', 'Try a different search.')}</div>` : ''}
+                ${canCreateEvents() ? `<div${eventsSearchQuery ? '' : ' style="margin-top: 14px;"'}>
+                    <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab || !canManageEvents() ? 'event' : 'termin'}')">+ ${isEventsTab || !canManageEvents() ? t('events_btn_new', 'New Event') : t('events_new_termin', 'New Appointment')}</button>
+                </div>` : ''}
             </div>
             ${pastSection}`;
         return;
@@ -8360,7 +8465,8 @@ async function openEventDetailModal(eventId) {
         await loadEventsData();
         ev = appEvents.find(e => e.id === eventId);
     }
-    if (!ev) return;
+    // Deleted (or not visible) in the meantime - a notification or an old link: say so instead of doing nothing
+    if (!ev) return showToast(t('events_link_missing', 'This event no longer exists.'), 'error');
     currentDetailEvent = ev;
     leaveGuestView();
     renderDetailBasics(ev);
@@ -8443,7 +8549,8 @@ function renderDetailBasics(ev) {
     setTextWithTitle('detail-modal-info-where', location || t('events_no_location', 'Not specified'));
     const mapLink = $('detail-modal-map-link');
     if (mapLink) {
-        const isPlace = location && !/^(online|zoom|teams|skype|meet|keine angabe)$/i.test(location);
+        // Online meetings and links get no map (like the Android app): "Zoom-Meeting", "https://meet.google.com/…"
+        const isPlace = location && !/\b(online|zoom|teams|skype|jitsi|discord)\b|meet\.google|https?:\/\/|^meet$|keine angabe/i.test(location);
         mapLink.href = isPlace ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}` : '#';
         mapLink.style.display = isPlace ? 'inline-flex' : 'none';
     }
@@ -8605,7 +8712,8 @@ async function toggleEventPublic(isPublic) {
     }
 }
 
-// The clipboard API needs https: installations on plain http copy the selected field instead
+// The clipboard API needs https: installations on plain http copy the selected field instead (without a field on
+// the page: a hidden one just for copying)
 async function copyText(text, field) {
     try {
         if (navigator.clipboard && window.isSecureContext) {
@@ -8613,12 +8721,20 @@ async function copyText(text, field) {
             return true;
         }
     } catch { /* the selected field below */ }
+    const helper = field ? null : Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
     try {
-        field?.focus();
-        field?.select();
+        if (helper) {
+            helper.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+            document.body.appendChild(helper);
+        }
+        const target = field || helper;
+        target.focus();
+        target.select();
         return document.execCommand('copy');
     } catch {
         return false;
+    } finally {
+        helper?.remove();
     }
 }
 
@@ -8985,9 +9101,9 @@ async function loadPersonalCalendarFeedSettings(force = false) {
 async function copyPersonalCalendarFeedUrl() {
     const url = await personalFeedUrl();
     if (!url) return;
-    navigator.clipboard.writeText(url)
-        .then(() => showToast(t('calendar_sub_copied', 'Calendar URL copied to clipboard!'), 'success'))
-        .catch(() => showToast(t('calendar_sub_copy_error', 'Failed to copy the calendar URL'), 'error'));
+    const field = ['user-cal-feed-url', 'admin-cal-feed-url', 'super-admin-events-feed-url'].map($).find(el => el?.offsetParent);
+    if (await copyText(url, field)) showToast(t('calendar_sub_copied', 'Calendar URL copied to clipboard!'), 'success');
+    else showToast(t('calendar_sub_copy_error', 'Failed to copy the calendar URL'), 'error');
 }
 
 async function resetCalendarFeedToken() {
