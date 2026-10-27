@@ -1416,5 +1416,6 @@
   "allow_notifications": "Allow notifications",
   "push_test": "Send test",
   "push_test_sent": "Test notification sent",
-  "push_test_failed": "The test could not be sent."
+  "push_test_failed": "The test could not be sent.",
+  "events_load_failed": "Events could not be loaded"
 }

@@ -732,6 +732,9 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 .btn-secondary { background: var(--surface-alt); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary.active { background: rgba(var(--brand-rgb), 0.1); color: var(--primary); border-color: var(--primary); }
 .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+/* Quiet button without a surface (it was used without being defined: the browser's grey showed) */
+.btn-ghost { background: transparent; color: var(--text); border: none; box-shadow: none; }
+@media (hover: hover) { .btn-ghost:hover { background: var(--surface-alt); } }
 
 .settings-flex-row {
     display: flex; gap: 10px; width: 100%; flex-wrap: wrap;
@@ -949,6 +952,8 @@ body { background-color: var(--bg); color: var(--text); height: 100dvh; overflow
 /* A closed modal is only transparent: nothing inside may catch taps, even parts that switch pointer-events back
    on for themselves (event hero top bar, cover actions, song controls) - they would sit invisibly over the page */
 .modal:not(.show), .modal:not(.show) * { pointer-events: none !important; }
+/* An opened dialog takes the focus on its panel (keyboard and screen readers start there): no ring around it */
+.modal > [tabindex="-1"]:focus { outline: none; }
 .modal-content {
     background: var(--surface); width: 90%; max-width: 420px;
     border-radius: 20px; padding: 0 20px 20px 20px;
@@ -1825,6 +1830,8 @@ input:checked + .slider:before { transform: translateX(22px); }
 .toast.show { transform: translateX(0) scale(1); opacity: 1; pointer-events: all; }
 .toast-success { border-left: 5px solid var(--success); }
 .toast-error { border-left: 5px solid var(--danger); }
+.toast-info { border-left: 5px solid var(--primary); }
+.toast-warning { border-left: 5px solid var(--warning); }
 
 @media (max-width: 768px) {
     .container { padding-top: 0; }
@@ -5830,7 +5837,7 @@ details[open] .ai-thinking-summary::before { transform: rotate(90deg); }
     font-weight: 700;
     padding: 3px 8px;
     border-radius: 999px;
-    background: #f59e0b;
+    background: #b45309; /* amber 700: white text readable (amber 500 was 2.2:1) */
     color: #fff;
     text-transform: uppercase;
     letter-spacing: 0.4px;
@@ -10684,3 +10691,6 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
     .desktop-nav .nav-btn:hover { background: var(--surface-alt); color: var(--text); }
     .desktop-nav .nav-btn.active { color: var(--nav-pill-text); background: var(--nav-pill); font-weight: 600; border-bottom: 0; }
 }
+
+/* Keyboard: event cards open with Enter / Space and show where the focus is */
+.event-card:focus-visible, .churchtools-event-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

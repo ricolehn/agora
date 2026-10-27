@@ -110,6 +110,19 @@ function debounce(fn, wait) {
     };
 }
 
+// One run at a time per action: a double tap on a slow network sent it twice - the second failed ("not found",
+// "only the requested user can answer") and its error replaced the first one's success
+const runningActions = new Set();
+async function once(key, action) {
+    if (runningActions.has(key)) return;
+    runningActions.add(key);
+    try {
+        return await action();
+    } finally {
+        runningActions.delete(key);
+    }
+}
+
 /**
  * Runs an action and reports a failure as a toast (of type `toast`, an error by default - no blocking browser
  * dialog): the message is a string or a function of the error. `button` shows the loading state on a button
@@ -513,7 +526,8 @@ function showToast(msg, type = 'success') {
         document.body.appendChild(toast);
     }
     toast.className = `toast toast-${type} show`;
-    toast.textContent = `${type === 'success' ? '✅' : '⚠️'} ${msg}`;
+    // Neutral news ("Unregistered") gets no warning sign
+    toast.textContent = `${{ success: '✅', info: 'ℹ️' }[type] || '⚠️'} ${msg}`;
     clearTimeout(toastTimeout);
     toastTimeout = setTimeout(() => toast.classList.remove('show'), 3000);
 }
@@ -574,7 +588,10 @@ function api(path, method = 'GET', body) {
 
 // Like api(), but resolves to the parsed JSON body and throws the backend's error message on failure.
 async function apiJson(path, method = 'GET', body, fallbackError) {
-    const res = await api(path, method, body);
+    // No connection: the browser's own English "Failed to fetch" reached the screen, also in German
+    const res = await api(path, method, body).catch(err => {
+        throw Object.assign(new Error(t('error_connection', 'Connection error')), { cause: err, offline: true });
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(data.error || data.message || fallbackError || `HTTP ${res.status}`), { data, status: res.status });
     return data;
@@ -611,11 +628,56 @@ function openModal(id) {
     modal._returnFocusTo = document.activeElement;
     modal.style.zIndex = 2000 + modalStack.length * 10;
     modal.classList.add('show');
+    syncModalInert();
+    focusIntoModal(modal);
     if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
-    modal._escHandler = e => { if (e.key === 'Escape') closeModal(id); };
+    // Escape closes only the dialog on top (each open dialog listens: one press used to close all of them)
+    modal._escHandler = e => { if (e.key === 'Escape' && modalStack[modalStack.length - 1] === id) closeModal(id); };
     document.addEventListener('keydown', modal._escHandler);
     syncUrl();
 }
+
+/** Keyboard and screen readers start inside the dialog that opened (its panel, so no keyboard pops up on phones). */
+function focusIntoModal(modal) {
+    if (modal.contains(document.activeElement) && document.activeElement !== modal) return;
+    const panel = modal.querySelector('[autofocus]') || modal.firstElementChild;
+    if (!panel) return;
+    if (!panel.hasAttribute('tabindex') && !panel.matches('a, button, input, select, textarea')) panel.setAttribute('tabindex', '-1');
+    try { panel.focus({ preventScroll: true }); } catch { /* not focusable */ }
+}
+
+/**
+ * Only the dialog on top can be reached by Tab and screen readers: closed dialogs (they are only transparent) and
+ * everything under an open dialog - the page, other dialogs - are inert. Without it Tab wandered through 148
+ * invisible controls of closed dialogs and out of an open one. Toasts stay announced.
+ */
+function syncModalInert() {
+    const modals = [...document.querySelectorAll('.modal')];
+    const layer = el => Number(el.style.zIndex || getComputedStyle(el).zIndex) || 0;
+    const top = modals.filter(m => m.classList.contains('show')).reduce((best, m) => (!best || layer(m) >= layer(best) ? m : best), null);
+    modals.forEach(m => { m.inert = m !== top; });
+    document.querySelectorAll('body > :not(.modal):not(#toast):not(script):not(style)').forEach(el => { el.inert = !!top; });
+}
+/**
+ * Tab rows that are only styled as tabs (finance, system settings, events, report): their buttons become role="tab"
+ * with aria-selected following the highlighted one, so screen readers say which view is shown.
+ */
+function syncTabRoles(list) {
+    list.querySelectorAll(':scope > button').forEach(btn => {
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('aria-selected', String(btn.classList.contains('is-active') || btn.classList.contains('active')));
+    });
+}
+document.querySelectorAll('[role="tablist"]').forEach(list => {
+    if (list.querySelector(':scope > [role="tab"]')) return;
+    syncTabRoles(list);
+    new MutationObserver(() => syncTabRoles(list)).observe(list, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+});
+
+// Dialogs are also shown and hidden directly (sign-in): follow their class instead of every caller
+const modalInertObserver = new MutationObserver(syncModalInert);
+document.querySelectorAll('.modal').forEach(m => modalInertObserver.observe(m, { attributes: true, attributeFilter: ['class'] }));
+syncModalInert();
 
 function hideModal(modal) {
     modal.classList.remove('show');
@@ -1488,7 +1550,10 @@ async function submitPrayer() {
     }
 }
 
-async function extendPrayer(id) {
+function extendPrayer(id) {
+    return once(`prayer:${id}`, () => extendPrayerNow(id));
+}
+async function extendPrayerNow(id) {
     try {
         replacePrayer(await apiJson(`/prayers/${encodeURIComponent(id)}`, 'PATCH', { extend: 'month' }, t('prayers_save_failed', 'The prayer request could not be saved')));
         closeModal('prayer-options-modal');
@@ -1500,7 +1565,10 @@ async function extendPrayer(id) {
 }
 
 /** Done (own request) or removed by a moderator; only a moderator's removal asks first. */
-async function deletePrayer(id) {
+function deletePrayer(id) {
+    return once(`prayer:${id}`, () => deletePrayerNow(id));
+}
+async function deletePrayerNow(id) {
     const mine = prayers.find(p => p.id === id)?.isMine;
     if (!mine && !confirmAction(t('prayers_remove_confirm', 'Remove this prayer request for everyone?'))) return;
     try {
@@ -2295,7 +2363,10 @@ function switchTab(tabName, source) {
         // Apps inside "Extras" keep its nav entry highlighted
         const active = el.dataset.tab === tabName || (HUB_TABS.includes(tabName) && el.dataset.tab === 'hub');
         el.classList.toggle('active', active);
-        el.setAttribute('aria-selected', String(active));
+        // Navigation, not tabs: the current page is "aria-current" (aria-selected only belongs to role="tab")
+        el.removeAttribute('aria-selected');
+        if (active) el.setAttribute('aria-current', 'page');
+        else el.removeAttribute('aria-current');
     });
     if (source !== 'history' && isAuthenticated) syncTabHistory(tabName);
     TAB_LOADERS[tabName]?.();
@@ -2517,7 +2588,9 @@ function toggleFab() {
 function applyActualTheme(theme) {
     const actual = theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
     document.documentElement.setAttribute('data-theme', actual);
-    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => { meta.content = actual === 'dark' ? '#0f172a' : '#e6f2fa'; });
+    // The status / title bar takes the page's own background (it used to be a blue of an old palette)
+    const pageBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || (actual === 'dark' ? '#181817' : '#f5f4f1');
+    document.querySelectorAll('meta[name="theme-color"]').forEach(meta => { meta.content = pageBg; });
 }
 
 const storedTheme = () => localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
@@ -6513,7 +6586,11 @@ function openMentorContactModal(userId, mentorName) {
     setTimeout(() => $('mentor-contact-message')?.focus(), 150);
 }
 
-async function submitMentorContact(e) {
+function submitMentorContact(e) {
+    e?.preventDefault?.();
+    return once('mentor-contact', () => submitMentorContactNow(e));
+}
+async function submitMentorContactNow(e) {
     e?.preventDefault?.();
     const mentorId = inputValue('mentor-contact-user-id');
     const message = inputValue('mentor-contact-message').trim();
@@ -6866,7 +6943,11 @@ function openMentorApplicationModal() {
     openModal('mentor-application-modal');
 }
 
-async function submitMentorApplication(e) {
+function submitMentorApplication(e) {
+    e?.preventDefault?.();
+    return once('mentor-application', () => submitMentorApplicationNow(e));
+}
+async function submitMentorApplicationNow(e) {
     e?.preventDefault?.();
     const bio = inputValue('mentor-app-bio').trim();
     const max_mentees = $('mentor-app-max') ? parseInt(inputValue('mentor-app-max'), 10) : 3;
@@ -6942,10 +7023,15 @@ async function loadMentoringReviewList() {
         }).join('');
     } catch (err) {
         console.warn('Failed to load review list:', err);
+        // Not "Loading applications..." forever
+        listEl.innerHTML = notice('--danger', t('mentoring_review_load_error', 'Failed to load applications.'));
     }
 }
 
-async function setMentorStatus(mentorId, status) {
+function setMentorStatus(mentorId, status) {
+    return once(`mentor:${mentorId}`, () => setMentorStatusNow(mentorId, status));
+}
+async function setMentorStatusNow(mentorId, status) {
     const action = status === 'approved' ? t('mentoring_action_approve', 'approve') : t('mentoring_action_reject', 'reject');
     if (!confirmAction(t('mentoring_confirm_status', 'Are you sure you want to {action} this application?', { action }))) return;
     try {
@@ -7146,6 +7232,11 @@ const cardIcon = name => svgIcon(name, 12, name === 'chevronRight' ? 2.5 : 2);
 let memberEventCreation = true;
 const canCreateEvents = () => canManageEvents() || memberEventCreation;
 
+// Until the first answer: a spinner, after a failed first load an error with "Try again" (an empty list said
+// "nothing coming up"); a later failed refresh keeps what is shown
+let eventsLoaded = false;
+let eventsLoadError = '';
+
 async function loadEventsData() {
     if (!currentUser) return;
     try {
@@ -7155,7 +7246,13 @@ async function loadEventsData() {
             api('/events/settings').catch(() => null),
             loadSystemGroups()
         ]);
-        if (eventsRes.ok) appEvents = await eventsRes.json();
+        if (eventsRes.ok) {
+            appEvents = await eventsRes.json();
+            eventsLoaded = true;
+            eventsLoadError = '';
+        } else if (!eventsLoaded) {
+            eventsLoadError = t('events_load_failed', 'Events could not be loaded');
+        }
         myDutyRequests = requestsRes?.ok ? await requestsRes.json() : [];
         if (settingsRes?.ok) {
             memberEventCreation = (await settingsRes.json())?.allowMemberCreation !== false;
@@ -7166,6 +7263,11 @@ async function loadEventsData() {
         renderHomeDutiesCard();
     } catch (err) {
         console.warn('Failed to load events:', err);
+        if (!eventsLoaded) {
+            eventsLoadError = t('error_connection', 'Connection error');
+            renderEvents();
+            renderHomeDutiesCard();
+        }
     }
 }
 
@@ -7206,10 +7308,10 @@ function dutyRequestBanner(list, onHome) {
                             </div>
                         </div>
                         <div class="events-request-actions">
-                            <button type="button" class="btn btn-success btn-small" onclick="${stop}window.respondToDutyRequest(${jsArg(id)}, 'accept')">
+                            <button type="button" class="btn btn-primary btn-small" onclick="${stop}window.respondToDutyRequest(${jsArg(id)}, 'accept')">
                                 ✅ ${t('duty_btn_accept', 'Accept')}
                             </button>
-                            <button type="button" class="btn btn-ghost btn-small text-danger" onclick="${stop}window.respondToDutyRequest(${jsArg(id)}, 'decline')">
+                            <button type="button" class="btn btn-danger btn-small" onclick="${stop}window.respondToDutyRequest(${jsArg(id)}, 'decline')">
                                 ❌ ${t('request_btn_reject', 'Reject')}
                             </button>
                         </div>
@@ -7305,10 +7407,14 @@ function renderHomeUpcoming() {
         .sort((a, b) => startOf(a).localeCompare(startOf(b)) || (a.startTime || '').localeCompare(b.startTime || ''))
         .slice(0, HOME_UPCOMING_COUNT) : [];
     container.style.display = currentUser ? 'block' : 'none';
+    if (!eventsLoaded) {
+        container.innerHTML = `<div class="home-section-head"><h2>${t('home_next', 'Up next')}</h2></div>${eventsNotLoaded()}`;
+        return [];
+    }
     if (!upcoming.length) {
         container.innerHTML = `
-            <div class="home-section-head"><h2>${t('home_next', 'Coming up')}</h2></div>
-            <div class="home-next-empty">${t('home_next_empty', 'Nothing coming up right now – enjoy the free time!')} 🌿</div>`;
+            <div class="home-section-head"><h2>${t('home_next', 'Up next')}</h2></div>
+            <div class="home-next-empty">${t('home_next_empty', 'Nothing coming up right now – enjoy the free time! 🌿')}</div>`;
         return [];
     }
     const cards = upcoming.map(ev => {
@@ -7382,14 +7488,19 @@ function renderHomePaymentStatus(container, p, meta, statusText) {
 }
 
 function refreshDetailEvent(openDuties) {
-    if (!currentDetailEvent) return;
+    // Only while the event is open: answering a duty request on the home page used to reopen the last event viewed
+    if (!currentDetailEvent || !shownModal('event-detail-modal')) return;
     openEventDetailModal(currentDetailEvent.id);
     const details = $('detail-modal-duties-details');
     if (openDuties && details) details.open = true;
 }
 
 // Runs an event API call, reports the outcome as toast, reloads events and refreshes the open detail modal.
-async function eventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Connection error'), before, after = () => refreshDetailEvent(true) }) {
+// The same call twice (a double tap) runs once, see once()
+function eventAction(path, method, body, options) {
+    return once(`${method} ${path}`, () => runEventAction(path, method, body, options));
+}
+async function runEventAction(path, method, body, { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Connection error'), before, after = () => refreshDetailEvent(true) }) {
     try {
         const res = await api(path, method, body);
         const data = await res.json().catch(() => ({}));
@@ -7464,9 +7575,20 @@ function expandEventDays(list, todayStr) {
     });
 }
 
+const eventsNotLoaded = () => (eventsLoadError ? `
+    <div class="polls-empty">
+        <span class="polls-empty-icon">${svgIcon('calendar', 26, 1.8)}</span>
+        <span class="polls-empty-title">${escapeHtml(eventsLoadError)}</span>
+        <button type="button" class="btn btn-secondary" onclick="window.loadEventsData()">${t('btn_retry', 'Try again')}</button>
+    </div>` : '<div class="polls-loading"><span class="spinner"></span></div>');
+
 function renderEvents() {
     const container = $('events-list-container');
     if (!container) return;
+    if (!eventsLoaded) {
+        container.innerHTML = eventsNotLoaded();
+        return;
+    }
     const todayStr = getTodayStr();
     const isEventsTab = currentEventsSubTab === 'events';
     const filtered = getFilteredEvents(todayStr);
@@ -7636,7 +7758,7 @@ function renderChurchtoolsEventCard(ev, forcePast = false) {
             </div>` : `<span class="ct-footer-pill">${t('events_registered_count', '{count} registered', { count: regCount })}</span>`;
     const metaRow = (icon, text, extra = '') => `<div class="ct-event-card-meta-row${extra}">${cardIcon(icon)}<span>${escapeHtml(text)}</span></div>`;
     return `
-        <div class="churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}" id="event-card-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal(${jsArg(ev.id)})">
+        <div class="churchtools-event-card ${isPinned ? 'is-pinned' : ''} ${isPast ? 'is-past' : ''}" id="event-card-${escapeHtml(ev.id)}" onclick="window.openEventDetailModal(${jsArg(ev.id)})" role="button" tabindex="0" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}">
             <div class="ct-event-card-cover-wrap">
                 ${ev.imageUrl
                     ? `<img class="ct-event-card-cover-img" src="${escapeHtml(ev.imageUrl)}" alt="${escapeHtml(ev.title)}" loading="lazy">`
@@ -7698,7 +7820,7 @@ function renderEventCard(ev, idPrefix = 'event-card-', day = ev.date) {
     const when = isMultiDay ? formatEventDateSpanShort(ev.date, ev.endDate) : (timeDisplay || t('home_all_day', 'All day'));
     const categoryLabel = isPinned ? t('events_major_event', 'Major event') : isEvent ? t('detail_groups_event', 'Event') : t('detail_groups_termin', 'Appointment');
     return `
-        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" data-day="${escapeHtml(day || '')}" title="${categoryLabel}" onclick="window.openEventDetailModal(${jsArg(ev.id)})">
+        <div class="event-card ${category} ${isPast ? 'is-past' : ''} ${isToday ? 'is-today' : ''}" id="${idPrefix}${escapeHtml(ev.id)}${day !== ev.date ? '-' + escapeHtml(day) : ''}" data-day="${escapeHtml(day || '')}" title="${categoryLabel}" onclick="window.openEventDetailModal(${jsArg(ev.id)})" role="button" tabindex="0" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}">
             ${eventCalendarLeaf(day)}
             <div class="event-card-body">
                 <div class="event-card-title">${escapeHtml(ev.title)}</div>
@@ -8993,7 +9115,11 @@ function leaveGuestView() {
 }
 
 // Signed out there is no app behind the shared event: the page stays (back gesture, Escape)
-modalCloseGuards['event-detail-modal'] = () => !guestView?.anon;
+// Leaving an event being edited (Escape, back gesture, close) asks first when something changed - like the song and
+// prayer editors; saving and "Cancel" end the edit mode before closing
+modalCloseGuards['event-detail-modal'] = () => !guestView?.anon
+    && (!detailCard()?.classList.contains('detail-is-editing') || eventEditState() === eventEditSnapshot
+        || confirmAction(t('songbook_discard', 'Discard your changes?')));
 
 // --- Duty planner (tasks grouped by role) ---
 function renderGroupedDuties(duties, ev) {
@@ -9009,7 +9135,7 @@ async function toggleEventRegistration(eventId, currentStatus) {
         success: data => cancel ? t('events_unregistered_success', 'Unregistered successfully') : data.isWaitlist ? t('events_waitlist_success', 'Added to the waiting list') : t('events_registered_success', 'Registered successfully!'),
         successType: data => cancel ? 'info' : data.isWaitlist ? 'warning' : 'success',
         error: t('error_action_failed', 'Action failed'),
-        after: () => { if (currentDetailEvent?.id === eventId) openEventDetailModal(eventId); }
+        after: () => { if (currentDetailEvent?.id === eventId && shownModal('event-detail-modal')) openEventDetailModal(eventId); }
     });
 }
 
@@ -9148,6 +9274,11 @@ async function saveEventSystemSettings() {
 }
 
 // --- Detail modal: inline edit mode (create & edit) ---
+/** Everything typed or chosen in the event editor, to notice changes. */
+let eventEditSnapshot = '';
+const eventEditState = () => JSON.stringify([...(detailCard()?.querySelectorAll('[id^="detail-edit-"], .detail-edit-group-check, input[type="checkbox"]') || [])]
+    .filter(el => 'value' in el).map(el => (el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value)));
+
 function enterDetailEditMode() {
     const ev = currentDetailEvent;
     const card = detailCard();
@@ -9203,7 +9334,12 @@ function enterDetailEditMode() {
 
     const selectedGroups = ev ? ev.targetGroups || [] : [];
     populateDetailEditTargetGroups(selectedGroups);
-    if (groupList().length === 0) loadSystemGroups().then(() => populateDetailEditTargetGroups(selectedGroups));
+    eventEditSnapshot = eventEditState();
+    if (groupList().length === 0) loadSystemGroups().then(() => {
+        const untouched = eventEditState() === eventEditSnapshot;
+        populateDetailEditTargetGroups(selectedGroups);
+        if (untouched) eventEditSnapshot = eventEditState();
+    });
     show('detail-modal-action-bar', true, 'flex');
     setText('detail-btn-save-text', ev ? t('btn_save', 'Save') : t('events_btn_publish_short', 'Publish'));
 }
@@ -9306,6 +9442,7 @@ function openNewEventDetailModal(defaultType) {
     card?.classList.add('detail-is-editing', 'detail-is-new');
     enterDetailEditMode();
     setDetailEditType(type);
+    eventEditSnapshot = eventEditState();
 }
 
 function setDetailEditType(type) {
@@ -9361,7 +9498,7 @@ function autoResizeDetailTextarea(textarea) {
 }
 
 Object.assign(window, {
-    openEventShare, toggleEventPublic, copyEventShareLink, sendEventShareLink, openGuestForm, submitGuestRegistration, cancelGuestRegistration,
+    openEventShare, loadEventsData, toggleEventPublic, copyEventShareLink, sendEventShareLink, openGuestForm, submitGuestRegistration, cancelGuestRegistration,
     showGuestSignIn, closeGuestSignIn,
     switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, 
      toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,

@@ -1416,5 +1416,6 @@
   "allow_notifications": "Benachrichtigungen erlauben",
   "push_test": "Test senden",
   "push_test_sent": "Testbenachrichtigung gesendet",
-  "push_test_failed": "Der Test konnte nicht gesendet werden."
+  "push_test_failed": "Der Test konnte nicht gesendet werden.",
+  "events_load_failed": "Termine konnten nicht geladen werden"
 }
