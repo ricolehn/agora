@@ -80,7 +80,8 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
       'manage_mentoring',
       'manage_events',
       'manage_songbook',
-      'manage_prayers'
+      'manage_prayers',
+      'manage_media'
     ];
     try {
       const existingGroups = await listGroupRecords(newConfig);

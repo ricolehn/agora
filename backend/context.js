@@ -321,6 +321,7 @@ function clearAuthCookie(req, res) {
 
 // Copies the permissions of the user's groups onto the user object (resolveUserPermissions result)
 function applyGroupPermissions(user, groupPerms) {
+  user.groupIds = groupPerms.groupIds || [];
   user.groupNames = groupPerms.groupNames || [];
   user.permissions = groupPerms.permissions;
   user.canManageFinances = groupPerms.canManageFinances;

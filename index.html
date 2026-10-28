@@ -454,9 +454,9 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         <span data-i18n="nav_sys_ai">AI Support</span>
                     </button>
-                    <button class="pill-tab sys-subnav-btn" id="sys-subtab-btn-events" onclick="switchSysSettingsTab('events')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                        <span data-i18n="nav_sys_events">Events &amp; Calendar</span>
+                    <button class="pill-tab sys-subnav-btn" id="sys-subtab-btn-media" onclick="switchSysSettingsTab('media')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                        <span data-i18n="nav_sys_media">Media</span>
                     </button>
                 </div>
             </div>
@@ -645,43 +645,54 @@
                 </div>
             </div>
 
-            <!-- SUBTAB 4: Events & Kalender Einstellungen -->
-            <div id="sys-panel-events" class="sys-panel" style="display: none;">
+            <!-- SUBTAB 4: Media - the Nextcloud account the library lives in -->
+            <div id="sys-panel-media" class="sys-panel" style="display: none;">
                 <div class="super-admin-group">
-                    <div class="super-admin-group-title" data-i18n="superadmin_events_title">Event &amp; Calendar Settings</div>
-                    <div class="super-admin-group-desc" data-i18n="superadmin_events_desc">Configure permissions for events, default duty roles and calendar subscriptions.</div>
+                    <div class="super-admin-group-title" data-i18n="superadmin_media_title">Media (Nextcloud)</div>
+                    <div class="super-admin-group-desc" data-i18n="superadmin_media_desc">A folder in Nextcloud becomes the media library of the community (Extras → Media). Agora signs in with one account of its own and decides itself who may see and add what: members with "Extended media rights" set this per folder and group.</div>
 
-                    <div class="form-group" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:18px;">
-                        <label class="switch" style="flex-shrink:0; margin-top:2px;">
-                            <input type="checkbox" id="super-admin-events-allow-member-creation" checked>
+                    <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
+                        <label class="switch" style="flex-shrink:0;">
+                            <input type="checkbox" id="super-admin-media-enabled">
                             <span class="slider"></span>
                         </label>
-                        <div>
-                            <label for="super-admin-events-allow-member-creation" style="margin:0; font-weight:700; cursor:pointer;" data-i18n="events_setting_allow_member_title">Allow all members to create events</label>
-                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;" data-i18n="events_setting_allow_member_desc">If disabled, only administrators and people with leadership rights can create appointments.</div>
-                        </div>
+                        <label for="super-admin-media-enabled" style="margin:0; font-weight:600; cursor:pointer;" data-i18n="media_cfg_enabled">Switch on Media</label>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label" for="super-admin-events-default-duties" style="color: var(--text-secondary);" data-i18n="events_default_duties_label">Default duty roles (comma-separated)</label>
-                        <input type="text" id="super-admin-events-default-duties" class="form-input super-admin-input" placeholder="Bistro team, tech, welcome, hosting, music/worship" data-i18n-placeholder="events_default_duties_placeholder">
-                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;" data-i18n="events_default_duties_help">These roles are suggested as quick picks for new events.</div>
+                        <label class="form-label" for="super-admin-media-url" style="color: var(--text-secondary);" data-i18n="media_cfg_url">Nextcloud address</label>
+                        <input type="url" id="super-admin-media-url" class="form-input super-admin-input" placeholder="https://cloud.example.org" autocomplete="off" spellcheck="false">
+                        <div class="media-cfg-help" data-i18n="media_cfg_url_desc">With port and path if your Nextcloud needs them, e.g. https://cloud.example.org:8443/nextcloud. The address of the Files app works too.</div>
                     </div>
 
-                    <div class="form-group" style="margin-top:20px; padding:16px; background:var(--surface-alt); border-radius:12px; border:1px solid var(--border-light);">
-                        <div style="font-weight:700; font-size:0.92rem; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-                            <span>📅</span> <span data-i18n="events_feed_title">Subscribable calendar feed (WebCal / iCal)</span>
-                        </div>
-                        <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:10px;" data-i18n="events_feed_desc">
-                            Members can subscribe to all appointments visible to them directly in Google Calendar, Apple iCal (iPhone/Mac) or Microsoft Outlook.
-                        </div>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="super-admin-events-feed-url" class="form-input super-admin-input" readonly style="font-family:monospace; font-size:0.8rem; background:var(--surface);">
-                            <button type="button" class="btn btn-secondary btn-small" onclick="copyCalendarFeedUrl('admin')" data-i18n="copy_btn">Copy</button>
-                        </div>
+                    <div class="form-group">
+                        <label class="form-label" for="super-admin-media-user" style="color: var(--text-secondary);" data-i18n="media_cfg_user">Account (user name)</label>
+                        <input type="text" id="super-admin-media-user" class="form-input super-admin-input" placeholder="agora-bot" autocomplete="off" spellcheck="false" autocapitalize="off">
                     </div>
 
-                    <button class="btn btn-block super-admin-btn" style="margin-top: 15px;" onclick="saveEventSystemSettings()" data-i18n="btn_save_event_settings">Save Event Settings</button>
+                    <div class="form-group">
+                        <label class="form-label" for="super-admin-media-password" style="color: var(--text-secondary);" data-i18n="media_cfg_password">App password</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="super-admin-media-password" class="form-input super-admin-input has-toggle" autocomplete="new-password" placeholder="xxxxx-xxxxx-xxxxx-xxxxx-xxxxx">
+                            <button type="button" class="password-toggle" onclick="togglePassword('super-admin-media-password', this)" aria-label="Show password" data-i18n-aria-label="media_cfg_show_password">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
+                        <div class="media-cfg-help" data-i18n="media_cfg_password_desc">In Nextcloud signed in as this account: Settings → Security → Devices &amp; sessions → "Create new app password". It is stored encrypted and never sent to the apps.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="super-admin-media-root" style="color: var(--text-secondary);" data-i18n="media_cfg_root">Base folder</label>
+                        <input type="text" id="super-admin-media-root" class="form-input super-admin-input" placeholder="/Agora" autocomplete="off" spellcheck="false">
+                        <div class="media-cfg-help" data-i18n="media_cfg_root_desc">Only this folder of the account (and what is in it) is shown in Agora. Empty: the whole account.</div>
+                    </div>
+
+                    <div id="media-cfg-result" class="media-cfg-result" role="status" hidden></div>
+
+                    <div class="media-cfg-actions">
+                        <button type="button" id="media-cfg-test-btn" class="btn btn-secondary" onclick="testMediaConfig()" data-i18n="media_cfg_test">Test connection</button>
+                        <button type="button" id="media-cfg-save-btn" class="btn super-admin-btn" onclick="saveMediaConfig()" data-i18n="media_cfg_save">Save media settings</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -736,6 +747,36 @@
                 <button type="button" role="tab" aria-selected="false" class="polls-filter-btn" data-filter="mine" onclick="setPrayerFilter('mine')" data-i18n="prayers_filter_mine">Mine</button>
             </div>
             <div id="prayers-list"></div>
+        </div>
+
+        <!-- Media: the community's Nextcloud folder - browse, view pictures and PDFs, add files where allowed -->
+        <div id="media" class="tab-content" role="tabpanel">
+            <div class="polls-head media-head">
+                <button type="button" class="hub-back-btn" onclick="mediaBack()" data-i18n-aria-label="btn_back" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                <h1 id="media-title" class="polls-title" data-i18n="media_title">Media</h1>
+                <div class="media-head-actions">
+                    <label class="media-sort-wrap">
+                        <span class="sr-only" data-i18n="media_sort">Order</span>
+                        <select id="media-sort" class="media-sort" onchange="setMediaSort(this.value)">
+                            <option value="name" data-i18n="media_sort_name">Name</option>
+                            <option value="newest" data-i18n="media_sort_newest">Newest</option>
+                        </select>
+                    </label>
+                    <button type="button" id="media-rights-btn" class="media-icon-btn" onclick="openMediaRights()" style="display:none;" data-i18n-title="media_rights_folder" title="Rights of this folder" data-i18n-aria-label="media_rights_folder" aria-label="Rights of this folder">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </button>
+                    <button type="button" id="media-rules-btn" class="media-icon-btn" onclick="openMediaRulesOverview()" style="display:none;" data-i18n-title="media_rules_overview" title="All folder rights" data-i18n-aria-label="media_rules_overview" aria-label="All folder rights">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+            <nav id="media-crumbs" class="media-crumbs" data-i18n-aria-label="media_path" aria-label="Folder path"></nav>
+            <div id="media-upload" class="media-upload" hidden>
+                <div class="media-upload-bar"><span id="media-upload-fill"></span></div>
+                <span id="media-upload-text" class="media-upload-text"></span>
+            </div>
+            <div id="media-list" class="media-list"></div>
+            <input type="file" id="media-file-input" multiple hidden onchange="uploadMediaFiles(this.files)">
         </div>
 
         <div id="ai-chat" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-ai-chat" style="height: 100%;">
@@ -1210,6 +1251,26 @@
             <div class="fab-menu-text">
                 <div class="fab-menu-title" data-i18n="action_book_expense">Book Expense</div>
                 <div class="fab-menu-subtitle" data-i18n="action_book_expense_sub">Release a payment.</div>
+            </div>
+        </button>
+    </div>
+    <div id="fab-media-items" style="display:none;">
+        <button type="button" class="fab-menu-item" onclick="pickMediaFiles(); toggleFab()">
+            <div class="fab-menu-icon" style="background: rgba(37, 99, 235, 0.14); color: #2563eb;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="fab-menu-text">
+                <div class="fab-menu-title" data-i18n="media_upload">Upload files</div>
+                <div class="fab-menu-subtitle" data-i18n="media_upload_sub">Pictures, PDFs and other files into this folder</div>
+            </div>
+        </button>
+        <button type="button" class="fab-menu-item" onclick="openMediaFolderDialog(); toggleFab()">
+            <div class="fab-menu-icon" style="background: rgba(217, 119, 6, 0.14); color: #d97706;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+            </div>
+            <div class="fab-menu-text">
+                <div class="fab-menu-title" data-i18n="media_new_folder">New folder</div>
+                <div class="fab-menu-subtitle" data-i18n="media_new_folder_sub">Inside the folder that is open</div>
             </div>
         </button>
     </div>
@@ -1733,6 +1794,123 @@
         <div class="modal-footer-enhanced plan-sheet-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal('prayer-edit-modal')" data-i18n="btn_cancel">Cancel</button>
             <button type="button" id="prayer-submit" class="btn btn-primary" onclick="submitPrayer()" data-i18n="prayers_share">Share</button>
+        </div>
+    </div>
+</div>
+
+<!-- Media: picture viewer (fills the screen, a sharp preview follows the thumbnail; the original on request) -->
+<div id="media-viewer-modal" class="modal media-viewer" role="dialog" aria-modal="true" aria-labelledby="media-viewer-name">
+    <div class="media-viewer-frame" tabindex="-1">
+        <div class="media-viewer-top">
+            <div class="media-viewer-heading">
+                <span id="media-viewer-name" class="media-viewer-name"></span>
+                <span id="media-viewer-meta" class="media-viewer-meta"></span>
+            </div>
+            <button type="button" id="media-viewer-zoom" class="media-viewer-btn" onclick="toggleMediaZoom()" data-i18n-title="media_original_size" title="Original size" data-i18n-aria-label="media_original_size" aria-label="Original size">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <a id="media-viewer-download" class="media-viewer-btn" href="#" download data-i18n-title="media_download" title="Download" data-i18n-aria-label="media_download" aria-label="Download">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </a>
+            <button type="button" class="media-viewer-btn" onclick="closeModal('media-viewer-modal')" data-i18n-aria-label="btn_close" aria-label="Close">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <div id="media-viewer-stage" class="media-viewer-stage">
+            <img id="media-viewer-img" class="media-viewer-img" alt="" draggable="false">
+            <div id="media-viewer-loading" class="media-viewer-loading" hidden></div>
+        </div>
+        <button type="button" id="media-viewer-prev" class="media-viewer-nav is-prev" onclick="stepMediaViewer(-1)" data-i18n-aria-label="media_previous" aria-label="Previous picture">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button type="button" id="media-viewer-next" class="media-viewer-nav is-next" onclick="stepMediaViewer(1)" data-i18n-aria-label="media_next" aria-label="Next picture">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <div id="media-viewer-count" class="media-viewer-count"></div>
+    </div>
+</div>
+
+<!-- Media: PDF viewer (the browser's own on computers, pdf.js on phones and tablets) -->
+<div id="media-pdf-modal" class="modal media-viewer media-pdf" role="dialog" aria-modal="true" aria-labelledby="media-pdf-name">
+    <div class="media-viewer-frame" tabindex="-1">
+        <div class="media-viewer-top">
+            <div class="media-viewer-heading">
+                <span id="media-pdf-name" class="media-viewer-name"></span>
+                <span id="media-pdf-meta" class="media-viewer-meta"></span>
+            </div>
+            <div id="media-pdf-zoom" class="media-pdf-zoom" hidden>
+                <button type="button" class="media-viewer-btn" onclick="zoomMediaPdf(-1)" data-i18n-aria-label="media_zoom_out" aria-label="Zoom out">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+                <button type="button" class="media-viewer-btn" onclick="zoomMediaPdf(1)" data-i18n-aria-label="media_zoom_in" aria-label="Zoom in">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+            </div>
+            <a id="media-pdf-download" class="media-viewer-btn" href="#" download data-i18n-title="media_download" title="Download" data-i18n-aria-label="media_download" aria-label="Download">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </a>
+            <button type="button" class="media-viewer-btn" onclick="closeModal('media-pdf-modal')" data-i18n-aria-label="btn_close" aria-label="Close">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <div id="media-pdf-stage" class="media-pdf-stage"></div>
+    </div>
+</div>
+
+<!-- Media: who may do what in a folder (members with extended media rights) -->
+<div id="media-rights-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="media-rights-title">
+    <div class="modal-content modal-content-enhanced plan-sheet media-rights-sheet">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div>
+                    <div id="media-rights-title" class="modal-title-main" data-i18n="media_rights_title">Folder rights</div>
+                    <div id="media-rights-path" class="modal-subtitle media-rights-path"></div>
+                </div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeModal('media-rights-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced plan-sheet-body">
+            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload and create folders. Hidden: the group does not see the folder. Nothing can be deleted.</p>
+            <div id="media-rights-list" class="media-rights-list"></div>
+        </div>
+        <div class="modal-footer-enhanced plan-sheet-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('media-rights-modal')" data-i18n="btn_cancel">Cancel</button>
+            <button type="button" id="media-rights-save" class="btn btn-primary" onclick="saveMediaRights()" data-i18n="btn_save">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Media: every folder with rights of its own, at a glance -->
+<div id="media-rules-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="media-rules-title">
+    <div class="modal-content modal-content-enhanced plan-sheet">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div><div id="media-rules-title" class="modal-title-main" data-i18n="media_rules_overview">All folder rights</div></div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeModal('media-rules-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced plan-sheet-body">
+            <div id="media-rules-list" class="media-rules-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Media: a new folder in the open one -->
+<div id="media-folder-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="media-folder-title">
+    <div class="modal-content modal-content-enhanced plan-sheet">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div><div id="media-folder-title" class="modal-title-main" data-i18n="media_new_folder">New folder</div></div>
+            </div>
+            <button type="button" class="close-btn" onclick="closeModal('media-folder-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced plan-sheet-body">
+            <label class="plan-sheet-label" for="media-folder-name" data-i18n="media_folder_name">Name</label>
+            <input type="text" id="media-folder-name" class="form-input" maxlength="200" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();window.createMediaFolder();}">
+        </div>
+        <div class="modal-footer-enhanced plan-sheet-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('media-folder-modal')" data-i18n="btn_cancel">Cancel</button>
+            <button type="button" id="media-folder-create" class="btn btn-primary" onclick="createMediaFolder()" data-i18n="media_create">Create</button>
         </div>
     </div>
 </div>

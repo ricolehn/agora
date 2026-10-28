@@ -21,12 +21,13 @@ Agora is a web-based financial management application for small groups, clubs, o
 - **Donations:** Separate tracking for general donations.
 - **Expenses:** Log expenses with optional receipt uploads.
 - **Own address for every page:** `/events`, `/events/Jugendfreizeit_2026`, `/settings/profile`, `/songbook/Amazing_Grace`, `/mentoring/chat/<id>` … – links can be shared and bookmarked, a reload stays on the page, and the browser back button walks back step by step. Repeating titles get the date (`/events/Gottesdienst_2026-10-12`); old `#` links keep working.
-- **Extras hub:** one place for the additional offers – AI assistant, songbook, prayer requests and anonymous polls (tiles appear only for those who may use them).
+- **Extras hub:** one place for the additional offers – AI assistant, songbook, prayer requests, media and anonymous polls (tiles appear only for those who may use them).
 - **AI assistant (Extras):** answers questions about the community, the finances (with permission) and the events of the coming year – dates, places, registrations, your own duties and, where you may see them, the duty roster and order of service. It only knows what the asking member is allowed to see.
 - **Songbook:** songs with chords (`[G]` inline, `# Chorus` headings, the common ChordPro directives) and key; transposing spells the target key (also German H/B notation), lines wrap on phones, auto-scroll keeps the screen on; font size, chords and transposition are remembered, songs can be printed and shared as a link. The church's CCLI licence number is set in the System configuration and shown with every song. Editing needs the `manage_songbook` permission (existing installations give it to the owner's admin group once).
 - **Prayer requests (Extras):** members share a request with their name or anonymously (nobody in the app sees who, not even the leaders) for a week, a month or three months - shown as a calm list, newest first. The owner extends it or removes it when it is done; groups with "Moderate prayer requests" remove unsuitable ones. Back up `data/prayers-secret` with the data folder.
 - **Sharing events:** the share icon right of every event's title and organiser (in the Android app too) gives its link to copy or to hand to the system share sheet. Whoever may edit the event (its creator and event managers) decides with a switch whether people **without an account** may open it: they see what, when and where – never the organiser, the participants or the duty roster – and, when the event takes registrations, sign up as guests with full name, e-mail address and age. Guests share the places and the waiting list with members, get a confirmation e-mail (when SMTP is set up) with a link to see or cancel their place, show up as "Guest" in the participant list (e-mail address and age only for the event's editors) and are deleted 30 days after the event. Switched off, the link only works for members again; on again, the old links work again. Shared links show the event's title, date and picture in messenger previews.
 - **Duty roster with order of service:** one "+" opens a short dialog with three questions: **What?** (a task, or a song from the songbook found while typing), **Who?** (people and groups picked right in the dialog, any number at once) and **When?** (during the event, or "in the order" - tap the gap where it belongs and pick a duration). Entries in the order get their time from the start of the event and their durations (arrows change the order); the others are tasks during the whole event. People are asked right at an entry (requests, reminders and the apps keep working through the roster); songs open in the band's key.
+- **Media (Extras)** *(BA SING SE, in development)*: a folder of the community's Nextcloud becomes a library of pictures and files. Thumbnails come from Nextcloud's previews; pictures open in a full-screen viewer (sharp preview as large as the screen, swipe or arrow keys, the original on request), PDFs open right in the app (the browser's viewer on computers, pdf.js on phones and tablets). Agora signs in with one Nextcloud account and checks every request itself: members with **Extended media rights** decide per folder which group may **read**, **write** (upload, new folders) or not see it (**hidden**); a right applies to all folders below until one sets its own, and without a right nobody sees anything. Nothing can be deleted, renamed or overwritten through Agora (a taken name gets a number). Set up in *System settings → Media*, see below.
 - **Anonymous polls** *(switched off by default while it is discussed; turn on with `-e AGORA_FEATURE_POLLS=1`, existing polls are kept)*: every member can ask; votes are only counted – nobody in the app (creator or admins) can see who chose what, results appear after the end and only with at least three votes (polls that end with fewer lose their counts for good). Your own choice is remembered on your device only. Back up `data/polls-secret` with the data folder: without it, running polls can no longer tell who already voted.
 - **Settings menu:** the settings are a menu of pages (profile, notifications, appearance & language, password, calendar, fees, account) like the apps.
 
@@ -154,13 +155,37 @@ Both files are read once on startup, so restart the container after adding them.
 </details>
 
 <details>
+<summary><b>Media library (Nextcloud)</b></summary>
+
+## 🗂 Media library (Nextcloud)
+
+1. In Nextcloud, create an account for Agora (e.g. `agora-bot`) and a folder for the library in it (e.g. `Agora`). Share existing folders with that account if the pictures live elsewhere. Then, signed in as that account: *Settings → Security → Devices & sessions → Create new app password*.
+2. In Agora: *System settings → Media*: the Nextcloud address (with port and path if needed, e.g. `https://cloud.example.org:8443/nextcloud`), the account, the app password and the base folder. *Test connection* lists the folders it finds; switch Media on and save.
+3. Give a group the permission **Extended media rights** (new installations: the Admin group has it; existing ones: the owner's admin group gets it once). Its members open *Extras → Media* and set the rights of each folder with the shield (*All folder rights* lists every folder that has some).
+
+The bot account has full rights in Nextcloud; Agora alone decides what members see and do, and only ever reaches the base folder and what is in it. The app password is stored encrypted (key in `data/media-secret` – back it up with the data folder; without it the password has to be entered again) and is never sent to the apps. Files that could run in the browser (HTML, SVG, …) are only ever sent as downloads. Pictures and PDFs need Nextcloud's preview generation for thumbnails (PDF thumbnails need its Imagick/Ghostscript provider; without it PDFs show an icon). The PDF viewer for phones (pdf.js 6.3.289, Apache-2.0) is bundled in `assets/vendor/pdfjs/` and served by the instance itself.
+
+API for the apps (all with the member's token; paths relative to the base folder):
+
+| Call | What |
+| --- | --- |
+| `GET /api/media/status` | `{ enabled, canManage, hasAccess }` – whether to show the tile |
+| `GET /api/media/list?path=` | `{ path, access, canManage, folders[], files[] }` – `access` is `read`, `write` or `none` (a folder only passed through) |
+| `GET /api/media/preview?path=&size=&crop=1&v=<etag>` | a preview image (sizes 64 … 2048); with `v` it may be cached for good |
+| `GET /api/media/file?path=&download=1` | the file (ranges supported) |
+| `POST /api/media/upload?path=` | multipart `files` (up to 50, 1 GB each) – needs `write` |
+| `POST /api/media/folder` | `{ path, name }` – needs `write` |
+| `GET /api/media/rules[?path=]`, `PUT /api/media/rules` | folder rights (`{ path, groups: { <groupId or *>: read\|write\|hide } }`) – extended media rights |
+</details>
+
+<details>
 <summary><b>Privacy, Account Deletion &amp; Reports</b></summary>
 
 ## 🔐 Privacy, Account Deletion & Reports
 
 Every instance serves two public pages that app stores (e.g. Google Play) ask for:
 
-- **`/privacy`** – privacy policy describing what Agora stores and which services it uses (push, optional AI provider, e-mail). Review it and add your organisation's contact details if your jurisdiction requires them.
+- **`/privacy`** – privacy policy describing what Agora stores and which services it uses (push, optional AI provider, optional Nextcloud for media, e-mail). Review it and add your organisation's contact details if your jurisdiction requires them.
 - **`/account-deletion`** – explains what is deleted and lets members delete their account without the app (e-mail + password).
 
 Guests of a shared event (signed up without an account) are kept in their own collection that only the server reads. They are deleted when they cancel, when the organisers remove them, with their event, and in any case 30 days after the event (daily cleanup).
@@ -226,7 +251,8 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `finance.test.js` | standing orders, request retention, derived finance data, what the web app books (`assets/finance.js`) |
 | `community.test.js` | events, guests and shared places, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
-| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, page addresses |
+| `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
+| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses |
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
 
 ```bash

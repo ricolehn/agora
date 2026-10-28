@@ -1,6 +1,7 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
+import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, viewerNeedsOriginal, neighbourIndex, rightsRows, rightsPayload } from "./media.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -249,6 +250,7 @@ const ICONS = {
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     poll: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-3"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
@@ -815,6 +817,12 @@ function handleHistoryBack() {
             history.pushState({ tab: currentActiveTab }, '');
             return;
         }
+        // In a folder of the library: the folder above
+        if (currentActiveTab === 'media' && mediaFolder) {
+            openMediaFolder(parentPath(mediaFolder));
+            history.pushState({ tab: 'media' }, '');
+            return;
+        }
         if (HUB_TABS.includes(currentActiveTab)) {
             switchTab('hub', 'history');
             history.pushState({ tab: 'hub' }, '');
@@ -949,7 +957,7 @@ function queueRemoteUpdate(scope) {
     if (!remoteUpdateTimer) remoteUpdateTimer = setTimeout(flushRemoteUpdates, REMOTE_UPDATE_DELAY_MS);
 }
 
-const REMOTE_LOADERS = { events: () => { loadEventsData(); refreshProgram(); }, prayers: () => (currentActiveTab === 'prayers' ? loadPrayers() : null), mentoring: () => refreshMentoringFromRemote(), polls: () => (currentActiveTab === 'polls' ? loadPolls() : null), songs: () => (currentActiveTab === 'songbook' ? loadSongs() : null) };
+const REMOTE_LOADERS = { events: () => { loadEventsData(); refreshProgram(); }, prayers: () => (currentActiveTab === 'prayers' ? loadPrayers() : null), mentoring: () => refreshMentoringFromRemote(), polls: () => (currentActiveTab === 'polls' ? loadPolls() : null), songs: () => (currentActiveTab === 'songbook' ? loadSongs() : null), media: () => { loadMediaStatus(); if (currentActiveTab === 'media') loadMediaFolder({ silent: true }); } };
 
 async function flushRemoteUpdates() {
     remoteUpdateTimer = null;
@@ -1055,6 +1063,8 @@ const HUB_APPS = [
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
     { key: 'songbook', icon: 'music', color: '#0891b2', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
     { key: 'prayers', icon: 'heart', color: '#e11d48', title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
+    { key: 'media', icon: 'folder', color: '#2563eb', title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
+        visible: () => mediaStatus.hasAccess, open: () => openMediaFolder('') },
     { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
         visible: () => FEATURES.polls, open: () => switchTab('polls') }
 ];
@@ -1081,6 +1091,723 @@ function renderHub() {
 
 function openHubApp(key) {
     HUB_APPS.find(app => app.key === key && !app.soon)?.open?.();
+}
+
+// --- Media (Extras): the community's Nextcloud folder as a library. The server checks every request against the
+// folder rights; this part shows what it sends: folders, thumbnails (Nextcloud's previews), the picture viewer,
+// the PDF viewer, uploads and - for members with extended media rights - the rights of each folder. ---
+let mediaStatus = { enabled: false, canManage: false, hasAccess: false };
+let mediaFolder = '';
+let mediaListing = null;
+let mediaLoadedPath = null;
+let mediaError = '';
+let mediaRequestId = 0;
+let mediaSort = (() => { try { return localStorage.getItem('agora-media-sort') || 'name'; } catch { return 'name'; } })();
+// The order shown: folders and files as on screen (the viewer steps through the pictures in this order)
+let mediaShownFiles = [];
+
+const MEDIA_KIND_ICONS = { image: 'image', pdf: 'fileText', video: 'play', audio: 'music', other: 'file' };
+const MEDIA_LEVEL_LABELS = () => ({
+    read: t('media_level_read', 'Read'),
+    write: t('media_level_write', 'Write'),
+    hide: t('media_level_hide', 'Hidden')
+});
+const mediaGroupName = group => (group.id === '*' ? t('media_all_members', 'All members') : group.name);
+const mediaFolderLabel = path => (path ? `/${path}` : t('media_base_folder', 'Base folder'));
+const mediaTileSize = () => thumbSize(window.innerWidth < 600 ? Math.ceil(window.innerWidth / 2) : 200, window.devicePixelRatio || 1);
+
+async function loadMediaStatus() {
+    if (!currentUser) return;
+    try {
+        mediaStatus = await apiJson('/media/status');
+    } catch {
+        mediaStatus = { enabled: false, canManage: false, hasAccess: false };
+    }
+    renderHub();
+}
+
+/** Opens [path] in the library (from the hub, a folder, the breadcrumb or an address). */
+function openMediaFolder(path = '') {
+    mediaFolder = path;
+    if (currentActiveTab !== 'media') return switchTab('media');
+    loadMediaFolder();
+    document.querySelector('.container')?.scrollTo({ top: 0 });
+}
+
+async function loadMediaFolder({ silent = false } = {}) {
+    const path = mediaFolder;
+    const requestId = ++mediaRequestId;
+    if (!silent || mediaLoadedPath !== path) {
+        if (mediaLoadedPath !== path) mediaListing = null;
+        mediaError = '';
+        renderMedia();
+    }
+    try {
+        const listing = await apiJson(`/media/list?path=${encodeURIComponent(path)}`, 'GET', undefined, t('media_load_failed', 'The folder could not be loaded'));
+        if (requestId !== mediaRequestId) return;
+        mediaListing = listing;
+        mediaLoadedPath = path;
+        mediaError = '';
+    } catch (err) {
+        if (requestId !== mediaRequestId) return;
+        // A folder that is gone (or no longer visible): one level up
+        if (err.status === 404 && path) {
+            showToast(t('media_folder_gone', 'This folder is not available.'), 'error');
+            mediaFolder = parentPath(path);
+            return loadMediaFolder();
+        }
+        if (!silent || !mediaListing) {
+            mediaListing = null;
+            mediaLoadedPath = null;
+            mediaError = err.status === 503 || err.status === 404 ? t('media_unavailable', 'There is nothing to see here yet.') : err.message;
+        }
+    }
+    renderMedia();
+    updateFabVisibility();
+    syncUrl();
+}
+
+function mediaBack() {
+    if (mediaFolder) openMediaFolder(parentPath(mediaFolder));
+    else switchTab('hub');
+}
+
+function setMediaSort(value) {
+    mediaSort = value === 'newest' ? 'newest' : 'name';
+    try { localStorage.setItem('agora-media-sort', mediaSort); } catch { /* private mode */ }
+    renderMedia();
+}
+
+function renderMediaCrumbs() {
+    const target = $('media-crumbs');
+    if (!target) return;
+    const crumbs = breadcrumb(mediaFolder);
+    const access = mediaListing?.access;
+    const badge = access === 'write' && !mediaStatus.canManage
+        ? `<span class="media-access-badge is-write">${svgIcon('upload', 12, 2.2)}${t('media_access_write', 'You can add files here')}</span>`
+        : access === 'read' ? `<span class="media-access-badge">${svgIcon('eye', 12, 2.2)}${t('media_access_read', 'Read only')}</span>` : '';
+    target.innerHTML = `
+        <button type="button" class="media-crumb${crumbs.length ? '' : ' is-current'}" onclick="openMediaFolder('')">${svgIcon('folder', 14, 2.2)}<span>${t('media_title', 'Media')}</span></button>
+        ${crumbs.map((crumb, index) => `<span class="media-crumb-sep" aria-hidden="true">${svgIcon('chevronRight', 12, 2.4)}</span><button type="button" class="media-crumb${index === crumbs.length - 1 ? ' is-current" aria-current="page' : ''}" onclick="openMediaFolder(${jsArg(crumb.path)})">${escapeHtml(crumb.name)}</button>`).join('')}
+        ${badge}`;
+}
+
+function mediaFolderCard(folder) {
+    const manage = mediaStatus.canManage;
+    const marks = manage ? [
+        folder.hasRules ? `<span class="media-folder-mark" title="${escapeHtml(t('media_has_rights', 'Has rights of its own'))}">${svgIcon('shield', 13, 2.2)}</span>` : '',
+        folder.hiddenFor?.length ? `<span class="media-folder-mark is-hidden" title="${escapeHtml(t('media_hidden_for_some', 'Hidden for some groups'))}">${svgIcon('eyeOff', 13, 2.2)}</span>` : ''
+    ].join('') : '';
+    const passage = folder.access === 'none' && !manage;
+    return `
+        <div class="media-folder${passage ? ' is-passage' : ''}">
+            <button type="button" class="media-folder-open" onclick="openMediaFolder(${jsArg(folder.path)})">
+                <span class="media-folder-icon">${svgIcon('folder', 22, 2)}</span>
+                <span class="media-folder-name">${escapeHtml(folder.name)}</span>
+                ${marks}
+            </button>
+            ${manage ? `<button type="button" class="media-folder-rights" onclick="openMediaRights(${jsArg(folder.path)})" title="${escapeHtml(t('media_rights_title', 'Folder rights'))}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: folder.name }))}">${svgIcon('shield', 16, 2)}</button>` : ''}
+        </div>`;
+}
+
+function mediaFileTile(file, index) {
+    const icon = svgIcon(MEDIA_KIND_ICONS[file.kind] || 'file', 30, 1.6);
+    const thumb = file.hasPreview
+        ? `<img class="media-thumb-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">`
+        : '';
+    const meta = [formatSize(file.size, uiLocale()), file.modified ? formatDateFast(file.modified) : ''].filter(Boolean).join(' · ');
+    return `
+        <button type="button" class="media-tile kind-${escapeHtml(file.kind)}" onclick="openMediaFile(${index})" title="${escapeHtml(file.name)}">
+            <span class="media-thumb${file.hasPreview ? '' : ' is-icon'}">
+                <span class="media-thumb-icon">${icon}</span>
+                ${thumb}
+                ${file.kind === 'pdf' ? '<span class="media-thumb-type">PDF</span>' : ''}
+            </span>
+            <span class="media-tile-name">${escapeHtml(file.name)}</span>
+            <span class="media-tile-meta">${escapeHtml(meta)}</span>
+        </button>`;
+}
+
+function renderMedia() {
+    const list = $('media-list');
+    if (!list) return;
+    setValue('media-sort', mediaSort);
+    setText('media-title', mediaFolder ? breadcrumb(mediaFolder).pop().name : t('media_title', 'Media'));
+    show('media-rights-btn', mediaStatus.canManage && !!mediaListing, 'inline-flex');
+    show('media-rules-btn', mediaStatus.canManage, 'inline-flex');
+    renderMediaCrumbs();
+    if (mediaError) {
+        list.innerHTML = `
+            <div class="polls-empty">
+                <span class="polls-empty-icon media-empty-icon">${svgIcon('folder', 26, 1.8)}</span>
+                <span class="polls-empty-title">${escapeHtml(mediaError)}</span>
+                <button type="button" class="btn btn-secondary btn-small" onclick="loadMediaFolder()">${t('btn_retry', 'Try again')}</button>
+            </div>`;
+        return;
+    }
+    if (!mediaListing) {
+        list.innerHTML = `<div class="media-grid is-loading" aria-busy="true">${'<span class="media-tile-skeleton"></span>'.repeat(8)}</div>`;
+        return;
+    }
+    const folders = sortEntries(mediaListing.folders, mediaSort === 'newest' ? 'newest' : 'name');
+    mediaShownFiles = sortEntries(mediaListing.files, mediaSort);
+    if (!folders.length && !mediaShownFiles.length) {
+        list.innerHTML = `
+            <div class="polls-empty">
+                <span class="polls-empty-icon media-empty-icon">${svgIcon('folder', 26, 1.8)}</span>
+                <span class="polls-empty-title">${t('media_empty', 'This folder is empty')}</span>
+                ${mediaListing.access === 'write' ? `<span class="polls-empty-hint">${t('media_empty_hint', 'Add files with the plus at the bottom right, or drop them here.')}</span>` : ''}
+            </div>`;
+        return;
+    }
+    list.innerHTML = `
+        ${folders.length ? `<div class="media-folders">${folders.map(mediaFolderCard).join('')}</div>` : ''}
+        ${mediaShownFiles.length ? `<div class="media-grid">${mediaShownFiles.map(mediaFileTile).join('')}</div>` : ''}`;
+    // Thumbnails fade in when they arrive; without one (no preview for this file) the type icon stays
+    list.querySelectorAll('.media-thumb-img').forEach(img => {
+        const done = () => img.parentElement.classList.add('is-loaded');
+        const failed = () => {
+            img.parentElement.classList.add('is-icon');
+            img.remove();
+        };
+        if (img.complete && img.naturalWidth) done();
+        else {
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', failed, { once: true });
+        }
+    });
+}
+
+function openMediaFile(index) {
+    const file = mediaShownFiles[index];
+    if (!file) return;
+    if (opensInViewer(file)) return openMediaViewer(index);
+    if (opensAsPdf(file)) return openMediaPdf(file);
+    // Everything else is downloaded (the server only ever sends it as a download)
+    const link = Object.assign(document.createElement('a'), { href: fileUrl(API, file, { download: true }), download: file.name });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+// --- Picture viewer: the thumbnail at once, then a preview as large as the screen, the original on request ---
+let viewerPictures = [];
+let viewerIndex = 0;
+let viewerToken = 0;
+let viewerZoomed = false;
+
+const viewerLargeUrl = file => (viewerNeedsOriginal(file)
+    ? fileUrl(API, file)
+    : previewUrl(API, file, viewerSize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1)));
+
+function openMediaViewer(index) {
+    viewerPictures = mediaShownFiles.filter(opensInViewer);
+    viewerIndex = Math.max(0, viewerPictures.indexOf(mediaShownFiles[index]));
+    const modal = $('media-viewer-modal');
+    modal._customOnClose = () => {
+        viewerToken++;
+        viewerZoomed = false;
+        const img = $('media-viewer-img');
+        if (img) img.removeAttribute('src');
+    };
+    openModal('media-viewer-modal');
+    showViewerPicture();
+}
+
+function showViewerPicture() {
+    const file = viewerPictures[viewerIndex];
+    if (!file) return;
+    const token = ++viewerToken;
+    const img = $('media-viewer-img');
+    const stage = $('media-viewer-stage');
+    const loading = $('media-viewer-loading');
+    viewerZoomed = false;
+    stage.classList.remove('is-zoomed', 'has-error');
+    stage.querySelector('.media-viewer-error')?.remove();
+    setText('media-viewer-name', file.name);
+    setText('media-viewer-meta', [formatSize(file.size, uiLocale()), file.modified ? formatDateFast(file.modified) : ''].filter(Boolean).join(' · '));
+    setText('media-viewer-count', viewerPictures.length > 1 ? `${viewerIndex + 1} / ${viewerPictures.length}` : '');
+    show('media-viewer-prev', viewerPictures.length > 1, 'flex');
+    show('media-viewer-next', viewerPictures.length > 1, 'flex');
+    const download = $('media-viewer-download');
+    download.href = fileUrl(API, file, { download: true });
+    download.setAttribute('download', file.name);
+    img.alt = file.name;
+    // The thumbnail is already in the browser's cache: shown right away, slightly soft, until the large one is there
+    const small = file.hasPreview ? previewUrl(API, file, mediaTileSize()) : '';
+    if (small) img.src = small;
+    else img.removeAttribute('src');
+    img.classList.toggle('is-soft', !!small);
+    loading.hidden = false;
+    const large = new Image();
+    large.decoding = 'async';
+    large.onload = () => {
+        if (token !== viewerToken) return;
+        img.src = large.src;
+        img.classList.remove('is-soft');
+        loading.hidden = true;
+    };
+    large.onerror = () => {
+        if (token !== viewerToken) return;
+        loading.hidden = true;
+        // No large preview: the original, if the browser can show it; else say so and offer the download
+        if (!viewerNeedsOriginal(file) && /^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(file.contentType || '')) {
+            const original = new Image();
+            original.onload = () => { if (token === viewerToken) { img.src = original.src; img.classList.remove('is-soft'); } };
+            original.onerror = () => { if (token === viewerToken) showViewerError(file); };
+            original.src = fileUrl(API, file);
+        } else if (!small) showViewerError(file);
+    };
+    large.src = viewerLargeUrl(file);
+    // The neighbours are fetched meanwhile: swiping on shows them at once
+    for (const direction of [1, -1]) {
+        const next = viewerPictures[neighbourIndex(viewerPictures, viewerIndex, direction)];
+        if (next && next !== file) new Image().src = viewerLargeUrl(next);
+    }
+}
+
+function showViewerError(file) {
+    const stage = $('media-viewer-stage');
+    stage.classList.add('has-error');
+    $('media-viewer-img').removeAttribute('src');
+    stage.insertAdjacentHTML('beforeend', `
+        <div class="media-viewer-error">
+            ${svgIcon('image', 34, 1.6)}
+            <span>${t('media_no_preview', 'This picture cannot be shown here.')}</span>
+            <a class="btn btn-secondary btn-small" href="${escapeHtml(fileUrl(API, file, { download: true }))}" download="${escapeHtml(file.name)}">${t('media_download', 'Download')}</a>
+        </div>`);
+}
+
+function stepMediaViewer(direction) {
+    const next = neighbourIndex(viewerPictures, viewerIndex, direction);
+    if (next < 0) return;
+    viewerIndex = next;
+    showViewerPicture();
+}
+
+/** Original size: the file itself, as large as it is; the picture can then be moved around (scrolling). */
+function toggleMediaZoom() {
+    const file = viewerPictures[viewerIndex];
+    const stage = $('media-viewer-stage');
+    const img = $('media-viewer-img');
+    if (!file || stage.classList.contains('has-error')) return;
+    viewerZoomed = !viewerZoomed;
+    stage.classList.toggle('is-zoomed', viewerZoomed);
+    if (!viewerZoomed) {
+        img.src = viewerLargeUrl(file);
+        return;
+    }
+    const token = viewerToken;
+    const loading = $('media-viewer-loading');
+    loading.hidden = false;
+    const original = new Image();
+    original.onload = () => {
+        if (token !== viewerToken || !viewerZoomed) return;
+        img.src = original.src;
+        loading.hidden = true;
+        // Start in the middle of the picture
+        stage.scrollLeft = (stage.scrollWidth - stage.clientWidth) / 2;
+        stage.scrollTop = (stage.scrollHeight - stage.clientHeight) / 2;
+    };
+    original.onerror = () => { if (token === viewerToken) loading.hidden = true; };
+    original.src = viewerNeedsOriginal(file) || /^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(file.contentType || '') ? fileUrl(API, file) : previewUrl(API, file, 2048);
+}
+
+// Arrow keys step, a swipe steps, a double tap zooms
+document.addEventListener('keydown', e => {
+    if (modalStack[modalStack.length - 1] !== 'media-viewer-modal') return;
+    if (e.key === 'ArrowLeft') stepMediaViewer(-1);
+    else if (e.key === 'ArrowRight') stepMediaViewer(1);
+});
+(() => {
+    const stage = $('media-viewer-stage');
+    if (!stage) return;
+    let start = null;
+    let lastTap = 0;
+    stage.addEventListener('touchstart', e => {
+        start = e.touches.length === 1 && !viewerZoomed ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+    }, { passive: true });
+    stage.addEventListener('touchend', e => {
+        if (!start) return;
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        start = null;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) return stepMediaViewer(dx < 0 ? 1 : -1);
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+            if (Date.now() - lastTap < 300) toggleMediaZoom();
+            lastTap = Date.now();
+        }
+    }, { passive: true });
+    stage.addEventListener('dblclick', toggleMediaZoom);
+})();
+
+// --- PDF viewer: the browser's own on computers (search, print); pdf.js on phones and tablets, whose browsers
+// show a PDF in a page only as its first page or not at all ---
+const PDFJS_BASE = '/assets/vendor/pdfjs/';
+let pdfjsLoading = null;
+let pdfView = null;
+const usesNativePdfViewer = () => navigator.pdfViewerEnabled === true && !window.matchMedia('(pointer: coarse)').matches;
+
+function loadPdfJs() {
+    pdfjsLoading ||= import(`${PDFJS_BASE}pdf.min.mjs`).then(lib => {
+        lib.GlobalWorkerOptions.workerSrc = `${PDFJS_BASE}pdf.worker.min.mjs`;
+        return lib;
+    }).catch(err => {
+        pdfjsLoading = null;
+        throw err;
+    });
+    return pdfjsLoading;
+}
+
+function closePdfView() {
+    if (!pdfView) return;
+    pdfView.observer?.disconnect();
+    pdfView.loadingTask?.destroy();
+    pdfView = null;
+}
+
+function openMediaPdf(file) {
+    const stage = $('media-pdf-stage');
+    setText('media-pdf-name', file.name);
+    setText('media-pdf-meta', formatSize(file.size, uiLocale()));
+    const download = $('media-pdf-download');
+    download.href = fileUrl(API, file, { download: true });
+    download.setAttribute('download', file.name);
+    closePdfView();
+    $('media-pdf-modal')._customOnClose = () => {
+        closePdfView();
+        stage.innerHTML = '';
+    };
+    const native = usesNativePdfViewer();
+    $('media-pdf-zoom').hidden = native;
+    stage.classList.toggle('is-native', native);
+    stage.innerHTML = native
+        ? `<iframe class="media-pdf-frame" src="${escapeHtml(fileUrl(API, file))}" title="${escapeHtml(file.name)}"></iframe>`
+        : `<div class="media-pdf-loading"><span class="media-viewer-loading"></span></div>`;
+    openModal('media-pdf-modal');
+    if (!native) renderPdfWithPdfJs(file);
+}
+
+async function renderPdfWithPdfJs(file) {
+    const stage = $('media-pdf-stage');
+    const view = { file, zoom: 1, pages: [] };
+    pdfView = view;
+    try {
+        const lib = await loadPdfJs();
+        if (pdfView !== view) return;
+        view.loadingTask = lib.getDocument({ url: fileUrl(API, file), enableXfa: false });
+        view.doc = await view.loadingTask.promise;
+        if (pdfView !== view) return;
+        const first = (await view.doc.getPage(1)).getViewport({ scale: 1 });
+        view.ratio = first.height / first.width;
+        setText('media-pdf-meta', [t('media_pdf_pages', '{count} pages', { count: view.doc.numPages }), formatSize(file.size, uiLocale())].join(' · '));
+        stage.innerHTML = Array.from({ length: view.doc.numPages }, (_, i) =>
+            `<div class="media-pdf-page" data-page="${i + 1}" style="aspect-ratio: 1 / ${view.ratio};"><canvas></canvas></div>`).join('');
+        view.observer = new IntersectionObserver(entries => {
+            for (const entry of entries) if (entry.isIntersecting) renderPdfPage(view, entry.target);
+        }, { root: stage, rootMargin: '800px 0px' });
+        layoutPdfPages(view);
+    } catch (err) {
+        if (pdfView !== view) return;
+        console.warn('PDF could not be shown:', err);
+        stage.innerHTML = `
+            <div class="media-viewer-error">
+                ${svgIcon('fileText', 34, 1.6)}
+                <span>${t('media_pdf_failed', 'This PDF cannot be shown here.')}</span>
+                <a class="btn btn-secondary btn-small" href="${escapeHtml(fileUrl(API, file, { download: true }))}" download="${escapeHtml(file.name)}">${t('media_download', 'Download')}</a>
+            </div>`;
+    }
+}
+
+/** Sizes the page boxes for the zoom and (re)draws the ones in view. */
+function layoutPdfPages(view) {
+    const stage = $('media-pdf-stage');
+    const width = Math.min(stage.clientWidth - 24, 960) * view.zoom;
+    stage.querySelectorAll('.media-pdf-page').forEach(page => {
+        page.style.width = `${Math.round(width)}px`;
+        page.dataset.drawn = '';
+        view.observer.unobserve(page);
+        view.observer.observe(page);
+    });
+}
+
+async function renderPdfPage(view, box) {
+    const number = Number(box.dataset.page);
+    const width = box.getBoundingClientRect().width;
+    const drawn = `${Math.round(width)}`;
+    if (box.dataset.drawn === drawn || box.dataset.drawing === drawn) return;
+    box.dataset.drawing = drawn;
+    try {
+        const page = await view.doc.getPage(number);
+        if (pdfView !== view) return;
+        const base = page.getViewport({ scale: 1 });
+        const scale = (width / base.width) * Math.min(window.devicePixelRatio || 1, 3);
+        const viewport = page.getViewport({ scale });
+        // A fresh canvas per drawing: a zoom while a page is still drawing must not draw into the same one
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        box.style.aspectRatio = `${base.width} / ${base.height}`;
+        await page.render({ canvas, viewport }).promise;
+        if (pdfView !== view || box.dataset.drawing !== drawn) return;
+        box.replaceChildren(canvas);
+        box.dataset.drawn = drawn;
+    } catch (err) {
+        if (pdfView === view) console.warn(`PDF page ${number} could not be drawn:`, err);
+    } finally {
+        if (box.dataset.drawing === drawn) box.dataset.drawing = '';
+    }
+}
+
+function zoomMediaPdf(direction) {
+    if (!pdfView?.doc) return;
+    const stage = $('media-pdf-stage');
+    const anchor = stage.scrollTop / Math.max(1, stage.scrollHeight);
+    pdfView.zoom = Math.min(3, Math.max(0.5, pdfView.zoom * (direction > 0 ? 1.25 : 0.8)));
+    layoutPdfPages(pdfView);
+    stage.scrollTop = anchor * stage.scrollHeight;
+}
+
+// --- Adding files and folders (folders where the member may write) ---
+function pickMediaFiles() {
+    if (mediaListing?.access !== 'write') return;
+    const input = $('media-file-input');
+    input.value = '';
+    input.click();
+}
+
+let mediaUploading = false;
+async function uploadMediaFiles(fileList) {
+    const files = [...(fileList || [])];
+    if (!files.length || mediaUploading || mediaListing?.access !== 'write') return;
+    if (files.length > 50) return showToast(t('media_too_many', 'At most 50 files at once.'), 'error');
+    if (files.some(file => file.size > 1024 * 1024 * 1024)) return showToast(t('media_too_large', 'A file is larger than 1 GB.'), 'error');
+    const folder = mediaFolder;
+    const form = new FormData();
+    files.forEach(file => form.append('files', file, file.name));
+    mediaUploading = true;
+    const box = $('media-upload');
+    const fill = $('media-upload-fill');
+    box.hidden = false;
+    fill.style.width = '0%';
+    setText('media-upload-text', t('media_uploading', 'Uploading {count} file(s)…', { count: files.length }));
+    try {
+        const token = await getToken();
+        // XMLHttpRequest: fetch cannot report how far an upload is
+        const result = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${API}/media/upload?path=${encodeURIComponent(folder)}`);
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            xhr.setRequestHeader('Accept-Language', uiLang);
+            xhr.upload.onprogress = e => {
+                if (!e.lengthComputable) return;
+                const percent = Math.round((e.loaded / e.total) * 100);
+                fill.style.width = `${percent}%`;
+                setText('media-upload-text', percent < 100
+                    ? t('media_uploading_percent', 'Uploading… {percent} %', { percent })
+                    : t('media_upload_storing', 'Saving in the cloud…'));
+            };
+            xhr.onload = () => {
+                let body = {};
+                try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* not JSON */ }
+                if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+                else reject(new Error(body.error || `HTTP ${xhr.status}`));
+            };
+            xhr.onerror = () => reject(new Error(t('error_connection', 'Connection error')));
+            xhr.send(form);
+        });
+        const renamed = (result.files || []).filter((stored, i) => files[i] && stored.name !== files[i].name).length;
+        showToast(renamed
+            ? t('media_uploaded_renamed', '{count} file(s) added; files with names already taken got a number.', { count: result.files.length })
+            : t('media_uploaded', '{count} file(s) added', { count: (result.files || []).length }));
+        if (mediaFolder === folder) await loadMediaFolder({ silent: true });
+    } catch (err) {
+        showToast(err.message || t('media_upload_failed', 'The files could not be uploaded'), 'error');
+    } finally {
+        mediaUploading = false;
+        box.hidden = true;
+    }
+}
+
+// Dropping files on the page uploads them into the open folder
+(() => {
+    const page = $('media');
+    if (!page) return;
+    const canDrop = e => mediaListing?.access === 'write' && [...(e.dataTransfer?.types || [])].includes('Files');
+    page.addEventListener('dragover', e => {
+        if (!canDrop(e)) return;
+        e.preventDefault();
+        page.classList.add('is-dropping');
+    });
+    page.addEventListener('dragleave', e => {
+        if (!page.contains(e.relatedTarget)) page.classList.remove('is-dropping');
+    });
+    page.addEventListener('drop', e => {
+        page.classList.remove('is-dropping');
+        if (!canDrop(e)) return;
+        e.preventDefault();
+        uploadMediaFiles(e.dataTransfer.files);
+    });
+})();
+
+function openMediaFolderDialog() {
+    if (mediaListing?.access !== 'write') return;
+    setValue('media-folder-name', '');
+    openModal('media-folder-modal');
+    setTimeout(() => $('media-folder-name')?.focus(), 50);
+}
+
+async function createMediaFolder() {
+    const name = inputValue('media-folder-name').trim();
+    if (!name) return void $('media-folder-name')?.focus();
+    await once('media-folder', () => attempt(async () => {
+        await apiJson('/media/folder', 'POST', { path: mediaFolder, name });
+        closeModal('media-folder-modal', false, true);
+        showToast(t('media_folder_created', 'Folder created'));
+        await loadMediaFolder({ silent: true });
+    }, err => err.message, { button: 'media-folder-create' }));
+}
+
+// --- Folder rights (extended media rights) ---
+let mediaRights = null;
+
+async function openMediaRights(path = mediaFolder) {
+    if (!mediaStatus.canManage) return;
+    await attempt(async () => {
+        const data = await apiJson(`/media/rules?path=${encodeURIComponent(path)}`);
+        mediaRights = { path, rows: rightsRows(data.groups, data.folder) };
+        setText('media-rights-path', mediaFolderLabel(path));
+        renderMediaRights();
+        openModal('media-rights-modal');
+    }, err => err.message || t('media_rights_load_failed', 'The folder rights could not be loaded'));
+}
+
+function renderMediaRights() {
+    const target = $('media-rights-list');
+    if (!target || !mediaRights) return;
+    const labels = MEDIA_LEVEL_LABELS();
+    const isBase = !mediaRights.path;
+    target.innerHTML = mediaRights.rows.map((row, index) => {
+        const from = row.inherited
+            ? t('media_from_above', 'From {folder}: {level}', { folder: mediaFolderLabel(row.inherited.from), level: labels[row.inherited.level] })
+            : t('media_from_above_none', 'No access from above');
+        const options = [['', isBase ? t('media_level_none', 'No access') : t('media_level_inherit', 'As above')], ['read', labels.read], ['write', labels.write], ['hide', labels.hide]];
+        return `
+            <div class="media-right-row">
+                <div class="media-right-name">
+                    <span>${escapeHtml(mediaGroupName(row))}</span>
+                    ${isBase ? '' : `<span class="media-right-from">${escapeHtml(from)}</span>`}
+                </div>
+                <div class="settings-pills media-right-pills" role="radiogroup" aria-label="${escapeHtml(mediaGroupName(row))}">
+                    ${options.map(([level, label]) => `<button type="button" role="radio" aria-checked="${row.level === level}" class="settings-pill${row.level === level ? ' is-active' : ''}${level ? ` is-${level}` : ''}" onclick="setMediaRightLevel(${index}, ${jsArg(level)})"><span>${escapeHtml(label)}</span></button>`).join('')}
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function setMediaRightLevel(index, level) {
+    if (!mediaRights?.rows[index]) return;
+    mediaRights.rows[index].level = level;
+    renderMediaRights();
+}
+
+async function saveMediaRights() {
+    if (!mediaRights) return;
+    const { path, rows } = mediaRights;
+    await once('media-rights', () => attempt(async () => {
+        await apiJson('/media/rules', 'PUT', { path, groups: rightsPayload(rows) });
+        closeModal('media-rights-modal', false, true);
+        showToast(t('media_rights_saved', 'Folder rights saved'));
+        await Promise.all([loadMediaStatus(), currentActiveTab === 'media' ? loadMediaFolder({ silent: true }) : null]);
+    }, err => err.message || t('media_rights_save_failed', 'The folder rights could not be saved'), { button: 'media-rights-save' }));
+}
+
+async function openMediaRulesOverview() {
+    if (!mediaStatus.canManage) return;
+    await attempt(async () => {
+        const data = await apiJson('/media/rules');
+        const names = Object.fromEntries(data.groups.map(group => [group.id, mediaGroupName(group)]));
+        const labels = MEDIA_LEVEL_LABELS();
+        // The rights can be changed from here too: a folder renamed or removed in Nextcloud keeps its rule until then
+        $('media-rules-list').innerHTML = data.rules.length ? data.rules.map(rule => `
+            <div class="media-rule">
+                <div class="media-rule-head">
+                    <button type="button" class="media-rule-path" onclick="openMediaRuleFolder(${jsArg(rule.path)})">${svgIcon('folder', 15, 2.2)}<span>${escapeHtml(mediaFolderLabel(rule.path))}</span></button>
+                    <button type="button" class="media-rule-edit" onclick="editMediaRule(${jsArg(rule.path)})" title="${escapeHtml(t('media_rights_title', 'Folder rights'))}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: mediaFolderLabel(rule.path) }))}">${svgIcon('shield', 15, 2.2)}</button>
+                </div>
+                <span class="media-rule-groups">${Object.entries(rule.groups).map(([id, level]) =>
+                    `<span class="media-rule-chip is-${escapeHtml(level)}">${escapeHtml(names[id] || id)}: ${escapeHtml(labels[level] || level)}</span>`).join('')}</span>
+            </div>`).join('')
+            : `<p class="media-rights-hint">${t('media_rules_none', 'No folder has rights yet: only members with extended media rights see the library. Open a folder and set its rights with the shield.')}</p>`;
+        openModal('media-rules-modal');
+    }, err => err.message || t('media_rights_load_failed', 'The folder rights could not be loaded'));
+}
+
+function openMediaRuleFolder(path) {
+    closeModal('media-rules-modal', false, true);
+    openMediaFolder(path);
+}
+
+function editMediaRule(path) {
+    closeModal('media-rules-modal', false, true);
+    openMediaRights(path);
+}
+
+// --- System settings: the connection to Nextcloud ---
+const MEDIA_CFG_FIELDS = { url: 'super-admin-media-url', user: 'super-admin-media-user', password: 'super-admin-media-password', root: 'super-admin-media-root' };
+
+function mediaConfigPayload() {
+    return {
+        enabled: isChecked('super-admin-media-enabled'),
+        url: inputValue(MEDIA_CFG_FIELDS.url).trim(),
+        user: inputValue(MEDIA_CFG_FIELDS.user).trim(),
+        password: inputValue(MEDIA_CFG_FIELDS.password),
+        root: inputValue(MEDIA_CFG_FIELDS.root).trim()
+    };
+}
+
+function showMediaConfigResult(ok, html) {
+    const box = $('media-cfg-result');
+    if (!box) return;
+    box.hidden = false;
+    box.className = `media-cfg-result ${ok ? 'is-ok' : 'is-error'}`;
+    box.innerHTML = html;
+}
+
+async function loadMediaConfig() {
+    if (!isSuperAdminUser()) return;
+    $('media-cfg-result').hidden = true;
+    try {
+        const data = await apiJson('/admin/media-config');
+        const enabled = $('super-admin-media-enabled');
+        if (enabled) enabled.checked = data.enabled === true;
+        for (const [key, id] of Object.entries(MEDIA_CFG_FIELDS)) setValue(id, key === 'root' && data.root ? `/${data.root}` : data[key] || '');
+    } catch (err) {
+        console.warn('Media settings could not be loaded:', err);
+    }
+}
+
+async function testMediaConfig() {
+    await attempt(async () => {
+        try {
+            const data = await apiJson('/admin/media-config/test', 'POST', mediaConfigPayload());
+            const shown = data.folders.map(name => `<code>${escapeHtml(name)}</code>`).join(' ');
+            showMediaConfigResult(true, `<strong>${t('media_cfg_test_ok', 'Connected.')}</strong> ${data.folderCount
+                ? t('media_cfg_test_folders', '{count} folder(s) in the base folder:', { count: data.folderCount }) + ` ${shown}${data.folderCount > data.folders.length ? ' …' : ''}`
+                : t('media_cfg_test_empty', 'The base folder has no folders yet.')}`);
+        } catch (err) {
+            showMediaConfigResult(false, `<strong>${t('media_cfg_test_failed', 'No connection.')}</strong> ${escapeHtml(err.message)}`);
+        }
+    }, '', { button: 'media-cfg-test-btn', loading: t('media_cfg_testing', 'Testing…') });
+}
+
+async function saveMediaConfig() {
+    await attempt(async () => {
+        await apiJson('/admin/media-config', 'PUT', mediaConfigPayload());
+        showToast(t('media_cfg_saved', 'Media settings saved'));
+        await Promise.all([loadMediaConfig(), loadMediaStatus()]);
+    }, err => err.message || t('media_cfg_save_failed', 'The media settings could not be saved'), { button: 'media-cfg-save-btn' });
 }
 
 // --- Anonymous polls: browse running and finished polls, vote anonymously, create your own ---
@@ -2202,18 +2929,21 @@ function closeSettingsPage() {
 }
 
 const settingsPageOpen = () => ['settings', 'user-settings'].includes(currentActiveTab) && !!$(currentActiveTab)?.dataset.page;
-const HUB_TABS = ['ai-chat', 'polls', 'songbook', 'prayers'];
+const HUB_TABS = ['ai-chat', 'polls', 'songbook', 'prayers', 'media'];
 
 function updateFabVisibility() {
     const financesFab = currentActiveTab === 'finances' && canManageFinances();
-    const eventsFab = currentActiveTab === 'events' && !!currentUser && canCreateEvents();
+    const eventsFab = currentActiveTab === 'events' && !!currentUser;
     // Polls: the same "+" opens the create page directly (one action, no menu)
     const pollsFab = currentActiveTab === 'polls' && !!currentUser;
     const songbookFab = currentActiveTab === 'songbook' && songbookCanManage;
     const prayersFab = currentActiveTab === 'prayers' && !!currentUser;
-    const visible = financesFab || eventsFab || pollsFab || songbookFab || prayersFab;
+    // Media: upload and new folder where the member may write
+    const mediaFab = currentActiveTab === 'media' && mediaListing?.access === 'write' && mediaLoadedPath === mediaFolder;
+    const visible = financesFab || eventsFab || pollsFab || songbookFab || prayersFab || mediaFab;
     show('fab-finances-items', financesFab, 'block');
     show('fab-events-items', eventsFab, 'block');
+    show('fab-media-items', mediaFab, 'block');
     const desktopFab = $('desktop-fab');
     if (desktopFab) {
         desktopFab.style.display = visible ? 'flex' : 'none';
@@ -2315,6 +3045,10 @@ function switchTab(tabName, source) {
     if (tabName === 'polls') loadPolls();
     if (tabName === 'songbook') loadSongs();
     if (tabName === 'prayers') loadPrayers();
+    if (tabName === 'media') {
+        loadMediaStatus();
+        loadMediaFolder();
+    }
     if (tabName === 'ai-chat' && !aiMessages.length) clearAiChat();
     updateFabVisibility();
     if (tabName !== 'mentoring') {
@@ -2409,13 +3143,13 @@ const eventDay = ev => ev.date;
 const eventSlug = ev => itemSlug(ev, appEvents, eventDay);
 const songSlug = song => itemSlug(song, songs);
 
-const TAB_PATHS = { 'user-overview': '', finances: 'finances', 'user-finances': 'finances', events: 'events', mentoring: 'mentoring', hub: 'extras', songbook: 'songbook', prayers: 'prayers', 'ai-chat': 'ai', polls: 'polls', settings: 'settings', 'user-settings': 'settings', 'super-admin-settings': 'system' };
+const TAB_PATHS = { 'user-overview': '', finances: 'finances', 'user-finances': 'finances', events: 'events', mentoring: 'mentoring', hub: 'extras', songbook: 'songbook', prayers: 'prayers', media: 'media', 'ai-chat': 'ai', polls: 'polls', settings: 'settings', 'user-settings': 'settings', 'super-admin-settings': 'system' };
 // First part of a path → tab (old tab ids keep working)
 const ROUTE_TABS = {
     '': () => HOME_TAB, 'index.html': () => HOME_TAB, home: () => HOME_TAB, 'user-overview': () => HOME_TAB,
     finances: () => (canViewFinances() ? 'finances' : 'user-finances'),
     events: () => 'events', mentoring: () => 'mentoring', extras: () => 'hub', songbook: () => 'songbook',
-    ai: () => 'ai-chat', polls: () => 'polls', prayers: () => 'prayers', system: () => 'super-admin-settings',
+    ai: () => 'ai-chat', polls: () => 'polls', prayers: () => 'prayers', media: () => 'media', system: () => 'super-admin-settings',
     settings: () => (TAB_GUARDS.settings() ? 'settings' : 'user-settings')
 };
 // Old #links → paths
@@ -2443,6 +3177,7 @@ function routePath() {
     else if (tab === 'mentoring') sub = activeMentoringThreadId ? `chat/${encodeURIComponent(activeMentoringThreadId)}` : (currentMentoringSubTab !== 'chats' ? currentMentoringSubTab : '');
     else if (tab === 'settings' || tab === 'user-settings') sub = $(tab)?.dataset.page || '';
     else if (tab === 'super-admin-settings' && currentSysSettingsTab !== 'accounts') sub = currentSysSettingsTab;
+    else if (tab === 'media') sub = mediaFolder.split('/').filter(Boolean).map(encodeURIComponent).join('/');
     return '/' + [TAB_PATHS[tab] ?? '', sub].filter(Boolean).join('/');
 }
 
@@ -2465,6 +3200,8 @@ async function applyRoute(path) {
     const tab = known || ($(head)?.classList.contains('tab-content') ? head : HOME_TAB);
     const [sub, extra] = known || head === tab ? rest : [];
     if (tab === 'songbook' && sub) pendingSongSlug = sub;
+    // /media/Photos/2026: the folder (every part after /media)
+    if (tab === 'media') mediaFolder = folderFromRoute(known || head === tab ? rest : []);
     switchTab(tab);
     if (currentActiveTab === 'finances' && sub === 'members') switchFinanceSubpage('members');
     else if ((currentActiveTab === 'settings' || currentActiveTab === 'user-settings') && sub && SETTINGS_PAGES.some(p => p.key === sub) && settingsPageAvailable($(currentActiveTab), sub)) openSettingsPage(sub);
@@ -2720,6 +3457,7 @@ async function loadData(silent = false, { freshUser = false } = {}) {
                 updateAiNavVisibility();
             }).catch(() => {});
         }
+        loadMediaStatus();
         updateNavVisibility();
 
         if (!routeReady) applyInitialRoute();
@@ -3449,7 +4187,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, allowPushOnDevice, sendTestPush, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
@@ -3477,7 +4215,8 @@ const DEFAULT_PERMISSIONS = [
     { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
     { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
     { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
-    { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' }
+    { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' },
+    { id: 'manage_media', name: 'Extended media rights', description: 'Allows seeing every media folder, uploading everywhere and deciding which groups may read, write or not see a folder' }
 ];
 
 // Several views ask for the groups during one refresh: they share the request that is already running
@@ -3669,7 +4408,7 @@ const SYS_TAB_LOADERS = {
     },
     config: () => { if (!advancedConfigLoaded) loadAdvancedSystemConfig(); },
     ai: () => loadAiConfig(),
-    events: () => loadEventSystemSettings()
+    media: () => loadMediaConfig()
 };
 
 function switchSysSettingsTab(tabName) {
@@ -7255,11 +7994,6 @@ const eventImage = ev => {
 };
 const cardIcon = name => svgIcon(name, 12, name === 'chevronRight' ? 2.5 : 2);
 
-// Whether members may create events (system setting); the server refuses it otherwise, so the "+" is not offered
-let memberEventCreation = true;
-let eventSettingsLoadedAt = 0;
-const canCreateEvents = () => canManageEvents() || memberEventCreation;
-
 // Until the first answer: a spinner, after a failed first load an error with "Try again" (an empty list said
 // "nothing coming up"); a later failed refresh keeps what is shown
 let eventsLoaded = false;
@@ -7268,13 +8002,11 @@ let eventsLoadError = '';
 async function loadEventsData() {
     if (!currentUser) return;
     try {
-        // Groups and the event settings rarely change: a live update of the events reuses them for a few minutes
-        // (each refresh used to reload both and redraw the whole account list)
-        const settingsFresh = Date.now() - eventSettingsLoadedAt < 5 * 60 * 1000;
-        const [eventsRes, requestsRes, settingsRes] = await Promise.all([
+        // Groups rarely change: a live update of the events reuses them for a few minutes
+        // (each refresh used to reload them and redraw the whole account list)
+        const [eventsRes, requestsRes] = await Promise.all([
             api('/events'),
             api('/events/my-requests').catch(() => null),
-            settingsFresh ? null : api('/events/settings').catch(() => null),
             loadSystemGroups(5 * 60 * 1000)
         ]);
         await picturesReady;
@@ -7286,11 +8018,6 @@ async function loadEventsData() {
             eventsLoadError = t('events_load_failed', 'Events could not be loaded');
         }
         myDutyRequests = requestsRes?.ok ? await requestsRes.json() : [];
-        if (settingsRes?.ok) {
-            memberEventCreation = (await settingsRes.json())?.allowMemberCreation !== false;
-            eventSettingsLoadedAt = Date.now();
-            updateFabVisibility();
-        }
         renderMyDutyRequests();
         renderEvents();
         renderHomeDutiesCard();
@@ -7656,7 +8383,7 @@ function renderEvents() {
                 <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
                 <div style="font-weight: 700; font-size: 1.05rem; color: var(--text); margin-bottom: 4px;">${isEventsTab ? t('events_empty_events', 'No upcoming events found') : t('events_empty_termine', 'No matching appointments found')}</div>
                 ${eventsSearchQuery ? `<div style="font-size: 0.88rem; margin-bottom: 14px;">${t('events_empty_search', 'Try a different search.')}</div>` : ''}
-                ${canCreateEvents() ? `<div${eventsSearchQuery ? '' : ' style="margin-top: 14px;"'}>
+                ${currentUser ? `<div${eventsSearchQuery ? '' : ' style="margin-top: 14px;"'}>
                     <button type="button" class="btn btn-primary btn-small" onclick="window.openNewEventDetailModal('${isEventsTab || !canManageEvents() ? 'event' : 'termin'}')">+ ${isEventsTab || !canManageEvents() ? t('events_btn_new', 'New Event') : t('events_new_termin', 'New Appointment')}</button>
                 </div>` : ''}
             </div>
@@ -9254,13 +9981,13 @@ async function personalFeedUrl() {
 
 async function loadPersonalCalendarFeedSettings(force = false) {
     const feed = await fetchPersonalCalendarFeed(force);
-    ['user-cal-feed-url', 'admin-cal-feed-url', 'super-admin-events-feed-url'].forEach(id => setValue(id, feed.feedUrl));
+    ['user-cal-feed-url', 'admin-cal-feed-url'].forEach(id => setValue(id, feed.feedUrl));
 }
 
 async function copyPersonalCalendarFeedUrl() {
     const url = await personalFeedUrl();
     if (!url) return;
-    const field = ['user-cal-feed-url', 'admin-cal-feed-url', 'super-admin-events-feed-url'].map($).find(el => el?.offsetParent);
+    const field = ['user-cal-feed-url', 'admin-cal-feed-url'].map($).find(el => el?.offsetParent);
     if (await copyText(url, field)) showToast(t('calendar_sub_copied', 'Calendar URL copied to clipboard!'), 'success');
     else showToast(t('calendar_sub_copy_error', 'Failed to copy the calendar URL'), 'error');
 }
@@ -9275,36 +10002,6 @@ async function resetCalendarFeedToken() {
         showToast(t('calendar_sub_reset_success', 'New calendar link successfully generated!'), 'success');
     } catch {
         showToast(t('calendar_sub_reset_network_error', 'Connection error while resetting'), 'error');
-    }
-}
-
-// --- Event system settings ---
-async function loadEventSystemSettings() {
-    try {
-        const res = await api('/events/settings');
-        if (!res.ok) return;
-        const data = await res.json();
-        const allowMember = $('super-admin-events-allow-member-creation');
-        if (allowMember) allowMember.checked = data.allowMemberCreation !== false;
-        setValue('super-admin-events-default-duties', Array.isArray(data.defaultDuties) ? data.defaultDuties.join(', ') : '');
-        setValue('super-admin-events-feed-url', cachedCalendarFeed?.feedUrl || '');
-    } catch (err) {
-        console.warn('Failed to load event system settings:', err);
-    }
-}
-
-async function saveEventSystemSettings() {
-    const payload = {
-        allowMemberCreation: isChecked('super-admin-events-allow-member-creation'),
-        defaultDuties: inputValue('super-admin-events-default-duties').split(',').map(s => s.trim()).filter(Boolean)
-    };
-    try {
-        const res = await api('/events/settings', 'PATCH', payload);
-        // Read again with the next refresh (this device at once, others within a few minutes)
-        if (res.ok) eventSettingsLoadedAt = 0;
-        showToast(res.ok ? t('events_settings_saved', 'Event settings saved successfully!') : t('events_settings_save_error', 'Failed to save the event settings'), res.ok ? 'success' : 'error');
-    } catch {
-        showToast(t('error_connection', 'Connection error'), 'error');
     }
 }
 
@@ -9536,7 +10233,7 @@ Object.assign(window, {
     openEventShare, loadEventsData, toggleEventPublic, copyEventShareLink, sendEventShareLink, openGuestForm, submitGuestRegistration, cancelGuestRegistration,
     showGuestSignIn, closeGuestSignIn,
     switchEventsSubTab, shiftTermineMonth, jumpToTermineDay, respondToDutyRequest, openEventDetailModal, toggleDetailDescription, removeEventAttendee, 
-     toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken, saveEventSystemSettings,
+     toggleEventRegistration, confirmEventCrop, copyPersonalCalendarFeedUrl, resetCalendarFeedToken,
     enterDetailEditMode, cancelDetailEditMode, saveDetailEditMode, openNewEventDetailModal, setDetailEditType, toggleDetailMultiDay,
     toggleDetailRegFields, autoResizeDetailTextarea,
     handleEventsSearchInput: setEventsSearch,
@@ -9556,7 +10253,6 @@ Object.assign(window, {
     },
     resetEventCropZoom: () => eventCropper?.setZoom(1),
     cancelEventCrop: () => closeModal('event-crop-modal'),
-    copyCalendarFeedUrl: copyPersonalCalendarFeedUrl,
     openWebCalDirectly: async () => {
         const url = await personalFeedUrl();
         if (url) window.location.href = url.replace(/^https?:/, 'webcal:');

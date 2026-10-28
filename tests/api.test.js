@@ -8,6 +8,7 @@ const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
 const { REPO_ROOT, BACKEND_DIR, assertHas } = require('./helpers');
+const { startFakeNextcloud } = require('./fakeNextcloud');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
 const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
@@ -237,10 +238,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     await login('ada', 'ada@test.local');
     assert.equal((await typeOf('ada', { ...event, eventType: 'termin' })).eventType, 'event');
     assert.equal((await typeOf('owner', { ...event, eventType: 'termin' })).eventType, 'termin');
-    // Leadership can close event creation for members
-    await ok(call('owner', 'PATCH', '/api/events/settings', { allowMemberCreation: false }));
-    assert.equal((await call('max', 'POST', '/api/events', event)).status, 403);
-    await ok(call('owner', 'PATCH', '/api/events/settings', { allowMemberCreation: true }));
+    // The switch for member events is gone (every member creates events); older apps still read the settings
+    assert.equal((await ok(call('max', 'GET', '/api/events/settings'))).allowMemberCreation, true);
   });
 
   test("a group's events reach its members (and only them), also after the group is renamed", async () => {
@@ -278,11 +277,11 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
 
   test('languages: answers follow the app, then the user, then the instance default; English is the base', async () => {
     const reader = await account('lena', 'Lena');
-    // a member may not change the event settings: a fixed, translated error
+    // a member may not set media folder rights: a fixed, translated error
     const errorFor = async (who, lang) => {
       const headers = { Authorization: `Bearer ${tokens[who]}`, 'Content-Type': 'application/json' };
       if (lang) headers['Accept-Language'] = lang;
-      const res = await fetch(`${base}/api/events/settings`, { method: 'PATCH', headers, body: '{}' });
+      const res = await fetch(`${base}/api/media/rules`, { method: 'PUT', headers, body: '{"path":""}' });
       assert.equal(res.status, 403);
       return (await res.json()).error;
     };
@@ -883,5 +882,190 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call(null, 'POST', '/api/auth/login', {})).status >= 400, true);
     // the server is still alive after all of that
     assert.equal((await call(null, 'GET', '/api/status')).status, 200);
+  });
+
+  // --- Media: a Nextcloud folder as a library, rights decided by Agora ---
+  describe('media', () => {
+    let cloud;
+    let jugend;
+    const settings = (extra = {}) => ({ enabled: true, url: cloud.url, user: cloud.user, password: cloud.password, root: 'Agora', ...extra });
+    const list = (who, folder) => call(who, 'GET', `/api/media/list?path=${encodeURIComponent(folder)}`);
+    const names = (entries) => entries.map((entry) => entry.name).sort();
+    const rules = (folder, groups) => call('owner', 'PUT', '/api/media/rules', { path: folder, groups });
+    const upload = (who, folder, files) => {
+      const form = new FormData();
+      for (const [name, text, type] of files) form.append('files', new Blob([text], { type }), name);
+      return call(who, 'POST', `/api/media/upload?path=${encodeURIComponent(folder)}`, form, { form: true });
+    };
+
+    before(async () => {
+      cloud = await startFakeNextcloud();
+      cloud.addFile('Outside/secret.txt', 'not for Agora', 'text/plain');
+      cloud.addFile('Agora/willkommen.pdf', '%PDF-1.4 hello', 'application/pdf');
+      cloud.addFile('Agora/Fotos/Sommer.jpg', 'jpeg-bytes-0123456789', 'image/jpeg');
+      cloud.addFile('Agora/Fotos/logo.svg', '<svg onload="alert(1)"/>', 'image/svg+xml');
+      cloud.addFile('Agora/Fotos/.nomedia', '', 'application/octet-stream');
+      cloud.addFile('Agora/Fotos/Privat/geheim.jpg', 'secret', 'image/jpeg');
+      cloud.addDir('Agora/Fotos/Jugend');
+      cloud.addFile('Agora/Intern/notiz.txt', 'intern', 'text/plain');
+      cloud.addFile('Agora/Intern/Leitung/plan.pdf', '%PDF-1.4 plan', 'application/pdf');
+      jugend = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Medien-Jugend', permissions: [] }));
+      jugend = jugend.id || jugend.group?.id;
+      await account('jule', 'Jule');
+      await ok(call('owner', 'PUT', `/api/admin/users/${uids.jule}/groups`, { groups: [jugend] }));
+    });
+    after(() => cloud?.close());
+
+    test('the connection: only administrators set it up, the password never leaves the server', async () => {
+      assert.equal((await call('max', 'GET', '/api/admin/media-config')).status, 403);
+      assert.equal((await call('max', 'PUT', '/api/admin/media-config', settings())).status, 403);
+      assert.deepEqual(await ok(call('max', 'GET', '/api/media/status')), { enabled: false, canManage: false, hasAccess: false });
+      assert.equal((await list('owner', '')).status, 503);
+
+      const wrong = await call('owner', 'POST', '/api/admin/media-config/test', settings({ password: 'falsch' }));
+      assert.equal(wrong.status, 502);
+      assert.match(wrong.body.error, /login/);
+      assert.equal((await call('owner', 'POST', '/api/admin/media-config/test', settings({ root: 'Gibtsnicht' }))).status, 400);
+      const tested = await ok(call('owner', 'POST', '/api/admin/media-config/test', settings()));
+      assert.deepEqual(tested.folders, ['Fotos', 'Intern']);
+      // switched on only with everything filled in
+      assert.equal((await call('owner', 'PUT', '/api/admin/media-config', settings({ password: '' }))).status, 400);
+      // pasted from the browser: the Files app's address is cut back to the server
+      await ok(call('owner', 'PUT', '/api/admin/media-config', settings({ url: `${cloud.url}/index.php/apps/files/`, root: '/Agora/' })));
+
+      const stored = await ok(call('owner', 'GET', '/api/admin/media-config'));
+      assert.deepEqual(stored, { enabled: true, url: cloud.url, user: 'bot', password: '***', root: 'Agora' });
+      const state = await call('owner', 'GET', '/api/db?path=media');
+      assert.ok(!JSON.stringify(state.body).includes(cloud.password), 'not readable in the app state');
+      // a new address needs the password again; the stored one keeps working for the same address
+      assert.equal((await call('owner', 'PUT', '/api/admin/media-config', settings({ url: 'https://evil.example', password: '***' }))).status, 400);
+      await ok(call('owner', 'POST', '/api/admin/media-config/test', settings({ password: '***' })));
+      await ok(call('owner', 'PUT', '/api/admin/media-config', settings({ password: '***' })));
+    });
+
+    test('without rules nobody sees anything; extended media rights see everything', async () => {
+      assert.deepEqual(await ok(call('max', 'GET', '/api/media/status')), { enabled: true, canManage: false, hasAccess: false });
+      assert.equal((await list('max', '')).status, 404);
+      // the owner's Admin group got the new permission
+      assert.deepEqual(await ok(call('owner', 'GET', '/api/media/status')), { enabled: true, canManage: true, hasAccess: true });
+      const root = await ok(list('owner', ''));
+      assert.equal(root.access, 'write');
+      assert.deepEqual(names(root.folders), ['Fotos', 'Intern']);
+      assert.deepEqual(names(root.files), ['willkommen.pdf']);
+      assert.equal(root.files[0].kind, 'pdf');
+      const fotos = await ok(list('owner', 'Fotos'));
+      assert.deepEqual(names(fotos.files), ['logo.svg', 'Sommer.jpg'].sort(), 'dot files are left out');
+      assert.equal(fotos.files.find((f) => f.name === 'Sommer.jpg').hasPreview, true);
+      assert.ok(fotos.files.every((f) => f.path.startsWith('Fotos/') && f.etag));
+    });
+
+    test('rules: read, write and hide per group, inherited by the folders below', async () => {
+      assert.equal((await call('max', 'GET', '/api/media/rules')).status, 403);
+      assert.equal((await rules('Fotos', { '*': 'admin' })).status, 400);
+      assert.equal((await rules('Fotos', { nogroup: 'read' })).status, 400);
+      assert.equal((await rules('../Outside', { '*': 'read' })).status, 400);
+      await ok(rules('Fotos', { '*': 'read' }));
+      await ok(rules('Fotos/Privat', { '*': 'hide' }));
+      await ok(rules('Fotos/Jugend', { [jugend]: 'write' }));
+      await ok(rules('Intern/Leitung', { [jugend]: 'read' }));
+
+      // every member: Fotos and what is in it, not the hidden folder, not Intern
+      assert.deepEqual(await ok(call('max', 'GET', '/api/media/status')), { enabled: true, canManage: false, hasAccess: true });
+      const root = await ok(list('max', ''));
+      assert.equal(root.access, 'none');
+      assert.deepEqual(names(root.folders), ['Fotos']);
+      assert.deepEqual(root.files, [], 'files of a folder without access stay invisible');
+      const fotos = await ok(list('max', 'Fotos'));
+      assert.equal(fotos.access, 'read');
+      assert.deepEqual(names(fotos.folders), ['Jugend']);
+      assert.equal(fotos.folders[0].access, 'read', 'inherited from Fotos');
+      for (const hidden of ['Fotos/Privat', 'Intern', 'Intern/Leitung']) assert.equal((await list('max', hidden)).status, 404, hidden);
+
+      // the youth group: writes in its folder, passes through Intern to Leitung without seeing Intern's files
+      const jule = await ok(list('jule', ''));
+      assert.deepEqual(names(jule.folders), ['Fotos', 'Intern']);
+      assert.equal(jule.folders.find((f) => f.name === 'Intern').access, 'none');
+      const intern = await ok(list('jule', 'Intern'));
+      assert.deepEqual(names(intern.folders), ['Leitung']);
+      assert.deepEqual(intern.files, []);
+      assert.equal((await ok(list('jule', 'Fotos/Jugend'))).access, 'write');
+
+      // managers see the rules on the folders; the rights dialog shows what comes from above
+      const managed = await ok(list('owner', 'Fotos'));
+      assert.deepEqual(managed.folders.find((f) => f.name === 'Privat').hiddenFor, ['*']);
+      const dialog = await ok(call('owner', 'GET', '/api/media/rules?path=Fotos/Jugend'));
+      assert.deepEqual(dialog.folder.own, { [jugend]: 'write' });
+      assert.deepEqual(dialog.folder.inherited, { '*': { level: 'read', from: 'Fotos' } });
+      assert.ok(dialog.groups.some((g) => g.id === '*') && dialog.groups.some((g) => g.id === jugend));
+      assert.equal(dialog.rules.length, 4);
+    });
+
+    test('previews and files: only from readable folders, unsafe types only as a download', async () => {
+      const preview = await call('max', 'GET', '/api/media/preview?path=Fotos/Sommer.jpg&size=300&crop=1&v=abc');
+      assert.equal(preview.status, 200);
+      assert.equal(preview.headers.get('content-type'), 'image/png');
+      assert.match(preview.headers.get('cache-control'), /immutable/);
+      const asked = cloud.requests.filter((r) => r.path === '/index.php/core/preview.png').at(-1);
+      assert.deepEqual([asked.query.file, asked.query.x, asked.query.a], ['/Agora/Fotos/Sommer.jpg', '512', '0'], 'next fixed size, square');
+      assert.equal((await call('max', 'GET', '/api/media/preview?path=Fotos/logo.svg&size=256')).status, 404, 'no preview');
+      for (const hidden of ['Fotos/Privat/geheim.jpg', 'Intern/notiz.txt', '../Outside/secret.txt', 'Fotos/../Outside/secret.txt']) {
+        const status = (await call('max', 'GET', `/api/media/file?path=${encodeURIComponent(hidden)}`)).status;
+        assert.ok(status === 404 || status === 400, `${hidden} -> ${status}`);
+      }
+
+      const photo = await call('max', 'GET', '/api/media/file?path=Fotos/Sommer.jpg');
+      assert.equal(photo.status, 200);
+      assert.equal(photo.body, 'jpeg-bytes-0123456789');
+      assert.match(photo.headers.get('content-disposition'), /^inline;/);
+      assert.match(photo.headers.get('content-security-policy'), /sandbox/);
+      const part = await fetch(`${base}/api/media/file?path=Fotos/Sommer.jpg`, { headers: { Authorization: `Bearer ${tokens.max}`, Range: 'bytes=0-3' } });
+      assert.equal(part.status, 206);
+      assert.equal(await part.text(), 'jpeg');
+      const svg = await call('max', 'GET', '/api/media/file?path=Fotos/logo.svg');
+      assert.equal(svg.headers.get('content-type'), 'application/octet-stream');
+      assert.match(svg.headers.get('content-disposition'), /^attachment;/);
+      const pdf = await call('jule', 'GET', `/api/media/file?path=${encodeURIComponent('Intern/Leitung/plan.pdf')}`);
+      assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+      assert.equal(pdf.headers.get('content-security-policy'), null, 'the PDF viewers need no sandbox');
+      const download = await call('jule', 'GET', `/api/media/file?path=${encodeURIComponent('Intern/Leitung/plan.pdf')}&download=1`);
+      assert.match(download.headers.get('content-disposition'), /^attachment; filename="plan.pdf"/);
+    });
+
+    test('adding: files and folders where the group may write; nothing is ever replaced or deleted', async () => {
+      assert.equal((await upload('max', 'Fotos/Jugend', [['a.jpg', 'x', 'image/jpeg']])).status, 403);
+      assert.equal((await upload('max', 'Fotos/Privat', [['a.jpg', 'x', 'image/jpeg']])).status, 404);
+      const first = await ok(upload('jule', 'Fotos/Jugend', [['Freizeit.jpg', 'one', 'image/jpeg'], ['Grüße.txt', 'hallo', 'text/plain']]));
+      assert.deepEqual(first.files.map((f) => f.path), ['Fotos/Jugend/Freizeit.jpg', 'Fotos/Jugend/Grüße.txt']);
+      const second = await ok(upload('jule', 'Fotos/Jugend', [['Freizeit.jpg', 'two', 'image/jpeg']]));
+      assert.equal(second.files[0].name, 'Freizeit (2).jpg');
+      assert.equal(cloud.nodes.get('Agora/Fotos/Jugend/Freizeit.jpg').data.toString(), 'one', 'the first file is untouched');
+      assert.equal((await upload('jule', 'Fotos/Jugend', [['.htaccess', 'x', 'text/plain']])).status, 400);
+
+      assert.equal((await call('max', 'POST', '/api/media/folder', { path: 'Fotos', name: 'Neu' })).status, 403);
+      assert.equal((await call('jule', 'POST', '/api/media/folder', { path: 'Fotos/Jugend', name: '../x' })).status, 400);
+      await ok(call('jule', 'POST', '/api/media/folder', { path: 'Fotos/Jugend', name: 'Sommer 2026' }));
+      assert.equal((await call('jule', 'POST', '/api/media/folder', { path: 'Fotos/Jugend', name: 'Sommer 2026' })).status, 409);
+      assert.equal((await ok(list('jule', 'Fotos/Jugend/Sommer 2026'))).access, 'write', 'inherits the rights');
+      // there is no way to delete
+      assert.equal((await call('owner', 'DELETE', '/api/media/file?path=Fotos/Sommer.jpg')).status, 404);
+      assert.ok(!cloud.requests.some((r) => ['DELETE', 'MOVE', 'COPY'].includes(r.method)));
+      // nothing outside the base folder was ever asked for
+      assert.ok(!cloud.requests.some((r) => r.path.includes('/Outside') || String(r.query.file || '').includes('Outside')));
+    });
+
+    test('a deleted group loses its rules; switched off, Media is gone for everyone', async () => {
+      const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Kurzzeit', permissions: [] }));
+      const id = group.id || group.group?.id;
+      await ok(rules('Intern', { [id]: 'read' }));
+      await ok(call('owner', 'DELETE', `/api/admin/groups/${id}`));
+      assert.ok(!(await ok(call('owner', 'GET', '/api/media/rules'))).rules.some((r) => r.path === 'Intern'));
+      await ok(rules('Intern/Leitung', {}));
+      assert.equal((await list('jule', 'Intern')).status, 404, 'rule removed');
+
+      await ok(call('owner', 'PUT', '/api/admin/media-config', settings({ enabled: false, password: '***' })));
+      assert.deepEqual(await ok(call('jule', 'GET', '/api/media/status')), { enabled: false, canManage: false, hasAccess: false });
+      assert.equal((await list('jule', 'Fotos')).status, 503);
+      await ok(call('owner', 'PUT', '/api/admin/media-config', settings({ password: '***' })));
+    });
   });
 });

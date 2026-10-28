@@ -44,8 +44,6 @@ const {
   listUserRecords,
   listGroupRecords,
   resolveUserPermissions,
-  getStateValue,
-  upsertStateValue,
   getOrCreateUserCalendarToken,
   regenerateUserCalendarToken,
   queueRecordWrite
@@ -221,10 +219,6 @@ router.post('/api/events', verifyToken, async (req, res) => {
     }
 
     const canManageEvents = hasEventPermission(req.user);
-    const eventSettings = await getStateValue(context.appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
-    if (!eventSettings.allowMemberCreation && !canManageEvents) {
-      return res.status(403).json({ error: 'Creating events is currently only enabled for the leadership' });
-    }
 
     let finalEventType = 'event';
     let finalIsPinned = false;
@@ -364,39 +358,10 @@ router.post('/api/events', verifyToken, async (req, res) => {
   }
 });
 
-// Settings first: otherwise PATCH /api/events/settings would be taken for an event with the id "settings"
-router.get('/api/events/settings', verifyToken, async (req, res) => {
-  try {
-    const settings = await getStateValue(context.appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
-    res.json(settings || DEFAULT_EVENT_SETTINGS);
-  } catch (err) {
-    console.error('Failed to get event settings:', err);
-    res.json(DEFAULT_EVENT_SETTINGS);
-  }
-});
-
-router.patch('/api/events/settings', verifyToken, async (req, res) => {
-  try {
-    const canManageEvents = hasEventPermission(req.user);
-    if (!canManageEvents) {
-      return res.status(403).json({ error: 'Only for administrators / leadership' });
-    }
-
-    const current = await getStateValue(context.appConfig, 'event_settings', DEFAULT_EVENT_SETTINGS);
-    const { allowMemberCreation, defaultDuties } = req.body || {};
-    const updated = {
-      ...current,
-      allowMemberCreation: allowMemberCreation !== undefined ? allowMemberCreation === true : current.allowMemberCreation,
-      defaultDuties: Array.isArray(defaultDuties) ? defaultDuties.map(d => String(d).trim()).filter(Boolean) : current.defaultDuties
-    };
-
-    await upsertStateValue(context.appConfig, 'event_settings', updated);
-    broadcastDataUpdate();
-    res.json({ success: true, settings: updated });
-  } catch (err) {
-    console.error('Failed to update event settings:', err);
-    res.status(500).json({ error: 'The settings could not be saved' });
-  }
+// The event settings are gone from the system settings (every member may create events); the fixed answer stays
+// for app versions that still ask. Before /api/events/:id, which would take "settings" for an event id.
+router.get('/api/events/settings', verifyToken, (req, res) => {
+  res.json(DEFAULT_EVENT_SETTINGS);
 });
 
 router.patch('/api/events/:id', verifyToken, async (req, res) => {

@@ -1,5 +1,5 @@
 // Bumped: older caches could hold API responses of a previous user, the activate step deletes them
-const CACHE_NAME = 'agora-v1.0.82';
+const CACHE_NAME = 'agora-v1.0.83';
 const URLS_TO_CACHE = [
     './',
     './index.html',
@@ -10,6 +10,7 @@ const URLS_TO_CACHE = [
     './assets/config.js',
     './assets/app.js',
     './assets/songbook.js',
+    './assets/media.js',
     './assets/finance.js',
     './assets/pocketbase-compat.js',
     './manifest.json',

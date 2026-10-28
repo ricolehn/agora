@@ -41,6 +41,7 @@ const pollsRouter = require('./routes/polls');
 const features = require('./features');
 const songbookRouter = require('./routes/songbook');
 const prayersRouter = require('./routes/prayers');
+const mediaRouter = require('./routes/media');
 
 const app = express();
 app.set('trust proxy', resolveTrustProxySetting());
@@ -151,6 +152,7 @@ app.use(systemRouter);
 if (features.polls) app.use(pollsRouter);
 app.use(songbookRouter);
 app.use(prayersRouter);
+app.use(mediaRouter);
 
 // A shared event's page (the share switch is on): the app as always, its head carrying the event for link previews
 app.get('/events/:slug', pageRateLimit, async (req, res, next) => {

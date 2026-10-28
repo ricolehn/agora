@@ -1140,6 +1140,7 @@ async function ensurePocketBaseSchema(appConfig) {
   await migrateStateToCollections(appConfig);
   await grantNewPermission(appConfig, 'manage_songbook', 'songbookPermissionMigrated', 'manage the songbook');
   await grantNewPermission(appConfig, 'manage_prayers', 'prayersPermissionMigrated', 'moderate prayer requests');
+  await grantNewPermission(appConfig, 'manage_media', 'mediaPermissionMigrated', 'manage media folders');
 }
 
 /**
@@ -1599,6 +1600,7 @@ function resolveUserPermissions(userGroups = [], allGroups = []) {
   const canManageEvents = permissions.includes('manage_events');
   return {
     // Accounts keep their groups by id, events their target groups by name (eventAccess.js)
+    groupIds: matchingGroups.map((g) => g.id).filter(Boolean),
     groupNames: matchingGroups.map((g) => g.name).filter(Boolean),
     permissions,
     canManageFinances,
@@ -1667,7 +1669,8 @@ const SYSTEM_PERMISSIONS = [
   { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
   { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
   { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
-  { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' }
+  { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' },
+  { id: 'manage_media', name: 'Extended media rights', description: 'Allows seeing every media folder, uploading everywhere and deciding which groups may read, write or not see a folder' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {
