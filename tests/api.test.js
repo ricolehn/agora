@@ -905,6 +905,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       cloud.addFile('Agora/Fotos/Sommer.jpg', 'jpeg-bytes-0123456789', 'image/jpeg');
       cloud.addFile('Agora/Fotos/logo.svg', '<svg onload="alert(1)"/>', 'image/svg+xml');
       cloud.addFile('Agora/Fotos/.nomedia', '', 'application/octet-stream');
+      cloud.addFile('Agora/Fotos/Clip.mp4', 'mp4-bytes-0123456789', 'video/mp4');
       cloud.addFile('Agora/Fotos/Privat/geheim.jpg', 'secret', 'image/jpeg');
       cloud.addDir('Agora/Fotos/Jugend');
       cloud.addFile('Agora/Intern/notiz.txt', 'intern', 'text/plain');
@@ -954,7 +955,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.deepEqual(names(root.files), ['willkommen.pdf']);
       assert.equal(root.files[0].kind, 'pdf');
       const fotos = await ok(list('owner', 'Fotos'));
-      assert.deepEqual(names(fotos.files), ['logo.svg', 'Sommer.jpg'].sort(), 'dot files are left out');
+      assert.deepEqual(names(fotos.files), ['Clip.mp4', 'logo.svg', 'Sommer.jpg'].sort(), 'dot files are left out');
+      assert.equal(fotos.files.find((f) => f.name === 'Clip.mp4').kind, 'video');
       assert.equal(fotos.files.find((f) => f.name === 'Sommer.jpg').hasPreview, true);
       assert.ok(fotos.files.every((f) => f.path.startsWith('Fotos/') && f.etag));
     });
@@ -996,7 +998,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       const dialog = await ok(call('owner', 'GET', '/api/media/rules?path=Fotos/Jugend'));
       assert.deepEqual(dialog.folder.own, { [jugend]: 'write' });
       assert.deepEqual(dialog.folder.inherited, { '*': { level: 'read', from: 'Fotos' } });
-      assert.ok(dialog.groups.some((g) => g.id === '*') && dialog.groups.some((g) => g.id === jugend));
+      assert.ok(dialog.choices.some((c) => c.id === '*') && dialog.choices.some((c) => c.id === jugend && c.kind === 'group'));
+      assert.ok(dialog.choices.some((c) => c.id === `user:${uids.max}` && c.kind === 'person' && c.name === 'Max Test'), 'people can be picked too');
       assert.equal(dialog.rules.length, 4);
     });
 
@@ -1021,6 +1024,12 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       const part = await fetch(`${base}/api/media/file?path=Fotos/Sommer.jpg`, { headers: { Authorization: `Bearer ${tokens.max}`, Range: 'bytes=0-3' } });
       assert.equal(part.status, 206);
       assert.equal(await part.text(), 'jpeg');
+      // video and music play in the app: their own type, ranges for seeking
+      const clip = await fetch(`${base}/api/media/file?path=Fotos/Clip.mp4`, { headers: { Authorization: `Bearer ${tokens.max}`, Range: 'bytes=4-9' } });
+      assert.equal(clip.status, 206);
+      assert.equal(clip.headers.get('content-type'), 'video/mp4');
+      assert.match(clip.headers.get('content-disposition'), /^inline;/);
+      assert.equal(await clip.text(), 'bytes-');
       const svg = await call('max', 'GET', '/api/media/file?path=Fotos/logo.svg');
       assert.equal(svg.headers.get('content-type'), 'application/octet-stream');
       assert.match(svg.headers.get('content-disposition'), /^attachment;/);
@@ -1051,6 +1060,28 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.ok(!cloud.requests.some((r) => ['DELETE', 'MOVE', 'COPY'].includes(r.method)));
       // nothing outside the base folder was ever asked for
       assert.ok(!cloud.requests.some((r) => r.path.includes('/Outside') || String(r.query.file || '').includes('Outside')));
+    });
+
+    test('single people: a right of their own goes before their groups', async () => {
+      // Max gets Intern without any group; Jule (Jugend writes in Fotos/Jugend) is kept out of it
+      await ok(rules('Intern', { [`user:${uids.max}`]: 'read' }));
+      await ok(rules('Fotos/Jugend', { [jugend]: 'write', [`user:${uids.jule}`]: 'hide' }));
+      assert.equal((await ok(list('max', 'Intern'))).access, 'read');
+      assert.equal((await ok(list('jule', 'Intern'))).access, 'none', 'Jule only passes through (to Intern/Leitung)');
+      assert.equal((await list('jule', 'Fotos/Jugend')).status, 404, 'hidden for her alone');
+      assert.ok(!(await ok(list('jule', 'Fotos'))).folders.some((f) => f.name === 'Jugend'));
+      assert.equal((await rules('Intern', { 'user:nobody': 'read' })).status, 400);
+      // back to how the tests before left it
+      await ok(rules('Intern', {}));
+      await ok(rules('Fotos/Jugend', { [jugend]: 'write' }));
+      assert.equal((await ok(list('jule', 'Fotos/Jugend'))).access, 'write');
+    });
+
+    test('a deleted account loses its rules', async () => {
+      const id = await account('kurz', 'Kurz');
+      await ok(rules('Dokumente', { [`user:${id}`]: 'read' }));
+      await ok(call('owner', 'DELETE', `/api/admin/users/${id}`));
+      assert.ok(!(await ok(call('owner', 'GET', '/api/media/rules'))).rules.some((r) => r.path === 'Dokumente'));
     });
 
     test('a deleted group loses its rules; switched off, Media is gone for everyone', async () => {

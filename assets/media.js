@@ -69,9 +69,50 @@ export function formatSize(bytes, locale) {
     return `${new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(size)} ${units[unit]}`;
 }
 
-/** What opens in the app: pictures in the viewer, PDFs in the PDF viewer, the rest is downloaded. */
+/** What opens in the app: pictures in the viewer, PDFs in the PDF viewer, videos and music in the player; the rest is downloaded. */
 export const opensInViewer = file => file?.kind === 'image';
 export const opensAsPdf = file => file?.kind === 'pdf';
+export const opensInPlayer = file => file?.kind === 'video' || file?.kind === 'audio';
+
+/** The type shown on a tile: the file's extension ("DOCX"), at most 4 letters, or nothing. */
+export function typeLabel(name) {
+    const match = /\.([a-z0-9]{1,4})$/i.exec(String(name || ''));
+    return match ? match[1].toUpperCase() : '';
+}
+
+// --- Zooming the picture viewer. A view is { scale, x, y }: the picture is scaled around its centre and moved by
+// x / y pixels; points are measured from the centre of the picture's box. ---
+export const MAX_ZOOM = 6;
+const clampScale = scale => Math.min(MAX_ZOOM, Math.max(1, Number.isFinite(scale) ? scale : 1));
+
+/** Zoomed to [scale] around [point]: the spot of the picture under the point (a finger, the mouse) stays there. */
+export function zoomAt(view, point, scale) {
+    const next = clampScale(scale);
+    const ratio = next / view.scale;
+    return { scale: next, x: point.x - (point.x - view.x) * ratio, y: point.y - (point.y - view.y) * ratio };
+}
+
+/** Two fingers: the spot that was between them at the start follows their middle, the picture their distance. */
+export function pinchView(start, startMiddle, middle, scale) {
+    const next = clampScale(scale);
+    const ratio = next / start.scale;
+    return { scale: next, x: middle.x - (startMiddle.x - start.x) * ratio, y: middle.y - (startMiddle.y - start.y) * ratio };
+}
+
+/**
+ * Keeps the picture on screen: it can only be moved as far as it is larger than its box (a picture of [natural]
+ * size shown in a box of [box] size, letterboxed). Not zoomed, it sits in the middle.
+ */
+export function clampView(view, box, natural) {
+    const scale = clampScale(view.scale);
+    if (scale <= 1.001) return { scale: 1, x: 0, y: 0 };
+    const fit = natural?.width && natural?.height ? Math.min(box.width / natural.width, box.height / natural.height) : 1;
+    const width = (natural?.width ? natural.width * fit : box.width) * scale;
+    const height = (natural?.height ? natural.height * fit : box.height) * scale;
+    const maxX = Math.max(0, (width - box.width) / 2);
+    const maxY = Math.max(0, (height - box.height) / 2);
+    return { scale, x: Math.min(maxX, Math.max(-maxX, view.x)), y: Math.min(maxY, Math.max(-maxY, view.y)) };
+}
 
 /** Animated pictures lose their motion as previews: the viewer shows the original. */
 export const viewerNeedsOriginal = file => /\.gif$/i.test(file?.name || '') || file?.contentType === 'image/gif' || file?.hasPreview === false;
@@ -83,18 +124,32 @@ export function neighbourIndex(list, index, direction) {
 }
 
 /**
- * Folder rights as the dialog shows them: one row per group with its own level ('' = from above) and what it
- * would get from the folders above ({ level, from } or null).
+ * Folder rights as the dialog shows them: all members always, then every group and person with a rule of its own
+ * here or one from above (others are added when needed). A row: { id, name, kind, level ('' = from above),
+ * inherited ({ level, from } or null) }.
  */
-export function rightsRows(groups, folder) {
+export function rightsRows(choices, folder) {
     const own = folder?.own || {};
     const inherited = folder?.inherited || {};
-    return (groups || []).map(group => ({
-        id: group.id,
-        name: group.name,
-        level: own[group.id] || '',
-        inherited: inherited[group.id] || null
-    }));
+    return (choices || [])
+        .filter(choice => choice.id === '*' || own[choice.id] || inherited[choice.id])
+        .map(choice => ({ id: choice.id, name: choice.name, kind: choice.kind, level: own[choice.id] || '', inherited: inherited[choice.id] || null }));
+}
+
+/** A row can be taken out of the dialog when nothing comes from above for it (all members always stay). */
+export const removableRow = row => row.id !== '*' && !row.inherited;
+
+const searchable = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** Groups and people that are not in the dialog yet and match [query] (case and accents ignored), groups first. */
+export function addableTargets(choices, rows, query, limit = 8) {
+    const shown = new Set((rows || []).map(row => row.id));
+    const words = searchable(query).split(/\s+/).filter(Boolean);
+    return (choices || [])
+        .filter(choice => choice.id !== '*' && !shown.has(choice.id))
+        .filter(choice => words.every(word => searchable(choice.name).includes(word)))
+        .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'group' ? -1 : 1))
+        .slice(0, limit);
 }
 
 /** The rules to save from the dialog's rows (only groups with an own level). */

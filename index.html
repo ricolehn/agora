@@ -1806,7 +1806,7 @@
                 <span id="media-viewer-name" class="media-viewer-name"></span>
                 <span id="media-viewer-meta" class="media-viewer-meta"></span>
             </div>
-            <button type="button" id="media-viewer-zoom" class="media-viewer-btn" onclick="toggleMediaZoom()" data-i18n-title="media_original_size" title="Original size" data-i18n-aria-label="media_original_size" aria-label="Original size">
+            <button type="button" id="media-viewer-zoom" class="media-viewer-btn" onclick="toggleMediaZoom()" aria-pressed="false" data-i18n-title="media_zoom" title="Zoom" data-i18n-aria-label="media_zoom" aria-label="Zoom">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
             </button>
             <a id="media-viewer-download" class="media-viewer-btn" href="#" download data-i18n-title="media_download" title="Download" data-i18n-aria-label="media_download" aria-label="Download">
@@ -1827,6 +1827,25 @@
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
         <div id="media-viewer-count" class="media-viewer-count"></div>
+    </div>
+</div>
+
+<!-- Media: videos and music, with the browser's own controls -->
+<div id="media-player-modal" class="modal media-viewer media-player" role="dialog" aria-modal="true" aria-labelledby="media-player-name">
+    <div class="media-viewer-frame" tabindex="-1">
+        <div class="media-viewer-top">
+            <div class="media-viewer-heading">
+                <span id="media-player-name" class="media-viewer-name"></span>
+                <span id="media-player-meta" class="media-viewer-meta"></span>
+            </div>
+            <a id="media-player-download" class="media-viewer-btn" href="#" download data-i18n-title="media_download" title="Download" data-i18n-aria-label="media_download" aria-label="Download">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </a>
+            <button type="button" class="media-viewer-btn" onclick="closeModal('media-player-modal')" data-i18n-aria-label="btn_close" aria-label="Close">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <div id="media-player-stage" class="media-player-stage"></div>
     </div>
 </div>
 
@@ -1870,8 +1889,23 @@
             <button type="button" class="close-btn" onclick="closeModal('media-rights-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body-enhanced plan-sheet-body">
-            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload and create folders. Hidden: the group does not see the folder. Nothing can be deleted.</p>
+            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload and create folders. Hidden: does not see the folder. A right for one person goes before the rights of their groups. Nothing can be deleted.</p>
             <div id="media-rights-list" class="media-rights-list"></div>
+            <div class="media-rights-add">
+                <button type="button" id="media-rights-add-btn" class="media-rights-add-btn" onclick="openMediaRightsAdd()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span data-i18n="media_rights_add">Add group or person</span>
+                </button>
+                <div id="media-rights-add-panel" class="media-rights-add-panel" hidden>
+                    <div class="media-rights-search-row">
+                        <input type="search" id="media-rights-search" class="form-input" autocomplete="off" data-i18n-placeholder="media_rights_search" placeholder="Search group or person" data-i18n-aria-label="media_rights_search" aria-label="Search group or person" oninput="renderMediaRightsAdd()">
+                        <button type="button" class="media-right-remove" onclick="closeMediaRightsAdd()" data-i18n-title="btn_cancel" title="Cancel" data-i18n-aria-label="btn_cancel" aria-label="Cancel">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                    </div>
+                    <div id="media-rights-results" class="media-rights-results"></div>
+                </div>
+            </div>
         </div>
         <div class="modal-footer-enhanced plan-sheet-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal('media-rights-modal')" data-i18n="btn_cancel">Cancel</button>

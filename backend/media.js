@@ -1,12 +1,13 @@
 // Media (Extras): a library of images and files that lives in a Nextcloud folder. Agora signs in to Nextcloud with
 // one bot account (full rights there) and decides itself who may do what: rules per folder and group.
 //
-// A rule gives a group one of three levels on a folder: read (browse, view, download), write (read + upload files
-// and create folders) or hide (the group does not see the folder). A rule applies to the folder and everything
-// below it until a subfolder has its own rule for that group. Without any rule nobody sees anything. Someone in
-// several groups gets the most a group of theirs gets ("*" stands for all members). Members with the manage_media
-// permission see every folder, upload everywhere and set the rules. Nobody deletes, renames, moves or overwrites
-// anything through Agora.
+// A rule gives all members ("*"), a group (its id) or one person ("user:<id>") one of three levels on a folder:
+// read (browse, view, download), write (read + upload files and create folders) or hide (does not see the folder).
+// A rule applies to the folder and everything below it until a subfolder has its own rule for the same group or
+// person. Without any rule nobody sees anything. Someone in several groups gets the most a group of theirs gets; a
+// rule for the person themself goes before all group rules (so one person can be given more, or less, than their
+// groups). Members with the manage_media permission see every folder, upload everywhere and set the rules. Nobody
+// deletes, renames, moves or overwrites anything through Agora.
 //
 // Paths are relative to the configured base folder in the bot account: "" is the base folder, "Photos/2026" a
 // folder below it. Only clean paths get through (no "..", no empty parts), so nothing outside the base folder can
@@ -15,6 +16,8 @@ const crypto = require('crypto');
 const path = require('path');
 
 const ALL_MEMBERS = '*';
+const PERSON_PREFIX = 'user:';
+const personKey = (uid) => `${PERSON_PREFIX}${uid}`;
 const LEVELS = ['read', 'write', 'hide'];
 const RANK = { none: 0, read: 1, write: 2 };
 const MAX_PATH = 1024;
@@ -68,6 +71,9 @@ function groupLevel(rules, folder, groupId) {
 /** What [user] may do in [folder]: 'write', 'read' or 'none'. */
 function folderAccess(rules, folder, user) {
   if (canManageMedia(user)) return 'write';
+  const uid = user?.uid || user?.id;
+  const personal = uid ? groupLevel(rules, folder, personKey(uid)) : null;
+  if (personal) return personal === 'hide' ? 'none' : personal;
   let best = 'none';
   for (const groupId of [ALL_MEMBERS, ...(Array.isArray(user?.groupIds) ? user.groupIds : [])]) {
     const level = groupLevel(rules, folder, groupId);
@@ -131,27 +137,30 @@ function filterListing(rules, folder, user, { folders = [], files = [] }) {
   return { access, folders: visibleFolders, files: visibleFiles };
 }
 
-/** Sets the rules of one folder ({ groupId: level }; an empty object removes them). Returns { rules } or { error }. */
-function setFolderRules(rules, folder, groups, knownGroupIds) {
+/**
+ * Sets the rules of one folder ({ "*" | groupId | "user:<id>": level }; an empty object removes them). [knownIds]
+ * holds the group ids and person keys that exist. Returns { rules } or { error }.
+ */
+function setFolderRules(rules, folder, groups, knownIds) {
   const next = { ...(rules || {}) };
   const own = {};
-  for (const [groupId, level] of Object.entries(groups && typeof groups === 'object' ? groups : {})) {
+  for (const [id, level] of Object.entries(groups && typeof groups === 'object' ? groups : {})) {
     if (!level) continue;
     if (!LEVELS.includes(level)) return { error: 'Unknown access level.' };
-    if (groupId !== ALL_MEMBERS && !knownGroupIds.has(groupId)) return { error: 'Unknown group.' };
-    own[groupId] = level;
+    if (id !== ALL_MEMBERS && !knownIds.has(id)) return { error: 'Unknown group or person.' };
+    own[id] = level;
   }
   if (Object.keys(own).length) next[folder] = own;
   else delete next[folder];
   return { rules: next };
 }
 
-/** Rules without groups that no longer exist (a deleted group must not come back with the next group of that id). */
-function pruneRules(rules, knownGroupIds) {
+/** Rules without groups or people that no longer exist (deleted groups and accounts leave nothing behind). */
+function pruneRules(rules, knownIds) {
   const next = {};
   for (const [folder, own] of Object.entries(rules || {})) {
-    const kept = Object.fromEntries(Object.entries(own || {}).filter(([groupId, level]) =>
-      (groupId === ALL_MEMBERS || knownGroupIds.has(groupId)) && LEVELS.includes(level)));
+    const kept = Object.fromEntries(Object.entries(own || {}).filter(([id, level]) =>
+      (id === ALL_MEMBERS || knownIds.has(id)) && LEVELS.includes(level)));
     if (Object.keys(kept).length) next[folder] = kept;
   }
   return next;
@@ -160,8 +169,16 @@ function pruneRules(rules, knownGroupIds) {
 // --- What kind of file, for the viewer ---
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'image/heic', 'image/heif']);
-/** Shown in the browser as they are; everything else (SVG, HTML, …) only goes out as a download. */
-const INLINE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf']);
+/**
+ * Shown or played in the browser as they are (pictures, PDFs, video and music: nothing in them runs as a page);
+ * everything else (SVG, HTML, …) only goes out as a download.
+ */
+const INLINE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-m4v',
+  'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/ogg', 'audio/opus', 'audio/wav',
+  'audio/x-wav', 'audio/wave', 'audio/webm', 'audio/flac', 'audio/x-flac'
+]);
 
 function fileKind(contentType, name) {
   const type = String(contentType || '').toLowerCase();
@@ -227,6 +244,7 @@ function cleanServerUrl(value) {
 
 module.exports = {
   ALL_MEMBERS,
+  personKey,
   LEVELS,
   INLINE_TYPES,
   PREVIEW_SIZES,

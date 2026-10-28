@@ -8,6 +8,7 @@ const media = require('../backend/media');
 const { parseMultistatus } = require('../backend/nextcloud');
 
 const member = (...groupIds) => ({ permissions: [], groupIds });
+const person = (uid, ...groupIds) => ({ uid, permissions: [], groupIds });
 const manager = { permissions: ['manage_media'], groupIds: [] };
 
 describe('media rights (backend/media.js)', () => {
@@ -37,6 +38,22 @@ describe('media rights (backend/media.js)', () => {
     assert.equal(media.folderAccess(rules, 'Fotos/Jugend/Leiter', member('jugend')), 'read');
     assert.equal(media.folderAccess({ A: { x: 'write' }, 'A/B': { x: 'hide' } }, 'A/B', member('x')), 'none');
     assert.equal(media.folderAccess({ A: { x: 'write' }, 'A/B': { x: 'hide', y: 'read' } }, 'A/B', member('x', 'y')), 'read');
+  });
+
+  test('a rule for one person goes before their groups: more, or less, than the group gets', () => {
+    const personal = {
+      Fotos: { '*': 'read', [media.personKey('anna')]: 'write' },
+      'Fotos/Privat': { [media.personKey('ben')]: 'read' },
+      Kasse: { kasse: 'write', [media.personKey('carl')]: 'hide' }
+    };
+    assert.equal(media.folderAccess(personal, 'Fotos/2026', person('anna')), 'write', 'more than all members');
+    assert.equal(media.folderAccess(personal, 'Fotos/2026', person('ben')), 'read');
+    assert.equal(media.folderAccess(personal, 'Kasse', person('carl', 'kasse')), 'none', 'hidden for one person of the group');
+    assert.equal(media.folderAccess(personal, 'Kasse/2026', person('dora', 'kasse')), 'write');
+    // a person's rule further down still applies only there
+    assert.equal(media.canSeeFolder(personal, '', person('ben')), true);
+    assert.deepEqual(media.filterListing({ 'A/B': { [media.personKey('ben')]: 'read' } }, '', person('ben'), { folders: [{ name: 'A' }, { name: 'C' }], files: [] }).folders.map((f) => f.name), ['A']);
+    assert.equal(media.setFolderRules({}, 'A', { 'user:ghost': 'read' }, new Set(['user:anna'])).error, 'Unknown group or person.');
   });
 
   test('extended media rights see and write everywhere', () => {
@@ -76,7 +93,7 @@ describe('media rights (backend/media.js)', () => {
     const known = new Set(['jugend']);
     assert.deepEqual(media.setFolderRules({}, 'A', { jugend: 'write', '*': 'read', x: '' }, known).rules, { A: { jugend: 'write', '*': 'read' } });
     assert.equal(media.setFolderRules({}, 'A', { jugend: 'delete' }, known).error, 'Unknown access level.');
-    assert.equal(media.setFolderRules({}, 'A', { other: 'read' }, known).error, 'Unknown group.');
+    assert.equal(media.setFolderRules({}, 'A', { other: 'read' }, known).error, 'Unknown group or person.');
     assert.deepEqual(media.setFolderRules({ A: { jugend: 'read' } }, 'A', {}, known).rules, {});
     assert.deepEqual(media.pruneRules({ A: { gone: 'read' }, B: { gone: 'read', jugend: 'hide' } }, known), { B: { jugend: 'hide' } });
   });
@@ -117,6 +134,8 @@ describe('media paths and names (backend/media.js)', () => {
     assert.equal(media.fileKind('application/octet-stream', 'Scan.PDF'), 'pdf');
     assert.equal(media.fileKind('image/svg+xml', 'logo.svg'), 'other', 'SVG is never shown as a picture');
     assert.equal(media.fileKind('video/mp4', 'a.mp4'), 'video');
+    assert.ok(media.INLINE_TYPES.has('video/mp4') && media.INLINE_TYPES.has('audio/mpeg'), 'video and music play in the browser');
+    assert.ok(!['image/svg+xml', 'text/html', 'application/xhtml+xml', 'text/javascript'].some((type) => media.INLINE_TYPES.has(type)), 'nothing that runs as a page');
     assert.deepEqual([1, 300, 600, 5000, 'x'].map(media.previewSize), [64, 512, 1024, 2048, 64]);
   });
 });
@@ -173,10 +192,46 @@ describe('media helpers of the web app (assets/media.js)', () => {
     assert.equal(m.viewerNeedsOriginal({ name: 'a.gif', hasPreview: true }), true);
   });
 
-  test('the rights dialog: own level, what comes from above, only own levels are saved', async () => {
+  test('what opens where, and the type a tile shows', async () => {
     const m = await load();
-    const rows = m.rightsRows([{ id: '*', name: '' }, { id: 'g1', name: 'Jugend' }], { own: { g1: 'write' }, inherited: { '*': { level: 'read', from: 'Fotos' } } });
-    assert.deepEqual(rows.map((r) => [r.id, r.level, r.inherited?.from || null]), [['*', '', 'Fotos'], ['g1', 'write', null]]);
-    assert.deepEqual(m.rightsPayload(rows), { g1: 'write' });
+    assert.deepEqual(['image', 'pdf', 'video', 'audio', 'other'].map((kind) => [m.opensInViewer({ kind }), m.opensAsPdf({ kind }), m.opensInPlayer({ kind })]),
+      [[true, false, false], [false, true, false], [false, false, true], [false, false, true], [false, false, false]]);
+    assert.deepEqual(['Brief.docx', 'Predigt.MP3', 'README', 'archiv.backup', 'a.b.pdf'].map(m.typeLabel), ['DOCX', 'MP3', '', '', 'PDF']);
+  });
+
+  test('zooming: the spot under the fingers stays put, the picture never leaves its box', async () => {
+    const m = await load();
+    const start = { scale: 1, x: 0, y: 0 };
+    // the picture point under the finger, before and after, is the same
+    const spot = (view, point) => ({ x: (point.x - view.x) / view.scale, y: (point.y - view.y) / view.scale });
+    const zoomed = m.zoomAt(start, { x: 100, y: -40 }, 2.5);
+    assert.deepEqual(spot(zoomed, { x: 100, y: -40 }), spot(start, { x: 100, y: -40 }));
+    assert.equal(m.zoomAt(start, { x: 0, y: 0 }, 50).scale, m.MAX_ZOOM);
+    assert.equal(m.zoomAt(zoomed, { x: 10, y: 10 }, 0.2).scale, 1, 'not below the whole picture');
+    // two fingers moving apart and sideways: the spot between them moves with their middle
+    const pinched = m.pinchView(start, { x: 0, y: 0 }, { x: 30, y: 0 }, 2);
+    assert.deepEqual(spot(pinched, { x: 30, y: 0 }), { x: 0, y: 0 });
+    // a 4000x3000 picture letterboxed in a 400x800 box: at 3x it is 1200 wide (moves 400 each way) and 900 high (50)
+    assert.deepEqual(m.clampView({ scale: 3, x: 999, y: -999 }, { width: 400, height: 800 }, { width: 4000, height: 3000 }), { scale: 3, x: 400, y: -50 });
+    assert.deepEqual(m.clampView({ scale: 1, x: 50, y: 50 }, { width: 400, height: 800 }, { width: 4000, height: 3000 }), { scale: 1, x: 0, y: 0 });
+    assert.deepEqual(m.clampView({ scale: 2, x: 500, y: 0 }, { width: 400, height: 300 }, {}), { scale: 2, x: 200, y: 0 }, 'size not known yet: the box');
+  });
+
+  test('the rights dialog: all members, then only who has a right here or from above; search adds the rest', async () => {
+    const m = await load();
+    const choices = [
+      { id: '*', name: '', kind: 'all' },
+      { id: 'g1', name: 'Jugend', kind: 'group' }, { id: 'g2', name: 'Leitung', kind: 'group' }, { id: 'g3', name: 'Chor', kind: 'group' },
+      { id: 'user:a', name: 'Anna Ölberg', kind: 'person' }, { id: 'user:b', name: 'Ben Chorleiter', kind: 'person' }
+    ];
+    const rows = m.rightsRows(choices, { own: { g1: 'write', 'user:a': 'hide' }, inherited: { g2: { level: 'read', from: 'Fotos' } } });
+    assert.deepEqual(rows.map((r) => [r.id, r.level, r.inherited?.from || null]), [['*', '', null], ['g1', 'write', null], ['g2', '', 'Fotos'], ['user:a', 'hide', null]]);
+    assert.deepEqual(m.rightsPayload(rows), { g1: 'write', 'user:a': 'hide' });
+    assert.deepEqual(rows.map(m.removableRow), [false, true, false, true], 'all members and rights from above stay');
+    // the search: not shown yet, case and accents ignored, groups before people
+    assert.deepEqual(m.addableTargets(choices, rows, '').map((c) => c.id), ['g3', 'user:b']);
+    assert.deepEqual(m.addableTargets(choices, rows, 'chor').map((c) => c.id), ['g3', 'user:b']);
+    assert.deepEqual(m.addableTargets(choices, [{ id: '*' }], 'olberg').map((c) => c.id), ['user:a']);
+    assert.deepEqual(m.addableTargets(choices, rows, 'nobody'), []);
   });
 });

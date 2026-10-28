@@ -21,12 +21,14 @@ function startFakeNextcloud({ user = 'bot', password = 'app-pass', previewImage 
     nodes.set(p, { data: Buffer.from(data), type, etag: crypto.randomBytes(6).toString('hex'), id: nextId++ });
   };
 
+  // Pictures (not SVG) like Nextcloud's default providers; videos too, as with its ffmpeg provider
+  const hasPreview = (node) => (node.type.startsWith('image/') && node.type !== 'image/svg+xml') || node.type.startsWith('video/');
   const propResponse = (href, p, node) => `<d:response><d:href>${xmlEscape(href)}</d:href><d:propstat><d:prop>
 <d:resourcetype>${node.dir ? '<d:collection/>' : ''}</d:resourcetype>
 ${node.dir ? `<oc:size>${0}</oc:size>` : `<d:getcontentlength>${node.data.length}</d:getcontentlength><d:getcontenttype>${node.type}</d:getcontenttype>`}
 <d:getlastmodified>Mon, 26 Oct 2026 10:00:00 GMT</d:getlastmodified>
 <d:getetag>&quot;${node.etag || 'dir'}&quot;</d:getetag><oc:fileid>${node.id}</oc:fileid>
-${node.dir ? '' : `<nc:has-preview>${node.type.startsWith('image/') ? 'true' : 'false'}</nc:has-preview>`}
+${node.dir ? '' : `<nc:has-preview>${hasPreview(node) ? 'true' : 'false'}</nc:has-preview>`}
 </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
 ${node.dir ? '<d:propstat><d:prop><d:getcontenttype/><nc:has-preview/></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat>' : ''}</d:response>`;
 
@@ -46,7 +48,7 @@ ${node.dir ? '<d:propstat><d:prop><d:getcontenttype/><nc:has-preview/></d:prop><
       if (url.pathname === '/index.php/core/preview.png') {
         const p = String(url.searchParams.get('file') || '').replace(/^\/+/, '');
         const node = nodes.get(p);
-        if (!node || node.dir || !node.type.startsWith('image/') || node.type === 'image/svg+xml') {
+        if (!node || node.dir || !hasPreview(node)) {
           res.writeHead(404);
           return res.end();
         }

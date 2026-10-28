@@ -16,7 +16,7 @@ const {
   protectedActionRateLimit,
   broadcastDataUpdate
 } = require('../context');
-const { getStateValue, upsertStateValue, listGroupRecords, queueRecordWrite } = require('../pocketbase');
+const { getStateValue, upsertStateValue, listGroupRecords, listUserRecords, queueRecordWrite } = require('../pocketbase');
 const { loadSecret } = require('../polls');
 const media = require('../media');
 const nextcloud = require('../nextcloud');
@@ -217,8 +217,8 @@ router.get('/api/media/file', mediaFileRateLimit, verifyToken, async (req, res) 
     const range = typeof req.headers.range === 'string' && /^bytes=[\d,\s-]+$/.test(req.headers.range) ? req.headers.range : null;
     const upstream = await nextcloud.download(target.conn, target.file, { range, signal: abortOnClose(req, res) });
     const type = String(upstream.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
-    // Pictures and PDFs open in the browser; anything else (HTML, SVG, scripts …) is only ever a download, so a
-    // file in the cloud can never run as a page of the app
+    // Pictures, PDFs, video and music open in the browser; anything else (HTML, SVG, scripts …) is only ever a
+    // download, so a file in the cloud can never run as a page of the app
     const inline = media.INLINE_TYPES.has(type) && req.query.download !== '1';
     res.status(upstream.status);
     res.setHeader('Content-Type', inline ? type : 'application/octet-stream');
@@ -341,24 +341,36 @@ function verifyManageMedia(req, res, next) {
   return res.status(403).json({ error: 'Extended media rights required' });
 }
 
-const groupChoices = (groups) => [
-  { id: media.ALL_MEMBERS, name: '' },
-  ...groups.map((group) => ({ id: group.id, name: group.name })).sort((a, b) => a.name.localeCompare(b.name))
-];
+const personName = (user) => `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || user.email || user.id;
 
-/** The rules of [folder] and what each group gets there from a folder above ({ level, from }). */
+/**
+ * Who rules can be for: all members, the groups and every person with an account ({ id, name, kind }), and the
+ * set of ids that exist (rules of deleted groups and accounts are dropped).
+ */
+async function ruleTargets() {
+  const [groups, users] = await Promise.all([listGroupRecords(context.appConfig), listUserRecords(context.appConfig)]);
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const choices = [
+    { id: media.ALL_MEMBERS, name: '', kind: 'all' },
+    ...groups.map((group) => ({ id: group.id, name: group.name, kind: 'group' })).sort(byName),
+    ...users.map((user) => ({ id: media.personKey(user.id), name: personName(user), kind: 'person' })).sort(byName)
+  ];
+  return { choices, known: new Set(choices.map((choice) => choice.id)) };
+}
+
+/** The rules of [folder] and what each group or person gets there from a folder above ({ level, from }). */
 function folderRules(rules, folder) {
   const own = rules[folder] || {};
   const inherited = {};
   if (folder) {
     const parent = media.parentOf(folder);
-    const groupIds = new Set(Object.values(rules).flatMap((entry) => Object.keys(entry)));
-    for (const groupId of groupIds) {
-      const level = media.groupLevel(rules, parent, groupId);
+    const ids = new Set(Object.values(rules).flatMap((entry) => Object.keys(entry)));
+    for (const id of ids) {
+      const level = media.groupLevel(rules, parent, id);
       if (!level) continue;
       let from = parent;
-      while (!rules[from]?.[groupId]) from = media.parentOf(from);
-      inherited[groupId] = { level, from };
+      while (!rules[from]?.[id]) from = media.parentOf(from);
+      inherited[id] = { level, from };
     }
   }
   return { path: folder, own, inherited };
@@ -366,11 +378,10 @@ function folderRules(rules, folder) {
 
 router.get('/api/media/rules', verifyToken, verifyManageMedia, async (req, res) => {
   try {
-    const [rules, groups] = await Promise.all([storedRules(), listGroupRecords(context.appConfig)]);
-    const known = new Set(groups.map((group) => group.id));
+    const [rules, { choices, known }] = await Promise.all([storedRules(), ruleTargets()]);
     const current = media.pruneRules(rules, known);
     const body = {
-      groups: groupChoices(groups),
+      choices,
       rules: Object.keys(current).sort((a, b) => a.localeCompare(b)).map((folder) => ({ path: folder, groups: current[folder] }))
     };
     if (typeof req.query.path === 'string') {
@@ -389,8 +400,7 @@ router.put('/api/media/rules', protectedActionRateLimit, verifyToken, verifyMana
   const folder = pathParam(req, res, req.body?.path);
   if (folder === null) return;
   try {
-    const groups = await listGroupRecords(context.appConfig);
-    const known = new Set(groups.map((group) => group.id));
+    const { known } = await ruleTargets();
     const result = await queueRecordWrite(RULES_KEY, async () => {
       const current = media.pruneRules((await getStateValue(context.appConfig, RULES_KEY, { rules: {} }))?.rules || {}, known);
       const next = media.setFolderRules(current, folder, req.body?.groups, known);

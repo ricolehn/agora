@@ -1,7 +1,7 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
-import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, viewerNeedsOriginal, neighbourIndex, rightsRows, rightsPayload } from "./media.js";
+import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, viewerNeedsOriginal, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -1186,27 +1186,29 @@ function renderMediaCrumbs() {
     const badge = access === 'write' && !mediaStatus.canManage
         ? `<span class="media-access-badge is-write">${svgIcon('upload', 12, 2.2)}${t('media_access_write', 'You can add files here')}</span>`
         : access === 'read' ? `<span class="media-access-badge">${svgIcon('eye', 12, 2.2)}${t('media_access_read', 'Read only')}</span>` : '';
+    // In the base folder the title says where you are; the path only appears below it
+    target.hidden = !crumbs.length && !badge;
     target.innerHTML = `
-        <button type="button" class="media-crumb${crumbs.length ? '' : ' is-current'}" onclick="openMediaFolder('')">${svgIcon('folder', 14, 2.2)}<span>${t('media_title', 'Media')}</span></button>
-        ${crumbs.map((crumb, index) => `<span class="media-crumb-sep" aria-hidden="true">${svgIcon('chevronRight', 12, 2.4)}</span><button type="button" class="media-crumb${index === crumbs.length - 1 ? ' is-current" aria-current="page' : ''}" onclick="openMediaFolder(${jsArg(crumb.path)})">${escapeHtml(crumb.name)}</button>`).join('')}
+        ${crumbs.length ? `<button type="button" class="media-crumb" onclick="openMediaFolder('')">${svgIcon('folder', 14, 2.2)}<span>${t('media_title', 'Media')}</span></button>` : ''}
+        ${crumbs.map((crumb, index) => `<span class="media-crumb-sep" aria-hidden="true">${svgIcon('chevronRight', 12, 2.4)}</span><button type="button" class="media-crumb${index === crumbs.length - 1 ? ' is-current" aria-current="page' : ''}" onclick="openMediaFolder(${jsArg(crumb.path)})" title="${escapeHtml(crumb.name)}"><span>${escapeHtml(crumb.name)}</span></button>`).join('')}
         ${badge}`;
 }
 
 function mediaFolderCard(folder) {
     const manage = mediaStatus.canManage;
-    const marks = manage ? [
-        folder.hasRules ? `<span class="media-folder-mark" title="${escapeHtml(t('media_has_rights', 'Has rights of its own'))}">${svgIcon('shield', 13, 2.2)}</span>` : '',
-        folder.hiddenFor?.length ? `<span class="media-folder-mark is-hidden" title="${escapeHtml(t('media_hidden_for_some', 'Hidden for some groups'))}">${svgIcon('eyeOff', 13, 2.2)}</span>` : ''
-    ].join('') : '';
+    const hidden = manage && folder.hiddenFor?.length
+        ? `<span class="media-folder-mark is-hidden" title="${escapeHtml(t('media_hidden_for_some', 'Hidden for some groups'))}">${svgIcon('eyeOff', 14, 2.2)}</span>` : '';
     const passage = folder.access === 'none' && !manage;
+    // The shield turns blue on folders with rights of their own
+    const rightsTitle = folder.hasRules ? t('media_has_rights', 'Has rights of its own') : t('media_rights_title', 'Folder rights');
     return `
         <div class="media-folder${passage ? ' is-passage' : ''}">
-            <button type="button" class="media-folder-open" onclick="openMediaFolder(${jsArg(folder.path)})">
+            <button type="button" class="media-folder-open" onclick="openMediaFolder(${jsArg(folder.path)})" title="${escapeHtml(folder.name)}">
                 <span class="media-folder-icon">${svgIcon('folder', 22, 2)}</span>
                 <span class="media-folder-name">${escapeHtml(folder.name)}</span>
-                ${marks}
+                ${hidden}
             </button>
-            ${manage ? `<button type="button" class="media-folder-rights" onclick="openMediaRights(${jsArg(folder.path)})" title="${escapeHtml(t('media_rights_title', 'Folder rights'))}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: folder.name }))}">${svgIcon('shield', 16, 2)}</button>` : ''}
+            ${manage ? `<button type="button" class="media-folder-rights${folder.hasRules ? ' is-set' : ''}" onclick="openMediaRights(${jsArg(folder.path)})" title="${escapeHtml(rightsTitle)}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: folder.name }))}">${svgIcon('shield', 16, 2)}</button>` : ''}
         </div>`;
 }
 
@@ -1216,12 +1218,15 @@ function mediaFileTile(file, index) {
         ? `<img class="media-thumb-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">`
         : '';
     const meta = [formatSize(file.size, uiLocale()), file.modified ? formatDateFast(file.modified) : ''].filter(Boolean).join(' · ');
+    // Pictures speak for themselves; everything else says what it is (PDF, MP4, DOCX ...)
+    const label = file.kind === 'image' ? '' : typeLabel(file.name);
     return `
         <button type="button" class="media-tile kind-${escapeHtml(file.kind)}" onclick="openMediaFile(${index})" title="${escapeHtml(file.name)}">
             <span class="media-thumb${file.hasPreview ? '' : ' is-icon'}">
                 <span class="media-thumb-icon">${icon}</span>
                 ${thumb}
-                ${file.kind === 'pdf' ? '<span class="media-thumb-type">PDF</span>' : ''}
+                ${file.kind === 'video' && file.hasPreview ? `<span class="media-thumb-play" aria-hidden="true">${svgIcon('play', 18, 2)}</span>` : ''}
+                ${label ? `<span class="media-thumb-type">${escapeHtml(label)}</span>` : ''}
             </span>
             <span class="media-tile-name">${escapeHtml(file.name)}</span>
             <span class="media-tile-meta">${escapeHtml(meta)}</span>
@@ -1283,6 +1288,7 @@ function openMediaFile(index) {
     if (!file) return;
     if (opensInViewer(file)) return openMediaViewer(index);
     if (opensAsPdf(file)) return openMediaPdf(file);
+    if (opensInPlayer(file)) return openMediaPlayer(file);
     // Everything else is downloaded (the server only ever sends it as a download)
     const link = Object.assign(document.createElement('a'), { href: fileUrl(API, file, { download: true }), download: file.name });
     document.body.appendChild(link);
@@ -1290,11 +1296,15 @@ function openMediaFile(index) {
     link.remove();
 }
 
-// --- Picture viewer: the thumbnail at once, then a preview as large as the screen, the original on request ---
+// --- Picture viewer: the thumbnail at once, then a preview as large as the screen; zoomed in (two fingers, double
+// tap, mouse wheel, the magnifier), the original takes over so it stays sharp ---
 let viewerPictures = [];
 let viewerIndex = 0;
 let viewerToken = 0;
-let viewerZoomed = false;
+let viewerView = { scale: 1, x: 0, y: 0 };
+let viewerSharp = false;
+const VIEWER_DOUBLE_TAP_ZOOM = 2.5;
+const BROWSER_IMAGE_TYPES = /^image\/(jpeg|png|gif|webp|avif|bmp)$/;
 
 const viewerLargeUrl = file => (viewerNeedsOriginal(file)
     ? fileUrl(API, file)
@@ -1306,12 +1316,43 @@ function openMediaViewer(index) {
     const modal = $('media-viewer-modal');
     modal._customOnClose = () => {
         viewerToken++;
-        viewerZoomed = false;
         const img = $('media-viewer-img');
         if (img) img.removeAttribute('src');
     };
     openModal('media-viewer-modal');
     showViewerPicture();
+}
+
+/** Shows [viewerView] (clamped to the picture); [animate] for jumps (double tap, back to fit), not for fingers. */
+function setViewerView(view, animate = false) {
+    const img = $('media-viewer-img');
+    const box = { width: img.clientWidth, height: img.clientHeight };
+    viewerView = clampView(view, box, { width: img.naturalWidth, height: img.naturalHeight });
+    img.classList.toggle('is-animating', animate);
+    img.style.transform = viewerView.scale === 1 ? '' : `translate(${viewerView.x}px, ${viewerView.y}px) scale(${viewerView.scale})`;
+    const zoomed = viewerView.scale > 1;
+    $('media-viewer-stage').classList.toggle('is-zoomed', zoomed);
+    $('media-viewer-zoom')?.setAttribute('aria-pressed', String(zoomed));
+    if (viewerView.scale > 1.3) sharpenViewerPicture();
+}
+
+/** Zoomed in: the original file (or the largest preview) replaces the screen-sized one, once per picture. */
+function sharpenViewerPicture() {
+    const file = viewerPictures[viewerIndex];
+    if (viewerSharp || !file || viewerNeedsOriginal(file)) return;
+    viewerSharp = true;
+    const token = viewerToken;
+    const loading = $('media-viewer-loading');
+    loading.hidden = false;
+    const sharp = new Image();
+    sharp.decoding = 'async';
+    sharp.onload = () => {
+        if (token !== viewerToken) return;
+        $('media-viewer-img').src = sharp.src;
+        loading.hidden = true;
+    };
+    sharp.onerror = () => { if (token === viewerToken) loading.hidden = true; };
+    sharp.src = BROWSER_IMAGE_TYPES.test(file.contentType || '') ? fileUrl(API, file) : previewUrl(API, file, 2048);
 }
 
 function showViewerPicture() {
@@ -1321,7 +1362,10 @@ function showViewerPicture() {
     const img = $('media-viewer-img');
     const stage = $('media-viewer-stage');
     const loading = $('media-viewer-loading');
-    viewerZoomed = false;
+    viewerSharp = false;
+    viewerView = { scale: 1, x: 0, y: 0 };
+    img.classList.remove('is-animating');
+    img.style.transform = '';
     stage.classList.remove('is-zoomed', 'has-error');
     stage.querySelector('.media-viewer-error')?.remove();
     setText('media-viewer-name', file.name);
@@ -1343,7 +1387,8 @@ function showViewerPicture() {
     large.decoding = 'async';
     large.onload = () => {
         if (token !== viewerToken) return;
-        img.src = large.src;
+        // Zoomed in meanwhile: the sharper original is on its way, the preview would be a step back
+        if (!viewerSharp) img.src = large.src;
         img.classList.remove('is-soft');
         loading.hidden = true;
     };
@@ -1351,7 +1396,7 @@ function showViewerPicture() {
         if (token !== viewerToken) return;
         loading.hidden = true;
         // No large preview: the original, if the browser can show it; else say so and offer the download
-        if (!viewerNeedsOriginal(file) && /^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(file.contentType || '')) {
+        if (!viewerNeedsOriginal(file) && BROWSER_IMAGE_TYPES.test(file.contentType || '')) {
             const original = new Image();
             original.onload = () => { if (token === viewerToken) { img.src = original.src; img.classList.remove('is-soft'); } };
             original.onerror = () => { if (token === viewerToken) showViewerError(file); };
@@ -1385,62 +1430,152 @@ function stepMediaViewer(direction) {
     showViewerPicture();
 }
 
-/** Original size: the file itself, as large as it is; the picture can then be moved around (scrolling). */
+/** The magnifier: in to 2.5x around the middle, or back to the whole picture. */
 function toggleMediaZoom() {
-    const file = viewerPictures[viewerIndex];
-    const stage = $('media-viewer-stage');
-    const img = $('media-viewer-img');
-    if (!file || stage.classList.contains('has-error')) return;
-    viewerZoomed = !viewerZoomed;
-    stage.classList.toggle('is-zoomed', viewerZoomed);
-    if (!viewerZoomed) {
-        img.src = viewerLargeUrl(file);
-        return;
-    }
-    const token = viewerToken;
-    const loading = $('media-viewer-loading');
-    loading.hidden = false;
-    const original = new Image();
-    original.onload = () => {
-        if (token !== viewerToken || !viewerZoomed) return;
-        img.src = original.src;
-        loading.hidden = true;
-        // Start in the middle of the picture
-        stage.scrollLeft = (stage.scrollWidth - stage.clientWidth) / 2;
-        stage.scrollTop = (stage.scrollHeight - stage.clientHeight) / 2;
-    };
-    original.onerror = () => { if (token === viewerToken) loading.hidden = true; };
-    original.src = viewerNeedsOriginal(file) || /^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(file.contentType || '') ? fileUrl(API, file) : previewUrl(API, file, 2048);
+    if ($('media-viewer-stage').classList.contains('has-error')) return;
+    setViewerView(viewerView.scale > 1 ? { scale: 1, x: 0, y: 0 } : zoomAt(viewerView, { x: 0, y: 0 }, VIEWER_DOUBLE_TAP_ZOOM), true);
 }
 
-// Arrow keys step, a swipe steps, a double tap zooms
+// Keys: arrows step (zoomed in: they move the picture), + / - zoom, 0 shows the whole picture
 document.addEventListener('keydown', e => {
     if (modalStack[modalStack.length - 1] !== 'media-viewer-modal') return;
-    if (e.key === 'ArrowLeft') stepMediaViewer(-1);
+    const zoomed = viewerView.scale > 1;
+    const moves = { ArrowLeft: [80, 0], ArrowRight: [-80, 0], ArrowUp: [0, 80], ArrowDown: [0, -80] };
+    if (zoomed && moves[e.key]) {
+        e.preventDefault();
+        setViewerView({ ...viewerView, x: viewerView.x + moves[e.key][0], y: viewerView.y + moves[e.key][1] }, true);
+    } else if (e.key === 'ArrowLeft') stepMediaViewer(-1);
     else if (e.key === 'ArrowRight') stepMediaViewer(1);
+    else if (e.key === '+' || e.key === '=') setViewerView(zoomAt(viewerView, { x: 0, y: 0 }, viewerView.scale * 1.5), true);
+    else if (e.key === '-') setViewerView(zoomAt(viewerView, { x: 0, y: 0 }, viewerView.scale / 1.5), true);
+    else if (e.key === '0') setViewerView({ scale: 1, x: 0, y: 0 }, true);
 });
+
+// Fingers and mouse (pointer events cover both): two fingers zoom around their middle and move the picture, one
+// finger moves a zoomed picture or - not zoomed - swipes to the next one, a double tap zooms in or out, the mouse
+// wheel zooms where the mouse is
 (() => {
     const stage = $('media-viewer-stage');
     if (!stage) return;
-    let start = null;
-    let lastTap = 0;
-    stage.addEventListener('touchstart', e => {
-        start = e.touches.length === 1 && !viewerZoomed ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
-    }, { passive: true });
-    stage.addEventListener('touchend', e => {
-        if (!start) return;
-        const touch = e.changedTouches[0];
-        const dx = touch.clientX - start.x;
-        const dy = touch.clientY - start.y;
-        start = null;
-        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) return stepMediaViewer(dx < 0 ? 1 : -1);
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-            if (Date.now() - lastTap < 300) toggleMediaZoom();
-            lastTap = Date.now();
+    const img = $('media-viewer-img');
+    const pointers = new Map();
+    let gesture = null;
+    let lastTap = { time: 0, x: 0, y: 0 };
+    // Measured from the middle of the picture's box (its place without zoom)
+    const at = e => {
+        const box = stage.getBoundingClientRect();
+        return { x: e.clientX - box.left - (img.offsetLeft + img.offsetWidth / 2), y: e.clientY - box.top - (img.offsetTop + img.offsetHeight / 2) };
+    };
+    const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const middle = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const begin = () => {
+        const points = [...pointers.values()];
+        if (points.length >= 2) gesture = { kind: 'pinch', view: { ...viewerView }, distance: Math.max(1, distance(points[0], points[1])), middle: middle(points[0], points[1]) };
+        else if (points.length === 1) gesture = { kind: viewerView.scale > 1 ? 'pan' : 'swipe', view: { ...viewerView }, start: points[0], moved: false };
+        else gesture = null;
+    };
+    const tap = point => {
+        const now = Date.now();
+        if (now - lastTap.time < 320 && distance(point, lastTap) < 30) {
+            lastTap = { time: 0, x: 0, y: 0 };
+            setViewerView(viewerView.scale > 1 ? { scale: 1, x: 0, y: 0 } : zoomAt(viewerView, point, VIEWER_DOUBLE_TAP_ZOOM), true);
+        } else lastTap = { time: now, ...point };
+    };
+    stage.addEventListener('pointerdown', e => {
+        if ((e.pointerType === 'mouse' && e.button !== 0) || stage.classList.contains('has-error') || !img.getAttribute('src')) return;
+        try { stage.setPointerCapture(e.pointerId); } catch { /* already gone */ }
+        pointers.set(e.pointerId, at(e));
+        begin();
+    });
+    stage.addEventListener('pointermove', e => {
+        if (!pointers.has(e.pointerId) || !gesture) return;
+        pointers.set(e.pointerId, at(e));
+        const points = [...pointers.values()];
+        if (gesture.kind === 'pinch' && points.length >= 2) {
+            setViewerView(pinchView(gesture.view, gesture.middle, middle(points[0], points[1]), gesture.view.scale * distance(points[0], points[1]) / gesture.distance));
+            return;
         }
-    }, { passive: true });
-    stage.addEventListener('dblclick', toggleMediaZoom);
+        const dx = points[0].x - gesture.start.x;
+        const dy = points[0].y - gesture.start.y;
+        if (Math.hypot(dx, dy) > 8) gesture.moved = true;
+        if (gesture.kind === 'pan') setViewerView({ ...gesture.view, x: gesture.view.x + dx, y: gesture.view.y + dy });
+        // Not zoomed: the picture follows the finger sideways, so a swipe feels like turning a page
+        else if (gesture.moved && viewerPictures.length > 1) {
+            img.classList.remove('is-animating');
+            img.style.transform = `translateX(${dx}px)`;
+        }
+    });
+    const end = e => {
+        if (!pointers.has(e.pointerId)) return;
+        const point = pointers.get(e.pointerId);
+        pointers.delete(e.pointerId);
+        const finished = gesture;
+        if (finished?.kind === 'swipe' && pointers.size === 0) {
+            const dx = point.x - finished.start.x;
+            const dy = point.y - finished.start.y;
+            if (viewerPictures.length > 1 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+                gesture = null;
+                return stepMediaViewer(dx < 0 ? 1 : -1);
+            }
+            if (finished.moved) setViewerView({ scale: 1, x: 0, y: 0 }, true);
+            else if (e.type === 'pointerup') tap(point);
+        } else if (finished?.kind === 'pan' && pointers.size === 0 && !finished.moved && e.type === 'pointerup') {
+            tap(point);
+        } else if (finished?.kind === 'pinch' && viewerView.scale < 1.08) {
+            setViewerView({ scale: 1, x: 0, y: 0 }, true);
+        }
+        // One finger left after zooming: it goes on moving the picture
+        begin();
+    };
+    stage.addEventListener('pointerup', end);
+    stage.addEventListener('pointercancel', end);
+    stage.addEventListener('wheel', e => {
+        if (stage.classList.contains('has-error') || !img.getAttribute('src')) return;
+        e.preventDefault();
+        setViewerView(zoomAt(viewerView, at(e), viewerView.scale * Math.exp(-e.deltaY * 0.0015)));
+    }, { passive: false });
+    // A new size of the window: the zoomed picture has to stay in its box
+    window.addEventListener('resize', () => { if (viewerView.scale > 1) setViewerView(viewerView); });
 })();
+
+// --- Video and music: played right in the app (the browser's own controls); a format the browser cannot play
+// is offered as a download ---
+function openMediaPlayer(file) {
+    const stage = $('media-player-stage');
+    setText('media-player-name', file.name);
+    setText('media-player-meta', [formatSize(file.size, uiLocale()), file.modified ? formatDateFast(file.modified) : ''].filter(Boolean).join(' · '));
+    const download = $('media-player-download');
+    download.href = fileUrl(API, file, { download: true });
+    download.setAttribute('download', file.name);
+    const src = escapeHtml(fileUrl(API, file));
+    const poster = file.hasPreview ? escapeHtml(previewUrl(API, file, viewerSize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1))) : '';
+    stage.innerHTML = file.kind === 'video'
+        ? `<video class="media-player-video" controls playsinline preload="metadata"${poster ? ` poster="${poster}"` : ''} src="${src}"></video>`
+        : `<div class="media-player-audio">
+                <span class="media-player-audio-icon">${svgIcon('music', 46, 1.6)}</span>
+                <span class="media-player-audio-name">${escapeHtml(file.name)}</span>
+                <audio class="media-player-audio-el" controls preload="metadata" src="${src}"></audio>
+            </div>`;
+    const player = stage.querySelector('video, audio');
+    player.addEventListener('error', () => {
+        stage.innerHTML = `
+            <div class="media-viewer-error">
+                ${svgIcon(file.kind === 'video' ? 'play' : 'music', 34, 1.6)}
+                <span>${file.kind === 'video' ? t('media_video_failed', 'This video cannot be played in this browser.') : t('media_audio_failed', 'This file cannot be played in this browser.')}</span>
+                <a class="btn btn-secondary btn-small" href="${escapeHtml(fileUrl(API, file, { download: true }))}" download="${escapeHtml(file.name)}">${t('media_download', 'Download')}</a>
+            </div>`;
+    }, { once: true });
+    $('media-player-modal')._customOnClose = () => {
+        // Stops playing and loading at once (only taking it out of the page leaves the download running)
+        player.pause();
+        player.removeAttribute('src');
+        player.load();
+        stage.innerHTML = '';
+    };
+    openModal('media-player-modal');
+    // Opened with a tap: browsers let it start right away; one that does not shows its play button
+    player.play().catch(() => {});
+}
 
 // --- PDF viewer: the browser's own on computers (search, print); pdf.js on phones and tablets, whose browsers
 // show a PDF in a page only as its first page or not at all ---
@@ -1501,7 +1636,8 @@ async function renderPdfWithPdfJs(file) {
         if (pdfView !== view) return;
         const first = (await view.doc.getPage(1)).getViewport({ scale: 1 });
         view.ratio = first.height / first.width;
-        setText('media-pdf-meta', [t('media_pdf_pages', '{count} pages', { count: view.doc.numPages }), formatSize(file.size, uiLocale())].join(' · '));
+        const pages = view.doc.numPages === 1 ? t('media_pdf_pages_one', '1 page') : t('media_pdf_pages', '{count} pages', { count: view.doc.numPages });
+        setText('media-pdf-meta', [pages, formatSize(file.size, uiLocale())].join(' · '));
         stage.innerHTML = Array.from({ length: view.doc.numPages }, (_, i) =>
             `<div class="media-pdf-page" data-page="${i + 1}" style="aspect-ratio: 1 / ${view.ratio};"><canvas></canvas></div>`).join('');
         view.observer = new IntersectionObserver(entries => {
@@ -1591,7 +1727,7 @@ async function uploadMediaFiles(fileList) {
     const fill = $('media-upload-fill');
     box.hidden = false;
     fill.style.width = '0%';
-    setText('media-upload-text', t('media_uploading', 'Uploading {count} file(s)…', { count: files.length }));
+    setText('media-upload-text', files.length === 1 ? t('media_uploading_one', 'Uploading 1 file…') : t('media_uploading', 'Uploading {count} files…', { count: files.length }));
     try {
         const token = await getToken();
         // XMLHttpRequest: fetch cannot report how far an upload is
@@ -1617,10 +1753,10 @@ async function uploadMediaFiles(fileList) {
             xhr.onerror = () => reject(new Error(t('error_connection', 'Connection error')));
             xhr.send(form);
         });
-        const renamed = (result.files || []).filter((stored, i) => files[i] && stored.name !== files[i].name).length;
-        showToast(renamed
-            ? t('media_uploaded_renamed', '{count} file(s) added; files with names already taken got a number.', { count: result.files.length })
-            : t('media_uploaded', '{count} file(s) added', { count: (result.files || []).length }));
+        const stored = result.files || [];
+        const renamed = stored.some((entry, i) => files[i] && entry.name !== files[i].name);
+        const added = stored.length === 1 ? t('media_uploaded_one', '1 file added') : t('media_uploaded', '{count} files added', { count: stored.length });
+        showToast(renamed ? `${added} · ${t('media_uploaded_renamed', 'Names already taken got a number.')}` : added);
         if (mediaFolder === folder) await loadMediaFolder({ silent: true });
     } catch (err) {
         showToast(err.message || t('media_upload_failed', 'The files could not be uploaded'), 'error');
@@ -1669,15 +1805,17 @@ async function createMediaFolder() {
     }, err => err.message, { button: 'media-folder-create' }));
 }
 
-// --- Folder rights (extended media rights) ---
+// --- Folder rights (extended media rights): all members always, other groups and single people only when added ---
 let mediaRights = null;
+const MEDIA_TARGET_ICONS = { all: 'users', group: 'users', person: 'person' };
 
 async function openMediaRights(path = mediaFolder) {
     if (!mediaStatus.canManage) return;
     await attempt(async () => {
         const data = await apiJson(`/media/rules?path=${encodeURIComponent(path)}`);
-        mediaRights = { path, rows: rightsRows(data.groups, data.folder) };
+        mediaRights = { path, choices: data.choices, rows: rightsRows(data.choices, data.folder) };
         setText('media-rights-path', mediaFolderLabel(path));
+        closeMediaRightsAdd();
         renderMediaRights();
         openModal('media-rights-modal');
     }, err => err.message || t('media_rights_load_failed', 'The folder rights could not be loaded'));
@@ -1687,19 +1825,22 @@ function renderMediaRights() {
     const target = $('media-rights-list');
     if (!target || !mediaRights) return;
     const labels = MEDIA_LEVEL_LABELS();
-    const isBase = !mediaRights.path;
     target.innerHTML = mediaRights.rows.map((row, index) => {
+        // Without a rule from above, "as above" simply means no access (for a person: what their groups get)
         const from = row.inherited
             ? t('media_from_above', 'From {folder}: {level}', { folder: mediaFolderLabel(row.inherited.from), level: labels[row.inherited.level] })
-            : t('media_from_above_none', 'No access from above');
-        const options = [['', isBase ? t('media_level_none', 'No access') : t('media_level_inherit', 'As above')], ['read', labels.read], ['write', labels.write], ['hide', labels.hide]];
+            : '';
+        const follow = from ? t('media_level_inherit', 'As above') : row.kind === 'person' ? t('media_level_groups', 'As their groups') : t('media_level_none', 'No access');
+        const options = [['', follow], ['read', labels.read], ['write', labels.write], ['hide', labels.hide]];
+        const name = mediaGroupName(row);
         return `
-            <div class="media-right-row">
+            <div class="media-right-row${row.kind === 'person' ? ' is-person' : ''}">
                 <div class="media-right-name">
-                    <span>${escapeHtml(mediaGroupName(row))}</span>
-                    ${isBase ? '' : `<span class="media-right-from">${escapeHtml(from)}</span>`}
+                    <span class="media-right-who">${svgIcon(MEDIA_TARGET_ICONS[row.kind] || 'users', 15, 2.2)}<span>${escapeHtml(name)}</span></span>
+                    ${from ? `<span class="media-right-from">${escapeHtml(from)}</span>` : ''}
+                    ${removableRow(row) ? `<button type="button" class="media-right-remove" onclick="removeMediaRightRow(${index})" title="${escapeHtml(t('btn_remove', 'Remove'))}" aria-label="${escapeHtml(t('media_rights_remove', 'Remove {name}', { name }))}">${svgIcon('x', 15, 2.4)}</button>` : ''}
                 </div>
-                <div class="settings-pills media-right-pills" role="radiogroup" aria-label="${escapeHtml(mediaGroupName(row))}">
+                <div class="settings-pills media-right-pills" role="radiogroup" aria-label="${escapeHtml(name)}">
                     ${options.map(([level, label]) => `<button type="button" role="radio" aria-checked="${row.level === level}" class="settings-pill${row.level === level ? ' is-active' : ''}${level ? ` is-${level}` : ''}" onclick="setMediaRightLevel(${index}, ${jsArg(level)})"><span>${escapeHtml(label)}</span></button>`).join('')}
                 </div>
             </div>`;
@@ -1710,6 +1851,53 @@ function setMediaRightLevel(index, level) {
     if (!mediaRights?.rows[index]) return;
     mediaRights.rows[index].level = level;
     renderMediaRights();
+}
+
+function removeMediaRightRow(index) {
+    if (!mediaRights?.rows[index] || !removableRow(mediaRights.rows[index])) return;
+    mediaRights.rows.splice(index, 1);
+    renderMediaRights();
+    if (!$('media-rights-add-panel').hidden) renderMediaRightsAdd();
+}
+
+// Adding: a search over the groups and people that are not in the dialog yet
+function openMediaRightsAdd() {
+    $('media-rights-add-btn').hidden = true;
+    $('media-rights-add-panel').hidden = false;
+    setValue('media-rights-search', '');
+    renderMediaRightsAdd();
+    $('media-rights-search')?.focus();
+}
+
+function closeMediaRightsAdd() {
+    const button = $('media-rights-add-btn');
+    const panel = $('media-rights-add-panel');
+    if (button) button.hidden = false;
+    if (panel) panel.hidden = true;
+}
+
+function renderMediaRightsAdd() {
+    const target = $('media-rights-results');
+    if (!target || !mediaRights) return;
+    const query = inputValue('media-rights-search');
+    const found = addableTargets(mediaRights.choices, mediaRights.rows, query);
+    target.innerHTML = found.length ? found.map(choice => `
+        <button type="button" class="media-rights-result" onclick="addMediaRightRow(${jsArg(choice.id)})">
+            <span class="media-rights-result-icon is-${escapeHtml(choice.kind)}">${svgIcon(MEDIA_TARGET_ICONS[choice.kind] || 'users', 15, 2.2)}</span>
+            <span class="media-rights-result-name">${escapeHtml(choice.name)}</span>
+            <span class="media-rights-result-kind">${choice.kind === 'person' ? t('media_kind_person', 'Person') : t('media_kind_group', 'Group')}</span>
+        </button>`).join('')
+        : `<p class="media-rights-empty">${query.trim() ? t('media_rights_no_match', 'Nobody found') : t('media_rights_all_added', 'All groups and people are listed already')}</p>`;
+}
+
+function addMediaRightRow(id) {
+    const choice = mediaRights?.choices.find(entry => entry.id === id);
+    if (!choice || mediaRights.rows.some(row => row.id === id)) return;
+    // New in the dialog: read, the most common wish; one tap changes it
+    mediaRights.rows.push({ id: choice.id, name: choice.name, kind: choice.kind, level: 'read', inherited: null });
+    closeMediaRightsAdd();
+    renderMediaRights();
+    $('media-rights-list')?.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 async function saveMediaRights() {
@@ -1727,7 +1915,7 @@ async function openMediaRulesOverview() {
     if (!mediaStatus.canManage) return;
     await attempt(async () => {
         const data = await apiJson('/media/rules');
-        const names = Object.fromEntries(data.groups.map(group => [group.id, mediaGroupName(group)]));
+        const names = Object.fromEntries(data.choices.map(choice => [choice.id, mediaGroupName(choice)]));
         const labels = MEDIA_LEVEL_LABELS();
         // The rights can be changed from here too: a folder renamed or removed in Nextcloud keeps its rule until then
         $('media-rules-list').innerHTML = data.rules.length ? data.rules.map(rule => `
@@ -1794,7 +1982,7 @@ async function testMediaConfig() {
             const data = await apiJson('/admin/media-config/test', 'POST', mediaConfigPayload());
             const shown = data.folders.map(name => `<code>${escapeHtml(name)}</code>`).join(' ');
             showMediaConfigResult(true, `<strong>${t('media_cfg_test_ok', 'Connected.')}</strong> ${data.folderCount
-                ? t('media_cfg_test_folders', '{count} folder(s) in the base folder:', { count: data.folderCount }) + ` ${shown}${data.folderCount > data.folders.length ? ' …' : ''}`
+                ? (data.folderCount === 1 ? t('media_cfg_test_folders_one', '1 folder in the base folder:') : t('media_cfg_test_folders', '{count} folders in the base folder:', { count: data.folderCount })) + ` ${shown}${data.folderCount > data.folders.length ? ' …' : ''}`
                 : t('media_cfg_test_empty', 'The base folder has no folders yet.')}`);
         } catch (err) {
             showMediaConfigResult(false, `<strong>${t('media_cfg_test_failed', 'No connection.')}</strong> ${escapeHtml(err.message)}`);
@@ -4187,7 +4375,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, allowPushOnDevice, sendTestPush, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
