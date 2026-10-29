@@ -281,7 +281,39 @@ IMPORTANT: You do not possess, receive, or have access to any financial data, co
   return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
+/**
+ * Turns one parsed chunk of an OpenAI-compatible stream into the events Agora sends on: { content }, { reasoning }
+ * and { error }. Providers name the thought process differently: reasoning_content (DeepSeek, vLLM, LM Studio),
+ * reasoning (OpenRouter, Ollama, newer vLLM), reasoning_details (OpenRouter), thinking (some local servers).
+ */
+function aiStreamEvents(chunk) {
+  const events = [];
+  if (!chunk || typeof chunk !== 'object') return events;
+  if (chunk.error) {
+    const message = typeof chunk.error === 'string' ? chunk.error : chunk.error.message;
+    events.push({ error: String(message || 'AI provider error').slice(0, 300) });
+    return events;
+  }
+  const delta = chunk.choices?.[0]?.delta || chunk.choices?.[0]?.message || {};
+  let reasoning = '';
+  for (const key of ['reasoning_content', 'reasoning', 'thinking']) {
+    if (typeof delta[key] === 'string') {
+      reasoning = delta[key];
+      break;
+    }
+  }
+  if (!reasoning && Array.isArray(delta.reasoning_details)) {
+    reasoning = delta.reasoning_details
+      .map(detail => (typeof detail?.text === 'string' ? detail.text : typeof detail?.summary === 'string' ? detail.summary : ''))
+      .join('');
+  }
+  if (reasoning) events.push({ reasoning });
+  if (typeof delta.content === 'string' && delta.content) events.push({ content: delta.content });
+  return events;
+}
+
 module.exports = {
+  aiStreamEvents,
   getAiSettings,
   setAiSettings,
   buildDatabaseSnapshot,

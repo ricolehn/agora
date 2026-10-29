@@ -13,15 +13,16 @@ const manager = { permissions: ['manage_media'], groupIds: [] };
 
 describe('media rights (backend/media.js)', () => {
   const rules = {
-    Fotos: { '*': 'read' },
+    '': { '*': 'read' },
     'Fotos/Privat': { '*': 'hide' },
     'Fotos/Jugend': { jugend: 'write' },
     'Fotos/Jugend/Leiter': { jugend: 'hide', leitung: 'read' },
+    Intern: { '*': 'hide' },
     'Intern/Leitung': { leitung: 'write' }
   };
 
   test('a rule applies to the folder and everything below until a folder sets its own', () => {
-    assert.equal(media.folderAccess(rules, 'Fotos', member()), 'read');
+    assert.equal(media.folderAccess(rules, '', member()), 'read');
     assert.equal(media.folderAccess(rules, 'Fotos/2026/Sommer', member()), 'read');
     assert.equal(media.folderAccess(rules, 'Fotos/Privat', member()), 'none');
     assert.equal(media.folderAccess(rules, 'Fotos/Privat/Tief', member()), 'none');
@@ -29,48 +30,62 @@ describe('media rights (backend/media.js)', () => {
     assert.equal(media.groupLevel(rules, 'Fotos/Jugend/x', '*'), 'read');
   });
 
-  test('nothing without a rule; the most any of the groups gets; hidden only where no group grants', () => {
-    assert.equal(media.folderAccess(rules, '', member()), 'none');
-    assert.equal(media.folderAccess(rules, 'Anderes', member('jugend')), 'none');
+  test('the most specific rule decides: a group before all members, the most of several groups', () => {
     assert.equal(media.folderAccess(rules, 'Fotos/Jugend', member('jugend')), 'write');
-    assert.equal(media.folderAccess(rules, 'Fotos/Jugend', member()), 'read', 'all members, from Fotos');
-    // jugend is hidden in Leiter, all members still read there (from Fotos), leitung reads too
-    assert.equal(media.folderAccess(rules, 'Fotos/Jugend/Leiter', member('jugend')), 'read');
-    assert.equal(media.folderAccess({ A: { x: 'write' }, 'A/B': { x: 'hide' } }, 'A/B', member('x')), 'none');
-    assert.equal(media.folderAccess({ A: { x: 'write' }, 'A/B': { x: 'hide', y: 'read' } }, 'A/B', member('x', 'y')), 'read');
+    assert.equal(media.folderAccess(rules, 'Fotos/Jugend', member()), 'read', 'all members, from the base folder');
+    // "No access" for jugend holds although all members may read there
+    assert.equal(media.folderAccess(rules, 'Fotos/Jugend/Leiter', member('jugend')), 'none');
+    assert.equal(media.folderAccess(rules, 'Fotos/Jugend/Leiter', member('jugend', 'leitung')), 'read', 'leitung grants');
+    assert.equal(media.folderAccess(rules, 'Fotos/Jugend/Leiter', member()), 'read');
+    // A group can also get less than all members
+    const less = { '': { '*': 'write', gast: 'read' } };
+    assert.equal(media.folderAccess(less, 'Fotos', member('gast')), 'read');
+    assert.equal(media.folderAccess(less, 'Fotos', member('andere')), 'write', 'a group without a rule follows all members');
+    assert.equal(media.folderAccess({ '': { '*': 'read' }, A: { x: 'write' }, 'A/B': { x: 'hide', y: 'read' } }, 'A/B', member('x', 'y')), 'read');
+  });
+
+  test('no access to the base folder (hidden or no rule): no media library at all, whatever is below', () => {
+    const below = { Fotos: { '*': 'read' }, 'Intern/Leitung': { leitung: 'write' } };
+    assert.equal(media.hasAnyAccess(below, member('leitung')), false);
+    assert.equal(media.canSeeFolder(below, 'Fotos', member()), false);
+    assert.equal(media.folderAccess(below, 'Fotos', member()), 'none');
+    const hidden = { '': { '*': 'read', gast: 'hide' }, Fotos: { gast: 'write' } };
+    assert.equal(media.hasAnyAccess(hidden, member('gast')), false);
+    assert.equal(media.folderAccess(hidden, 'Fotos', member('gast')), 'none');
+    assert.equal(media.hasAnyAccess(hidden, member()), true);
+    assert.equal(media.hasAnyAccess({}, member()), false);
   });
 
   test('a rule for one person goes before their groups: more, or less, than the group gets', () => {
     const personal = {
-      Fotos: { '*': 'read', [media.personKey('anna')]: 'write' },
-      'Fotos/Privat': { [media.personKey('ben')]: 'read' },
+      '': { '*': 'read' },
+      Fotos: { [media.personKey('anna')]: 'write' },
+      'Fotos/Privat': { '*': 'hide', [media.personKey('ben')]: 'read' },
       Kasse: { kasse: 'write', [media.personKey('carl')]: 'hide' }
     };
     assert.equal(media.folderAccess(personal, 'Fotos/2026', person('anna')), 'write', 'more than all members');
-    assert.equal(media.folderAccess(personal, 'Fotos/2026', person('ben')), 'read');
-    assert.equal(media.folderAccess(personal, 'Kasse', person('carl', 'kasse')), 'none', 'hidden for one person of the group');
+    assert.equal(media.folderAccess(personal, 'Fotos/Privat', person('ben')), 'read');
+    assert.equal(media.folderAccess(personal, 'Fotos/Privat', person('anna')), 'write', 'her own rule from above');
+    assert.equal(media.folderAccess(personal, 'Kasse', person('carl', 'kasse')), 'none', 'no access for one person of the group');
     assert.equal(media.folderAccess(personal, 'Kasse/2026', person('dora', 'kasse')), 'write');
-    // a person's rule further down still applies only there
-    assert.equal(media.canSeeFolder(personal, '', person('ben')), true);
-    assert.deepEqual(media.filterListing({ 'A/B': { [media.personKey('ben')]: 'read' } }, '', person('ben'), { folders: [{ name: 'A' }, { name: 'C' }], files: [] }).folders.map((f) => f.name), ['A']);
+    assert.equal(media.hasAnyAccess({ '': { [media.personKey('ben')]: 'hide', '*': 'read' } }, person('ben')), false);
     assert.equal(media.setFolderRules({}, 'A', { 'user:ghost': 'read' }, new Set(['user:anna'])).error, 'Unknown group or person.');
   });
 
   test('extended media rights see and write everywhere', () => {
     for (const folder of ['', 'Fotos/Privat', 'Intern', 'Nirgends/x']) assert.equal(media.folderAccess(rules, folder, manager), 'write');
     assert.equal(media.hasAnyAccess({}, manager), true);
-    assert.equal(media.hasAnyAccess({}, member()), false);
+    assert.equal(media.hasAnyAccess({ '': { '*': 'hide' } }, manager), true);
   });
 
   test('folders on the way to a readable folder are shown, without their files and other folders', () => {
-    const listing = {
-      folders: [{ name: 'Intern' }, { name: 'Fotos' }, { name: '.cache' }, { name: 'Geheim' }],
+    const view = media.filterListing(rules, '', member('leitung'), {
+      folders: [{ name: 'Intern' }, { name: 'Fotos' }, { name: '.cache' }],
       files: [{ name: 'root.pdf' }]
-    };
-    const view = media.filterListing(rules, '', member('leitung'), listing);
-    assert.equal(view.access, 'none');
+    });
+    assert.equal(view.access, 'read');
     assert.deepEqual(view.folders.map((f) => [f.name, f.access]), [['Intern', 'none'], ['Fotos', 'read']]);
-    assert.deepEqual(view.files, []);
+    assert.deepEqual(view.files.map((f) => f.name), ['root.pdf']);
     const intern = media.filterListing(rules, 'Intern', member('leitung'), { folders: [{ name: 'Leitung' }, { name: 'Kasse' }], files: [{ name: 'x.txt' }] });
     assert.deepEqual(intern.folders.map((f) => f.path), ['Intern/Leitung']);
     assert.deepEqual(intern.files, []);
@@ -134,9 +149,12 @@ describe('media paths and names (backend/media.js)', () => {
     assert.equal(media.fileKind('application/octet-stream', 'Scan.PDF'), 'pdf');
     assert.equal(media.fileKind('image/svg+xml', 'logo.svg'), 'other', 'SVG is never shown as a picture');
     assert.equal(media.fileKind('video/mp4', 'a.mp4'), 'video');
+    assert.equal(media.fileKind('image/x-adobe-dng', 'IMG_1.DNG'), 'image', 'camera files open in the viewer (as previews)');
+    assert.equal(media.fileKind('application/octet-stream', 'IMG_2.heic'), 'image');
+    assert.equal(media.fileKind('application/octet-stream', 'logo.svg'), 'other');
     assert.ok(media.INLINE_TYPES.has('video/mp4') && media.INLINE_TYPES.has('audio/mpeg'), 'video and music play in the browser');
     assert.ok(!['image/svg+xml', 'text/html', 'application/xhtml+xml', 'text/javascript'].some((type) => media.INLINE_TYPES.has(type)), 'nothing that runs as a page');
-    assert.deepEqual([1, 300, 600, 5000, 'x'].map(media.previewSize), [64, 512, 1024, 2048, 64]);
+    assert.deepEqual([1, 300, 600, 2000, 5000, 'x'].map(media.previewSize), [64, 512, 1024, 2048, 4096, 64]);
   });
 });
 
@@ -190,6 +208,19 @@ describe('media helpers of the web app (assets/media.js)', () => {
     assert.equal(m.neighbourIndex([1, 2, 3], 0, -1), 2);
     assert.equal(m.neighbourIndex([1], 0, 1), -1);
     assert.equal(m.viewerNeedsOriginal({ name: 'a.gif', hasPreview: true }), true);
+  });
+
+  test('the viewer shows previews: small in the tile, screen-sized when opened, the largest when zoomed in', async () => {
+    const m = await load();
+    assert.equal(m.viewerSize(3840, 2160, 2), 2048, 'never more than 2048 before zooming in');
+    assert.equal(m.ZOOM_PREVIEW_SIZE, 4096);
+    assert.ok(m.PREVIEW_SIZES.includes(m.ZOOM_PREVIEW_SIZE));
+    // The original only ever for GIFs (they move) or as a way out for formats the browser shows
+    assert.equal(m.viewerNeedsOriginal({ name: 'Foto.jpg', contentType: 'image/jpeg', hasPreview: false }), false);
+    assert.equal(m.browserShowsOriginal({ contentType: 'image/jpeg' }), true);
+    for (const contentType of ['image/x-adobe-dng', 'image/heic', 'image/tiff', 'image/x-canon-cr2']) {
+      assert.equal(m.browserShowsOriginal({ contentType }), false, contentType);
+    }
   });
 
   test('what opens where, and the type a tile shows', async () => {

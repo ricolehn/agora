@@ -467,6 +467,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
 
   test('registration needs the current invite code, never grants rights and the code is single-use', async () => {
     const code = await read('owner', 'system/inviteCode');
+    assert.match(String(code), /^\d{6}$/);
+    assert.notEqual(String(code), '123456', 'never the old fixed code');
     const register = (email, inviteCode, extra = {}) => call(null, 'POST', '/api/auth/register', {
       email, password: PASSWORD, firstName: 'Neu', lastName: email.split('@')[0], inviteCode, ...extra
     });
@@ -961,7 +963,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.ok(fotos.files.every((f) => f.path.startsWith('Fotos/') && f.etag));
     });
 
-    test('rules: read, write and hide per group, inherited by the folders below', async () => {
+    test('rules: read, write and no access per group, inherited by the folders below', async () => {
       assert.equal((await call('max', 'GET', '/api/media/rules')).status, 403);
       assert.equal((await rules('Fotos', { '*': 'admin' })).status, 400);
       assert.equal((await rules('Fotos', { nogroup: 'read' })).status, 400);
@@ -971,12 +973,19 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       await ok(rules('Fotos/Jugend', { [jugend]: 'write' }));
       await ok(rules('Intern/Leitung', { [jugend]: 'read' }));
 
-      // every member: Fotos and what is in it, not the hidden folder, not Intern
+      // no access to the base folder: no media library at all, although Fotos may be read
+      assert.deepEqual(await ok(call('max', 'GET', '/api/media/status')), { enabled: true, canManage: false, hasAccess: false });
+      assert.equal((await list('max', 'Fotos')).status, 404);
+      assert.equal((await call('max', 'GET', '/api/media/file?path=Fotos/Sommer.jpg')).status, 404);
+      await ok(rules('', { '*': 'read' }));
+      await ok(rules('Intern', { '*': 'hide' }));
+
+      // every member: the base folder and Fotos, not the hidden folders
       assert.deepEqual(await ok(call('max', 'GET', '/api/media/status')), { enabled: true, canManage: false, hasAccess: true });
       const root = await ok(list('max', ''));
-      assert.equal(root.access, 'none');
+      assert.equal(root.access, 'read');
       assert.deepEqual(names(root.folders), ['Fotos']);
-      assert.deepEqual(root.files, [], 'files of a folder without access stay invisible');
+      assert.deepEqual(names(root.files), ['willkommen.pdf']);
       const fotos = await ok(list('max', 'Fotos'));
       assert.equal(fotos.access, 'read');
       assert.deepEqual(names(fotos.folders), ['Jugend']);
@@ -992,6 +1001,24 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.deepEqual(intern.files, []);
       assert.equal((await ok(list('jule', 'Fotos/Jugend'))).access, 'write');
 
+      // "no access" for a group holds although all members may read: the group rule is the more specific one
+      await ok(rules('Fotos', { '*': 'read', [jugend]: 'hide' }));
+      const kept = await ok(list('jule', 'Fotos'));
+      assert.equal(kept.access, 'none');
+      assert.deepEqual(names(kept.folders), ['Jugend'], 'only the way to their own folder');
+      assert.deepEqual(kept.files, []);
+      assert.equal((await call('jule', 'GET', '/api/media/file?path=Fotos/Sommer.jpg')).status, 404);
+      assert.equal((await ok(list('max', 'Fotos'))).access, 'read');
+      await ok(rules('Fotos', { '*': 'read' }));
+
+      // no access to the base folder for the group: the library is gone for them, their write folder too
+      await ok(rules('', { '*': 'read', [jugend]: 'hide' }));
+      assert.equal((await ok(call('jule', 'GET', '/api/media/status'))).hasAccess, false);
+      assert.equal((await list('jule', 'Fotos/Jugend')).status, 404);
+      assert.equal((await upload('jule', 'Fotos/Jugend', [['x.jpg', 'x', 'image/jpeg']])).status, 404);
+      assert.equal((await ok(call('max', 'GET', '/api/media/status'))).hasAccess, true);
+      await ok(rules('', { '*': 'read' }));
+
       // managers see the rules on the folders; the rights dialog shows what comes from above
       const managed = await ok(list('owner', 'Fotos'));
       assert.deepEqual(managed.folders.find((f) => f.name === 'Privat').hiddenFor, ['*']);
@@ -1000,7 +1027,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.deepEqual(dialog.folder.inherited, { '*': { level: 'read', from: 'Fotos' } });
       assert.ok(dialog.choices.some((c) => c.id === '*') && dialog.choices.some((c) => c.id === jugend && c.kind === 'group'));
       assert.ok(dialog.choices.some((c) => c.id === `user:${uids.max}` && c.kind === 'person' && c.name === 'Max Test'), 'people can be picked too');
-      assert.equal(dialog.rules.length, 4);
+      assert.equal(dialog.rules.length, 6);
     });
 
     test('previews and files: only from readable folders, unsafe types only as a download', async () => {
@@ -1064,7 +1091,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
 
     test('single people: a right of their own goes before their groups', async () => {
       // Max gets Intern without any group; Jule (Jugend writes in Fotos/Jugend) is kept out of it
-      await ok(rules('Intern', { [`user:${uids.max}`]: 'read' }));
+      await ok(rules('Intern', { '*': 'hide', [`user:${uids.max}`]: 'read' }));
       await ok(rules('Fotos/Jugend', { [jugend]: 'write', [`user:${uids.jule}`]: 'hide' }));
       assert.equal((await ok(list('max', 'Intern'))).access, 'read');
       assert.equal((await ok(list('jule', 'Intern'))).access, 'none', 'Jule only passes through (to Intern/Leitung)');
@@ -1072,7 +1099,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.ok(!(await ok(list('jule', 'Fotos'))).folders.some((f) => f.name === 'Jugend'));
       assert.equal((await rules('Intern', { 'user:nobody': 'read' })).status, 400);
       // back to how the tests before left it
-      await ok(rules('Intern', {}));
+      await ok(rules('Intern', { '*': 'hide' }));
       await ok(rules('Fotos/Jugend', { [jugend]: 'write' }));
       assert.equal((await ok(list('jule', 'Fotos/Jugend'))).access, 'write');
     });
@@ -1087,9 +1114,10 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     test('a deleted group loses its rules; switched off, Media is gone for everyone', async () => {
       const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Kurzzeit', permissions: [] }));
       const id = group.id || group.group?.id;
-      await ok(rules('Intern', { [id]: 'read' }));
+      await ok(rules('Intern', { '*': 'hide', [id]: 'read' }));
       await ok(call('owner', 'DELETE', `/api/admin/groups/${id}`));
-      assert.ok(!(await ok(call('owner', 'GET', '/api/media/rules'))).rules.some((r) => r.path === 'Intern'));
+      const intern = (await ok(call('owner', 'GET', '/api/media/rules'))).rules.find((r) => r.path === 'Intern');
+      assert.deepEqual(intern.groups, { '*': 'hide' });
       await ok(rules('Intern/Leitung', {}));
       assert.equal((await list('jule', 'Intern')).status, 404, 'rule removed');
 
@@ -1098,5 +1126,53 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal((await list('jule', 'Fotos')).status, 503);
       await ok(call('owner', 'PUT', '/api/admin/media-config', settings({ password: '***' })));
     });
+  });
+  test('AI chat: thoughts and answer stream through, provider errors arrive as an event', async () => {
+    // A small OpenAI-compatible provider: "thinker" thinks first (OpenRouter style "reasoning"), then answers;
+    // "broken" fails
+    const http = require('http');
+    const provider = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (part) => { raw += part; });
+      req.on('end', async () => {
+        const { model, stream } = JSON.parse(raw);
+        assert.equal(stream, true);
+        if (model === 'broken') {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'model overloaded' } }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const send = (delta) => res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
+        res.write(': OPENROUTER PROCESSING\n\n');
+        send({ role: 'assistant', content: '', reasoning: 'Ich ' });
+        send({ content: '', reasoning: 'überlege.' });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        send({ content: 'Hallo', reasoning: null });
+        send({ content: ' Max!' });
+        res.end('data: [DONE]\n\n');
+      });
+    });
+    await new Promise((resolve) => provider.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${provider.address().port}/v1`;
+      const chat = async (model) => {
+        await ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, baseUrl, apiKey: 'test-key', model }));
+        const res = await call('owner', 'POST', '/api/ai/chat', { messages: [{ role: 'user', content: 'Hallo?' }] });
+        assert.equal(res.status, 200, JSON.stringify(res.body).slice(0, 200));
+        assert.match(res.headers.get('content-type'), /text\/event-stream/);
+        return String(res.body).split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim())
+          .map((data) => (data === '[DONE]' ? data : JSON.parse(data)));
+      };
+
+      const events = await chat('thinker');
+      assert.deepEqual(events, [{ reasoning: 'Ich ' }, { reasoning: 'überlege.' }, { content: 'Hallo' }, { content: ' Max!' }, '[DONE]']);
+
+      const failed = await chat('broken');
+      assert.deepEqual(failed, [{ error: 'model overloaded' }]);
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
   });
 });

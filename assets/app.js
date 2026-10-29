@@ -1,7 +1,7 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
-import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, viewerNeedsOriginal, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
+import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, viewerNeedsOriginal, browserShowsOriginal, ZOOM_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -235,6 +235,7 @@ const ICONS = {
     clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     location: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+    arrowUpRight: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>',
     chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
     chevronUp: '<polyline points="18 15 12 9 6 15"/>',
     chevronDown: '<polyline points="6 9 12 15 18 9"/>',
@@ -250,6 +251,7 @@ const ICONS = {
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    media: '<rect x="2" y="4" width="20" height="16" rx="3"/><path d="m10 9 5 3-5 3z"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     poll: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-3"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
@@ -1057,15 +1059,16 @@ function updateAiNavVisibility() {
     renderHub();
 }
 
-// --- Apps hub: one permanent nav entry for further apps; the AI chat is one of them (with the rights) ---
+// --- Apps hub: one permanent nav entry for further apps; the AI chat is one of them (with the rights) and leads
+// across the full width, the others follow as tiles in this order. [colors] runs from the light to the deep tone of the icon. ---
 const HUB_APPS = [
-    { key: 'ai', icon: 'sparkles', color: '#7c3aed', title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
+    { key: 'ai', icon: 'sparkles', featured: true, colors: ['#c4b8f5', '#7c6fd6'], title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
-    { key: 'songbook', icon: 'music', color: '#0891b2', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
-    { key: 'prayers', icon: 'heart', color: '#e11d48', title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
-    { key: 'media', icon: 'folder', color: '#2563eb', title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
+    { key: 'media', icon: 'media', colors: ['#f6c7a4', '#e0874f'], title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
         visible: () => mediaStatus.hasAccess, open: () => openMediaFolder('') },
-    { key: 'polls', icon: 'poll', color: '#d97706', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
+    { key: 'songbook', icon: 'music', colors: ['#aed6ec', '#4a98c4'], title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
+    { key: 'prayers', icon: 'heart', colors: ['#f2b5c0', '#d6667c'], title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
+    { key: 'polls', icon: 'poll', colors: ['#acdcc7', '#479f82'], title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
         visible: () => FEATURES.polls, open: () => switchTab('polls') }
 ];
 
@@ -1078,15 +1081,30 @@ function renderHub() {
     const signature = `${uiLang}:${apps.map(app => app.key).join(',')}`;
     if (signature === hubSignature && target.childElementCount) return;
     hubSignature = signature;
-    target.innerHTML = apps.map(app => `
-        <button type="button" class="hub-app${app.soon ? ' is-soon' : ''}" style="--app-color: ${app.color};" ${app.soon ? 'disabled aria-disabled="true"' : `onclick="window.openHubApp('${app.key}')"`}>
-            <span class="hub-app-icon">${svgIcon(app.icon, 24, 2)}</span>
+    target.innerHTML = apps.map((app, index) => {
+        const style = `--app-light: ${app.colors[0]}; --app-color: ${app.colors[1]}; --i: ${index};`;
+        const action = app.soon ? 'disabled aria-disabled="true"' : `onclick="window.openHubApp('${app.key}')"`;
+        if (app.featured) return `
+        <button type="button" class="hub-app is-featured" style="${style}" ${action}>
+            <span class="hub-hero-sparks" aria-hidden="true">${svgIcon('sparkles', 24, 1.8)}${svgIcon('sparkles', 14, 2)}${svgIcon('sparkles', 10, 2)}</span>
+            <span class="hub-app-icon">${svgIcon(app.icon, 26, 2.2)}</span>
             <span class="hub-app-text">
                 <span class="hub-app-title">${t(...app.title)}</span>
                 <span class="hub-app-desc">${t(...app.desc)}</span>
             </span>
-            ${app.soon ? `<span class="hub-app-soon">${t('hub_soon', 'Coming soon')}</span>` : svgIcon('chevronRight', 18, 2.5, 'class="hub-app-chevron"')}
-        </button>`).join('');
+            <span class="hub-hero-cta"><span class="hub-hero-cta-label">${t('hub_ai_cta', 'Start chat')}</span>${svgIcon('chevronRight', 16, 2.6)}</span>
+        </button>`;
+        return `
+        <button type="button" class="hub-app${app.soon ? ' is-soon' : ''}" style="${style}" ${action}>
+            <span class="hub-app-mark" aria-hidden="true">${svgIcon(app.icon, 96, 1.4)}</span>
+            <span class="hub-app-icon">${svgIcon(app.icon, 26, 2.2)}</span>
+            <span class="hub-app-text">
+                <span class="hub-app-title">${t(...app.title)}</span>
+                <span class="hub-app-desc">${t(...app.desc)}</span>
+            </span>
+            ${app.soon ? `<span class="hub-app-soon">${t('hub_soon', 'Coming soon')}</span>` : `<span class="hub-app-go">${svgIcon('chevronRight', 16, 2.6)}</span>`}
+        </button>`;
+    }).join('');
 }
 
 function openHubApp(key) {
@@ -1124,6 +1142,8 @@ async function loadMediaStatus() {
         mediaStatus = { enabled: false, canManage: false, hasAccess: false };
     }
     renderHub();
+    // No (more) access to the base folder: the library is closed, back to Extras
+    if (!mediaStatus.hasAccess && currentActiveTab === 'media') switchTab('hub');
 }
 
 /** Opens [path] in the library (from the hub, a folder, the breadcrumb or an address). */
@@ -1162,7 +1182,7 @@ async function loadMediaFolder({ silent = false } = {}) {
             mediaError = err.status === 503 || err.status === 404 ? t('media_unavailable', 'There is nothing to see here yet.') : err.message;
         }
     }
-    renderMedia();
+    renderMedia({ fresh: true });
     updateFabVisibility();
     syncUrl();
 }
@@ -1194,6 +1214,11 @@ function renderMediaCrumbs() {
         ${badge}`;
 }
 
+// A folder drawn filled (back flap lighter, front deeper) in the colour of the media library
+const MEDIA_FOLDER_SVG = '<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path class="media-folder-back" d="M2.5 6.6A2.6 2.6 0 0 1 5.1 4h3.7c.6 0 1.2.24 1.6.66L11.9 6.2h7a2.6 2.6 0 0 1 2.6 2.6V10h-19z"/><rect class="media-folder-front" x="2.5" y="8.4" width="19" height="11.6" rx="2.6"/></svg>';
+
+const mediaEntryMeta = entry => [formatSize(entry.size, uiLocale()), entry.modified ? formatDateFast(entry.modified) : ''].filter(Boolean).join(' · ');
+
 function mediaFolderCard(folder) {
     const manage = mediaStatus.canManage;
     const hidden = manage && folder.hiddenFor?.length
@@ -1201,11 +1226,15 @@ function mediaFolderCard(folder) {
     const passage = folder.access === 'none' && !manage;
     // The shield turns blue on folders with rights of their own
     const rightsTitle = folder.hasRules ? t('media_has_rights', 'Has rights of its own') : t('media_rights_title', 'Folder rights');
+    const meta = mediaEntryMeta(folder);
     return `
         <div class="media-folder${passage ? ' is-passage' : ''}">
             <button type="button" class="media-folder-open" onclick="openMediaFolder(${jsArg(folder.path)})" title="${escapeHtml(folder.name)}">
-                <span class="media-folder-icon">${svgIcon('folder', 22, 2)}</span>
-                <span class="media-folder-name">${escapeHtml(folder.name)}</span>
+                <span class="media-folder-icon">${MEDIA_FOLDER_SVG}</span>
+                <span class="media-folder-text">
+                    <span class="media-folder-name">${escapeHtml(folder.name)}</span>
+                    ${meta ? `<span class="media-folder-meta">${escapeHtml(meta)}</span>` : ''}
+                </span>
                 ${hidden}
             </button>
             ${manage ? `<button type="button" class="media-folder-rights${folder.hasRules ? ' is-set' : ''}" onclick="openMediaRights(${jsArg(folder.path)})" title="${escapeHtml(rightsTitle)}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: folder.name }))}">${svgIcon('shield', 16, 2)}</button>` : ''}
@@ -1217,7 +1246,7 @@ function mediaFileTile(file, index) {
     const thumb = file.hasPreview
         ? `<img class="media-thumb-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">`
         : '';
-    const meta = [formatSize(file.size, uiLocale()), file.modified ? formatDateFast(file.modified) : ''].filter(Boolean).join(' · ');
+    const meta = mediaEntryMeta(file);
     // Pictures speak for themselves; everything else says what it is (PDF, MP4, DOCX ...)
     const label = file.kind === 'image' ? '' : typeLabel(file.name);
     return `
@@ -1233,7 +1262,7 @@ function mediaFileTile(file, index) {
         </button>`;
 }
 
-function renderMedia() {
+function renderMedia({ fresh = false } = {}) {
     const list = $('media-list');
     if (!list) return;
     setValue('media-sort', mediaSort);
@@ -1251,7 +1280,8 @@ function renderMedia() {
         return;
     }
     if (!mediaListing) {
-        list.innerHTML = `<div class="media-grid is-loading" aria-busy="true">${'<span class="media-tile-skeleton"></span>'.repeat(8)}</div>`;
+        // One calm circle (only after a moment, so fast folders do not flash) instead of tiles that may never come
+        list.innerHTML = `<div class="media-loading" aria-busy="true" role="status"><span class="spinner"></span><span class="sr-only">${t('loading', 'Loading…')}</span></div>`;
         return;
     }
     const folders = sortEntries(mediaListing.folders, mediaSort === 'newest' ? 'newest' : 'name');
@@ -1265,9 +1295,11 @@ function renderMedia() {
             </div>`;
         return;
     }
-    list.innerHTML = `
-        ${folders.length ? `<div class="media-folders">${folders.map(mediaFolderCard).join('')}</div>` : ''}
-        ${mediaShownFiles.length ? `<div class="media-grid">${mediaShownFiles.map(mediaFileTile).join('')}</div>` : ''}`;
+    const section = (label, count) => `<h2 class="media-section-label">${label}<span class="media-section-count">${count}</span></h2>`;
+    list.innerHTML = `<div class="media-content${fresh ? ' is-fresh' : ''}">
+        ${folders.length ? `${section(t('media_section_folders', 'Folders'), folders.length)}<div class="media-folders">${folders.map(mediaFolderCard).join('')}</div>` : ''}
+        ${mediaShownFiles.length ? `${section(t('media_section_files', 'Files'), mediaShownFiles.length)}<div class="media-grid">${mediaShownFiles.map(mediaFileTile).join('')}</div>` : ''}
+    </div>`;
     // Thumbnails fade in when they arrive; without one (no preview for this file) the type icon stays
     list.querySelectorAll('.media-thumb-img').forEach(img => {
         const done = () => img.parentElement.classList.add('is-loaded');
@@ -1296,19 +1328,23 @@ function openMediaFile(index) {
     link.remove();
 }
 
-// --- Picture viewer: the thumbnail at once, then a preview as large as the screen; zoomed in (two fingers, double
-// tap, mouse wheel, the magnifier), the original takes over so it stays sharp ---
+// --- Picture viewer: the small preview of the tile at once, then a preview as large as the screen; zoomed in (two
+// fingers, double tap, mouse wheel, the magnifier) the largest preview takes over so it stays sharp. The original is
+// never loaded for this (it may be DNG, HEIC or another format the browser cannot show); only GIFs (they move) and
+// pictures without any preview in a format the browser shows ---
 let viewerPictures = [];
 let viewerIndex = 0;
 let viewerToken = 0;
 let viewerView = { scale: 1, x: 0, y: 0 };
 let viewerSharp = false;
 const VIEWER_DOUBLE_TAP_ZOOM = 2.5;
-const BROWSER_IMAGE_TYPES = /^image\/(jpeg|png|gif|webp|avif|bmp)$/;
 
-const viewerLargeUrl = file => (viewerNeedsOriginal(file)
-    ? fileUrl(API, file)
-    : previewUrl(API, file, viewerSize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1)));
+/** The screen-sized picture: a preview; the file itself only for GIFs and as the last way out (see above). */
+function viewerLargeUrl(file) {
+    if (viewerNeedsOriginal(file)) return fileUrl(API, file);
+    if (file.hasPreview) return previewUrl(API, file, viewerSize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1));
+    return browserShowsOriginal(file) ? fileUrl(API, file) : '';
+}
 
 function openMediaViewer(index) {
     viewerPictures = mediaShownFiles.filter(opensInViewer);
@@ -1336,10 +1372,10 @@ function setViewerView(view, animate = false) {
     if (viewerView.scale > 1.3) sharpenViewerPicture();
 }
 
-/** Zoomed in: the original file (or the largest preview) replaces the screen-sized one, once per picture. */
+/** Zoomed in: the largest preview replaces the screen-sized one, once per picture. */
 function sharpenViewerPicture() {
     const file = viewerPictures[viewerIndex];
-    if (viewerSharp || !file || viewerNeedsOriginal(file)) return;
+    if (viewerSharp || !file || viewerNeedsOriginal(file) || !file.hasPreview) return;
     viewerSharp = true;
     const token = viewerToken;
     const loading = $('media-viewer-loading');
@@ -1352,7 +1388,7 @@ function sharpenViewerPicture() {
         loading.hidden = true;
     };
     sharp.onerror = () => { if (token === viewerToken) loading.hidden = true; };
-    sharp.src = BROWSER_IMAGE_TYPES.test(file.contentType || '') ? fileUrl(API, file) : previewUrl(API, file, 2048);
+    sharp.src = previewUrl(API, file, ZOOM_PREVIEW_SIZE);
 }
 
 function showViewerPicture() {
@@ -1387,7 +1423,7 @@ function showViewerPicture() {
     large.decoding = 'async';
     large.onload = () => {
         if (token !== viewerToken) return;
-        // Zoomed in meanwhile: the sharper original is on its way, the preview would be a step back
+        // Zoomed in meanwhile: the sharper preview is on its way, this one would be a step back
         if (!viewerSharp) img.src = large.src;
         img.classList.remove('is-soft');
         loading.hidden = true;
@@ -1396,18 +1432,25 @@ function showViewerPicture() {
         if (token !== viewerToken) return;
         loading.hidden = true;
         // No large preview: the original, if the browser can show it; else say so and offer the download
-        if (!viewerNeedsOriginal(file) && BROWSER_IMAGE_TYPES.test(file.contentType || '')) {
+        if (!viewerNeedsOriginal(file) && file.hasPreview && browserShowsOriginal(file)) {
             const original = new Image();
             original.onload = () => { if (token === viewerToken) { img.src = original.src; img.classList.remove('is-soft'); } };
             original.onerror = () => { if (token === viewerToken) showViewerError(file); };
             original.src = fileUrl(API, file);
         } else if (!small) showViewerError(file);
     };
-    large.src = viewerLargeUrl(file);
+    const largeUrl = viewerLargeUrl(file);
+    if (largeUrl) large.src = largeUrl;
+    else {
+        // Neither a preview nor a format the browser shows (a camera file without preview): only the download
+        loading.hidden = true;
+        showViewerError(file);
+    }
     // The neighbours are fetched meanwhile: swiping on shows them at once
     for (const direction of [1, -1]) {
         const next = viewerPictures[neighbourIndex(viewerPictures, viewerIndex, direction)];
-        if (next && next !== file) new Image().src = viewerLargeUrl(next);
+        const nextUrl = next && next !== file ? viewerLargeUrl(next) : '';
+        if (nextUrl) new Image().src = nextUrl;
     }
 }
 
@@ -1826,12 +1869,16 @@ function renderMediaRights() {
     if (!target || !mediaRights) return;
     const labels = MEDIA_LEVEL_LABELS();
     target.innerHTML = mediaRights.rows.map((row, index) => {
-        // Without a rule from above, "as above" simply means no access (for a person: what their groups get)
+        // Without a rule of its own a row follows: the folder above, else for a person their groups, for a group all
+        // members, for all members nothing ("no access" is then already the first choice, not offered twice)
         const from = row.inherited
             ? t('media_from_above', 'From {folder}: {level}', { folder: mediaFolderLabel(row.inherited.from), level: labels[row.inherited.level] })
             : '';
-        const follow = from ? t('media_level_inherit', 'As above') : row.kind === 'person' ? t('media_level_groups', 'As their groups') : t('media_level_none', 'No access');
-        const options = [['', follow], ['read', labels.read], ['write', labels.write], ['hide', labels.hide]];
+        const follow = from ? t('media_level_inherit', 'As above')
+            : row.kind === 'person' ? t('media_level_groups', 'As their groups')
+                : row.kind === 'group' ? t('media_level_all', 'As all members') : t('media_level_none', 'No access');
+        const options = [['', follow], ['read', labels.read], ['write', labels.write]];
+        if (from || row.kind !== 'all' || row.level === 'hide') options.push(['hide', labels.hide]);
         const name = mediaGroupName(row);
         return `
             <div class="media-right-row${row.kind === 'person' ? ' is-person' : ''}">
@@ -5687,7 +5734,8 @@ function generateTimelineHTML(person) {
                 <div style="font-size: 0.85rem; color: var(--text-secondary);">${meta}</div>
             </div>
         </div>`;
-    return `<div class="timeline">${events.sort((a, b) => b.dateStr.localeCompare(a.dateStr)).map(ev => {
+    // A payment without a date (older or imported data) goes to the end instead of breaking the whole view
+    return `<div class="timeline">${events.sort((a, b) => String(b.dateStr || '').localeCompare(String(a.dateStr || ''))).map(ev => {
         const date = formatDateFast(ev.dateStr);
         return ev.type === 'status'
             ? line(`${t('timeline_status_change', 'Status Change')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Valid from')} ${date}`)
@@ -6874,6 +6922,8 @@ Object.assign(window, {
 // --- AI assistant chat ---
 let aiMessages = [];
 let aiStreaming = false;
+// The running request; a new chat or a vanished connection cancels it
+let aiChatAbort = null;
 const MAX_AI_CHAT_INPUT_HEIGHT = 120;
 
 function createEl(tag, className, text) {
@@ -6883,22 +6933,35 @@ function createEl(tag, className, text) {
     return created;
 }
 
+// The AI's sign: a soft orb in the colours of the assistant with a sparkle in it (slowly turning, faster while it thinks)
+const aiOrb = (size, extra = '') => `<span class="ai-orb ai-orb-${size}${extra ? ' ' + extra : ''}" aria-hidden="true"><span class="ai-orb-glow"></span><span class="ai-orb-core"></span>${svgIcon('sparkles', size === 'lg' ? 30 : 14, size === 'lg' ? 1.7 : 2.1, 'class="ai-orb-glyph"')}</span>`;
+
 // A new chat: a friendly start with three questions the assistant can answer (members, finances, requests, events)
 function clearAiChat() {
     aiMessages = [];
+    aiChatAbort?.abort();
     const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return;
     const admin = canViewFinances();
+    const ideaIcons = admin ? ['coin', 'calendar', 'clipboard'] : ['coin', 'calendar', 'user'];
     const ideas = [1, 2, 3].map(n => admin
         ? t(`ai_suggest_admin_${n}`, ['Who is behind with their fee?', 'What is coming up this week?', 'Which requests are still open?'][n - 1])
         : t(`ai_suggest_member_${n}`, ['Until when is my fee paid?', 'What is coming up this week?', 'Where am I on duty next?'][n - 1]));
+    const first = (currentUser?.firstName || fullName(currentUser) || currentUser?.name || '').trim().split(/\s+/)[0];
     messagesEl.innerHTML = `
         <div class="ai-chat-welcome">
-            <div class="ai-chat-welcome-icon">${svgIcon('sparkles', 28, 1.8)}</div>
-            <div class="ai-chat-welcome-text">${t('ai_chat_hello', 'How can I help?')}</div>
-            <div class="ai-chat-welcome-sub">${admin ? t('ai_chat_welcome_sub', 'Ask about members, finances, events or duties.') : t('ai_chat_welcome_sub_member', 'Ask about events, duties, your fee or how the app works.')}</div>
+            ${aiOrb('lg')}
+            <h2 class="ai-chat-welcome-text">
+                ${first ? `<span class="ai-chat-welcome-hi">${escapeHtml(t('ai_chat_hi_name', 'Hi {name},', { name: first }))}</span>` : ''}
+                <span class="ai-chat-welcome-ask">${t('ai_chat_hello', 'How can I help?')}</span>
+            </h2>
+            <p class="ai-chat-welcome-sub">${admin ? t('ai_chat_welcome_sub', 'Ask about members, finances, events or duties.') : t('ai_chat_welcome_sub_member', 'Ask about events, duties, your fee or how the app works.')}</p>
             <div class="ai-chat-ideas">
-                ${ideas.map(idea => `<button type="button" class="ai-chat-idea" onclick="window.askAi(this.textContent)">${escapeHtml(idea)}</button>`).join('')}
+                ${ideas.map((idea, index) => `<button type="button" class="ai-chat-idea" style="--i: ${index};" onclick="window.askAi(this.querySelector('.ai-chat-idea-text').textContent)">
+                    <span class="ai-chat-idea-icon">${svgIcon(ideaIcons[index], 17, 2)}</span>
+                    <span class="ai-chat-idea-text">${escapeHtml(idea)}</span>
+                    ${svgIcon('arrowUpRight', 16, 2.2, 'class="ai-chat-idea-go"')}
+                </button>`).join('')}
             </div>
         </div>`;
 }
@@ -6926,22 +6989,39 @@ const chatKeyHandler = (send, resize) => e => {
     }
 };
 
+// The start page makes room for the first message: it fades upwards while the message comes in
+function dismissAiWelcome(messagesEl) {
+    const welcome = messagesEl.querySelector('.ai-chat-welcome');
+    if (!welcome) return false;
+    // Still on its way out: the next message waits for it too
+    if (welcome.classList.contains('is-leaving')) return true;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        welcome.remove();
+        return false;
+    }
+    welcome.classList.add('is-leaving');
+    welcome.addEventListener('animationend', () => welcome.remove(), { once: true });
+    setTimeout(() => welcome.remove(), 600);
+    return true;
+}
+
 function appendAiMessage(role, content) {
     const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return null;
-    messagesEl.querySelector('.ai-chat-welcome')?.remove();
+    const afterWelcome = dismissAiWelcome(messagesEl);
     const bubble = createEl('div', `ai-chat-bubble ai-chat-bubble-${role}`);
-    if (role === 'assistant') bubble.appendChild(renderMarkdown(content));
-    else bubble.textContent = content;
+    let item = bubble;
     if (role === 'assistant') {
-        const row = createEl('div', 'ai-chat-row');
+        bubble.appendChild(renderMarkdown(content));
+        item = createEl('div', 'ai-chat-row');
         const mark = createEl('span', 'ai-chat-mark');
-        mark.innerHTML = svgIcon('sparkles', 15, 2);
-        row.append(mark, bubble);
-        messagesEl.appendChild(row);
+        mark.innerHTML = aiOrb('sm');
+        item.append(mark, bubble);
     } else {
-        messagesEl.appendChild(bubble);
+        bubble.textContent = content;
     }
+    if (afterWelcome) item.classList.add('is-after-welcome');
+    messagesEl.appendChild(item);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
 }
@@ -6967,23 +7047,97 @@ function addAiReportButton(bubble, answer, prompt) {
     bubble.appendChild(btn);
 }
 
-function finalizeAssistantBubble(bubble, rawContent, reasoningContent) {
-    if (!bubble) return;
-    const wasOpen = bubble.querySelector('details.ai-thinking')?.open || false;
-    let inlineThinking = '';
-    const mainContent = rawContent.replace(/<(?:think|thought)>([\s\S]*?)(?:<\/?(?:think|thought)>|$)/gi, (_, inner) => {
-        inlineThinking += inner;
+// Splits a reply into the answer and the thought process: reasoning sent apart, or <think>/<thought> blocks in
+// the text (an unclosed block means the model is still thinking)
+function splitAiThinking(rawContent, reasoningContent = '') {
+    let inline = '';
+    let open = false;
+    const answer = rawContent.replace(/<(think|thought)>([\s\S]*?)(<\/\1>|$)/gi, (_, tag, inner, close) => {
+        inline += inner;
+        if (!close) open = true;
         return '';
-    }).trim();
-    const thinking = (reasoningContent + inlineThinking).trim();
-    bubble.replaceChildren();
-    if (thinking) {
-        const details = createEl('details', 'ai-thinking');
-        details.append(createEl('summary', 'ai-thinking-summary', t('ai_thinking_show', 'Show reasoning')), createEl('pre', 'ai-thinking-content', thinking));
-        details.open = wasOpen;
-        bubble.appendChild(details);
-    }
-    bubble.appendChild(renderMarkdown(mainContent));
+    }).replace(/<\/?(?:think|thought)?$|<\/?(?:t|th|thi|thin|tho|thou|thoug|though)$/i, '').trim();
+    return { answer, thinking: (reasoningContent + inline).trim(), open };
+}
+
+// One assistant reply while it streams in: a small "Thinking…" line with the seconds (the thoughts open on a tap)
+// until the first words arrive, then the answer. Drawn at most once per frame, so long thoughts stay smooth.
+function createAiReply(bubble) {
+    const row = bubble.closest('.ai-chat-row');
+    const orb = row?.querySelector('.ai-orb');
+    const details = createEl('details', 'ai-thinking is-live is-empty');
+    const summary = createEl('summary', 'ai-thinking-summary');
+    const label = createEl('span', 'ai-thinking-label', t('ai_thinking', 'Thinking'));
+    const time = createEl('span', 'ai-thinking-time');
+    summary.append(label, time);
+    const pre = createEl('pre', 'ai-thinking-content');
+    details.append(summary, pre);
+    const answerEl = createEl('div', 'ai-answer');
+    bubble.replaceChildren(details, answerEl);
+    orb?.classList.add('is-thinking');
+    // A closed "Thinking" line is not a toggle until there is something to show
+    summary.addEventListener('click', event => { if (details.classList.contains('is-empty')) event.preventDefault(); });
+
+    const started = Date.now();
+    let thoughtFor = 0;
+    let content = '';
+    let reasoning = '';
+    let shownAnswer = null;
+    let frame = 0;
+    const seconds = () => Math.max(1, Math.round(((thoughtFor || Date.now()) - started) / 1000));
+    const tick = setInterval(() => { if (!thoughtFor) time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() }); }, 1000);
+
+    const draw = () => {
+        frame = 0;
+        const { answer, thinking, open } = splitAiThinking(content, reasoning);
+        const stillThinking = !answer || open;
+        if (!stillThinking && !thoughtFor) {
+            thoughtFor = Date.now();
+            details.classList.remove('is-live');
+            orb?.classList.remove('is-thinking');
+            label.textContent = t('ai_thought', 'Thought');
+            time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() });
+        }
+        details.classList.toggle('is-empty', !thinking);
+        if (pre.textContent !== thinking) {
+            const follow = details.open && pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24;
+            pre.textContent = thinking;
+            if (follow) pre.scrollTop = pre.scrollHeight;
+        }
+        if (answer !== shownAnswer) {
+            shownAnswer = answer;
+            answerEl.replaceChildren(renderMarkdown(answer));
+        }
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(draw); };
+
+    return {
+        add(part) {
+            content += part.content || '';
+            reasoning += part.reasoning || '';
+            schedule();
+        },
+        get content() { return content; },
+        get reasoning() { return reasoning; },
+        // The reply is complete: last drawing, no thinking line when there were no thoughts
+        finish() {
+            clearInterval(tick);
+            if (frame) cancelAnimationFrame(frame);
+            draw();
+            if (!thoughtFor) {
+                thoughtFor = Date.now();
+                label.textContent = t('ai_thought', 'Thought');
+            }
+            details.classList.remove('is-live');
+            orb?.classList.remove('is-thinking');
+            if (details.classList.contains('is-empty')) details.remove();
+        },
+        stop() {
+            clearInterval(tick);
+            if (frame) cancelAnimationFrame(frame);
+            orb?.classList.remove('is-thinking');
+        }
+    };
 }
 
 // Normalizes text for AI providers: NFC, no control characters or lone surrogates, LF line endings.
@@ -7220,6 +7374,9 @@ function appendInlineNodes(parent, text) {
     if (lastIndex < text.length) parent.appendChild(document.createTextNode(text.slice(lastIndex)));
 }
 
+// Without a single byte for this long (the server sends a sign of life every 15 s) the connection is gone
+const AI_IDLE_TIMEOUT_MS = 75000;
+
 async function sendAiMessage() {
     if (aiStreaming) return;
     const inputEl = $('ai-chat-input');
@@ -7235,15 +7392,24 @@ async function sendAiMessage() {
     if (sendBtn) sendBtn.disabled = true;
 
     const messagesEl = $('ai-chat-messages');
+    const nearEnd = () => !messagesEl || messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
     const scrollToEnd = () => { if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight; };
-    const typingEl = createEl('div', 'ai-chat-typing');
-    typingEl.innerHTML = '<span></span><span></span><span></span>';
-    messagesEl?.appendChild(typingEl);
-    scrollToEnd();
+    // The reply appears right away as "Thinking…" and fills in when the words come
+    const bubble = appendAiMessage('assistant', '');
+    const reply = createAiReply(bubble);
+    const controller = new AbortController();
+    aiChatAbort = controller;
+    let idleTimer = 0;
+    let timedOut = false;
+    const keepAlive = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, AI_IDLE_TIMEOUT_MS);
+    };
+    keepAlive();
 
-    let bubble = null;
-    let content = '';
-    let reasoning = '';
     try {
         let token;
         try {
@@ -7256,51 +7422,69 @@ async function sendAiMessage() {
         const res = await fetch(`${API}/ai/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ messages })
+            body: JSON.stringify({ messages }),
+            signal: controller.signal
         });
-        typingEl.remove();
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
             throw new Error(errData.detail || errData.error || `HTTP ${res.status}`);
         }
-        // Server-sent events: "data: {content, reasoning}" lines, terminated by "data: [DONE]"
-        bubble = appendAiMessage('assistant', '');
+        // Server-sent events: "data: {content | reasoning | error}" lines, terminated by "data: [DONE]";
+        // ": ping" lines only keep the connection alive
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        let finished = false;
+        const handleLine = rawLine => {
+            const line = rawLine.trim();
+            if (!line.startsWith('data:')) return;
+            const data = line.slice(5).trim();
+            if (data === '[DONE]') {
+                finished = true;
+                return;
+            }
+            let parsed;
+            try { parsed = JSON.parse(data); } catch { return; }
+            if (parsed.error) throw new Error(parsed.error);
+            const follow = nearEnd();
+            reply.add(parsed);
+            if (follow) requestAnimationFrame(scrollToEnd);
+        };
+        while (!finished) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            keepAlive();
             buffer += decoder.decode(chunk.value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop();
-            for (const line of lines.map(l => l.trim()).filter(l => l.startsWith('data:'))) {
-                const data = line.slice(5).trim();
-                if (data === '[DONE]') break;
-                try {
-                    const parsed = JSON.parse(data);
-                    content += parsed.content || '';
-                    reasoning += parsed.reasoning || '';
-                    finalizeAssistantBubble(bubble, content, reasoning);
-                    scrollToEnd();
-                } catch { /* skip malformed chunk */ }
-            }
+            lines.forEach(handleLine);
         }
-        finalizeAssistantBubble(bubble, content, reasoning);
-        const clean = sanitizeAiText(content).trim();
+        if (!finished) handleLine(buffer + decoder.decode());
+        if (finished) reader.cancel().catch(() => {});
+        reply.finish();
+        const clean = sanitizeAiText(splitAiThinking(reply.content).answer).trim();
+        // A model that only thought (or the connection ended early) gave no answer: say so instead of an empty row
+        if (!clean) throw new Error(reply.reasoning ? t('ai_only_thought', 'The AI thought about it but sent no answer. Please try again.') : t('ai_no_answer', 'No answer came back. Please try again.'));
         addAiReportButton(bubble, clean, [...aiMessages].reverse().find(m => m.role === 'user')?.content || '');
-        scrollToEnd();
-        if (clean) aiMessages.push({ role: 'assistant', content: clean });
+        if (nearEnd()) scrollToEnd();
+        aiMessages.push({ role: 'assistant', content: clean });
     } catch (err) {
-        typingEl.remove();
+        reply.stop();
+        // A new chat cancelled this reply: nothing to show
+        if (controller.signal.aborted && !timedOut) return;
         console.error('KI-Chat Fehler:', err);
-        const message = t('ai_error', 'Error: {message}', { message: err.message || t('error_unknown', 'Unknown error') });
-        if (bubble) bubble.textContent = message;
-        else bubble = appendAiMessage('assistant', message);
-        bubble?.classList.add('ai-chat-bubble-error');
+        const reason = timedOut ? t('ai_timeout', 'The AI stopped answering. Please try again.') : (err.message || t('error_unknown', 'Unknown error'));
+        bubble.replaceChildren(document.createTextNode(t('ai_error', 'Error: {message}', { message: reason })));
+        bubble.classList.add('ai-chat-bubble-error');
         // Drop the failed user message so it can be retried
         if (aiMessages[aiMessages.length - 1]?.role === 'user') aiMessages.pop();
     } finally {
-        aiStreaming = false;
-        if (sendBtn) sendBtn.disabled = false;
+        clearTimeout(idleTimer);
+        if (aiChatAbort === controller) {
+            aiChatAbort = null;
+            aiStreaming = false;
+            if (sendBtn) sendBtn.disabled = false;
+        }
     }
 }
 

@@ -294,6 +294,7 @@ describe('securityHeaders', () => {
     assert.equal(headers['X-Content-Type-Options'], 'nosniff');
     assert.equal(headers['X-Frame-Options'], 'SAMEORIGIN');
     assert.equal(headers['X-XSS-Protection'], '0');
+    assert.equal(headers['Referrer-Policy'], 'strict-origin-when-cross-origin');
     assert.equal(headers['Strict-Transport-Security'], undefined);
     assert.equal(nextCalled, true);
   });

@@ -13,8 +13,14 @@ const {
   setAiSettings,
   buildDatabaseSnapshot,
   buildSystemPrompt,
-  sanitizeAiMessages
+  sanitizeAiMessages,
+  aiStreamEvents
 } = require('../ai');
+
+// While a model thinks, nothing may flow for minutes: a comment line every 15 s keeps proxies and the browser
+// from closing the connection. A reply never takes longer than 10 minutes.
+const AI_HEARTBEAT_MS = 15000;
+const AI_MAX_MS = 10 * 60 * 1000;
 
 const router = express.Router();
 
@@ -89,76 +95,83 @@ router.post('/api/ai/chat', aiChatRateLimit, verifyToken, verifyAiAccess, async 
     const dbSnapshot = await buildDatabaseSnapshot(context.appConfig, { canViewFinances, user: req.user });
     const systemContent = buildSystemPrompt(context.appConfig.appName, dbSnapshot, { canViewFinances });
 
-    const aiRes = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: systemContent }, ...messages],
-        stream: true
-      })
-    });
-
-    if (!aiRes.ok) {
-      const errText = await aiRes.text().catch(() => '');
-      console.error('AI provider error:', aiRes.status, errText);
-      let detailMsg = errText;
-      try {
-        const parsed = JSON.parse(errText);
-        if (parsed.error?.message) {
-          detailMsg = parsed.error.message;
-        }
-      } catch {}
-      return res.status(502).json({ error: 'AI provider returned an error', detail: String(detailMsg || '').slice(0, 300) });
-    }
-
+    // From here on everything goes out as server-sent events, errors too ("data: {error}"), so the connection
+    // is open (and kept alive) while the provider is still thinking about its first word
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
-
-    const reader = aiRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+    const send = event => { if (!res.writableEnded) res.write(`data: ${typeof event === 'string' ? event : JSON.stringify(event)}\n\n`); };
+    const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, AI_HEARTBEAT_MS);
+    const upstream = new AbortController();
+    const deadline = setTimeout(() => upstream.abort(), AI_MAX_MS);
+    // The person left (new chat, other page, app closed): stop asking the provider
+    res.on('close', () => upstream.abort());
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'system', content: systemContent }, ...messages],
+          stream: true
+        }),
+        signal: upstream.signal
+      });
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
+      if (!aiRes.ok) {
+        const errText = await aiRes.text().catch(() => '');
+        console.error('AI provider error:', aiRes.status, errText);
+        let detailMsg = errText;
+        try {
+          const parsed = JSON.parse(errText);
+          if (parsed.error?.message) detailMsg = parsed.error.message;
+        } catch {}
+        send({ error: String(detailMsg || `AI provider returned ${aiRes.status}`).slice(0, 300) });
+        return;
+      }
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const data = trimmed.slice(5).trim();
-          if (data === '[DONE]') {
-            res.write('data: [DONE]\n\n');
-          } else {
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-              const reasoning = parsed.choices?.[0]?.delta?.reasoning_content;
-              if (typeof content === 'string') {
-                res.write(`data: ${JSON.stringify({ content })}\n\n`);
-              }
-              if (typeof reasoning === 'string') {
-                res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);
-              }
-            } catch { /* skip malformed chunks */ }
-          }
+      const reader = aiRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const handleLine = line => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) return;
+        const data = trimmed.slice(5).trim();
+        if (data === '[DONE]') return;
+        try {
+          for (const event of aiStreamEvents(JSON.parse(data))) send(event);
+        } catch { /* skip malformed chunks */ }
+      };
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          lines.forEach(handleLine);
         }
+        handleLine(buffer + decoder.decode());
+      } finally {
+        reader.releaseLock();
+      }
+      send('[DONE]');
+    } catch (err) {
+      if (!res.writableEnded && !res.destroyed) {
+        console.error('AI chat stream error:', err);
+        send({ error: upstream.signal.aborted ? 'The AI took too long to answer.' : 'AI chat request failed' });
       }
     } finally {
-      reader.releaseLock();
+      clearInterval(heartbeat);
+      clearTimeout(deadline);
+      res.end();
     }
-
-    res.end();
   } catch (err) {
     console.error('AI chat error:', err);
     if (!res.headersSent) {

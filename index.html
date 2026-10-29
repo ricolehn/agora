@@ -785,7 +785,7 @@
                     <button type="button" class="hub-back-btn" onclick="switchTab('hub')" data-i18n-aria-label="btn_back" aria-label="Back">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     </button>
-                    <span class="ai-chat-title" data-i18n="nav_ai">AI Support</span>
+                    <span class="ai-chat-title"><span class="ai-orb ai-orb-sm" aria-hidden="true"><span class="ai-orb-glow"></span><span class="ai-orb-core"></span><svg class="ai-orb-glyph" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span><span data-i18n="nav_ai">AI Support</span></span>
                     <button type="button" class="ai-new-chat-btn" onclick="clearAiChat()" data-i18n-title="ai_new_chat" title="New chat">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
                         <span data-i18n="ai_new_chat">New chat</span>
@@ -1889,7 +1889,7 @@
             <button type="button" class="close-btn" onclick="closeModal('media-rights-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body-enhanced plan-sheet-body">
-            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload and create folders. Hidden: does not see the folder. A right for one person goes before the rights of their groups. Nothing can be deleted.</p>
+            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload and create folders. No access: does not see the folder. The most specific right counts: a person's goes before their groups', a group's before the one for all members (someone in several groups gets the most of these). Whoever has no access to the base folder does not see the media library at all. Nothing can be deleted.</p>
             <div id="media-rights-list" class="media-rights-list"></div>
             <div class="media-rights-add">
                 <button type="button" id="media-rights-add-btn" class="media-rights-add-btn" onclick="openMediaRightsAdd()">

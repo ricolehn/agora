@@ -20,9 +20,19 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_SYSTEM_STATE = {
-  inviteCode: '123456',
+  inviteCode: '',
   ownerUid: null,
   superAdminUid: null
+};
+
+// Older versions stored this fixed code until someone made a new one: anyone could register with it
+const LEGACY_DEFAULT_INVITE_CODE = '123456';
+const randomInviteCode = () => String(crypto.randomInt(100000, 1000000));
+
+/** The system state with a registration code of its own (a random one instead of none or the old fixed one). */
+const withSecureInviteCode = (system) => {
+  const code = String(system?.inviteCode || '');
+  return !code || code === LEGACY_DEFAULT_INVITE_CODE ? { ...system, inviteCode: randomInviteCode() } : system;
 };
 
 const SUPERUSER_TOKEN_TTL_MS = 300_000; // 5 minutes
@@ -2088,6 +2098,7 @@ async function deleteFcmToken(appConfig, token, userId = null) {
 }
 
 module.exports = {
+  withSecureInviteCode,
   invalidateReadCache,
   getPushSubscriptionByEndpoint,
   upsertPushSubscription,

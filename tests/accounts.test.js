@@ -491,3 +491,18 @@ describe('accountDeletion', () => {
     assert.equal(chat.prompt, '');
   });
 });
+
+describe('registration code', () => {
+  const { withSecureInviteCode } = require('../backend/pocketbase');
+
+  test('no code and the old fixed code become a random one; a code of its own stays', () => {
+    for (const system of [{}, { inviteCode: '' }, { inviteCode: '123456', ownerUid: 'o' }]) {
+      const next = withSecureInviteCode(system);
+      assert.match(next.inviteCode, /^\d{6}$/);
+      assert.notEqual(next.inviteCode, '123456');
+      assert.equal(next.ownerUid, system.ownerUid);
+    }
+    const own = { inviteCode: '804211' };
+    assert.equal(withSecureInviteCode(own), own);
+  });
+});

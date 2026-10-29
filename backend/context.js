@@ -15,6 +15,7 @@ const { translate, translator, userLanguage, instanceLanguage, normalizeLanguage
 const {
   DEFAULT_SETTINGS,
   DEFAULT_SYSTEM_STATE,
+  withSecureInviteCode,
   normalizeDataPath,
   sanitizeSelfUserWrite,
   ensurePocketBaseSuperuser,
@@ -132,7 +133,7 @@ async function initializeRuntime(config) {
   await ensurePocketBaseSuperuser(config);
   await ensurePocketBaseSchema(config);
   await upsertStateValue(config, 'settings', await getStateValue(config, 'settings', DEFAULT_SETTINGS));
-  await upsertStateValue(config, 'system', await getStateValue(config, 'system', DEFAULT_SYSTEM_STATE));
+  await upsertStateValue(config, 'system', withSecureInviteCode(await getStateValue(config, 'system', DEFAULT_SYSTEM_STATE)));
 
   context.appConfig = config;
   context.setupMode = false;
@@ -552,7 +553,7 @@ async function readLogicalPath(targetPath, query, user) {
       throw error;
     }
     const record = await getStateRecord(context.appConfig, 'system');
-    return { value: record?.value?.inviteCode || DEFAULT_SYSTEM_STATE.inviteCode, version: record?.updated || null };
+    return { value: record?.value?.inviteCode || '', version: record?.updated || null };
   }
 
   if (root === 'donations' || root === 'expenses') {

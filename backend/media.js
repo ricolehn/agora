@@ -2,12 +2,16 @@
 // one bot account (full rights there) and decides itself who may do what: rules per folder and group.
 //
 // A rule gives all members ("*"), a group (its id) or one person ("user:<id>") one of three levels on a folder:
-// read (browse, view, download), write (read + upload files and create folders) or hide (does not see the folder).
-// A rule applies to the folder and everything below it until a subfolder has its own rule for the same group or
-// person. Without any rule nobody sees anything. Someone in several groups gets the most a group of theirs gets; a
-// rule for the person themself goes before all group rules (so one person can be given more, or less, than their
-// groups). Members with the manage_media permission see every folder, upload everywhere and set the rules. Nobody
-// deletes, renames, moves or overwrites anything through Agora.
+// read (browse, view, download), write (read + upload files and create folders) or hide (no access: does not see
+// the folder). A rule applies to the folder and everything below it until a subfolder has its own rule for the same
+// group or person. Without any rule nobody sees anything.
+//
+// The most specific rule decides: a rule for the person themself goes before the rules of their groups, a group rule
+// goes before the rule for all members (so one person or group can be given more, or less, than the others; "no
+// access" for a group also holds when all members may read). Someone in several groups with rules gets the most one
+// of these groups gets. Whoever has no access to the base folder does not see the media library at all, whatever
+// the folders below say. Members with the manage_media permission see every folder, upload everywhere and set the
+// rules. Nobody deletes, renames, moves or overwrites anything through Agora.
 //
 // Paths are relative to the configured base folder in the bot account: "" is the base folder, "Photos/2026" a
 // folder below it. Only clean paths get through (no "..", no empty parts), so nothing outside the base folder can
@@ -68,18 +72,31 @@ function groupLevel(rules, folder, groupId) {
   return null;
 }
 
+const asAccess = (level) => (level === 'read' || level === 'write' ? level : 'none');
+
+/** What the rules give [user] in [folder] on their own: the person's rule, else their groups', else all members'. */
+function ruleAccess(rules, folder, user) {
+  const uid = user?.uid || user?.id;
+  const personal = uid ? groupLevel(rules, folder, personKey(uid)) : null;
+  if (personal) return asAccess(personal);
+  const groupLevels = (Array.isArray(user?.groupIds) ? user.groupIds : [])
+    .filter((groupId) => groupId !== ALL_MEMBERS)
+    .map((groupId) => groupLevel(rules, folder, groupId))
+    .filter(Boolean);
+  if (groupLevels.length) {
+    return groupLevels.map(asAccess).reduce((best, level) => (RANK[level] > RANK[best] ? level : best), 'none');
+  }
+  return asAccess(groupLevel(rules, folder, ALL_MEMBERS));
+}
+
+/** Whether [user] may use the media library at all: managers always, others with access to the base folder. */
+const canUseMedia = (rules, user) => canManageMedia(user) || ruleAccess(rules, '', user) !== 'none';
+
 /** What [user] may do in [folder]: 'write', 'read' or 'none'. */
 function folderAccess(rules, folder, user) {
   if (canManageMedia(user)) return 'write';
-  const uid = user?.uid || user?.id;
-  const personal = uid ? groupLevel(rules, folder, personKey(uid)) : null;
-  if (personal) return personal === 'hide' ? 'none' : personal;
-  let best = 'none';
-  for (const groupId of [ALL_MEMBERS, ...(Array.isArray(user?.groupIds) ? user.groupIds : [])]) {
-    const level = groupLevel(rules, folder, groupId);
-    if (level && level !== 'hide' && RANK[level] > RANK[best]) best = level;
-  }
-  return best;
+  if (folder && ruleAccess(rules, '', user) === 'none') return 'none';
+  return ruleAccess(rules, folder, user);
 }
 
 /**
@@ -99,15 +116,14 @@ function passagesBelow(rules, folder, user) {
 
 /** Whether [user] sees [folder] at all: with access of their own, or as the way to a folder they may read. */
 function canSeeFolder(rules, folder, user) {
+  if (!canUseMedia(rules, user)) return false;
   if (folderAccess(rules, folder, user) !== 'none') return true;
   // A passage: some rule further down gives access
   return passagesBelow(rules, folder, user).size > 0;
 }
 
-/** Whether the Media tile is offered to [user]: managers always, others with access to at least one folder. */
-function hasAnyAccess(rules, user) {
-  return canManageMedia(user) || canSeeFolder(rules, '', user);
-}
+/** Whether the Media tile is offered to [user]: managers always, others with access to the base folder. */
+const hasAnyAccess = canUseMedia;
 
 /**
  * What [user] sees of a folder listing ({ folders, files } from Nextcloud): folders they may open (with their
@@ -168,7 +184,6 @@ function pruneRules(rules, knownIds) {
 
 // --- What kind of file, for the viewer ---
 
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'image/heic', 'image/heif']);
 /**
  * Shown or played in the browser as they are (pictures, PDFs, video and music: nothing in them runs as a page);
  * everything else (SVG, HTML, …) only goes out as a download.
@@ -180,18 +195,26 @@ const INLINE_TYPES = new Set([
   'audio/x-wav', 'audio/wave', 'audio/webm', 'audio/flac', 'audio/x-flac'
 ]);
 
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.heic', '.heif', '.dng', '.tif', '.tiff', '.cr2', '.cr3', '.nef', '.arw', '.raf', '.orf', '.rw2', '.psd']);
+
 function fileKind(contentType, name) {
   const type = String(contentType || '').toLowerCase();
   const ext = path.extname(String(name || '')).toLowerCase();
-  if (IMAGE_TYPES.has(type) || ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.heic', '.heif'].includes(ext)) return 'image';
+  // SVG is never shown as a picture (it could run as a page); every other picture opens in the viewer as a preview
+  if (type === 'image/svg+xml' || ext === '.svg') return 'other';
+  if (type.startsWith('image/') || IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (type === 'application/pdf' || ext === '.pdf') return 'pdf';
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('audio/')) return 'audio';
   return 'other';
 }
 
-/** Preview sizes Nextcloud is asked for (a few fixed ones, so its preview cache and the browser cache are reused). */
-const PREVIEW_SIZES = [64, 128, 256, 512, 1024, 2048];
+/**
+ * Preview sizes Nextcloud is asked for (a few fixed ones, so its preview cache and the browser cache are reused):
+ * up to 512 for tiles, 1024 / 2048 for the viewer, 4096 when zoomed in (instead of the original, which may be a
+ * format the browser cannot show, like DNG or HEIC).
+ */
+const PREVIEW_SIZES = [64, 128, 256, 512, 1024, 2048, 4096];
 const previewSize = (value) => PREVIEW_SIZES.find((size) => size >= (Number(value) || 0)) || PREVIEW_SIZES[PREVIEW_SIZES.length - 1];
 
 /** "photo.jpg" → "photo (2).jpg": the next free name when a file of that name is already there. */
@@ -257,6 +280,7 @@ module.exports = {
   groupLevel,
   folderAccess,
   canSeeFolder,
+  canUseMedia,
   hasAnyAccess,
   filterListing,
   setFolderRules,

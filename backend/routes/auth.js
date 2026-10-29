@@ -24,6 +24,7 @@ const { deleteAccountData } = require('../accountDeletion');
 
 const {
   DEFAULT_SYSTEM_STATE,
+  withSecureInviteCode,
   generatePocketBaseCredentials,
   registerUser,
   createGroupRecord,
@@ -97,7 +98,7 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
     }
 
     const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
-    await upsertStateValue(newConfig, 'system', { ...system, ownerUid: auth.user.id, superAdminUid: auth.user.id });
+    await upsertStateValue(newConfig, 'system', { ...withSecureInviteCode(system), ownerUid: auth.user.id, superAdminUid: auth.user.id });
     const ownerGroups = adminGroup ? [adminGroup.id] : [];
     await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: true, groups: ownerGroups });
 
@@ -179,8 +180,12 @@ router.post('/api/auth/register', authRateLimit, async (req, res) => {
 
   try {
     const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const validInviteCode = String(system?.inviteCode || DEFAULT_SYSTEM_STATE.inviteCode);
-    if (!inviteCode || inviteCode !== validInviteCode) {
+    // No code set (or none sent): nobody registers; compared in constant time
+    const validInviteCode = String(system?.inviteCode || '');
+    const sent = Buffer.from(inviteCode);
+    const valid = Buffer.from(validInviteCode);
+    const matches = valid.length > 0 && sent.length === valid.length && crypto.timingSafeEqual(sent, valid);
+    if (!matches) {
       return res.status(403).json({ error: 'Invalid registration code.' });
     }
 
