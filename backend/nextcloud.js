@@ -226,6 +226,21 @@ async function createFolder(settings, p, { signal } = {}) {
   throw failure(res.status, 'folder');
 }
 
+/**
+ * Deletes the file or folder [p] (a folder with everything in it; Nextcloud moves it to its trash bin when that is
+ * switched on). Returns false when it was not there (any more).
+ */
+async function remove(settings, p, { signal } = {}) {
+  if (!accountPath({ root: '' }, p)) throw new NextcloudError('The base folder cannot be deleted.', 400);
+  const res = await request(settings, davUrl(settings, p), { method: 'DELETE', signal, timeout: LIST_TIMEOUT_MS });
+  await res.body?.cancel();
+  if (res.status === 204 || res.status === 200) return true;
+  if (res.status === 404) return false;
+  // 423: locked (open somewhere, or being synced)
+  if (res.status === 423) throw new NextcloudError('This is in use in Nextcloud right now. Please try again later.', 409);
+  throw failure(res.status, 'file');
+}
+
 /** Checks the settings: signs in and reads the base folder. Returns the names of the folders in it. */
 async function testConnection(settings) {
   const { folders } = await listFolder(settings, '');
@@ -241,5 +256,6 @@ module.exports = {
   download,
   uploadNew,
   createFolder,
+  remove,
   testConnection
 };

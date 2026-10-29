@@ -112,6 +112,23 @@ describe('media rights (backend/media.js)', () => {
     assert.deepEqual(media.setFolderRules({ A: { jugend: 'read' } }, 'A', {}, known).rules, {});
     assert.deepEqual(media.pruneRules({ A: { gone: 'read' }, B: { gone: 'read', jugend: 'hide' } }, known), { B: { jugend: 'hide' } });
   });
+
+  test('deleting: files with write access to their folder, folders only with write access everywhere in them', () => {
+    const write = { '': { '*': 'read' }, Fotos: { jugend: 'write' }, 'Fotos/Leiter': { jugend: 'read' }, 'Fotos/Frei/Tief': { '*': 'write' } };
+    assert.equal(media.canDeleteFile(write, 'Fotos/a.jpg', member('jugend')), true);
+    assert.equal(media.canDeleteFile(write, 'Fotos/a.jpg', member()), false, 'read only');
+    assert.equal(media.canDeleteFile(write, 'Fotos/Leiter/a.jpg', member('jugend')), false);
+    assert.equal(media.canDeleteFolder(write, 'Fotos/Frei', member('jugend')), true);
+    assert.equal(media.canDeleteFolder(write, 'Fotos', member('jugend')), false, 'no write in the base folder, and Leiter is read only');
+    // the folder around it decides too: write in a folder alone does not let it go
+    assert.equal(media.canDeleteFolder(write, 'Fotos/Frei/Tief', member()), false);
+    assert.equal(media.canDeleteFolder({ '': { '*': 'write' }, A: { '*': 'write' }, 'A/B': { '*': 'hide' } }, 'A', member()), false, 'not what one cannot see');
+    assert.equal(media.canDeleteFolder(write, '', manager), false, 'never the base folder');
+    assert.equal(media.canDeleteFolder(write, 'Fotos', manager), true);
+    assert.equal(media.filterListing(write, 'Fotos', member('jugend'), { folders: [{ name: 'Frei' }, { name: 'Leiter' }], files: [] })
+      .folders.map((f) => f.canDelete).join(), 'true,false');
+    assert.deepEqual(media.rulesWithout({ A: { x: 'read' }, 'A/B': { x: 'read' }, AB: { x: 'read' } }, 'A'), { AB: { x: 'read' } });
+  });
 });
 
 describe('media paths and names (backend/media.js)', () => {

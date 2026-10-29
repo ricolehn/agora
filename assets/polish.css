@@ -623,6 +623,8 @@ h1, h2, h3,
     .container:has(> .app-layout > .header:not(.header-hidden)) .settings-paged[data-page] > .settings-nav,
     .container:has(> .app-layout > .header:not(.header-hidden)) #songbook > .polls-head,
     .container:has(> .app-layout > .header:not(.header-hidden)) #prayers > .polls-head { top: var(--mobile-header-h, 68px); }
+    #media > .media-selectbar { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .container:has(> .app-layout > .header:not(.header-hidden)) #media > .media-selectbar { top: calc(var(--mobile-header-h, 68px) + 8px); }
 }
 
 /* ==========================================================================
@@ -1333,6 +1335,9 @@ h1, h2, h3,
     .container:has(> .app-layout > .header.header-hidden) .settings-paged[data-page] > .settings-nav,
     .container:has(> .app-layout > .header.header-hidden) #songbook > .polls-head,
     .container:has(> .app-layout > .header.header-hidden) #prayers > .polls-head { top: calc(0px - var(--desktop-header-offset)); }
+    /* The media selection bar likewise, with a little air */
+    #media > .media-selectbar { top: calc(80px - var(--desktop-header-offset)); transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .container:has(> .app-layout > .header.header-hidden) #media > .media-selectbar { top: calc(8px - var(--desktop-header-offset)); }
 
     /* Settings: one centred column like the chat and the prayers */
     #settings,

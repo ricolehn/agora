@@ -339,5 +339,16 @@
   "{name} declined: {duty}": "{name} hat abgesagt: {duty}",
   "{type} approved": "{type} genehmigt",
   "{type} rejected": "{type} abgelehnt",
-  "From {name}": "Von {name}"
+  "From {name}": "Von {name}",
+  "You may not delete anything in this folder.": "Du darfst in diesem Ordner nichts löschen.",
+  "You may not delete everything in this folder.": "Du darfst nicht alles in diesem Ordner löschen.",
+  "This is in use in Nextcloud right now. Please try again later.": "Das ist gerade in Nextcloud in Benutzung. Bitte versuche es später noch einmal.",
+  "The base folder cannot be deleted.": "Der Basisordner kann nicht gelöscht werden.",
+  "Nothing selected": "Nichts ausgewählt",
+  "At most 500 at once.": "Höchstens 500 auf einmal.",
+  "Could not delete": "Konnte nicht gelöscht werden",
+  "That is too much for one download (at most 4 GB). Please select less.": "Das ist zu viel für einen Download (höchstens 4 GB). Bitte wähle weniger aus.",
+  "There is nothing to download here.": "Hier gibt es nichts zum Herunterladen.",
+  "The download could not be prepared": "Der Download konnte nicht vorbereitet werden",
+  "This download is no longer available. Please start it again.": "Dieser Download ist nicht mehr verfügbar. Bitte starte ihn noch einmal."
 }

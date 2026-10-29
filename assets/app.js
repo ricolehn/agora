@@ -251,7 +251,6 @@ const ICONS = {
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
-    media: '<rect x="2" y="4" width="20" height="16" rx="3"/><path d="m10 9 5 3-5 3z"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     poll: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-3"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
@@ -1064,7 +1063,7 @@ function updateAiNavVisibility() {
 const HUB_APPS = [
     { key: 'ai', icon: 'sparkles', featured: true, colors: ['#c4b8f5', '#7c6fd6'], title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
-    { key: 'media', icon: 'media', colors: ['#f6c7a4', '#e0874f'], title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
+    { key: 'media', icon: 'folder', colors: ['#f6c7a4', '#e0874f'], title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
         visible: () => mediaStatus.hasAccess, open: () => openMediaFolder('') },
     { key: 'songbook', icon: 'music', colors: ['#aed6ec', '#4a98c4'], title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
     { key: 'prayers', icon: 'heart', colors: ['#f2b5c0', '#d6667c'], title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
@@ -1087,7 +1086,7 @@ function renderHub() {
         if (app.featured) return `
         <button type="button" class="hub-app is-featured" style="${style}" ${action}>
             <span class="hub-hero-sparks" aria-hidden="true">${svgIcon('sparkles', 24, 1.8)}${svgIcon('sparkles', 14, 2)}${svgIcon('sparkles', 10, 2)}</span>
-            <span class="hub-app-icon">${svgIcon(app.icon, 26, 2.2)}</span>
+            <span class="hub-app-icon">${svgIcon(app.icon, 22, 2)}</span>
             <span class="hub-app-text">
                 <span class="hub-app-title">${t(...app.title)}</span>
                 <span class="hub-app-desc">${t(...app.desc)}</span>
@@ -1097,7 +1096,7 @@ function renderHub() {
         return `
         <button type="button" class="hub-app${app.soon ? ' is-soon' : ''}" style="${style}" ${action}>
             <span class="hub-app-mark" aria-hidden="true">${svgIcon(app.icon, 96, 1.4)}</span>
-            <span class="hub-app-icon">${svgIcon(app.icon, 26, 2.2)}</span>
+            <span class="hub-app-icon">${svgIcon(app.icon, 22, 2)}</span>
             <span class="hub-app-text">
                 <span class="hub-app-title">${t(...app.title)}</span>
                 <span class="hub-app-desc">${t(...app.desc)}</span>
@@ -1123,6 +1122,9 @@ let mediaRequestId = 0;
 let mediaSort = (() => { try { return localStorage.getItem('agora-media-sort') || 'name'; } catch { return 'name'; } })();
 // The order shown: folders and files as on screen (the viewer steps through the pictures in this order)
 let mediaShownFiles = [];
+let mediaShownFolders = [];
+// Names selected in the open folder (to download or delete several at once)
+const mediaSelected = new Set();
 
 const MEDIA_KIND_ICONS = { image: 'image', pdf: 'fileText', video: 'play', audio: 'music', other: 'file' };
 const MEDIA_LEVEL_LABELS = () => ({
@@ -1148,41 +1150,65 @@ async function loadMediaStatus() {
 
 /** Opens [path] in the library (from the hub, a folder, the breadcrumb or an address). */
 function openMediaFolder(path = '') {
+    if (path !== mediaFolder) clearMediaSelection();
     mediaFolder = path;
     if (currentActiveTab !== 'media') return switchTab('media');
     loadMediaFolder();
     document.querySelector('.container')?.scrollTo({ top: 0 });
 }
 
+// Folders seen before show at once from memory; the server is always asked again and the page only drawn anew when
+// its answer differs (so deleted or new files show right away, and an unchanged folder does not flicker)
+const MEDIA_CACHE_SIZE = 40;
+const mediaCache = new Map();
+function rememberMediaListing(path, listing) {
+    mediaCache.delete(path);
+    mediaCache.set(path, listing);
+    if (mediaCache.size > MEDIA_CACHE_SIZE) mediaCache.delete(mediaCache.keys().next().value);
+}
+
 async function loadMediaFolder({ silent = false } = {}) {
     const path = mediaFolder;
     const requestId = ++mediaRequestId;
-    if (!silent || mediaLoadedPath !== path) {
-        if (mediaLoadedPath !== path) mediaListing = null;
+    if (mediaLoadedPath !== path || mediaError) {
+        const cached = mediaCache.get(path);
+        mediaListing = cached || null;
+        mediaLoadedPath = cached ? path : null;
         mediaError = '';
-        renderMedia();
+        renderMedia({ fresh: !!cached });
     }
+    // What is on the page now: the answer is compared with it
+    const shown = mediaListing && mediaLoadedPath === path ? JSON.stringify(mediaListing) : null;
     try {
         const listing = await apiJson(`/media/list?path=${encodeURIComponent(path)}`, 'GET', undefined, t('media_load_failed', 'The folder could not be loaded'));
         if (requestId !== mediaRequestId) return;
+        rememberMediaListing(path, listing);
         mediaListing = listing;
         mediaLoadedPath = path;
         mediaError = '';
+        if (shown !== null && JSON.stringify(listing) === shown) {
+            updateFabVisibility();
+            syncUrl();
+            return;
+        }
     } catch (err) {
         if (requestId !== mediaRequestId) return;
         // A folder that is gone (or no longer visible): one level up
         if (err.status === 404 && path) {
+            mediaCache.delete(path);
             showToast(t('media_folder_gone', 'This folder is not available.'), 'error');
             mediaFolder = parentPath(path);
             return loadMediaFolder();
         }
         if (!silent || !mediaListing) {
+            mediaCache.delete(path);
             mediaListing = null;
             mediaLoadedPath = null;
             mediaError = err.status === 503 || err.status === 404 ? t('media_unavailable', 'There is nothing to see here yet.') : err.message;
         }
     }
-    renderMedia({ fresh: true });
+    // Faded in only after the loading circle; a folder already on the page changes in place
+    renderMedia({ fresh: shown === null });
     updateFabVisibility();
     syncUrl();
 }
@@ -1214,10 +1240,10 @@ function renderMediaCrumbs() {
         ${badge}`;
 }
 
-// A folder drawn filled (back flap lighter, front deeper) in the colour of the media library
-const MEDIA_FOLDER_SVG = '<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path class="media-folder-back" d="M2.5 6.6A2.6 2.6 0 0 1 5.1 4h3.7c.6 0 1.2.24 1.6.66L11.9 6.2h7a2.6 2.6 0 0 1 2.6 2.6V10h-19z"/><rect class="media-folder-front" x="2.5" y="8.4" width="19" height="11.6" rx="2.6"/></svg>';
-
 const mediaEntryMeta = entry => [formatSize(entry.size, uiLocale()), entry.modified ? formatDateFast(entry.modified) : ''].filter(Boolean).join(' · ');
+
+// The round mark in the corner of a folder or tile: shown on hover and while selecting, filled when selected
+const mediaCheck = name => `<button type="button" class="media-check" data-media-check aria-pressed="false" aria-label="${escapeHtml(t('media_select_item', 'Select {name}', { name }))}">${svgIcon('check', 14, 3)}</button>`;
 
 function mediaFolderCard(folder) {
     const manage = mediaStatus.canManage;
@@ -1228,20 +1254,21 @@ function mediaFolderCard(folder) {
     const rightsTitle = folder.hasRules ? t('media_has_rights', 'Has rights of its own') : t('media_rights_title', 'Folder rights');
     const meta = mediaEntryMeta(folder);
     return `
-        <div class="media-folder${passage ? ' is-passage' : ''}">
-            <button type="button" class="media-folder-open" onclick="openMediaFolder(${jsArg(folder.path)})" title="${escapeHtml(folder.name)}">
-                <span class="media-folder-icon">${MEDIA_FOLDER_SVG}</span>
+        <div class="media-folder${passage ? ' is-passage' : ''}" data-media-name="${escapeHtml(folder.name)}">
+            <button type="button" class="media-folder-open" data-media-open title="${escapeHtml(folder.name)}">
+                <span class="media-folder-icon">${svgIcon('folder', 22, 2)}</span>
                 <span class="media-folder-text">
                     <span class="media-folder-name">${escapeHtml(folder.name)}</span>
                     ${meta ? `<span class="media-folder-meta">${escapeHtml(meta)}</span>` : ''}
                 </span>
                 ${hidden}
             </button>
+            ${mediaCheck(folder.name)}
             ${manage ? `<button type="button" class="media-folder-rights${folder.hasRules ? ' is-set' : ''}" onclick="openMediaRights(${jsArg(folder.path)})" title="${escapeHtml(rightsTitle)}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: folder.name }))}">${svgIcon('shield', 16, 2)}</button>` : ''}
         </div>`;
 }
 
-function mediaFileTile(file, index) {
+function mediaFileTile(file) {
     const icon = svgIcon(MEDIA_KIND_ICONS[file.kind] || 'file', 30, 1.6);
     const thumb = file.hasPreview
         ? `<img class="media-thumb-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">`
@@ -1250,16 +1277,19 @@ function mediaFileTile(file, index) {
     // Pictures speak for themselves; everything else says what it is (PDF, MP4, DOCX ...)
     const label = file.kind === 'image' ? '' : typeLabel(file.name);
     return `
-        <button type="button" class="media-tile kind-${escapeHtml(file.kind)}" onclick="openMediaFile(${index})" title="${escapeHtml(file.name)}">
-            <span class="media-thumb${file.hasPreview ? '' : ' is-icon'}">
-                <span class="media-thumb-icon">${icon}</span>
-                ${thumb}
-                ${file.kind === 'video' && file.hasPreview ? `<span class="media-thumb-play" aria-hidden="true">${svgIcon('play', 18, 2)}</span>` : ''}
-                ${label ? `<span class="media-thumb-type">${escapeHtml(label)}</span>` : ''}
-            </span>
-            <span class="media-tile-name">${escapeHtml(file.name)}</span>
-            <span class="media-tile-meta">${escapeHtml(meta)}</span>
-        </button>`;
+        <div class="media-tile kind-${escapeHtml(file.kind)}" data-media-name="${escapeHtml(file.name)}">
+            <button type="button" class="media-tile-open" data-media-open title="${escapeHtml(file.name)}">
+                <span class="media-thumb${file.hasPreview ? '' : ' is-icon'}">
+                    <span class="media-thumb-icon">${icon}</span>
+                    ${thumb}
+                    ${file.kind === 'video' && file.hasPreview ? `<span class="media-thumb-play" aria-hidden="true">${svgIcon('play', 18, 2)}</span>` : ''}
+                    ${label ? `<span class="media-thumb-type">${escapeHtml(label)}</span>` : ''}
+                </span>
+                <span class="media-tile-name">${escapeHtml(file.name)}</span>
+                <span class="media-tile-meta">${escapeHtml(meta)}</span>
+            </button>
+            ${mediaCheck(file.name)}
+        </div>`;
 }
 
 function renderMedia({ fresh = false } = {}) {
@@ -1285,7 +1315,12 @@ function renderMedia({ fresh = false } = {}) {
         return;
     }
     const folders = sortEntries(mediaListing.folders, mediaSort === 'newest' ? 'newest' : 'name');
+    mediaShownFolders = folders;
     mediaShownFiles = sortEntries(mediaListing.files, mediaSort);
+    // Deleted or gone on another device: no longer selected
+    const present = new Set([...folders, ...mediaShownFiles].map(entry => entry.name));
+    for (const name of [...mediaSelected]) if (!present.has(name)) mediaSelected.delete(name);
+    syncMediaSelection();
     if (!folders.length && !mediaShownFiles.length) {
         list.innerHTML = `
             <div class="polls-empty">
@@ -1313,6 +1348,7 @@ function renderMedia({ fresh = false } = {}) {
             img.addEventListener('error', failed, { once: true });
         }
     });
+    syncMediaSelection();
 }
 
 function openMediaFile(index) {
@@ -1327,6 +1363,260 @@ function openMediaFile(index) {
     link.click();
     link.remove();
 }
+
+// --- Several at once: right click (or the menu key) opens a menu for one entry or the selection; holding a finger on
+// an entry, the round mark on hover, Ctrl / Cmd + click and Shift + click select. Selected entries are downloaded
+// together (one ZIP archive from the server) or deleted where the member may write. ---
+let mediaSelectAnchor = null;
+let mediaSuppressClick = false;
+
+/** The folder or file of that name in the open folder: { name, folder, file, index } or null. */
+function mediaEntry(name) {
+    const folder = mediaShownFolders.find(entry => entry.name === name);
+    if (folder) return { name, folder };
+    const index = mediaShownFiles.findIndex(entry => entry.name === name);
+    return index >= 0 ? { name, file: mediaShownFiles[index], index } : null;
+}
+const mediaOrder = () => [...mediaShownFolders, ...mediaShownFiles].map(entry => entry.name);
+/** Files where the member may write in the folder; folders only when they may write everywhere in them. */
+const canDeleteMediaEntry = entry => mediaListing?.access === 'write' && (entry.file ? true : !!entry.folder?.canDelete);
+
+/** Brings the page in line with the selection (classes and the bar only: thumbnails are not drawn again). */
+function syncMediaSelection() {
+    const count = mediaSelected.size;
+    $('media')?.classList.toggle('is-selecting', count > 0);
+    document.querySelectorAll('#media-list [data-media-name]').forEach(item => {
+        const selected = mediaSelected.has(item.dataset.mediaName);
+        item.classList.toggle('is-selected', selected);
+        item.querySelector('[data-media-check]')?.setAttribute('aria-pressed', String(selected));
+    });
+    const bar = $('media-selectbar');
+    if (bar) {
+        bar.hidden = !count;
+        setText('media-selectbar-count', count === 1 ? t('media_selected_one', '1 selected') : t('media_selected', '{count} selected', { count }));
+        const entries = [...mediaSelected].map(mediaEntry).filter(Boolean);
+        const all = mediaOrder().length;
+        setText('media-select-all-label', count >= all ? t('media_select_none', 'Select none') : t('media_select_all', 'Select all'));
+        const remove = $('media-select-delete');
+        show('media-select-delete', mediaListing?.access === 'write', 'inline-flex');
+        if (remove) {
+            const allowed = entries.length > 0 && entries.every(canDeleteMediaEntry);
+            remove.disabled = !allowed;
+            remove.title = allowed ? t('media_delete', 'Delete') : t('media_delete_not_allowed', 'You may not delete everything in a selected folder.');
+        }
+    }
+    updateFabVisibility();
+}
+
+function toggleMediaSelected(name, { range = false } = {}) {
+    if (!mediaEntry(name)) return;
+    if (range && mediaSelectAnchor && mediaSelectAnchor !== name) {
+        const order = mediaOrder();
+        const [from, to] = [order.indexOf(mediaSelectAnchor), order.indexOf(name)].sort((a, b) => a - b);
+        if (from >= 0) order.slice(from, to + 1).forEach(entry => mediaSelected.add(entry));
+    } else if (mediaSelected.has(name)) {
+        mediaSelected.delete(name);
+    } else {
+        mediaSelected.add(name);
+    }
+    mediaSelectAnchor = name;
+    syncMediaSelection();
+}
+
+function clearMediaSelection() {
+    if (!mediaSelected.size) return;
+    mediaSelected.clear();
+    mediaSelectAnchor = null;
+    syncMediaSelection();
+}
+
+function toggleSelectAllMedia() {
+    const order = mediaOrder();
+    if (mediaSelected.size >= order.length) return clearMediaSelection();
+    order.forEach(name => mediaSelected.add(name));
+    syncMediaSelection();
+}
+
+function openMediaEntry(name) {
+    const entry = mediaEntry(name);
+    if (entry?.folder) openMediaFolder(entry.folder.path);
+    else if (entry?.file) openMediaFile(entry.index);
+}
+
+function saveMediaLink(href, name = '') {
+    const link = Object.assign(document.createElement('a'), { href, download: name });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+/** One file comes as it is; several (or a folder) as one ZIP archive the server puts together. */
+async function downloadMediaEntries(names) {
+    const entries = names.map(mediaEntry).filter(Boolean);
+    if (!entries.length) return;
+    if (entries.length === 1 && entries[0].file) return saveMediaLink(fileUrl(API, entries[0].file, { download: true }), entries[0].name);
+    const folder = mediaFolder;
+    await once('media-download', () => mediaBusy(() => attempt(async () => {
+        showToast(t('media_download_preparing', 'Preparing the download…'));
+        const ticket = await apiJson('/media/download', 'POST', { path: folder, names: entries.map(entry => entry.name) });
+        saveMediaLink(`${API}/media/download/${encodeURIComponent(ticket.id)}`);
+    }, err => err.message || t('media_download_failed', 'The download could not be prepared'))));
+}
+
+/** The selection bar waits (its buttons off) while [action] runs. */
+async function mediaBusy(action) {
+    const bar = $('media-selectbar');
+    bar?.classList.add('is-busy');
+    try {
+        return await action();
+    } finally {
+        bar?.classList.remove('is-busy');
+    }
+}
+
+async function deleteMediaEntries(names) {
+    const entries = names.map(mediaEntry).filter(Boolean);
+    if (!entries.length || !entries.every(canDeleteMediaEntry)) return;
+    const [first] = entries;
+    const question = entries.length > 1
+        ? t('media_delete_confirm_many', 'Delete {count} items? Folders go with everything in them.', { count: entries.length })
+        : first.folder
+            ? t('media_delete_confirm_folder', 'Delete the folder "{name}" with everything in it?', { name: first.name })
+            : t('media_delete_confirm_file', 'Delete "{name}"?', { name: first.name });
+    if (!confirmAction(question)) return;
+    const folder = mediaFolder;
+    await once('media-delete', () => mediaBusy(() => attempt(async () => {
+        const result = await apiJson('/media/delete', 'POST', { path: folder, names: entries.map(entry => entry.name) });
+        const deleted = result.deleted || [];
+        deleted.forEach(name => mediaSelected.delete(name));
+        if (result.failed?.length) {
+            showToast(t('media_delete_partly', '{count} could not be deleted: {error}', { count: result.failed.length, error: result.failed[0].error }), 'error');
+        } else {
+            showToast(deleted.length === 1 ? t('media_deleted_one', 'Deleted') : t('media_deleted', '{count} items deleted', { count: deleted.length }));
+        }
+        if (mediaFolder === folder) await loadMediaFolder({ silent: true });
+    }, err => err.message || t('media_delete_failed', 'Could not delete'))));
+}
+
+const downloadMediaSelection = () => downloadMediaEntries([...mediaSelected]);
+const deleteMediaSelection = () => deleteMediaEntries([...mediaSelected]);
+
+// --- The menu of an entry (right click, the menu key or Shift + F10) ---
+function closeMediaMenu() {
+    const menu = $('media-menu');
+    if (!menu || menu.hidden) return;
+    menu.hidden = true;
+    menu.innerHTML = '';
+}
+
+function openMediaMenu(name, x, y) {
+    const menu = $('media-menu');
+    const entry = mediaEntry(name);
+    if (!menu || !entry) return;
+    // On a selected entry the menu is for the whole selection
+    const names = mediaSelected.has(name) && mediaSelected.size > 1 ? [...mediaSelected] : [name];
+    const several = names.length > 1;
+    const deletable = names.map(mediaEntry).filter(Boolean).every(canDeleteMediaEntry);
+    const items = [
+        !several && { action: 'open', icon: entry.folder ? 'folder' : 'eye', label: t('media_open', 'Open') },
+        { action: 'download', icon: 'download', label: several ? t('media_download_count', 'Download {count}', { count: names.length }) : t('media_download', 'Download') },
+        { action: 'select', icon: 'check', label: mediaSelected.has(name) ? t('media_unselect', 'Unselect') : t('media_select', 'Select') },
+        mediaListing?.access === 'write' && { action: 'delete', icon: 'trash', danger: true, disabled: !deletable, label: several ? t('media_delete_count', 'Delete {count}', { count: names.length }) : t('media_delete', 'Delete') }
+    ].filter(Boolean);
+    menu.innerHTML = `
+        <div class="media-menu-title">${escapeHtml(several ? t('media_selected', '{count} selected', { count: names.length }) : name)}</div>
+        ${items.map(item => `<button type="button" role="menuitem" class="media-menu-item${item.danger ? ' is-danger' : ''}" data-action="${item.action}"${item.disabled ? ` disabled title="${escapeHtml(t('media_delete_not_allowed', 'You may not delete everything in a selected folder.'))}"` : ''}>${svgIcon(item.icon, 16, 2.2)}<span>${escapeHtml(item.label)}</span></button>`).join('')}`;
+    menu.onclick = e => {
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        if (!action) return;
+        closeMediaMenu();
+        if (action === 'open') openMediaEntry(name);
+        else if (action === 'download') downloadMediaEntries(names);
+        else if (action === 'select') toggleMediaSelected(name);
+        else if (action === 'delete') deleteMediaEntries(names);
+    };
+    menu.hidden = false;
+    // Kept on screen
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    menu.querySelector('.media-menu-item:not(:disabled)')?.focus({ preventScroll: true });
+}
+
+(() => {
+    const list = $('media-list');
+    if (!list) return;
+    const LONG_PRESS_MS = 480;
+    let press = null;
+    let lastPointer = 'mouse';
+    const cancelPress = () => {
+        if (press) clearTimeout(press.timer);
+        press = null;
+    };
+    list.addEventListener('pointerdown', e => {
+        lastPointer = e.pointerType;
+        mediaSuppressClick = false;
+        const item = e.target.closest('[data-media-name]');
+        if (!item || e.pointerType === 'mouse' || e.target.closest('.media-folder-rights, [data-media-check]')) return;
+        const name = item.dataset.mediaName;
+        press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
+            press = null;
+            mediaSuppressClick = true;
+            navigator.vibrate?.(12);
+            toggleMediaSelected(name);
+        }, LONG_PRESS_MS) };
+    });
+    list.addEventListener('pointermove', e => {
+        if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => list.addEventListener(type, cancelPress));
+
+    list.addEventListener('click', e => {
+        const item = e.target.closest('[data-media-name]');
+        if (!item || e.target.closest('.media-folder-rights')) return;
+        const name = item.dataset.mediaName;
+        if (mediaSuppressClick) {
+            mediaSuppressClick = false;
+            return e.preventDefault();
+        }
+        if (e.target.closest('[data-media-check]') || mediaSelected.size || e.ctrlKey || e.metaKey || e.shiftKey) {
+            e.preventDefault();
+            return toggleMediaSelected(name, { range: e.shiftKey });
+        }
+        if (e.target.closest('[data-media-open]')) openMediaEntry(name);
+    });
+
+    list.addEventListener('contextmenu', e => {
+        const item = e.target.closest('[data-media-name]');
+        if (!item) return;
+        e.preventDefault();
+        // A finger held down selects (above) instead of opening the menu of the browser
+        if (lastPointer === 'touch' || lastPointer === 'pen') return;
+        const keyboard = !e.clientX && !e.clientY;
+        const rect = item.getBoundingClientRect();
+        openMediaMenu(item.dataset.mediaName, keyboard ? rect.left + 16 : e.clientX, keyboard ? rect.top + 16 : e.clientY);
+    });
+
+    document.addEventListener('pointerdown', e => {
+        if (!e.target.closest('#media-menu')) closeMediaMenu();
+    }, true);
+    window.addEventListener('resize', closeMediaMenu);
+    document.addEventListener('scroll', closeMediaMenu, true);
+    document.addEventListener('keydown', e => {
+        if (currentActiveTab !== 'media' || document.querySelector('.modal.show')) return;
+        const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
+        if (e.key === 'Escape') {
+            if (!$('media-menu')?.hidden) closeMediaMenu();
+            else clearMediaSelection();
+        } else if (!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && mediaListing) {
+            e.preventDefault();
+            mediaOrder().forEach(name => mediaSelected.add(name));
+            syncMediaSelection();
+        } else if (!typing && e.key === 'Delete' && mediaSelected.size && !$('media-select-delete')?.disabled) {
+            deleteMediaSelection();
+        }
+    });
+})();
 
 // --- Picture viewer: the small preview of the tile at once, then a preview as large as the screen; zoomed in (two
 // fingers, double tap, mouse wheel, the magnifier) the largest preview takes over so it stays sharp. The original is
@@ -3174,7 +3464,7 @@ function updateFabVisibility() {
     const songbookFab = currentActiveTab === 'songbook' && songbookCanManage;
     const prayersFab = currentActiveTab === 'prayers' && !!currentUser;
     // Media: upload and new folder where the member may write
-    const mediaFab = currentActiveTab === 'media' && mediaListing?.access === 'write' && mediaLoadedPath === mediaFolder;
+    const mediaFab = currentActiveTab === 'media' && mediaListing?.access === 'write' && mediaLoadedPath === mediaFolder && !mediaSelected.size;
     const visible = financesFab || eventsFab || pollsFab || songbookFab || prayersFab || mediaFab;
     show('fab-finances-items', financesFab, 'block');
     show('fab-events-items', eventsFab, 'block');
@@ -4422,7 +4712,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, allowPushOnDevice, sendTestPush, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, clearMediaSelection, toggleSelectAllMedia, downloadMediaSelection, deleteMediaSelection, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {

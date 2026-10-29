@@ -19,6 +19,31 @@ if (!hasPocketBase && process.env.REQUIRE_POCKETBASE === '1') {
 const PASSWORD = 'test-Passwort-1';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
+/** A ZIP archive's entries by name ({ name: text }; folders end with "/"), checked against their checksums. */
+function unzip(buffer) {
+  const zlib = require('zlib');
+  const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  assert.ok(end >= 0, 'end of the table of contents');
+  const count = buffer.readUInt16LE(end + 10);
+  let at = buffer.readUInt32LE(end + 16);
+  const entries = {};
+  for (let i = 0; i < count; i += 1) {
+    assert.equal(buffer.readUInt32LE(at), 0x02014b50);
+    const crc = buffer.readUInt32LE(at + 16);
+    const size = buffer.readUInt32LE(at + 24);
+    const nameLength = buffer.readUInt16LE(at + 28);
+    const local = buffer.readUInt32LE(at + 42);
+    const name = buffer.toString('utf8', at + 46, at + 46 + nameLength);
+    assert.equal(buffer.readUInt32LE(local), 0x04034b50, `local header of ${name}`);
+    const start = local + 30 + buffer.readUInt16LE(local + 26) + buffer.readUInt16LE(local + 28);
+    const data = buffer.subarray(start, start + size);
+    assert.equal(zlib.crc32(data) >>> 0, crc, `checksum of ${name}`);
+    entries[name] = data.toString('utf8');
+    at += 46 + nameLength + buffer.readUInt16LE(at + 30) + buffer.readUInt16LE(at + 32);
+  }
+  return entries;
+}
+
 const freePort = () => new Promise((resolve, reject) => {
   const server = net.createServer();
   server.unref();
@@ -1067,7 +1092,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.match(download.headers.get('content-disposition'), /^attachment; filename="plan.pdf"/);
     });
 
-    test('adding: files and folders where the group may write; nothing is ever replaced or deleted', async () => {
+    test('adding: files and folders where the group may write; nothing is ever replaced', async () => {
       assert.equal((await upload('max', 'Fotos/Jugend', [['a.jpg', 'x', 'image/jpeg']])).status, 403);
       assert.equal((await upload('max', 'Fotos/Privat', [['a.jpg', 'x', 'image/jpeg']])).status, 404);
       const first = await ok(upload('jule', 'Fotos/Jugend', [['Freizeit.jpg', 'one', 'image/jpeg'], ['Grüße.txt', 'hallo', 'text/plain']]));
@@ -1082,7 +1107,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       await ok(call('jule', 'POST', '/api/media/folder', { path: 'Fotos/Jugend', name: 'Sommer 2026' }));
       assert.equal((await call('jule', 'POST', '/api/media/folder', { path: 'Fotos/Jugend', name: 'Sommer 2026' })).status, 409);
       assert.equal((await ok(list('jule', 'Fotos/Jugend/Sommer 2026'))).access, 'write', 'inherits the rights');
-      // there is no way to delete
+      // adding never deletes, moves or copies anything
       assert.equal((await call('owner', 'DELETE', '/api/media/file?path=Fotos/Sommer.jpg')).status, 404);
       assert.ok(!cloud.requests.some((r) => ['DELETE', 'MOVE', 'COPY'].includes(r.method)));
       // nothing outside the base folder was ever asked for
@@ -1102,6 +1127,57 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       await ok(rules('Intern', { '*': 'hide' }));
       await ok(rules('Fotos/Jugend', { [jugend]: 'write' }));
       assert.equal((await ok(list('jule', 'Fotos/Jugend'))).access, 'write');
+    });
+
+    test('several at once: download as one archive, delete where the member may write everywhere in it', async () => {
+      const remove = (who, folder, entries) => call(who, 'POST', '/api/media/delete', { path: folder, names: entries });
+      cloud.addFile('Agora/Fotos/Jugend/Sommer 2026/Bild 1.jpg', 'bild-eins', 'image/jpeg');
+      cloud.addFile('Agora/Fotos/Jugend/Sommer 2026/Leiter/liste.txt', 'nur lesen', 'text/plain');
+      cloud.addFile('Agora/Fotos/Jugend/Sommer 2026/Versteckt/x.txt', 'nicht für Jule', 'text/plain');
+      await ok(rules('Fotos/Jugend/Sommer 2026/Leiter', { [jugend]: 'read' }));
+      await ok(rules('Fotos/Jugend/Sommer 2026/Versteckt', { [jugend]: 'hide' }));
+
+      // read only: nothing to delete; nothing outside the folder or the base folder itself
+      assert.equal((await remove('max', 'Fotos', ['Sommer.jpg'])).status, 403);
+      assert.equal((await remove('jule', 'Fotos/Jugend', ['../Sommer.jpg'])).status, 400);
+      assert.equal((await remove('jule', 'Fotos/Jugend', [])).status, 400);
+      assert.equal((await remove('owner', '', [''])).status, 400);
+      assert.ok(cloud.nodes.has('Agora/Fotos/Sommer.jpg'));
+
+      // the listing says which folders can go: not one with a folder below that the member may only read
+      const before = await ok(list('jule', 'Fotos/Jugend'));
+      assert.equal(before.folders.find((f) => f.name === 'Sommer 2026').canDelete, false);
+      assert.equal((await ok(list('owner', 'Fotos/Jugend'))).folders.find((f) => f.name === 'Sommer 2026').canDelete, true);
+
+      // one archive: the folder with what Jule may see in it (not the hidden folder) and a file next to it
+      const asked = await ok(call('jule', 'POST', '/api/media/download', { path: 'Fotos/Jugend', names: ['Sommer 2026', 'Freizeit.jpg'] }));
+      assert.equal(asked.files, 3);
+      assert.equal((await call('max', 'GET', asked.url)).status, 404, 'only for the member who asked');
+      const zipped = await fetch(`${base}${asked.url}`, { headers: { Authorization: `Bearer ${tokens.jule}` } });
+      assert.equal(zipped.status, 200);
+      assert.equal(zipped.headers.get('content-type'), 'application/zip');
+      assert.match(zipped.headers.get('content-disposition'), /^attachment; filename="Jugend.zip"/);
+      const archive = unzip(Buffer.from(await zipped.arrayBuffer()));
+      assert.deepEqual(Object.keys(archive).sort(), ['Freizeit.jpg', 'Sommer 2026/', 'Sommer 2026/Bild 1.jpg', 'Sommer 2026/Leiter/', 'Sommer 2026/Leiter/liste.txt']);
+      assert.equal(archive['Sommer 2026/Bild 1.jpg'], 'bild-eins');
+      assert.equal(archive['Freizeit.jpg'], 'one');
+      assert.equal((await call('max', 'POST', '/api/media/download', { path: 'Intern', names: ['notiz.txt'] })).status, 404);
+
+      // delete: files where Jule may write; the folder only once she may write everywhere in it
+      const done = await ok(remove('jule', 'Fotos/Jugend', ['Freizeit (2).jpg', 'Sommer 2026']));
+      assert.deepEqual(done.deleted, ['Freizeit (2).jpg']);
+      assert.equal(done.failed[0].name, 'Sommer 2026');
+      assert.ok(!cloud.nodes.has('Agora/Fotos/Jugend/Freizeit (2).jpg'));
+      assert.ok(cloud.nodes.has('Agora/Fotos/Jugend/Sommer 2026/Leiter/liste.txt'));
+      assert.equal((await remove('jule', 'Fotos/Jugend', ['Sommer 2026'])).status, 403);
+      await ok(rules('Fotos/Jugend/Sommer 2026/Leiter', { [jugend]: 'write' }));
+      await ok(rules('Fotos/Jugend/Sommer 2026/Versteckt', {}));
+      assert.deepEqual((await ok(remove('jule', 'Fotos/Jugend', ['Sommer 2026']))).deleted, ['Sommer 2026']);
+      assert.ok(![...cloud.nodes.keys()].some((key) => key.startsWith('Agora/Fotos/Jugend/Sommer 2026')));
+      // its rights went with it
+      assert.ok(!(await ok(call('owner', 'GET', '/api/media/rules'))).rules.some((r) => r.path.startsWith('Fotos/Jugend/Sommer 2026')));
+      // already gone (another device was quicker): done all the same
+      assert.deepEqual((await ok(remove('jule', 'Fotos/Jugend', ['Sommer 2026']))).deleted, ['Sommer 2026']);
     });
 
     test('a deleted account loses its rules', async () => {

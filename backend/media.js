@@ -11,7 +11,9 @@
 // access" for a group also holds when all members may read). Someone in several groups with rules gets the most one
 // of these groups gets. Whoever has no access to the base folder does not see the media library at all, whatever
 // the folders below say. Members with the manage_media permission see every folder, upload everywhere and set the
-// rules. Nobody deletes, renames, moves or overwrites anything through Agora.
+// rules. Write access also allows deleting (in Nextcloud it goes to the trash bin): a file where one may write in its
+// folder, a folder only when one may write in it, in the folder around it and in every folder below it (nobody
+// deletes what they cannot see or change). Nobody renames, moves or overwrites anything through Agora.
 //
 // Paths are relative to the configured base folder in the bot account: "" is the base folder, "Photos/2026" a
 // folder below it. Only clean paths get through (no "..", no empty parts), so nothing outside the base folder can
@@ -122,6 +124,26 @@ function canSeeFolder(rules, folder, user) {
   return passagesBelow(rules, folder, user).size > 0;
 }
 
+/**
+ * Whether [user] may delete the folder [folder] (with everything in it): write access to it, to the folder around
+ * it and to every folder below it with rules of its own (only there can access change). Never the base folder.
+ */
+function canDeleteFolder(rules, folder, user) {
+  if (!folder) return false;
+  if (folderAccess(rules, parentOf(folder), user) !== 'write' || folderAccess(rules, folder, user) !== 'write') return false;
+  const prefix = `${folder}/`;
+  return Object.keys(rules || {}).every((rulePath) => !rulePath.startsWith(prefix) || folderAccess(rules, rulePath, user) === 'write');
+}
+
+/** Whether [user] may delete the file [file]: write access to its folder. */
+const canDeleteFile = (rules, file, user) => !!file && folderAccess(rules, parentOf(file), user) === 'write';
+
+/** The rules without those of [folder] and the folders below it (a deleted folder leaves no rules behind). */
+function rulesWithout(rules, folder) {
+  const prefix = `${folder}/`;
+  return Object.fromEntries(Object.entries(rules || {}).filter(([rulePath]) => rulePath !== folder && !rulePath.startsWith(prefix)));
+}
+
 /** Whether the Media tile is offered to [user]: managers always, others with access to the base folder. */
 const hasAnyAccess = canUseMedia;
 
@@ -139,7 +161,7 @@ function filterListing(rules, folder, user, { folders = [], files = [] }) {
     const entryPath = joinPath(folder, entry.name);
     const entryAccess = folderAccess(rules, entryPath, user);
     if (entryAccess === 'none' && !(passages ? passages.has(entry.name) : canSeeFolder(rules, entryPath, user))) continue;
-    const item = { ...entry, path: entryPath, access: entryAccess };
+    const item = { ...entry, path: entryPath, access: entryAccess, canDelete: canDeleteFolder(rules, entryPath, user) };
     if (manager) {
       const own = rules?.[entryPath];
       item.hasRules = !!own && Object.keys(own).length > 0;
@@ -280,6 +302,9 @@ module.exports = {
   groupLevel,
   folderAccess,
   canSeeFolder,
+  canDeleteFolder,
+  canDeleteFile,
+  rulesWithout,
   canUseMedia,
   hasAnyAccess,
   filterListing,

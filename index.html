@@ -771,6 +771,25 @@
                 </div>
             </div>
             <nav id="media-crumbs" class="media-crumbs" data-i18n-aria-label="media_path" aria-label="Folder path"></nav>
+            <!-- Several selected (hold a finger on an entry, the round mark, Ctrl/Cmd + click): download or delete them together -->
+            <div id="media-selectbar" class="media-selectbar" role="toolbar" data-i18n-aria-label="media_selection" aria-label="Selection" hidden>
+                <button type="button" class="media-selectbar-btn is-close" onclick="clearMediaSelection()" data-i18n-title="media_select_clear" title="Clear selection" data-i18n-aria-label="media_select_clear" aria-label="Clear selection">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <span id="media-selectbar-count" class="media-selectbar-count" aria-live="polite"></span>
+                <button type="button" class="media-selectbar-btn is-text" onclick="toggleSelectAllMedia()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg>
+                    <span id="media-select-all-label" data-i18n="media_select_all">Select all</span>
+                </button>
+                <button type="button" id="media-select-download" class="media-selectbar-btn" onclick="downloadMediaSelection()" data-i18n-title="media_download" title="Download">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span data-i18n="media_download">Download</span>
+                </button>
+                <button type="button" id="media-select-delete" class="media-selectbar-btn is-danger" onclick="deleteMediaSelection()" data-i18n-title="media_delete" title="Delete">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    <span data-i18n="media_delete">Delete</span>
+                </button>
+            </div>
             <div id="media-upload" class="media-upload" hidden>
                 <div class="media-upload-bar"><span id="media-upload-fill"></span></div>
                 <span id="media-upload-text" class="media-upload-text"></span>
@@ -1798,6 +1817,9 @@
     </div>
 </div>
 
+<!-- Media: the menu of a folder or file (right click), placed at the pointer -->
+<div id="media-menu" class="media-menu" role="menu" hidden></div>
+
 <!-- Media: picture viewer (fills the screen, a sharp preview follows the thumbnail; the original on request) -->
 <div id="media-viewer-modal" class="modal media-viewer" role="dialog" aria-modal="true" aria-labelledby="media-viewer-name">
     <div class="media-viewer-frame" tabindex="-1">
@@ -1889,7 +1911,7 @@
             <button type="button" class="close-btn" onclick="closeModal('media-rights-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body-enhanced plan-sheet-body">
-            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload and create folders. No access: does not see the folder. The most specific right counts: a person's goes before their groups', a group's before the one for all members (someone in several groups gets the most of these). Whoever has no access to the base folder does not see the media library at all. Nothing can be deleted.</p>
+            <p class="media-rights-hint" data-i18n="media_rights_hint">A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload, create folders and delete. No access: does not see the folder. The most specific right counts: a person's goes before their groups', a group's before the one for all members (someone in several groups gets the most of these). Whoever has no access to the base folder does not see the media library at all. Write also allows deleting (in Nextcloud it goes to the trash bin, if switched on there); a folder only for whoever may write everywhere in it.</p>
             <div id="media-rights-list" class="media-rights-list"></div>
             <div class="media-rights-add">
                 <button type="button" id="media-rights-add-btn" class="media-rights-add-btn" onclick="openMediaRightsAdd()">

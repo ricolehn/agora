@@ -1,4 +1,4 @@
-// A small stand-in for Nextcloud in the API tests: WebDAV (PROPFIND, GET with ranges, PUT, MKCOL) below
+// A small stand-in for Nextcloud in the API tests: WebDAV (PROPFIND, GET with ranges, PUT, MKCOL, DELETE) below
 // /remote.php/dav/files/<user>/ and the preview endpoint, on a free local port, with files kept in memory.
 const http = require('http');
 const crypto = require('crypto');
@@ -119,6 +119,15 @@ ${node.dir ? '<d:propstat><d:prop><d:getcontenttype/><nc:has-preview/></d:prop><
           }
           addDir(p);
           res.writeHead(201);
+          return res.end();
+        }
+        case 'DELETE': {
+          if (!node || !p) {
+            res.writeHead(p ? 404 : 403);
+            return res.end();
+          }
+          for (const nodePath of [...nodes.keys()]) if (nodePath === p || nodePath.startsWith(`${p}/`)) nodes.delete(nodePath);
+          res.writeHead(204);
           return res.end();
         }
         default:
