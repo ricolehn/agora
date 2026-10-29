@@ -810,11 +810,21 @@ function handleHistoryBack() {
         closeModal(modalStack[modalStack.length - 1], true);
         return;
     }
-    // Back from a tab entry: one level up first (settings page → menu, an app → Extras), then the start page.
-    // Going up keeps the single "not home" history entry, so browser and app never disagree
+    // A level the member went down to by tapping (an app from Extras, a folder, a settings page) has its own entry:
+    // back only goes up, it adds nothing. (An entry pushed here, without a tap, would make Chrome skip the one
+    // below it on the next back gesture - straight out of the app.)
+    if (tabHistoryPushed && historyLevels.length) {
+        historyLevels.pop();
+        if (settingsPageOpen()) closeSettingsPage(true);
+        else if (currentActiveTab === 'media' && mediaFolder) openMediaFolder(parentPath(mediaFolder));
+        else if (HUB_TABS.includes(currentActiveTab)) switchTab('hub', 'history');
+        return;
+    }
+    // Back from a tab entry without such levels (opened from an address): one level up first (settings page →
+    // menu, an app → Extras), then the start page. Going up keeps the single "not home" history entry
     if (tabHistoryPushed && !history.state?.tab) {
         if (settingsPageOpen()) {
-            closeSettingsPage();
+            closeSettingsPage(true);
             history.pushState({ tab: currentActiveTab }, '');
             return;
         }
@@ -1107,7 +1117,11 @@ function renderHub() {
 }
 
 function openHubApp(key) {
-    HUB_APPS.find(app => app.key === key && !app.soon)?.open?.();
+    const app = HUB_APPS.find(entry => entry.key === key && !entry.soon);
+    if (!app) return;
+    const fromHub = currentActiveTab === 'hub';
+    app.open();
+    if (fromHub && currentActiveTab !== 'hub') pushHistoryLevel('app');
 }
 
 // --- Media (Extras): the community's Nextcloud folder as a library. The server checks every request against the
@@ -1214,8 +1228,17 @@ async function loadMediaFolder({ silent = false } = {}) {
 }
 
 function mediaBack() {
-    if (mediaFolder) openMediaFolder(parentPath(mediaFolder));
-    else switchTab('hub');
+    if (mediaFolder) {
+        leaveHistoryLevels('folder');
+        openMediaFolder(parentPath(mediaFolder));
+    } else switchTab('hub');
+}
+
+/** A folder of the path above the open one: the history steps of the folders in between are left behind. */
+function openMediaCrumb(path) {
+    const depth = folder => breadcrumb(folder).length;
+    leaveHistoryLevels('folder', depth(mediaFolder) - depth(path));
+    openMediaFolder(path);
 }
 
 function setMediaSort(value) {
@@ -1235,8 +1258,8 @@ function renderMediaCrumbs() {
     // In the base folder the title says where you are; the path only appears below it
     target.hidden = !crumbs.length && !badge;
     target.innerHTML = `
-        ${crumbs.length ? `<button type="button" class="media-crumb" onclick="openMediaFolder('')">${svgIcon('folder', 14, 2.2)}<span>${t('media_title', 'Media')}</span></button>` : ''}
-        ${crumbs.map((crumb, index) => `<span class="media-crumb-sep" aria-hidden="true">${svgIcon('chevronRight', 12, 2.4)}</span><button type="button" class="media-crumb${index === crumbs.length - 1 ? ' is-current" aria-current="page' : ''}" onclick="openMediaFolder(${jsArg(crumb.path)})" title="${escapeHtml(crumb.name)}"><span>${escapeHtml(crumb.name)}</span></button>`).join('')}
+        ${crumbs.length ? `<button type="button" class="media-crumb" onclick="openMediaCrumb('')">${svgIcon('folder', 14, 2.2)}<span>${t('media_title', 'Media')}</span></button>` : ''}
+        ${crumbs.map((crumb, index) => `<span class="media-crumb-sep" aria-hidden="true">${svgIcon('chevronRight', 12, 2.4)}</span><button type="button" class="media-crumb${index === crumbs.length - 1 ? ' is-current" aria-current="page' : ''}" onclick="openMediaCrumb(${jsArg(crumb.path)})" title="${escapeHtml(crumb.name)}"><span>${escapeHtml(crumb.name)}</span></button>`).join('')}
         ${badge}`;
 }
 
@@ -1439,7 +1462,10 @@ function toggleSelectAllMedia() {
 
 function openMediaEntry(name) {
     const entry = mediaEntry(name);
-    if (entry?.folder) openMediaFolder(entry.folder.path);
+    if (entry?.folder) {
+        pushHistoryLevel('folder');
+        openMediaFolder(entry.folder.path);
+    }
     else if (entry?.file) openMediaFile(entry.index);
 }
 
@@ -3428,10 +3454,12 @@ function renderSettingsProfile(root, name) {
 
 const settingsRoot = () => $(currentActiveTab === 'settings' ? 'settings' : 'user-settings');
 
-function openSettingsPage(key) {
+function openSettingsPage(key, { fromRoute = false } = {}) {
     const root = settingsRoot();
     const page = SETTINGS_PAGES.find(p => p.key === key);
     if (!root || !page) return;
+    // From the menu to a page: a level of its own (moving between pages beside the menu is not one)
+    if (!fromRoute && !root.dataset.page) pushHistoryLevel('page');
     root.dataset.page = key;
     syncUrl();
     const title = root.querySelector('.settings-nav-title');
@@ -3442,9 +3470,10 @@ function openSettingsPage(key) {
     title.focus({ preventScroll: true });
 }
 
-function closeSettingsPage() {
+function closeSettingsPage(fromHistory = false) {
     const root = settingsRoot();
     if (!root) return;
+    if (fromHistory !== true) leaveHistoryLevels('page');
     const left = root.dataset.page;
     delete root.dataset.page;
     renderSettingsMenu(root);
@@ -3537,15 +3566,40 @@ TAB_LOADERS['user-settings'] = TAB_LOADERS.settings;
 // --- Tab history: like the Android app, back from any tab (or the settings) returns to the start page ---
 const HOME_TAB = 'user-overview';
 let tabHistoryPushed = false;
+// One entry above the "not home" entry per level the member went down to by tapping: 'app' (from Extras),
+// 'folder' (in the media library), 'page' (a settings page)
+const historyLevels = [];
 
-function syncTabHistory(tabName) {
+/** Called on a tap that goes one level down: the entry is made while the tap counts as the member's own. */
+function pushHistoryLevel(kind) {
+    if (!tabHistoryPushed) return;
+    history.pushState({ tab: currentActiveTab, level: kind }, '');
+    historyLevels.push(kind);
+}
+
+/** Going up in the app itself (its back button, the folder path): up to [max] entries of [kind] are left behind. */
+function leaveHistoryLevels(kind, max = 1) {
+    let steps = 0;
+    while (steps < max && historyLevels[historyLevels.length - 1] === kind) {
+        historyLevels.pop();
+        steps++;
+    }
+    if (steps) programmaticBack(steps);
+}
+
+function syncTabHistory(tabName, previousTab) {
+    // Another tab: the levels of this one are left behind
+    const levels = tabName !== previousTab ? historyLevels.splice(0).length : 0;
     if (tabName === HOME_TAB) {
         if (tabHistoryPushed && history.state?.tab) {
             tabHistoryPushed = false;
-            programmaticBack();
+            programmaticBack(levels + 1);
+        } else if (levels) {
+            programmaticBack(levels);
         }
         return;
     }
+    if (levels) programmaticBack(levels);
     // One history entry for "somewhere other than home"; moving between tabs only replaces it
     if (tabHistoryPushed && history.state?.tab) history.replaceState({ tab: tabName }, '');
     else {
@@ -3596,6 +3650,7 @@ function switchTab(tabName, source) {
         }
     }
 
+    const previousTab = currentActiveTab;
     currentActiveTab = tabName;
     updateNavVisibility();
 
@@ -3627,7 +3682,7 @@ function switchTab(tabName, source) {
         if (active) el.setAttribute('aria-current', 'page');
         else el.removeAttribute('aria-current');
     });
-    if (source !== 'history' && isAuthenticated) syncTabHistory(tabName);
+    if (source !== 'history' && isAuthenticated) syncTabHistory(tabName, previousTab);
     TAB_LOADERS[tabName]?.();
     syncUrl();
 }
@@ -3729,7 +3784,7 @@ async function applyRoute(path) {
     if (tab === 'media') mediaFolder = folderFromRoute(known || head === tab ? rest : []);
     switchTab(tab);
     if (currentActiveTab === 'finances' && sub === 'members') switchFinanceSubpage('members');
-    else if ((currentActiveTab === 'settings' || currentActiveTab === 'user-settings') && sub && SETTINGS_PAGES.some(p => p.key === sub) && settingsPageAvailable($(currentActiveTab), sub)) openSettingsPage(sub);
+    else if ((currentActiveTab === 'settings' || currentActiveTab === 'user-settings') && sub && SETTINGS_PAGES.some(p => p.key === sub) && settingsPageAvailable($(currentActiveTab), sub)) openSettingsPage(sub, { fromRoute: true });
     else if (currentActiveTab === 'super-admin-settings' && sub && SYS_TAB_LOADERS[sub]) switchSysSettingsTab(sub);
     else if (currentActiveTab === 'mentoring' && sub === 'chat' && extra) openMentoringChatDirect(extra);
     else if (currentActiveTab === 'mentoring' && sub && MENTORING_SUBTABS[sub] && $(`mentoring-tab-${sub}`)?.style.display !== 'none') switchMentoringSubTab(sub);
@@ -4712,7 +4767,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, allowPushOnDevice, sendTestPush, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, clearMediaSelection, toggleSelectAllMedia, downloadMediaSelection, deleteMediaSelection, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, openMediaCrumb, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, clearMediaSelection, toggleSelectAllMedia, downloadMediaSelection, deleteMediaSelection, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
