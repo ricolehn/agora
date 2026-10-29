@@ -1,4 +1,4 @@
-const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords } = require('./pocketbase');
+const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson } = require('./pocketbase');
 const { toDateStr } = require('./utils/date');
 const { buildEventContext } = require('./eventContext');
 
@@ -42,7 +42,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
   try {
     const canViewFinances = options.canViewFinances === true;
 
-    const [people, expenses, users, settings, requests, donations] = await Promise.all([
+    const [allPeople, expenses, users, settings, requests, donations] = await Promise.all([
       listPeopleRecords(appConfig).catch(() => []),
       canViewFinances ? listExpenseRecords(appConfig).catch(() => []) : Promise.resolve([]),
       listUserRecords(appConfig).catch(() => []),
@@ -57,11 +57,15 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
     const todayD = String(today.getDate()).padStart(2, '0');
     const todayStr = `${todayY}-${todayM}-${todayD}`;
 
+    // Deleted people are no members any more (they used to show up as overdue): only their payments stay in the books
+    const people = allPeople.filter((p) => !isDeletedPerson(p));
+    const deletedPeople = allPeople.filter(isDeletedPerson);
+
     // Aggregate summary statistics
     const membersByStatus = {};
     let totalPaidAcrossMembers = 0;
-    for (const p of people) {
-      if (!p.isDeleted && !p.data?.isDeleted) {
+    for (const p of allPeople) {
+      if (!isDeletedPerson(p)) {
         const status = p.status || 'unknown';
         membersByStatus[status] = (membersByStatus[status] || 0) + 1;
       }
@@ -132,6 +136,15 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
       };
     });
 
+    // Booked payments of deleted people: part of the books, but not of the member list
+    const deletedPeoplePayments = canViewFinances ? deletedPeople.flatMap((p) => (Array.isArray(p.data?.payments) ? p.data.payments : [])
+      .map((pay) => ({
+        name: p.name || '',
+        amount: Math.round(Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+        date: pay.date || '',
+        description: pay.description || ''
+      }))) : [];
+
     // Build expense records (empty if not authorized)
     const expenseRecords = canViewFinances ? expenses.map((e) => ({
       id: e.expenseKey,
@@ -201,6 +214,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
         pausiert: settings.pausiert ?? null
       };
       snapshot.expenses = expenseRecords;
+      snapshot.paymentsOfDeletedMembers = deletedPeoplePayments;
       snapshot.donations = donations;
       snapshot.requests = requestRecords;
     } else if (requestRecords.length > 0) {
@@ -278,7 +292,7 @@ function buildSystemPrompt(appName, dbSnapshot, options = {}) {
     return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, events and general app usage. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.
 IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.\n\nCurrent database context:\n${dbSnapshot}`;
   }
-  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.\n\nCurrent database context:\n${dbSnapshot}`;
+  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers".\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
 /**

@@ -543,6 +543,57 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal(await hasAccount(), false, 'the account goes with its last entry');
   });
 
+  test('a deleted person is no member any more: only the payments stay, nobody sees them as overdue', async () => {
+    const key = 'gerda-deleted';
+    await ok(call('owner', 'PUT', '/api/db', { path: `people/${key}`, value: {
+      id: key, uid: '', name: 'Gerda Test', status: 'vollverdiener', memberSince: '2020-01-01', notes: 'Hauptstraße 1',
+      statusHistory: [{ status: 'vollverdiener', startDate: '2020-01-01' }],
+      payments: [{ id: 'gerda-pay', amount: 15, date: '2020-02-01', description: 'Beitrag' }]
+    } }));
+    assert.equal((await read('owner', `people/${key}`))._statusMeta.isOverdue, true, 'years without paying');
+    await ok(call('owner', 'DELETE', '/api/db', { path: `people/${key}` }));
+
+    const left = await read('owner', `people/${key}`);
+    assertHas(left, { name: 'Gerda Test', isDeleted: true, memberSince: '', status: '', statusHistory: [], _overdueAmount: 0 });
+    assert.equal(left._statusMeta.isOverdue, false);
+    assert.equal(left.notes, undefined, 'the rest of the entry is gone');
+    assert.deepEqual(left.payments.map((p) => p.id), ['gerda-pay'], 'the payment stays');
+    const ledger = await ok(call('treasurer', 'GET', '/api/transactions?search=Gerda'));
+    assert.deepEqual(ledger.items.map((t) => [t.who, t.amount]), [['Gerda Test', 15]], 'still in the books under her name');
+
+    // A new member with the same name neither sees the deleted entry nor takes it over
+    const namesake = await account('gerda', 'Gerda');
+    assert.deepEqual(Object.keys(await read('gerda', 'people')), [namesake]);
+    assert.equal((await call('gerda', 'GET', `/api/db?path=people/${key}`)).status, 403);
+    assert.equal((await call('gerda', 'PATCH', '/api/db', { path: `people/${key}`, value: { uid: namesake } })).status, 403);
+
+    // The AI gets her payment for the books, but not her as a member
+    const http = require('http');
+    let prompt = '';
+    const provider = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (part) => { raw += part; });
+      req.on('end', () => {
+        prompt = JSON.parse(raw).messages.find((m) => m.role === 'system').content;
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'OK' } }] })}\n\ndata: [DONE]\n\n`);
+      });
+    });
+    await new Promise((resolve) => provider.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${provider.address().port}/v1`;
+      await ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, baseUrl, apiKey: 'test-key', model: 'm' }));
+      await ok(call('owner', 'POST', '/api/ai/chat', { messages: [{ role: 'user', content: 'Wer ist überfällig?' }] }));
+      const snapshot = JSON.parse(prompt.slice(prompt.indexOf('{')));
+      assert.ok(!snapshot.members.some((m) => m.id === key), 'not in the member list');
+      assert.deepEqual(snapshot.paymentsOfDeletedMembers.filter((p) => p.name === 'Gerda Test'),
+        [{ name: 'Gerda Test', amount: 15, date: '2020-02-01', description: 'Beitrag' }]);
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
   test('mentoring conversations are only readable by mentor and mentee, not even by admins', async () => {
     const mentor = await account('mentor', 'Martha');
     const mentee = await account('mentee', 'Moritz');

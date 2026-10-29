@@ -34,6 +34,8 @@ const {
   getPeopleRecord,
   upsertPeopleRecord,
   removePeopleRecord,
+  isDeletedPerson,
+  pruneDeletedPeopleRecords,
   listExpenseRecords,
   syncExpenseRecords,
   listRequestRecords,
@@ -143,6 +145,7 @@ async function initializeRuntime(config) {
   runAutomatedStandingOrders(context.appConfig);
   purgeExpiredRequests(context.appConfig);
   repairRequestAuthors(context.appConfig);
+  pruneDeletedPeopleRecords(context.appConfig);
 }
 
 function setRuntimeConfig(config) {
@@ -609,7 +612,7 @@ async function readLogicalPath(targetPath, query, user) {
       const record = await getPeopleRecord(context.appConfig, id);
       const value = record?.data || null;
       // By name only while the record is not linked to an account yet (the name alone proves nothing)
-      const unlinkedNameMatch = !value?.uid && !record?.uid && isOwnFullNameMatch(user, value?.name || record?.name);
+      const unlinkedNameMatch = !value?.uid && !record?.uid && !isDeletedPerson(record) && isOwnFullNameMatch(user, value?.name || record?.name);
       if (value && !user.canViewFinances && value.uid !== user.uid && !unlinkedNameMatch) {
         const error = new Error('Forbidden');
         error.status = 403;
@@ -621,7 +624,7 @@ async function readLogicalPath(targetPath, query, user) {
     let people = await listPeopleRecords(context.appConfig, query);
     if (!user.canViewFinances) {
       people = people.filter((record) => record.uid === user.uid || (record.data && record.data.uid === user.uid)
-        || (!record.uid && !record.data?.uid && isOwnFullNameMatch(user, record.name || record.data?.name)));
+        || (!record.uid && !record.data?.uid && !isDeletedPerson(record) && isOwnFullNameMatch(user, record.name || record.data?.name)));
     }
     return {
       value: objectFromRecords(people, 'personKey', (record) => record.data),
@@ -810,7 +813,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     if (!user.canManageFinances) {
       const requestedUid = value && typeof value === 'object' ? value.uid : undefined;
       const onlyUidUpdate = value && typeof value === 'object' && Object.keys(value).every((key) => key === 'uid');
-      const isAllowedLink = existingValue && onlyUidUpdate && requestedUid === user.uid && (!existingValue.uid || existingValue.uid === user.uid) && isOwnFullNameMatch(user, existingValue.name || existing?.name);
+      const isAllowedLink = existingValue && !isDeletedPerson(existing) && onlyUidUpdate && requestedUid === user.uid && (!existingValue.uid || existingValue.uid === user.uid) && isOwnFullNameMatch(user, existingValue.name || existing?.name);
       if (!isAllowedLink) {
         throw Object.assign(new Error('Finance management rights required'), { status: 403 });
       }

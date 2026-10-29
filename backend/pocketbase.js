@@ -1511,7 +1511,7 @@ async function removePeopleRecord(appConfig, personKey) {
     //    member) or it is the owner's: deleting the duplicate must not take the member's account with it
     const uid = existing.uid || (existing.data && existing.data.uid);
     const sharedWith = uid ? (await listAllRecords('people', pbFilterEquals('uid', uid), appConfig))
-      .filter((p) => p.personKey !== String(personKey) && !(p.isDeleted || p.data?.isDeleted)) : [];
+      .filter((p) => p.personKey !== String(personKey) && !isDeletedPerson(p)) : [];
     const linkedUser = uid && !sharedWith.length ? await getUserRecord(appConfig, uid).catch(() => null) : null;
     if (linkedUser && linkedUser.owner !== true && linkedUser.superAdmin !== true) {
       try {
@@ -1527,29 +1527,57 @@ async function removePeopleRecord(appConfig, personKey) {
       statusHistory.map((entry) => deleteRecord('status_history', entry.id, appConfig))
     );
 
-    // 3. Keep payments, name, totalPaid, but absolutely delete/clear the rest
-    // Set isDeleted = true, status = "", standingOrders = [] inside data JSON blob and people record
-    const updatedData = {
-      ...(existing.data || {}),
-      status: '',
-      standingOrders: [],
-      uid: '',
-      isDeleted: true
-    };
-
-    const updatePayload = {
-      personKey: String(personKey),
-      uid: '',
-      name: toOptionalText(existing.name),
-      status: '',
-      memberSince: toOptionalText(existing.memberSince),
-      originalMemberSince: toOptionalText(existing.originalMemberSince || existing.memberSince),
-      totalPaid: existing.totalPaid || 0,
-      data: updatedData
-    };
-
-    await updateRecord('people', existing.id, updatePayload, appConfig);
+    // 3. Only the bookkeeping record stays: the payments (own records) under the name. Everything else about the
+    //    person goes, so nothing lists them as a member any more or works out what they still owe
+    await updateRecord('people', existing.id, deletedPersonPayload(existing), appConfig);
   }
+}
+
+function isDeletedPerson(record) {
+  return Boolean(record && (record.isDeleted || record.data?.isDeleted));
+}
+
+// What is left of a deleted person: key, name and the total of the kept payments
+function deletedPersonPayload(record) {
+  const personKey = String(record.personKey);
+  const name = toOptionalText(record.name || record.data?.name);
+  return {
+    personKey,
+    uid: '',
+    name,
+    status: '',
+    memberSince: '',
+    originalMemberSince: '',
+    totalPaid: toFiniteNumber(record.totalPaid) || 0,
+    data: { id: record.data?.id || personKey, name, isDeleted: true }
+  };
+}
+
+/**
+ * Earlier deletions kept the whole entry (member since, status history, notes) next to the payments, so the
+ * deleted person still showed up as an overdue member (AI chat). Cuts those entries down to the bookkeeping record.
+ */
+async function pruneDeletedPeopleRecords(appConfig) {
+  if (!appConfig) return { pruned: 0 };
+  let pruned = 0;
+  try {
+    const people = (await listAllRecords('people', '', appConfig)).filter(isDeletedPerson);
+    for (const record of people) {
+      const payload = deletedPersonPayload(record);
+      const history = await listAllRecords('status_history', pbFilterEquals('personKey', payload.personKey), appConfig);
+      const dataKeys = Object.keys(record.data || {}).sort().join(',');
+      const clean = !history.length && !record.uid && !record.status && !record.memberSince && !record.originalMemberSince
+        && dataKeys === 'id,isDeleted,name';
+      if (clean) continue;
+      await Promise.all(history.map((entry) => deleteRecord('status_history', entry.id, appConfig)));
+      await queueRecordWrite(`people:${payload.personKey}`, () => updateRecord('people', record.id, payload, appConfig));
+      pruned += 1;
+    }
+    if (pruned) console.log(`[People] Cut ${pruned} deleted entr${pruned === 1 ? 'y' : 'ies'} down to their payments`);
+  } catch (error) {
+    console.error('[People] Pruning deleted entries failed:', error.message);
+  }
+  return { pruned };
 }
 
 async function listExpenseRecords(appConfig) {
@@ -2157,6 +2185,8 @@ module.exports = {
   queueRecordWrite,
   isOutdatedVersion,
   removePeopleRecord,
+  isDeletedPerson,
+  pruneDeletedPeopleRecords,
   listExpenseRecords,
   syncExpenseRecords,
   listRequestRecords,

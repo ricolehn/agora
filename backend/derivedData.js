@@ -294,7 +294,8 @@ function preprocessPersonServerSide(person, settings) {
     const { paidUntil, remainingCredit } = calculatePaymentStatus(person, settings);
     const currentBalance = calculateCurrentBalance(person, settings);
     const { anticipated, hasActiveSO } = calculateAnticipatedStandingOrderPayment(person);
-    const isCurrent = (currentBalance + anticipated) >= -AMOUNT_COMPARISON_EPSILON;
+    // A deleted person is no member any more: only their payments stay, nothing is owed
+    const isCurrent = person.isDeleted === true || (currentBalance + anticipated) >= -AMOUNT_COMPARISON_EPSILON;
 
     // Substract the anticipated standing order from the absolute balance for the final overdue amount
     let overdueAmount = 0;
