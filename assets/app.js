@@ -3770,6 +3770,7 @@ function syncUrl() {
 }
 
 let pendingSongSlug = null;
+let pendingAiRoute = false;
 
 /** Shows the page of a path: tab, sub-page, event, song, chat. */
 async function applyRoute(path) {
@@ -3780,6 +3781,8 @@ async function applyRoute(path) {
     const tab = known || ($(head)?.classList.contains('tab-content') ? head : HOME_TAB);
     const [sub, extra] = known || head === tab ? rest : [];
     if (tab === 'songbook' && sub) pendingSongSlug = sub;
+    // The AI status is still on its way: the chat follows when it says the AI is on (see the sign-in)
+    pendingAiRoute = tab === 'ai-chat' && canAccessAi() && !aiEnabled;
     // /media/Photos/2026: the folder (every part after /media)
     if (tab === 'media') mediaFolder = folderFromRoute(known || head === tab ? rest : []);
     switchTab(tab);
@@ -4035,7 +4038,10 @@ async function loadData(silent = false, { freshUser = false } = {}) {
             apiJson('/admin/ai-status').then(data => {
                 aiEnabled = !!data.enabled;
                 updateAiNavVisibility();
-            }).catch(() => {});
+                // Opened at /ai (a reload in the chat): the chat once the status says it is on
+                if (pendingAiRoute && aiEnabled && currentActiveTab === 'hub') switchTab('ai-chat');
+                pendingAiRoute = false;
+            }).catch(() => { pendingAiRoute = false; });
         }
         loadMediaStatus();
         updateNavVisibility();
