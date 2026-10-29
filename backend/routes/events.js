@@ -1126,8 +1126,9 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
       return res.json({ success: true, duty: updated });
     }
 
-    // Taking a duty: only who may see the event, and only a duty that is open or was asked of this person - not one
-    // asked of someone else or given to a group. Read and written in the duty's queue: two at once cannot both get it
+    // Taking a duty: only who may see the event, and only a duty that is open (or declined) or was asked of this
+    // person - not one asked of someone else or given to a group. Read and written in the duty's queue: two at once
+    // cannot both get it
     const event = await getEventRecord(context.appConfig, duty.event);
     if (!event) return res.status(404).json({ error: 'Event not found' });
     if (event.createdBy !== currentUid && !userMatchesTargetGroups(req.user, event.targetGroups)) {
@@ -1138,7 +1139,9 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, async (req, res) =>
       if (!current) return { status: 404, error: 'Duty not found' };
       if (current.assignedUser === currentUid) return { duty: current };
       const askedOfMe = current.status === 'requested' && current.requestedUser === currentUid;
-      if (current.assignedUser || current.assignedGroup || !(current.status === 'open' || askedOfMe)) {
+      // A declined request leaves the duty free again (for the one who declined, too)
+      const free = current.status === 'open' || current.status === 'declined';
+      if (current.assignedUser || current.assignedGroup || !(free || askedOfMe)) {
         return { status: 409, error: 'This duty is already taken' };
       }
       return {

@@ -2119,6 +2119,8 @@ async function uploadMediaFiles(fileList) {
         if (mediaFolder === folder) await loadMediaFolder({ silent: true });
     } catch (err) {
         showToast(err.message || t('media_upload_failed', 'The files could not be uploaded'), 'error');
+        // Files stored before the cloud stopped (full, folder gone) are there all the same
+        if (mediaFolder === folder) loadMediaFolder({ silent: true });
     } finally {
         mediaUploading = false;
         box.hidden = true;

@@ -292,6 +292,7 @@ router.post('/api/media/upload', protectedActionRateLimit, verifyToken, async (r
   mediaUpload.array('files', MAX_UPLOAD_FILES)(req, res, async (uploadError) => {
     const files = Array.isArray(req.files) ? req.files : [];
     const cleanup = () => Promise.all(files.map((file) => fs.promises.rm(file.path, { force: true })));
+    const stored = [];
     try {
       if (uploadError) {
         const tooBig = uploadError.code === 'LIMIT_FILE_SIZE';
@@ -301,19 +302,20 @@ router.post('/api/media/upload', protectedActionRateLimit, verifyToken, async (r
         });
       }
       if (!files.length) return res.status(400).json({ error: 'No files selected' });
-      const stored = [];
-      for (const file of files) {
-        // Browsers send the name as UTF-8 in a field multer reads as latin1
-        const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
-        const name = media.cleanName(original);
-        if (!name || name.startsWith('.')) return res.status(400).json({ error: 'Invalid file name', stored });
-        const used = await storeUpload(target.conn, target.folder, file, name);
+      // Browsers send the name as UTF-8 in a field multer reads as latin1. All names are checked before the first
+      // file is stored: a bad name further down used to leave the files before it in the cloud behind an error
+      const names = files.map((file) => media.cleanName(Buffer.from(file.originalname, 'latin1').toString('utf8')));
+      if (names.some((name) => !name || name.startsWith('.'))) return res.status(400).json({ error: 'Invalid file name' });
+      for (const [index, file] of files.entries()) {
+        const used = await storeUpload(target.conn, target.folder, file, names[index]);
         stored.push({ name: used, path: media.joinPath(target.folder, used) });
       }
       console.log(`[Media] ${userId(req)} added ${stored.length} file(s) to "/${target.folder}"`);
       broadcastDataUpdate('media');
       res.status(201).json({ files: stored });
     } catch (err) {
+      // Nextcloud stopped half-way (full, gone): what is stored already shows on the other devices too
+      if (stored.length) broadcastDataUpdate('media');
       sendError(res, err, 'The files could not be uploaded');
     } finally {
       await cleanup().catch(() => {});

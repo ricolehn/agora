@@ -668,6 +668,30 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     await ok(call('owner', 'DELETE', `/api/songs/${song.id}`));
   });
 
+  test('taking over a duty: open or declined ones, never one asked of someone else', async () => {
+    const created = await ok(call('owner', 'POST', '/api/events', { title: 'Putzaktion', date: '2026-11-21', startTime: '09:00', eventType: 'termin' }));
+    const id = created.id || created.event?.id || created.events?.[0]?.id;
+    const duty = async (body) => (await ok(call('owner', 'POST', `/api/events/${id}/duties`, { sendEmail: false, ...body }))).duty;
+    const claim = (who, dutyId) => call(who, 'POST', `/api/events/duties/${dutyId}/claim`, {});
+
+    const open = await duty({ roleName: 'Fenster' });
+    assert.equal((await ok(claim('max', open.id))).duty.assignedUser, uids.max);
+    assert.equal((await claim('mia', open.id)).status, 409, 'taken is taken');
+
+    const askedOfMia = await duty({ roleName: 'Küche', requestedUser: uids.mia });
+    assert.equal((await claim('max', askedOfMia.id)).status, 409, "someone else's request");
+    await ok(call('mia', 'POST', `/api/events/duties/${askedOfMia.id}/respond`, { action: 'decline' }));
+    // Declined, the duty is free again: for others and for the one who declined and changed their mind
+    assert.equal((await ok(claim('mia', askedOfMia.id))).duty.assignedUser, uids.mia);
+
+    const declinedByMia = await duty({ roleName: 'Boden', requestedUser: uids.mia });
+    await ok(call('mia', 'POST', `/api/events/duties/${declinedByMia.id}/respond`, { action: 'decline' }));
+    const taken = (await ok(claim('max', declinedByMia.id))).duty;
+    assert.equal(taken.assignedUser, uids.max);
+    assert.equal(taken.status, 'confirmed');
+    await ok(call('owner', 'DELETE', `/api/events/${id}`));
+  });
+
   test('event pictures: a removed or replaced picture and the picture of a deleted event leave the disk', async () => {
     const uploadPicture = async () => {
       const form = new FormData();
@@ -1152,6 +1176,9 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal(second.files[0].name, 'Freizeit (2).jpg');
       assert.equal(cloud.nodes.get('Agora/Fotos/Jugend/Freizeit.jpg').data.toString(), 'one', 'the first file is untouched');
       assert.equal((await upload('jule', 'Fotos/Jugend', [['.htaccess', 'x', 'text/plain']])).status, 400);
+      // A bad name further down refuses the whole upload before anything is stored
+      assert.equal((await upload('jule', 'Fotos/Jugend', [['Vorher.jpg', 'x', 'image/jpeg'], ['.DS_Store', 'x', 'application/octet-stream']])).status, 400);
+      assert.ok(!cloud.nodes.has('Agora/Fotos/Jugend/Vorher.jpg'), 'nothing of a refused upload is stored');
 
       assert.equal((await call('max', 'POST', '/api/media/folder', { path: 'Fotos', name: 'Neu' })).status, 403);
       assert.equal((await call('jule', 'POST', '/api/media/folder', { path: 'Fotos/Jugend', name: '../x' })).status, 400);
