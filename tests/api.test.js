@@ -1051,6 +1051,12 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal((await list('max', '')).status, 404);
       // the owner's Admin group got the new permission
       assert.deepEqual(await ok(call('owner', 'GET', '/api/media/status')), { enabled: true, canManage: true, hasAccess: true });
+      // the rules hold for managers too: without any, they see the folders (to set their rights), no files
+      const bare = await ok(list('owner', ''));
+      assert.equal(bare.access, 'none');
+      assert.deepEqual(names(bare.folders), ['Fotos', 'Intern']);
+      assert.deepEqual(bare.files, []);
+      await ok(rules('', { [`user:${uids.owner}`]: 'write' }));
       const root = await ok(list('owner', ''));
       assert.equal(root.access, 'write');
       assert.deepEqual(names(root.folders), ['Fotos', 'Intern']);
@@ -1061,6 +1067,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal(fotos.files.find((f) => f.name === 'Clip.mp4').kind, 'video');
       assert.equal(fotos.files.find((f) => f.name === 'Sommer.jpg').hasPreview, true);
       assert.ok(fotos.files.every((f) => f.path.startsWith('Fotos/') && f.etag));
+      await ok(rules('', {}));
     });
 
     test('rules: read, write and no access per group, inherited by the folders below', async () => {
@@ -1128,6 +1135,16 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.ok(dialog.choices.some((c) => c.id === '*') && dialog.choices.some((c) => c.id === jugend && c.kind === 'group'));
       assert.ok(dialog.choices.some((c) => c.id === `user:${uids.max}` && c.kind === 'person' && c.name === 'Max Test'), 'people can be picked too');
       assert.equal(dialog.rules.length, 6);
+
+      // the rules hold for managers too: they see the hidden folders (to set their rights), not what is in them
+      assert.ok(names((await ok(list('owner', ''))).folders).includes('Intern'));
+      const hiddenFromManager = await ok(list('owner', 'Fotos/Privat'));
+      assert.equal(hiddenFromManager.access, 'none');
+      assert.deepEqual(hiddenFromManager.files, []);
+      assert.equal((await call('owner', 'GET', '/api/media/file?path=Fotos/Privat/geheim.jpg')).status, 404);
+      const refused = await upload('owner', 'Fotos/Privat', [['a.jpg', 'x', 'image/jpeg']]);
+      assert.equal(refused.status, 403);
+      assert.equal(cloud.nodes.has('Agora/Fotos/Privat/a.jpg'), false);
     });
 
     test('previews and files: only from readable folders, unsafe types only as a download', async () => {
@@ -1225,7 +1242,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       // the listing says which folders can go: not one with a folder below that the member may only read
       const before = await ok(list('jule', 'Fotos/Jugend'));
       assert.equal(before.folders.find((f) => f.name === 'Sommer 2026').canDelete, false);
-      assert.equal((await ok(list('owner', 'Fotos/Jugend'))).folders.find((f) => f.name === 'Sommer 2026').canDelete, true);
+      assert.equal((await ok(list('owner', 'Fotos/Jugend'))).folders.find((f) => f.name === 'Sommer 2026').canDelete, false, 'managers too');
 
       // one archive: the folder with what Jule may see in it (not the hidden folder) and a file next to it
       const asked = await ok(call('jule', 'POST', '/api/media/download', { path: 'Fotos/Jugend', names: ['Sommer 2026', 'Freizeit.jpg'] }));

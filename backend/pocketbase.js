@@ -1708,7 +1708,7 @@ const SYSTEM_PERMISSIONS = [
   { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
   { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
   { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' },
-  { id: 'manage_media', name: 'Extended media rights', description: 'Allows seeing every media folder, uploading everywhere and deciding which groups may read, write or not see a folder' }
+  { id: 'manage_media', name: 'Extended media rights', description: 'Allows deciding which groups may read, write or not see a media folder; sees every folder, its files only where the rights allow' }
 ];
 
 async function deleteGroupRecord(appConfig, id) {

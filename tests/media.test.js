@@ -72,10 +72,23 @@ describe('media rights (backend/media.js)', () => {
     assert.equal(media.setFolderRules({}, 'A', { 'user:ghost': 'read' }, new Set(['user:anna'])).error, 'Unknown group or person.');
   });
 
-  test('extended media rights see and write everywhere', () => {
-    for (const folder of ['', 'Fotos/Privat', 'Intern', 'Nirgends/x']) assert.equal(media.folderAccess(rules, folder, manager), 'write');
-    assert.equal(media.hasAnyAccess({}, manager), true);
+  test('extended media rights: the rules hold for managers too, but they see every folder', () => {
+    assert.equal(media.folderAccess(rules, 'Fotos', manager), 'read', 'like all members');
+    for (const folder of ['Fotos/Privat', 'Intern', 'Nirgends/x']) {
+      assert.equal(media.folderAccess(rules, folder, manager), folder === 'Nirgends/x' ? 'read' : 'none', folder);
+      assert.equal(media.canSeeFolder(rules, folder, manager), true, folder);
+    }
+    assert.equal(media.folderAccess(rules, 'Fotos/Jugend', { ...manager, groupIds: ['jugend'] }), 'write', 'through their group');
+    assert.equal(media.hasAnyAccess({}, manager), true, 'without rules: Media is there to set them');
+    assert.equal(media.folderAccess({}, '', manager), 'none');
     assert.equal(media.hasAnyAccess({ '': { '*': 'hide' } }, manager), true);
+    // hidden from them: they see the folder and everything in it that is a folder, never its files
+    const hidden = media.filterListing(rules, 'Intern', manager, { folders: [{ name: 'Leitung' }, { name: 'Kasse' }], files: [{ name: 'x.txt' }] });
+    assert.equal(hidden.access, 'none');
+    assert.deepEqual(hidden.folders.map((f) => [f.name, f.access]), [['Leitung', 'none'], ['Kasse', 'none']]);
+    assert.deepEqual(hidden.files, []);
+    assert.equal(media.canDeleteFile(rules, 'Intern/x.txt', manager), false);
+    assert.equal(media.canDeleteFolder({ '': { '*': 'write' }, A: { '*': 'hide' } }, 'A', manager), false, 'no deleting what is hidden from them');
   });
 
   test('folders on the way to a readable folder are shown, without their files and other folders', () => {
@@ -123,8 +136,10 @@ describe('media rights (backend/media.js)', () => {
     // the folder around it decides too: write in a folder alone does not let it go
     assert.equal(media.canDeleteFolder(write, 'Fotos/Frei/Tief', member()), false);
     assert.equal(media.canDeleteFolder({ '': { '*': 'write' }, A: { '*': 'write' }, 'A/B': { '*': 'hide' } }, 'A', member()), false, 'not what one cannot see');
-    assert.equal(media.canDeleteFolder(write, '', manager), false, 'never the base folder');
-    assert.equal(media.canDeleteFolder(write, 'Fotos', manager), true);
+    const writer = { ...manager, groupIds: ['jugend'] };
+    assert.equal(media.canDeleteFolder({ '': { '*': 'write' } }, '', writer), false, 'never the base folder');
+    assert.equal(media.canDeleteFolder({ '': { '*': 'write' } }, 'Fotos', writer), true);
+    assert.equal(media.canDeleteFolder(write, 'Fotos', writer), false, 'managers only where the rules let them write');
     assert.equal(media.filterListing(write, 'Fotos', member('jugend'), { folders: [{ name: 'Frei' }, { name: 'Leiter' }], files: [] })
       .folders.map((f) => f.canDelete).join(), 'true,false');
     assert.deepEqual(media.rulesWithout({ A: { x: 'read' }, 'A/B': { x: 'read' }, AB: { x: 'read' } }, 'A'), { AB: { x: 'read' } });

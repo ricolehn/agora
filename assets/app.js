@@ -1253,9 +1253,11 @@ function renderMediaCrumbs() {
     if (!target) return;
     const crumbs = breadcrumb(mediaFolder);
     const access = mediaListing?.access;
-    const badge = access === 'write' && !mediaStatus.canManage
+    // The rights hold for managers too: they also open folders whose files are hidden from them
+    const badge = access === 'write'
         ? `<span class="media-access-badge is-write">${svgIcon('upload', 12, 2.2)}${t('media_access_write', 'You can add files here')}</span>`
-        : access === 'read' ? `<span class="media-access-badge">${svgIcon('eye', 12, 2.2)}${t('media_access_read', 'Read only')}</span>` : '';
+        : access === 'read' ? `<span class="media-access-badge">${svgIcon('eye', 12, 2.2)}${t('media_access_read', 'Read only')}</span>`
+        : access === 'none' && mediaStatus.canManage ? `<span class="media-access-badge">${svgIcon('eyeOff', 12, 2.2)}${t('media_access_none', 'Files hidden from you')}</span>` : '';
     // In the base folder the title says where you are; the path only appears below it
     target.hidden = !crumbs.length && !badge;
     target.innerHTML = `
@@ -1273,7 +1275,7 @@ function mediaFolderCard(folder) {
     const manage = mediaStatus.canManage;
     const hidden = manage && folder.hiddenFor?.length
         ? `<span class="media-folder-mark is-hidden" title="${escapeHtml(t('media_hidden_for_some', 'Hidden for some groups'))}">${svgIcon('eyeOff', 14, 2.2)}</span>` : '';
-    const passage = folder.access === 'none' && !manage;
+    const passage = folder.access === 'none';
     // The shield turns blue on folders with rights of their own
     const rightsTitle = folder.hasRules ? t('media_has_rights', 'Has rights of its own') : t('media_rights_title', 'Folder rights');
     const meta = mediaEntryMeta(folder);
@@ -1346,10 +1348,13 @@ function renderMedia({ fresh = false } = {}) {
     for (const name of [...mediaSelected]) if (!present.has(name)) mediaSelected.delete(name);
     syncMediaSelection();
     if (!folders.length && !mediaShownFiles.length) {
+        // A manager in a folder the rights hide from them: not empty, only not theirs to see
+        const hidden = mediaListing.access === 'none';
         list.innerHTML = `
             <div class="polls-empty">
-                <span class="polls-empty-icon media-empty-icon">${svgIcon('folder', 26, 1.8)}</span>
-                <span class="polls-empty-title">${t('media_empty', 'This folder is empty')}</span>
+                <span class="polls-empty-icon media-empty-icon">${svgIcon(hidden ? 'eyeOff' : 'folder', 26, 1.8)}</span>
+                <span class="polls-empty-title">${hidden ? t('media_hidden_title', 'The files here are hidden from you') : t('media_empty', 'This folder is empty')}</span>
+                ${hidden ? `<span class="polls-empty-hint">${t('media_hidden_hint', 'The folder rights apply to you too. Change them with the shield to see the files.')}</span>` : ''}
                 ${mediaListing.access === 'write' ? `<span class="polls-empty-hint">${t('media_empty_hint', 'Add files with the plus at the bottom right, or drop them here.')}</span>` : ''}
             </div>`;
         return;
@@ -4776,7 +4781,7 @@ const DEFAULT_PERMISSIONS = [
     { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
     { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
     { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' },
-    { id: 'manage_media', name: 'Extended media rights', description: 'Allows seeing every media folder, uploading everywhere and deciding which groups may read, write or not see a folder' }
+    { id: 'manage_media', name: 'Extended media rights', description: 'Allows deciding which groups may read, write or not see a media folder; sees every folder, its files only where the rights allow' }
 ];
 
 // Several views ask for the groups during one refresh: they share the request that is already running
