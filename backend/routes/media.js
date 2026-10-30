@@ -259,8 +259,9 @@ async function writableFolder(req, res, value, refusal = 'You may not add anythi
   if (!setup) return null;
   const access = media.folderAccess(setup.rules, folder, req.user);
   if (access !== 'write') {
-    res.status(access === 'none' && !media.canSeeFolder(setup.rules, folder, req.user) ? 404 : 403)
-      .json({ error: access === 'none' ? 'Folder not found' : refusal });
+    // Managers see folders hidden from them (to set their rules), but may not add to them either
+    const unseen = access === 'none' && !media.canSeeFolder(setup.rules, folder, req.user);
+    res.status(unseen ? 404 : 403).json({ error: unseen ? 'Folder not found' : refusal });
     return null;
   }
   return { folder, conn: setup.conn, rules: setup.rules };

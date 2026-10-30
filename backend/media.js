@@ -10,8 +10,9 @@
 // goes before the rule for all members (so one person or group can be given more, or less, than the others; "no
 // access" for a group also holds when all members may read). Someone in several groups with rules gets the most one
 // of these groups gets. Whoever has no access to the base folder does not see the media library at all, whatever
-// the folders below say. Members with the manage_media permission see every folder, upload everywhere and set the
-// rules. Write access also allows deleting (in Nextcloud it goes to the trash bin): a file where one may write in its
+// the folders below say. Members with the manage_media permission set the rules, and the rules hold for them too: they
+// see every folder (to set its rules, also one hidden from them), but its files only where the rules let them read,
+// and upload or delete only where they let them write. Write access also allows deleting (in Nextcloud it goes to the trash bin): a file where one may write in its
 // folder, a folder only when one may write in it, in the folder around it and in every folder below it (nobody
 // deletes what they cannot see or change). Nobody renames, moves or overwrites anything through Agora.
 //
@@ -94,9 +95,8 @@ function ruleAccess(rules, folder, user) {
 /** Whether [user] may use the media library at all: managers always, others with access to the base folder. */
 const canUseMedia = (rules, user) => canManageMedia(user) || ruleAccess(rules, '', user) !== 'none';
 
-/** What [user] may do in [folder]: 'write', 'read' or 'none'. */
+/** What [user] may do in [folder]: 'write', 'read' or 'none' (managers too: the rules hold for them as well). */
 function folderAccess(rules, folder, user) {
-  if (canManageMedia(user)) return 'write';
   if (folder && ruleAccess(rules, '', user) === 'none') return 'none';
   return ruleAccess(rules, folder, user);
 }
@@ -116,8 +116,12 @@ function passagesBelow(rules, folder, user) {
   return names;
 }
 
-/** Whether [user] sees [folder] at all: with access of their own, or as the way to a folder they may read. */
+/**
+ * Whether [user] sees [folder] at all: with access of their own, or as the way to a folder they may read. Managers
+ * see every folder (they set its rules), not its files.
+ */
 function canSeeFolder(rules, folder, user) {
+  if (canManageMedia(user)) return true;
   if (!canUseMedia(rules, user)) return false;
   if (folderAccess(rules, folder, user) !== 'none') return true;
   // A passage: some rule further down gives access
@@ -149,18 +153,19 @@ const hasAnyAccess = canUseMedia;
 
 /**
  * What [user] sees of a folder listing ({ folders, files } from Nextcloud): folders they may open (with their
- * access), files only where they may read. Names starting with a dot (.nomedia and the like) are left out.
+ * access; managers every folder), files only where they may read. Names starting with a dot (.nomedia and the like)
+ * are left out.
  */
 function filterListing(rules, folder, user, { folders = [], files = [] }) {
   const access = folderAccess(rules, folder, user);
   const manager = canManageMedia(user);
-  const passages = access === 'none' ? passagesBelow(rules, folder, user) : null;
+  const passages = access === 'none' && !manager ? passagesBelow(rules, folder, user) : null;
   const visibleFolders = [];
   for (const entry of folders) {
     if (entry.name.startsWith('.')) continue;
     const entryPath = joinPath(folder, entry.name);
     const entryAccess = folderAccess(rules, entryPath, user);
-    if (entryAccess === 'none' && !(passages ? passages.has(entry.name) : canSeeFolder(rules, entryPath, user))) continue;
+    if (entryAccess === 'none' && !manager && !(passages ? passages.has(entry.name) : canSeeFolder(rules, entryPath, user))) continue;
     const item = { ...entry, path: entryPath, access: entryAccess, canDelete: canDeleteFolder(rules, entryPath, user) };
     if (manager) {
       const own = rules?.[entryPath];
