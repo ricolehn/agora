@@ -11041,7 +11041,16 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
 
 @media (max-width: 600px) {
     .media-folders { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-    .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
+    /* Three pictures side by side on phones, the tile's parts a little smaller to match */
+    .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; }
+    .media-thumb, .media-tile-open { border-radius: 12px; }
+    .media-thumb { margin-bottom: 5px; }
+    .media-thumb.is-icon .media-thumb-icon svg { width: 30px; height: 30px; }
+    .media-thumb-type { left: 6px; bottom: 6px; padding: 1px 5px; border-radius: 6px; font-size: 0.6rem; }
+    .media-thumb-play { width: 36px; height: 36px; margin: -18px 0 0 -18px; }
+    .media-tile-name { font-size: 0.78rem; }
+    .media-tile-meta { font-size: 0.68rem; }
+    .media-tile .media-check { top: 6px; left: 6px; width: 24px; height: 24px; }
     .media-access-badge { margin-left: 0; }
     /* Phones: the bar shows its signs only (the count stays) */
     .media-selectbar-btn:not(.is-close) span { display: none; }

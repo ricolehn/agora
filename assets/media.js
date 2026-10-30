@@ -23,16 +23,17 @@ export const folderFromRoute = parts => parts.filter(part => part && part !== '.
 
 /**
  * Preview sizes the server knows; asking for exactly these lets Nextcloud and the browser reuse what they made.
- * Tiles take a small one, the viewer one as large as the screen (at most 2048), zooming in the largest.
+ * Tiles take a small one, the picture viewer the largest there is (like Nextcloud's own viewer).
  */
 export const PREVIEW_SIZES = [64, 128, 256, 512, 1024, 2048, 4096];
-export const ZOOM_PREVIEW_SIZE = 4096;
+/** The viewer asks for this and gets the server's largest preview (Nextcloud's preview_max_x/y caps it). */
+export const LARGEST_PREVIEW_SIZE = 4096;
 export const previewBucket = pixels => PREVIEW_SIZES.find(size => size >= pixels) || PREVIEW_SIZES[PREVIEW_SIZES.length - 1];
 
 /** Thumbnail size for a tile of [cssPixels] on a screen with [dpr]: sharp, never more than 512. */
 export const thumbSize = (cssPixels, dpr = 1) => Math.min(512, previewBucket(Math.ceil(cssPixels * Math.min(Math.max(dpr, 1), 3))));
 
-/** Viewer size: the longer side of the window in device pixels, at most 2048 (more only when zoomed in). */
+/** A video's poster: the longer side of the window in device pixels, at most 2048. */
 export const viewerSize = (width, height, dpr = 1) => Math.min(2048, previewBucket(Math.ceil(Math.max(width, height) * Math.min(Math.max(dpr, 1), 3))));
 
 const query = params => Object.entries(params)
@@ -118,12 +119,9 @@ export function clampView(view, box, natural) {
     return { scale, x: Math.min(maxX, Math.max(-maxX, view.x)), y: Math.min(maxY, Math.max(-maxY, view.y)) };
 }
 
-/** Animated pictures lose their motion as previews: the viewer shows a GIF as it is (browsers all show GIFs). */
-export const viewerNeedsOriginal = file => /\.gif$/i.test(file?.name || '') || file?.contentType === 'image/gif';
-
 /**
- * Whether the browser can show the file itself (JPEG, PNG, WebP …): only then is the original a way out when
- * Nextcloud has no preview. Camera formats (DNG, RAW, HEIC, TIFF …) are only ever shown as previews.
+ * Whether the browser can show the file itself (JPEG, PNG, WebP …): only then is the original opened, and only
+ * when Nextcloud has no preview of it at all. Camera formats (DNG, RAW, HEIC, TIFF …) are only ever shown as previews.
  */
 export const browserShowsOriginal = file => /^image\/(jpeg|png|gif|webp|avif|bmp)$/i.test(file?.contentType || '');
 

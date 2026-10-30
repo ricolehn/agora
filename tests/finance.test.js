@@ -95,6 +95,11 @@ describe('requestRetention', () => {
 
 describe('derivedData', () => {
   const { preprocessPersonServerSide } = require('../backend/derivedData');
+  const { freezeTime } = require('./helpers');
+
+  // A fixed weekday in mid-month: "tomorrow" then exists in the previous month too (the real date broke these
+  // tests at the end of a month, e.g. Oct 30: "Sep 31" rolled over to Oct 1)
+  const TODAY = '2026-03-11T12:00:00Z';
 
   function isoDate(year, monthIndex, day) {
     const month = String(monthIndex + 1).padStart(2, '0');
@@ -118,7 +123,8 @@ describe('derivedData', () => {
     };
   }
 
-  test('marks member behind when past arrears exist even if current-month standing order already paid', () => {
+  test('marks member behind when past arrears exist even if current-month standing order already paid', (t) => {
+    freezeTime(t, TODAY);
     const now = new Date();
     const settings = { vollverdiener: 10 };
 
@@ -146,7 +152,8 @@ describe('derivedData', () => {
     assert.equal(result._overpayment, 0);
   });
 
-  test('applies grace period for unexecuted current-month standing order to keep member current', () => {
+  test('applies grace period for unexecuted current-month standing order to keep member current', (t) => {
+    freezeTime(t, TODAY);
     const now = new Date();
     const settings = { vollverdiener: 10 };
 
@@ -176,7 +183,8 @@ describe('derivedData', () => {
     assert.equal(result._overpayment, 0);
   });
 
-  test('overpayment uses only current balance and excludes anticipated standing order amount', () => {
+  test('overpayment uses only current balance and excludes anticipated standing order amount', (t) => {
+    freezeTime(t, TODAY);
     const now = new Date();
     const settings = { vollverdiener: 10 };
 
@@ -205,7 +213,8 @@ describe('derivedData', () => {
     assert.equal(result._statusMeta.isOverdue, false);
   });
 
-  test('returns Alles in Ordnung for up-to-date member without standing order', () => {
+  test('returns Alles in Ordnung for up-to-date member without standing order', (t) => {
+    freezeTime(t, TODAY);
     const now = new Date();
     const settings = { vollverdiener: 10 };
 
@@ -227,7 +236,8 @@ describe('derivedData', () => {
     assert.equal(result._statusMeta.text, 'Alles in Ordnung');
   });
 
-  test('returns Dauerauftrag läuft for up-to-date member with active standing order', () => {
+  test('returns Dauerauftrag läuft for up-to-date member with active standing order', (t) => {
+    freezeTime(t, TODAY);
     const now = new Date();
     const settings = { vollverdiener: 10 };
 

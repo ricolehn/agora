@@ -224,16 +224,14 @@ describe('media helpers of the web app (assets/media.js)', () => {
     assert.equal(m.neighbourIndex([1, 2, 3], 2, 1), 0);
     assert.equal(m.neighbourIndex([1, 2, 3], 0, -1), 2);
     assert.equal(m.neighbourIndex([1], 0, 1), -1);
-    assert.equal(m.viewerNeedsOriginal({ name: 'a.gif', hasPreview: true }), true);
   });
 
-  test('the viewer shows previews: small in the tile, screen-sized when opened, the largest when zoomed in', async () => {
+  test('the viewer shows previews: small in the tile, the largest when opened', async () => {
     const m = await load();
-    assert.equal(m.viewerSize(3840, 2160, 2), 2048, 'never more than 2048 before zooming in');
-    assert.equal(m.ZOOM_PREVIEW_SIZE, 4096);
-    assert.ok(m.PREVIEW_SIZES.includes(m.ZOOM_PREVIEW_SIZE));
-    // The original only ever for GIFs (they move) or as a way out for formats the browser shows
-    assert.equal(m.viewerNeedsOriginal({ name: 'Foto.jpg', contentType: 'image/jpeg', hasPreview: false }), false);
+    assert.equal(m.viewerSize(3840, 2160, 2), 2048, 'video posters stay at most 2048');
+    assert.equal(m.LARGEST_PREVIEW_SIZE, 4096);
+    assert.ok(m.PREVIEW_SIZES.includes(m.LARGEST_PREVIEW_SIZE));
+    // The original only for pictures without any preview, in a format the browser shows
     assert.equal(m.browserShowsOriginal({ contentType: 'image/jpeg' }), true);
     for (const contentType of ['image/x-adobe-dng', 'image/heic', 'image/tiff', 'image/x-canon-cr2']) {
       assert.equal(m.browserShowsOriginal({ contentType }), false, contentType);

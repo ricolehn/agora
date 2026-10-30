@@ -1,7 +1,7 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
-import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, viewerNeedsOriginal, browserShowsOriginal, ZOOM_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
+import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -1148,7 +1148,8 @@ const MEDIA_LEVEL_LABELS = () => ({
 });
 const mediaGroupName = group => (group.id === '*' ? t('media_all_members', 'All members') : group.name);
 const mediaFolderLabel = path => (path ? `/${path}` : t('media_base_folder', 'Base folder'));
-const mediaTileSize = () => thumbSize(window.innerWidth < 600 ? Math.ceil(window.innerWidth / 2) : 200, window.devicePixelRatio || 1);
+// Thumbnails as sharp as the tile (about a third of the screen on phones, three side by side), from the server's fixed sizes
+const mediaTileSize = () => thumbSize(window.innerWidth <= 600 ? Math.ceil(window.innerWidth / 3) : 200, window.devicePixelRatio || 1);
 
 async function loadMediaStatus() {
     if (!currentUser) return;
@@ -1297,8 +1298,8 @@ function mediaFileTile(file) {
         ? `<img class="media-thumb-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">`
         : '';
     const meta = mediaEntryMeta(file);
-    // Pictures speak for themselves; everything else says what it is (PDF, MP4, DOCX ...)
-    const label = file.kind === 'image' ? '' : typeLabel(file.name);
+    // Photos and videos show what they are (the picture, the play button): the type only for the rest (PDF, DOCX ...)
+    const label = file.kind === 'image' || file.kind === 'video' ? '' : typeLabel(file.name);
     return `
         <div class="media-tile kind-${escapeHtml(file.kind)}" data-media-name="${escapeHtml(file.name)}">
             <button type="button" class="media-tile-open" data-media-open title="${escapeHtml(file.name)}">
@@ -1644,21 +1645,19 @@ function openMediaMenu(name, x, y) {
     });
 })();
 
-// --- Picture viewer: the small preview of the tile at once, then a preview as large as the screen; zoomed in (two
-// fingers, double tap, mouse wheel, the magnifier) the largest preview takes over so it stays sharp. The original is
-// never loaded for this (it may be DNG, HEIC or another format the browser cannot show); only GIFs (they move) and
-// pictures without any preview in a format the browser shows ---
+// --- Picture viewer: the small preview of the tile at once, then Nextcloud's largest preview, like its own viewer
+// (sharp at every zoom: two fingers, double tap, mouse wheel, the magnifier). The original is never loaded for a
+// picture with a preview (it may be DNG, HEIC or a file too large for the browser); only pictures without any
+// preview in a format the browser shows open as they are ---
 let viewerPictures = [];
 let viewerIndex = 0;
 let viewerToken = 0;
 let viewerView = { scale: 1, x: 0, y: 0 };
-let viewerSharp = false;
 const VIEWER_DOUBLE_TAP_ZOOM = 2.5;
 
-/** The screen-sized picture: a preview; the file itself only for GIFs and as the last way out (see above). */
+/** The opened picture: the largest preview; the file itself only without any preview (see above). */
 function viewerLargeUrl(file) {
-    if (viewerNeedsOriginal(file)) return fileUrl(API, file);
-    if (file.hasPreview) return previewUrl(API, file, viewerSize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1));
+    if (file.hasPreview) return previewUrl(API, file, LARGEST_PREVIEW_SIZE);
     return browserShowsOriginal(file) ? fileUrl(API, file) : '';
 }
 
@@ -1685,26 +1684,6 @@ function setViewerView(view, animate = false) {
     const zoomed = viewerView.scale > 1;
     $('media-viewer-stage').classList.toggle('is-zoomed', zoomed);
     $('media-viewer-zoom')?.setAttribute('aria-pressed', String(zoomed));
-    if (viewerView.scale > 1.3) sharpenViewerPicture();
-}
-
-/** Zoomed in: the largest preview replaces the screen-sized one, once per picture. */
-function sharpenViewerPicture() {
-    const file = viewerPictures[viewerIndex];
-    if (viewerSharp || !file || viewerNeedsOriginal(file) || !file.hasPreview) return;
-    viewerSharp = true;
-    const token = viewerToken;
-    const loading = $('media-viewer-loading');
-    loading.hidden = false;
-    const sharp = new Image();
-    sharp.decoding = 'async';
-    sharp.onload = () => {
-        if (token !== viewerToken) return;
-        $('media-viewer-img').src = sharp.src;
-        loading.hidden = true;
-    };
-    sharp.onerror = () => { if (token === viewerToken) loading.hidden = true; };
-    sharp.src = previewUrl(API, file, ZOOM_PREVIEW_SIZE);
 }
 
 function showViewerPicture() {
@@ -1714,7 +1693,6 @@ function showViewerPicture() {
     const img = $('media-viewer-img');
     const stage = $('media-viewer-stage');
     const loading = $('media-viewer-loading');
-    viewerSharp = false;
     viewerView = { scale: 1, x: 0, y: 0 };
     img.classList.remove('is-animating');
     img.style.transform = '';
@@ -1739,21 +1717,15 @@ function showViewerPicture() {
     large.decoding = 'async';
     large.onload = () => {
         if (token !== viewerToken) return;
-        // Zoomed in meanwhile: the sharper preview is on its way, this one would be a step back
-        if (!viewerSharp) img.src = large.src;
+        img.src = large.src;
         img.classList.remove('is-soft');
         loading.hidden = true;
     };
     large.onerror = () => {
         if (token !== viewerToken) return;
         loading.hidden = true;
-        // No large preview: the original, if the browser can show it; else say so and offer the download
-        if (!viewerNeedsOriginal(file) && file.hasPreview && browserShowsOriginal(file)) {
-            const original = new Image();
-            original.onload = () => { if (token === viewerToken) { img.src = original.src; img.classList.remove('is-soft'); } };
-            original.onerror = () => { if (token === viewerToken) showViewerError(file); };
-            original.src = fileUrl(API, file);
-        } else if (!small) showViewerError(file);
+        // No large preview: never the original instead (see above), only the download
+        showViewerError(file);
     };
     const largeUrl = viewerLargeUrl(file);
     if (largeUrl) large.src = largeUrl;
