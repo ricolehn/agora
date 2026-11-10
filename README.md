@@ -18,6 +18,7 @@ Agora is a web-based financial management application for small groups, clubs, o
 - **Request Management (with approvals):** Users can submit requests (payments, status changes, expenses) which admins can review and approve or reject.
 - **Accounts & Person Management:** Nextcloud-inspired user management with role controls (Owner, System Admin, Member) and member statuses (e.g., Vollverdiener, Geringverdiener, etc.).
 - **Payments & Standing Orders:** Record recurring and one-time payments efficiently.
+- **Fresh start for the fees** *(CALDERA)*: on a day the system admins choose - past or future - every fee account is settled and started afresh: whoever was behind starts from zero, whoever had paid ahead takes exactly that credit along, and from that day on months and payments count anew. Nothing is deleted: payments, the history, the cash balance and "member since" stay as they are, and the time before keeps the monthly fees it had, so new fees only count from the fresh start on. Members who join later simply count from their own start. Set in *Settings → Monthly Fees*, see below.
 - **Donations:** Separate tracking for general donations.
 - **Expenses:** Log expenses with optional receipt uploads.
 - **Own address for every page:** `/events`, `/events/Jugendfreizeit_2026`, `/settings/profile`, `/songbook/Amazing_Grace`, `/mentoring/chat/<id>` … – links can be shared and bookmarked, a reload stays on the page, and the browser back button walks back step by step. Repeating titles get the date (`/events/Gottesdienst_2026-10-12`); old `#` links keep working.
@@ -179,6 +180,34 @@ API for the apps (all with the member's token; paths relative to the base folder
 </details>
 
 <details>
+<summary><b>Fresh start for the fees (CALDERA)</b></summary>
+
+## 🔄 Fresh start for the fees
+
+The fee calculation counts every month since "member since" against every payment a member ever made, at the monthly fees that are set now. A fresh start draws a line on a chosen day:
+
+- **Behind on that day:** the open fees are dropped, the new account starts from zero.
+- **Paid ahead on that day:** exactly that credit is carried over into the new account - nothing that was paid is lost.
+- **From that day on:** the months from the month of the day on are owed anew and payments from the day on are credited. A payment dated before the day belongs to the time before it: it first makes up for fees that were open then, what goes beyond is credit.
+- **The time before keeps its fees:** the monthly fees as they are when the fresh start is confirmed are kept for the months before it - from that moment on, also while the day is still to come. Fees changed afterwards only count from the month of the fresh start on, so new fees never shrink a credit that is carried over.
+- **Untouched:** payments, the history, standing orders, the cash balance, reports and "member since". Members who join on the day or later count from their own start as always.
+
+The day may lie in the past (it applies right away) or in the future (it applies when the day comes; until then everything is calculated as before). A later fresh start draws the next line.
+
+Only **system admins** can set one - not treasurers - in *Settings → Monthly Fees*: choose the day, check the numbers (whose open fees are dropped and whose credit is carried over, and how much), then type the day again and enter your password. The numbers are what really changes in the accounts, also next to other fresh starts. A fresh start set by mistake is taken back the same way; nothing was changed in the data, so everything is calculated as before again. Who set or took back which day is kept in a log.
+
+For the apps (all with the member's token):
+
+| Call | What |
+| --- | --- |
+| `GET /api/fee-reset` | `{ today, resets: [{ date, state }] }` - `state` is `active` (counted from), `scheduled` or `replaced`; with finance or admin rights also `feesBefore`, `setByName`, `setAt` and the `log` |
+| `GET /api/admin/fee-reset/preview?date=[&remove=1]` | what setting the day (or with `remove=1`: taking it back) changes: `{ date, inEffect, firstMonth, members, behind, ahead, owesMore, feesBefore, feesWithout, repriced }` - system admins. `behind`, `ahead` and `owesMore` are `{ count, total }`: the members who owe less with the fresh start than without it (their open fees that it drops), those whose credit is carried over on that day, and those who owe more with it. The last only happens when `repriced`: the time before keeps other fees (`feesBefore`) than it costs without the fresh start (`feesWithout`), i.e. when one is taken back after the fees were changed |
+| `POST /api/admin/fee-reset`, `POST /api/admin/fee-reset/remove` | `{ date, confirmDate, password }`: sets a fresh start / takes it back - system admins, the day twice and their own password |
+
+Person records carry what the server worked out: `_feeReset` (the day the account counts from, else `null`), `_feeCarriedOver` and `_feeWrittenOff` (the credit taken along / the open fees dropped on that day) and `_monthlyFee` (what this month costs at the member's status). `_paidUntil`, `_overdueAmount` and the other fields describe the account since then.
+</details>
+
+<details>
 <summary><b>Privacy, Account Deletion &amp; Reports</b></summary>
 
 ## 🔐 Privacy, Account Deletion & Reports
@@ -248,11 +277,11 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
 | `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
 | `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
-| `finance.test.js` | standing orders, request retention, derived finance data, what the web app books (`assets/finance.js`) |
+| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, what the web app books (`assets/finance.js`) |
 | `community.test.js` | events, guests and shared places, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
 | `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
-| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses |
+| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses |
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
 
 ```bash

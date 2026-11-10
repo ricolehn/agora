@@ -7,8 +7,10 @@ const { rateLimit } = require('express-rate-limit');
 const {
   context,
   dbRateLimit,
+  authRateLimit,
   protectedActionRateLimit,
   verifyToken,
+  verifyAdmin,
   uploadDir,
   dataDir,
   upload,
@@ -28,11 +30,30 @@ const {
 } = require('../transactions');
 
 const {
+  DEFAULT_SETTINGS,
   getPeopleRecord,
   upsertPeopleRecord,
   normalizeDataPath,
-  listRequestRecords
+  listRequestRecords,
+  listPeopleRecords,
+  loginUser,
+  getStateValue,
+  getFeeResetState,
+  updateFeeResetState
 } = require('../pocketbase');
+
+const {
+  parseDay,
+  normalizeFeeResets,
+  describeFeeResets,
+  checkNewFeeReset,
+  feesBeforeDay,
+  withLogEntry
+} = require('../feeReset');
+
+const { feeResetImpact } = require('../derivedData');
+
+const { toDateStr } = require('../utils/date');
 
 
 const router = express.Router();
@@ -143,6 +164,149 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) =>
   } catch (error) {
     console.error('Transaction endpoint error:', error);
     res.status(error.status || 500).json({ error: error.message || 'Transaction failed' });
+  }
+});
+
+// --- CALDERA: a fresh start for all fee accounts on a chosen day (feeReset.js) ---
+// Open fees are dropped on that day, credit is carried over, and from then on months and payments count anew. Every
+// signed-in member may read the days (their own fee account counts from one). Setting or taking back a day is for
+// system admins only - not for treasurers - and needs the day a second time (typed in the dialog) and the admin's
+// own password: no stray tap, replayed request or session left open starts it.
+
+function feeResetAnswer(state, user) {
+  const today = toDateStr(new Date());
+  // The fees kept for the time before, who set a day and the log of changes: for those who see the finances or run
+  // the instance
+  const insider = user?.admin === true || user?.canViewFinances === true;
+  return {
+    today,
+    resets: describeFeeResets(state.resets, today, { withDetails: insider }),
+    ...(insider ? { log: state.log } : {})
+  };
+}
+
+// A call that is refused with a reason for the admin (anything else that goes wrong only says that it failed)
+const refuse = (status, message) => Object.assign(new Error(message), { status, refused: true });
+const noSuchFeeReset = () => refuse(404, 'There is no fresh start on this day.');
+
+/** The day of a confirmed call, or null after answering why it is not confirmed. */
+async function confirmedFeeResetDay(req, res) {
+  const date = parseDay(req.body?.date);
+  if (!date) {
+    res.status(400).json({ error: 'Please choose a valid day for the fresh start.' });
+    return null;
+  }
+  if (req.body?.confirmDate !== date) {
+    res.status(400).json({ error: 'Please confirm the day by entering it again.' });
+    return null;
+  }
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!password) {
+    res.status(400).json({ error: 'Please confirm with your password.' });
+    return null;
+  }
+  try {
+    await loginUser(req.user.rawEmail || req.user.email, password);
+  } catch (error) {
+    // Only a sign-in that is turned down says the password is wrong; a database that does not answer says it failed
+    if (!(error?.status >= 400 && error.status < 500)) throw error;
+    res.status(403).json({ error: 'The password is not correct.' });
+    return null;
+  }
+  return date;
+}
+
+function answerFeeResetError(res, error, fallback) {
+  if (error.refused) return res.status(error.status).json({ error: error.message });
+  console.error(`${fallback}:`, error);
+  return res.status(500).json({ error: fallback });
+}
+
+const actingAdmin = (user) => ({
+  by: String(user.uid || user.id || ''),
+  byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()
+});
+
+router.get('/api/fee-reset', dbRateLimit, verifyToken, async (req, res) => {
+  try {
+    res.json(feeResetAnswer(await getFeeResetState(context.appConfig), req.user));
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fresh start could not be loaded.');
+  }
+});
+
+// What a day would change (or taking one back), in numbers, before anything is confirmed
+router.get('/api/admin/fee-reset/preview', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const today = toDateStr(new Date());
+    const [state, people, settings] = await Promise.all([
+      getFeeResetState(context.appConfig),
+      listPeopleRecords(context.appConfig),
+      getStateValue(context.appConfig, 'settings', DEFAULT_SETTINGS)
+    ]);
+    let date;
+    if (req.query.remove === '1') {
+      date = parseDay(req.query.date);
+      if (!date || !state.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
+    } else {
+      const check = checkNewFeeReset(state.resets, req.query.date, today);
+      if (check.error) throw refuse(check.status, check.error);
+      date = check.date;
+    }
+    res.json(feeResetImpact(people.map((record) => record.data), settings, state.resets, date, today));
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fresh start could not be loaded.');
+  }
+});
+
+router.post('/api/admin/fee-reset', authRateLimit, verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const today = toDateStr(new Date());
+    // What is wrong with the day itself is said before the password is asked for
+    const early = checkNewFeeReset((await getFeeResetState(context.appConfig)).resets, req.body?.date, today);
+    if (early.error) throw refuse(early.status, early.error);
+    const date = await confirmedFeeResetDay(req, res);
+    if (!date) return;
+    const { by, byName } = actingAdmin(req.user);
+    const at = Date.now();
+    const state = await updateFeeResetState(context.appConfig, async (current) => {
+      const check = checkNewFeeReset(current.resets, date, today);
+      if (check.error) throw refuse(check.status, check.error);
+      // The time before the day keeps the monthly fees that are set now: fees changed later only count from the
+      // fresh start on, so they never shrink a credit that was carried over
+      const feesBefore = feesBeforeDay(current.resets, await getStateValue(context.appConfig, 'settings', DEFAULT_SETTINGS), date);
+      return {
+        resets: normalizeFeeResets([...current.resets, { date, feesBefore, setAt: at, setBy: by, setByName: byName }]),
+        log: withLogEntry(current.log, { action: 'set', date, at, by, byName })
+      };
+    });
+    console.log(`[Finance] Admin ${by} set a fresh start of the fee accounts for ${date}`);
+    broadcastDataUpdate();
+    res.json({ success: true, ...feeResetAnswer(state, req.user) });
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fresh start could not be saved.');
+  }
+});
+
+router.post('/api/admin/fee-reset/remove', authRateLimit, verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const known = (await getFeeResetState(context.appConfig)).resets;
+    if (!known.some((reset) => reset.date === req.body?.date)) throw noSuchFeeReset();
+    const date = await confirmedFeeResetDay(req, res);
+    if (!date) return;
+    const { by, byName } = actingAdmin(req.user);
+    const state = await updateFeeResetState(context.appConfig, (current) => {
+      if (!current.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
+      return {
+        resets: current.resets.filter((reset) => reset.date !== date),
+        log: withLogEntry(current.log, { action: 'removed', date, at: Date.now(), by, byName })
+      };
+    });
+    console.log(`[Finance] Admin ${by} took back the fresh start of the fee accounts for ${date}`);
+    broadcastDataUpdate();
+    res.json({ success: true, ...feeResetAnswer(state, req.user) });
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fresh start could not be saved.');
   }
 });
 

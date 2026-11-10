@@ -377,6 +377,35 @@
                         <label class="form-label" for="rate-keinverdiener" data-i18n="rate_none">Non-earner (€)</label>
                 <input type="text" inputmode="decimal" id="rate-keinverdiener" class="form-input" value="10" onblur="autoSaveRate('rate-keinverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
                     </div>
+                    <div id="rates-reset-note" class="fee-reset-note" hidden></div>
+                </div>
+            </div>
+
+            <!-- CALDERA: a fresh start for all fee accounts on a chosen day. Everyone on this page sees the days;
+                 only system admins set or take back one (typed day and password, see the dialog below) -->
+            <div class="card card-settings fee-reset-card" data-settings-page="fees" id="card-fee-reset" style="display:none;">
+                <div class="card-body">
+                    <div class="fee-reset-head">
+                        <span class="fee-reset-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></span>
+                        <div class="fee-reset-head-text">
+                            <h3 class="fee-reset-title" data-i18n="fee_reset_title">Fresh start for the fees</h3>
+                            <p class="fee-reset-desc" data-i18n="fee_reset_desc">Settles every fee account on a day you choose and starts it afresh: open fees are dropped, credit is carried over, and from that day on fees and payments count anew. Payments, the history, the cash balance and "member since" stay as they are.</p>
+                        </div>
+                    </div>
+                    <div id="fee-reset-list"></div>
+                    <div id="fee-reset-form" class="fee-reset-form" style="display:none;">
+                        <label class="form-label" for="fee-reset-date" data-i18n="fee_reset_date_label">Day of the fresh start</label>
+                        <div class="fee-reset-form-row">
+                            <input type="date" id="fee-reset-date" class="form-input">
+                            <button type="button" class="btn btn-secondary" id="btn-fee-reset-review" onclick="reviewFeeReset()" data-i18n="fee_reset_review_btn">Check…</button>
+                        </div>
+                        <p class="fee-reset-form-hint" data-i18n="fee_reset_form_hint">Past or future: it applies from that day on. Nothing happens before you have checked the numbers and confirmed with the day and your password. A fresh start set by mistake can be taken back here.</p>
+                    </div>
+                    <p id="fee-reset-readonly" class="fee-reset-form-hint" style="display:none;" data-i18n="fee_reset_readonly">Only system admins can set or take back a fresh start.</p>
+                    <details id="fee-reset-log" class="fee-reset-log" hidden>
+                        <summary data-i18n="fee_reset_log_title">Changes</summary>
+                        <ul></ul>
+                    </details>
                 </div>
             </div>
 
@@ -1426,7 +1455,8 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label" id="payment-date-label" for="payment-date" data-i18n="modal_date" style="display:none;">Date</label>
-                    <input type="date" id="payment-date" class="form-input">
+                    <input type="date" id="payment-date" class="form-input" oninput="updatePaymentResetHint()">
+                    <div id="payment-reset-hint" class="fee-reset-note" hidden></div>
                 </div>
             </div>
             <div class="modal-section-card">
@@ -1472,7 +1502,8 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="edit-payment-date" data-i18n="modal_date">Date</label>
-                    <input type="date" id="edit-payment-date" class="form-input">
+                    <input type="date" id="edit-payment-date" class="form-input" oninput="updateEditPaymentResetHint()">
+                    <div id="edit-payment-reset-hint" class="fee-reset-note" hidden></div>
                 </div>
             </div>
             <div class="modal-section-card">
@@ -1496,6 +1527,48 @@
                 <input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif,.pdf" class="form-input" multiple>
             </div>
             <button class="btn btn-primary btn-block" onclick="saveEditedPayment()" data-i18n="btn_save">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- CALDERA: confirming a fresh start of the fee accounts (or taking one back). The numbers come from the server;
+     the button only works once the day is typed again and the password is entered -->
+<div id="fee-reset-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-fee-reset">
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-expense">⚠️</div>
+                <div>
+                    <div id="title-fee-reset" class="modal-title-main">Start the fees afresh?</div>
+                    <div id="fee-reset-modal-subtitle" class="modal-subtitle"></div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal('fee-reset-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced">
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>📋</span> <span data-i18n="fee_reset_modal_effects">What happens</span>
+                </div>
+                <ul id="fee-reset-modal-facts" class="fee-reset-facts"></ul>
+            </div>
+            <div class="modal-section-card">
+                <div class="modal-section-header">
+                    <span>✍️</span> <span data-i18n="fee_reset_modal_confirm">Confirm</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" id="fee-reset-typed-label" for="fee-reset-typed"></label>
+                    <input type="text" id="fee-reset-typed" class="form-input" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="updateFeeResetConfirm()">
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label class="form-label" for="fee-reset-password" data-i18n="fee_reset_password_label">Your password</label>
+                    <input type="password" id="fee-reset-password" class="form-input" autocomplete="current-password" oninput="updateFeeResetConfirm()" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmFeeReset();}">
+                </div>
+            </div>
+            <div class="fee-reset-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('fee-reset-modal')" data-i18n="btn_cancel">Cancel</button>
+                <button type="button" id="btn-fee-reset-confirm" class="btn btn-danger" onclick="confirmFeeReset()" disabled>Start afresh</button>
+            </div>
         </div>
     </div>
 </div>

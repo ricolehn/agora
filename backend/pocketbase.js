@@ -975,6 +975,7 @@ function stripNormalizedPersonData(value) {
 }
 
 const { preprocessPersonServerSide } = require('./derivedData');
+const { FEE_RESET_STATE_KEY, normalizeFeeResets, normalizeFeeResetLog } = require('./feeReset');
 
 function buildPaymentRecordPayload(personKey, payment, index = 0) {
   const normalized = payment && typeof payment === 'object' ? { ...payment } : {};
@@ -1050,7 +1051,32 @@ function toSortedChildValues(records, sortField) {
     .filter(Boolean);
 }
 
-function hydratePersonRecord(record, payments = [], statusHistory = [], appSettings = {}) {
+/**
+ * The days the fee accounts were started afresh, with the log of who set or took back which (feeReset.js). Kept
+ * apart from the fee settings; only the confirmed admin calls in routes/finance.js write it.
+ */
+async function getFeeResetState(appConfig) {
+  const value = await getStateValue(appConfig, FEE_RESET_STATE_KEY, null);
+  return { resets: normalizeFeeResets(value), log: normalizeFeeResetLog(value) };
+}
+
+async function getFeeResets(appConfig) {
+  return (await getFeeResetState(appConfig)).resets;
+}
+
+/**
+ * Changes the fee resets: [change] gets the stored state and returns the next one (or throws to refuse). One change
+ * at a time, so two admins at the same moment cannot both pass a check and overwrite each other.
+ */
+function updateFeeResetState(appConfig, change) {
+  return queueRecordWrite(`app_state:${FEE_RESET_STATE_KEY}`, async () => {
+    const next = await change(await getFeeResetState(appConfig));
+    await upsertStateValue(appConfig, FEE_RESET_STATE_KEY, { resets: next.resets, log: next.log });
+    return next;
+  });
+}
+
+function hydratePersonRecord(record, payments = [], statusHistory = [], appSettings = {}, feeResets = []) {
   if (!record) return null;
   const data = record.data && typeof record.data === 'object' ? { ...record.data } : {};
   const normalizedPayments = toSortedChildValues(payments, 'date');
@@ -1068,7 +1094,7 @@ function hydratePersonRecord(record, payments = [], statusHistory = [], appSetti
   if (record.data?.isDeleted || record.isDeleted) {
     data.isDeleted = true;
   }
-  return preprocessPersonServerSide(data, appSettings);
+  return preprocessPersonServerSide(data, appSettings, feeResets);
 }
 
 async function syncCollectionRecords(collectionName, keyField, existingRecords, nextPayloads, appConfig) {
@@ -1413,17 +1439,18 @@ function buildRequestRecordPayload(requestKey, value) {
 async function getPeopleRecord(appConfig, personKey) {
   const record = await getFirstRecord('people', pbFilterEquals('personKey', personKey), appConfig);
   if (!record) return null;
-  const [payments, statusHistory, settingsRecord] = await Promise.all([
+  const [payments, statusHistory, settingsRecord, feeResets] = await Promise.all([
     listAllRecords('payments', pbFilterEquals('personKey', personKey), appConfig),
     listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig),
-    getStateRecord(appConfig, 'settings')
+    getStateRecord(appConfig, 'settings'),
+    getFeeResets(appConfig)
   ]);
   const settings = settingsRecord ? settingsRecord.value : DEFAULT_SETTINGS;
   return {
     ...record,
     _childPayments: payments,
     _childStatusHistory: statusHistory,
-    data: hydratePersonRecord(record, payments, statusHistory, settings)
+    data: hydratePersonRecord(record, payments, statusHistory, settings, feeResets)
   };
 }
 
@@ -1436,10 +1463,11 @@ async function listPeopleRecords(appConfig, query = {}) {
   }
   const people = await listAllRecords('people', filter, appConfig);
   const personKeys = people.map((record) => record.personKey);
-  const [payments, statusHistory, settingsRecord] = await Promise.all([
+  const [payments, statusHistory, settingsRecord, feeResets] = await Promise.all([
     listChildRecordsForPeople('payments', personKeys, appConfig),
     listChildRecordsForPeople('status_history', personKeys, appConfig),
-    getStateRecord(appConfig, 'settings')
+    getStateRecord(appConfig, 'settings'),
+    getFeeResets(appConfig)
   ]);
   const settings = settingsRecord ? settingsRecord.value : DEFAULT_SETTINGS;
   const paymentsByPersonKey = groupRecordsBy(payments, 'personKey');
@@ -1448,7 +1476,7 @@ async function listPeopleRecords(appConfig, query = {}) {
   return people.map((record) => ({
     ...record,
     isDeleted: Boolean(record.isDeleted || record.data?.isDeleted),
-    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], settings)
+    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], settings, feeResets)
   }));
 }
 
@@ -2182,6 +2210,9 @@ module.exports = {
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
+  getFeeResetState,
+  getFeeResets,
+  updateFeeResetState,
   queueRecordWrite,
   isOutdatedVersion,
   removePeopleRecord,

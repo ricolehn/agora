@@ -116,7 +116,66 @@ function findPaymentIndex(payments, { paymentId, targetIndex, original }) {
     return unchanged ? targetIndex : -1;
 }
 
+// --- Fee reset (CALDERA): the fee accounts start afresh on a day the admins chose (backend/feeReset.js) ---
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const monthIndex = dateStr => {
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return parseInt(dateStr.slice(0, 4), 10) * 12 + parseInt(dateStr.slice(5, 7), 10) - 1;
+    const d = new Date(dateStr);
+    return d.getFullYear() * 12 + d.getMonth();
+};
+
+/**
+ * Fallback for "paid until" when the server sent none (it normally provides _paidUntil): uses up what was paid month
+ * by month at the fee ([fees]: status → amount) of the status valid in that month and returns the last day of the
+ * last fully paid month. A fee account that was started afresh (_feeReset) counts from the month of that day, with
+ * the credit that was carried over (_feeCarriedOver) and the payments from that day on.
+ */
+function calculatePaidUntil(person, fees) {
+    const start = new Date(person.originalMemberSince || person.memberSince);
+    const history = list(person.statusHistory).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const statusAt = month => {
+        const entry = history.find(e => !e.endDate || month < monthIndex(e.endDate));
+        return (entry && month >= monthIndex(entry.startDate) ? entry.status : null) || person.status;
+    };
+    const reset = DAY.test(person._feeReset || '') ? person._feeReset : null;
+    let credit = reset
+        ? list(person.payments).reduce((sum, payment) => (String(payment?.date || '').slice(0, 10) >= reset ? sum + (parseFloat(payment.amount) || 0) : sum), Number(person._feeCarriedOver) || 0)
+        : person.totalPaid || 0;
+    let month = start.getFullYear() * 12 + start.getMonth();
+    if (reset) month = Math.max(month, monthIndex(reset));
+    for (let i = 0; credit > 0 && i < 1200; i++, month++) {
+        const rate = fees[statusAt(month)] || 0;
+        if (rate > credit) break;
+        credit -= rate;
+    }
+    return new Date(Math.floor(month / 12), month % 12, 0);
+}
+
+/**
+ * The open fees a payment dated [day] is set against before it becomes credit, or 0. When the fee account was started
+ * afresh, the member's open fees of the time before were dropped: a payment dated before that day belongs to that
+ * time, so it first makes up for what was dropped - only what goes beyond it is carried over as credit.
+ */
+function droppedFeesBefore(person, day) {
+    const reset = DAY.test(person?._feeReset || '') ? person._feeReset : null;
+    if (!reset || !DAY.test(day || '') || day >= reset) return 0;
+    return Math.max(0, Number(person._feeWrittenOff) || 0);
+}
+
+/**
+ * True when what the admin typed is the day [iso] - written as the dialog shows it ("01.01.2027", "01/01/2027", also
+ * "1.1.2027") or as "2027-01-01". Typing the day is the confirmation of a fresh start: a tap alone never starts one.
+ */
+function typedDayMatches(typed, iso) {
+    const day = DAY.exec(iso || '');
+    if (!day) return false;
+    const text = String(typed ?? '').trim();
+    const shown = /^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})$/.exec(text);
+    if (shown) return Number(shown[1]) === Number(day[3]) && Number(shown[2]) === Number(day[2]) && shown[3] === day[1];
+    return text === iso;
+}
+
 export {
     parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense,
-    findPaymentIndex
+    findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches
 };

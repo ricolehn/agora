@@ -2,7 +2,7 @@ import { initializeApp, getDatabase, ref, set, get, child, update, query, orderB
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
 import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
-import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex } from "./finance.js";
+import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
 const auth = getAuth();
@@ -16,6 +16,10 @@ let people = [];
 let requests = [];
 let users = [];
 let settings = { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, pausiert: 0, reportStartDate: null };
+// The days all fee accounts were started afresh (CALDERA), for those who see the finances or run the instance;
+// members get the day their own account counts from with their record (_feeReset)
+let feeResets = [];
+let feeResetLog = [];
 let currentPersonId = null;
 let isAuthenticated = false;
 let currentUser = null;
@@ -3963,16 +3967,22 @@ async function loadMemberData() {
     }
     people = peopleList.filter(p => !p.isDeleted);
     requests = (rSnap?.exists() ? safeList(rSnap.val()) : []).filter(isOwnRequest);
+    applyFeeResets(null);
 }
 
 async function loadAdminData() {
     const withFinances = canViewFinances();
-    const [pData, sData, rData, uData] = await Promise.all(['people', 'settings', withFinances && 'requests', 'users'].map(path => path ? apiGet(path).catch(() => null) : null));
+    const [pData, sData, rData, uData, resetData] = await Promise.all([
+        ...['people', 'settings', withFinances && 'requests', 'users'].map(path => path ? apiGet(path).catch(() => null) : null),
+        apiJson('/fee-reset').catch(() => null)
+    ]);
     people = safeList(pData).filter(p => !p.isDeleted);
     requests = safeList(rData);
     if (sData) {
         settings = sData;
     }
+    // A failed request keeps what is shown (like the settings)
+    if (resetData) applyFeeResets(resetData);
     users = Object.entries(uData || {}).map(([uid, data]) => {
         if (!withFinances) return { ...data, uid };
         const linked = findLinkedPerson(uid);
@@ -4059,6 +4069,7 @@ async function renderViews(full = true) {
         renderAdminRequests();
         renderUnlinkedUsers();
     }
+    renderFeeResetCard();
     if (full) {
         ['vollverdiener', 'geringverdiener', 'keinverdiener'].forEach(key => setValue('rate-' + key, settings[key] || 0));
         updateNotificationPreferencesUI();
@@ -5291,7 +5302,8 @@ async function autoSaveRate(fieldId) {
     settings[['vollverdiener', 'geringverdiener'].find(key => fieldId === 'rate-' + key) || 'keinverdiener'] = val;
     await attempt(async () => {
         await set(ref(db, 'settings'), settings);
-        await renderViews();
+        // What a month costs and what is owed are worked out by the server: fetch the records again
+        await loadData(true);
         showToast(t('toast_settings_saved', 'Settings saved'));
     }, t('alert_settings_save_failed', 'Settings could not be saved.'), { toast: 'error' });
 }
@@ -5315,6 +5327,197 @@ Object.assign(window, {
     }
 });
 
+// --- Fresh start of the fee accounts (CALDERA) ---
+// On a day the system admins choose, every fee account is settled and started afresh: open fees are dropped, credit is
+// carried over, and from then on months and payments count anew (backend/feeReset.js). The card lives on the fees
+// page; only system admins set or take back a day, and only by typing the day again and giving their password.
+function applyFeeResets(data) {
+    feeResets = safeList(data?.resets);
+    feeResetLog = safeList(data?.log);
+}
+
+const feeResetStateLabel = state => (state === 'active' ? t('fee_reset_state_active', 'In effect')
+    : state === 'scheduled' ? t('fee_reset_state_scheduled', 'Planned')
+    : t('fee_reset_state_replaced', 'Replaced'));
+const FEE_RESET_STATE_CLASSES = { active: 'active', scheduled: 'planned', replaced: 'ended' };
+// "50,00 € / 25,00 € / 10,00 €": the monthly fees in the order of the fee settings
+const feeListText = fees => ['vollverdiener', 'geringverdiener', 'keinverdiener'].filter(key => typeof fees?.[key] === 'number').map(key => euro(fees[key])).join(' / ');
+const utcDate = day => new Date(`${day}T00:00:00Z`);
+const longDayText = day => intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
+const monthText = month => intlFormatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(`${month}-01`));
+
+function renderFeeResetCard() {
+    const card = $('card-fee-reset');
+    if (!card) return;
+    const admin = isSuperAdminUser();
+    // Treasurers see the days their lists count from; only system admins get the controls
+    show(card, admin || feeResets.length > 0, 'block');
+    show('fee-reset-form', admin, 'block');
+    show('fee-reset-readonly', !admin, 'block');
+
+    // Under the fee inputs: from when a change of the fees counts - the months before the latest fresh start (a
+    // planned one too) keep the fees that were confirmed with it
+    const latest = feeResets.map(reset => String(reset.date)).sort().pop();
+    const note = $('rates-reset-note');
+    if (note) {
+        note.textContent = latest ? t('fee_reset_rates_note', 'Changes count from the fresh start on {date} on. The time before it keeps its fees.', { date: formatDateFast(latest) }) : '';
+        note.hidden = !latest;
+    }
+
+    const list = $('fee-reset-list');
+    if (list) {
+        const takeBack = escapeHtml(t('fee_reset_remove_btn', 'Take back'));
+        const rows = [...feeResets].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(reset => {
+            const cls = FEE_RESET_STATE_CLASSES[reset.state] || 'ended';
+            const facts = [
+                reset.feesBefore ? t('fee_reset_row_fees', 'Fees before: {fees}', { fees: feeListText(reset.feesBefore) }) : '',
+                reset.setByName ? t('fee_reset_row_by', 'Set by {name}', { name: reset.setByName }) : ''
+            ].filter(Boolean).map(escapeHtml).join(' · ');
+            return `
+                <div class="so-row${cls === 'ended' ? ' is-ended' : ''}">
+                    <span class="so-row-icon" aria-hidden="true">${svgIcon('rotate', 16, 2.2)}</span>
+                    <div class="so-row-text">
+                        <div class="so-row-amount"><strong>${escapeHtml(formatDateFast(reset.date))}</strong></div>
+                        ${facts ? `<div class="so-row-facts">${facts}</div>` : ''}
+                    </div>
+                    <span class="so-row-state ${cls}">${escapeHtml(feeResetStateLabel(reset.state))}</span>
+                    ${admin ? `<button type="button" class="so-row-edit" data-date="${escapeHtml(reset.date)}" onclick="reviewFeeReset(this.dataset.date)" title="${takeBack}" aria-label="${takeBack}">${svgIcon('trash', 15, 2)}</button>` : ''}
+                </div>`;
+        }).join('');
+        list.innerHTML = rows ? `<div class="so-rows">${rows}</div>` : `<p class="fee-reset-none">${escapeHtml(t('fee_reset_none', 'No fresh start so far: every fee account counts from "member since".'))}</p>`;
+    }
+
+    // Who set or took back which day (the newest first)
+    const log = $('fee-reset-log');
+    if (log) {
+        const entries = [...feeResetLog].reverse().slice(0, 10).map(entry => {
+            const params = { name: entry.byName || t('status_unknown', 'Unknown'), date: formatDateFast(entry.date) };
+            const what = entry.action === 'set'
+                ? t('fee_reset_log_set', '{name} set a fresh start for {date}', params)
+                : t('fee_reset_log_removed', '{name} took back the fresh start of {date}', params);
+            return `<li>${escapeHtml(what)}${entry.at ? `<span>${escapeHtml(dateTimeFormatter.format(new Date(entry.at)))}</span>` : ''}</li>`;
+        }).join('');
+        log.hidden = !entries;
+        const items = log.querySelector('ul');
+        if (items) items.innerHTML = entries;
+    }
+}
+
+let feeResetDraft = null;
+
+function updateFeeResetConfirm() {
+    const btn = $('btn-fee-reset-confirm');
+    if (btn) btn.disabled = !(feeResetDraft && typedDayMatches(inputValue('fee-reset-typed'), feeResetDraft.date) && inputValue('fee-reset-password'));
+}
+
+// What the day changes, in numbers the server works out for everyone (also for an admin who does not see the finances):
+// who owes less or more with the fresh start than without it, and by how much (backend/derivedData.js)
+function renderFeeResetDialog(impact, remove) {
+    const date = formatDateFast(impact.date);
+    const amount = side => euro(side.total);
+    const others = impact.members - impact.behind.count - impact.ahead.count;
+    const fees = feeListText(impact.feesBefore);
+    const facts = remove ? [
+        t('fee_reset_undo_fact_all', 'The fee accounts are calculated again as if this fresh start had never been set.'),
+        impact.inEffect ? '' : t('fee_reset_undo_fact_planned', 'Its day has not come yet: nothing has been dropped or carried over so far.'),
+        impact.behind.count === 1 ? t('fee_reset_undo_fact_behind_one', '<strong>1 member</strong> then owes <strong>{amount}</strong> more.', { amount: amount(impact.behind) })
+            : impact.behind.count ? t('fee_reset_undo_fact_behind', '<strong>{count} members</strong> then owe more: <strong>{amount}</strong> in total.', { count: impact.behind.count, amount: amount(impact.behind) })
+            : impact.inEffect ? t('fee_reset_undo_fact_no_behind', 'Nobody owes more through it: no open fees come back.')
+            : '',
+        impact.owesMore.count === 1 ? t('fee_reset_undo_fact_better_one', '<strong>1 member</strong> is then better off by <strong>{amount}</strong>.', { amount: amount(impact.owesMore) })
+            : impact.owesMore.count ? t('fee_reset_undo_fact_better', '<strong>{count} members</strong> are then better off: by <strong>{amount}</strong> in total.', { count: impact.owesMore.count, amount: amount(impact.owesMore) })
+            : '',
+        // Where the time before it costs the same either way, taking it back takes no credit away
+        impact.inEffect && !impact.repriced && impact.ahead.count ? t('fee_reset_undo_fact_ahead', 'The credit that was carried over (<strong>{amount}</strong>) is not lost: every payment keeps counting.', { amount: amount(impact.ahead) }) : '',
+        impact.repriced ? t('fee_reset_undo_fact_fees', 'The fees kept for the time before it ({fees}) no longer apply: that time is then calculated at {feesNow}.', { fees, feesNow: feeListText(impact.feesWithout) }) : '',
+        t('fee_reset_fact_untouched', 'Payments, the history, standing orders, "member since" and the cash balance stay as they are.')
+    ] : [
+        impact.inEffect ? t('fee_reset_fact_now', 'It applies right away: this day has come.')
+            : t('fee_reset_fact_later', 'It applies from <strong>{date}</strong> on; until then everything is calculated as before. The numbers here count the payments booked so far - what is paid until then still changes them.', { date }),
+        impact.behind.count === 1 ? t('fee_reset_fact_behind_one', '<strong>1 member</strong> is behind: the open fees of <strong>{amount}</strong> are dropped.', { amount: amount(impact.behind) })
+            : impact.behind.count ? t('fee_reset_fact_behind', '<strong>{count} members</strong> are behind: their open fees of <strong>{amount}</strong> are dropped.', { count: impact.behind.count, amount: amount(impact.behind) })
+            : t('fee_reset_fact_no_behind', 'No open fees are dropped.'),
+        impact.ahead.count === 1 ? t('fee_reset_fact_ahead_one', '<strong>1 member</strong> has paid ahead: the credit of <strong>{amount}</strong> is carried over in full.', { amount: amount(impact.ahead) })
+            : impact.ahead.count ? t('fee_reset_fact_ahead', '<strong>{count} members</strong> have paid ahead: their credit of <strong>{amount}</strong> is carried over in full.', { count: impact.ahead.count, amount: amount(impact.ahead) })
+            : '',
+        // Paid up exactly, joining later, or behind with fees another fresh start drops anyway
+        !(impact.behind.count + impact.ahead.count) ? ''
+            : others === 1 ? t('fee_reset_fact_others_one', 'For <strong>1 other member</strong> nothing changes.')
+            : others > 1 ? t('fee_reset_fact_others', 'For the other <strong>{count} members</strong> nothing changes.', { count: others })
+            : '',
+        t('fee_reset_fact_fees', 'From <strong>{month}</strong> on the monthly fees are owed anew. The time before keeps its fees ({fees}), also when you change the fees afterwards.', { month: monthText(impact.firstMonth), fees }),
+        t('fee_reset_fact_untouched', 'Payments, the history, standing orders, "member since" and the cash balance stay as they are.')
+    ];
+    setText('title-fee-reset', remove ? t('fee_reset_remove_title', 'Take back the fresh start?') : t('fee_reset_set_title', 'Start the fees afresh?'));
+    setText('fee-reset-modal-subtitle', longDayText(impact.date));
+    $('fee-reset-modal-facts').innerHTML = facts.filter(Boolean).map(fact => `<li>${fact}</li>`).join('');
+    setText('fee-reset-typed-label', t('fee_reset_type_label', 'To confirm, type the day: {date}', { date }));
+    setText('btn-fee-reset-confirm', remove ? t('fee_reset_remove_btn', 'Take back') : t('fee_reset_set_btn', 'Start afresh'));
+    ['fee-reset-typed', 'fee-reset-password'].forEach(id => setValue(id, ''));
+    updateFeeResetConfirm();
+}
+
+// Opens the confirmation for the day in the form, or (removeDate) for taking back the fresh start of that day
+async function reviewFeeReset(removeDate) {
+    if (!isSuperAdminUser()) return;
+    const remove = typeof removeDate === 'string' && removeDate !== '';
+    const date = remove ? removeDate : inputValue('fee-reset-date');
+    if (!date) return showToast(t('fee_reset_choose_day', 'Please choose the day of the fresh start.'), 'error');
+    const failed = t('fee_reset_load_failed', 'The fresh start could not be loaded.');
+    await once('fee-reset-review', () => attempt(async () => {
+        const impact = await apiJson(`/admin/fee-reset/preview?date=${encodeURIComponent(date)}${remove ? '&remove=1' : ''}`, 'GET', undefined, failed);
+        feeResetDraft = { date: impact.date, remove };
+        renderFeeResetDialog(impact, remove);
+        openModal('fee-reset-modal');
+        // Closing it (also with Escape or "back") forgets the password and what was typed
+        $('fee-reset-modal')._customOnClose = () => {
+            feeResetDraft = null;
+            ['fee-reset-typed', 'fee-reset-password'].forEach(id => setValue(id, ''));
+        };
+    }, err => err.message || failed, remove ? {} : { button: 'btn-fee-reset-review', loading: t('btn_loading', 'Loading...') }));
+}
+
+async function confirmFeeReset() {
+    const draft = feeResetDraft;
+    if (!draft || !isSuperAdminUser()) return;
+    if (!typedDayMatches(inputValue('fee-reset-typed'), draft.date)) return showToast(t('fee_reset_type_day', 'Please type the day exactly as shown.'), 'error');
+    const password = inputValue('fee-reset-password');
+    if (!password) return showToast(t('delete_account_need_password', 'Please enter your password to confirm.'), 'error');
+    const failed = t('fee_reset_save_failed', 'The fresh start could not be saved.');
+    await once('fee-reset-confirm', () => attempt(async () => {
+        // The day goes twice: the server takes nothing that was not confirmed (backend/routes/finance.js)
+        const data = await apiJson(draft.remove ? '/admin/fee-reset/remove' : '/admin/fee-reset', 'POST', { date: draft.date, confirmDate: draft.date, password }, failed);
+        applyFeeResets(data);
+        closeModal('fee-reset-modal');
+        setValue('fee-reset-date', '');
+        showToast(draft.remove ? t('fee_reset_removed', 'Fresh start taken back') : t('fee_reset_saved', 'Fresh start saved'));
+        await loadData(true);
+    }, err => err.message || failed, { button: 'btn-fee-reset-confirm' }));
+    updateFeeResetConfirm();
+}
+
+// A payment dated before the fresh start belongs to the time before it: where open fees were dropped then, it first
+// makes up for those (assets/finance.js). Said where the day is chosen, so "booked, but still behind" is no riddle
+function feeResetPaymentHint(person, day) {
+    const dropped = person ? droppedFeesBefore(person, day) : 0;
+    return dropped > 0
+        ? t('fee_reset_payment_hint', 'This day is before the fresh start of the fees on {date}, when {amount} of open fees were dropped. A payment dated before it first makes up for those; only what goes beyond becomes credit.', { date: formatDateFast(person._feeReset), amount: euro(dropped) })
+        : '';
+}
+
+function showFeeResetHint(id, person, day) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = feeResetPaymentHint(person, day);
+    el.hidden = !el.textContent;
+}
+
+const updatePaymentResetHint = () => showFeeResetHint('payment-reset-hint', isChecked('payment-is-standing-order') ? null : findPerson(currentPersonId), inputValue('payment-date'));
+const updateEditPaymentResetHint = () => showFeeResetHint('edit-payment-reset-hint', currentEditedPayment?.type === 'payment' ? findPerson(currentEditedPayment.personId) : null, inputValue('edit-payment-date'));
+const updateRequestResetHint = () => showFeeResetHint('req-reset-hint', currentRequestType === 'payment' && !isChecked('req-is-standing-order') ? findLinkedPerson(currentUid()) : null, inputValue('req-date'));
+
+Object.assign(window, { reviewFeeReset, confirmFeeReset, updateFeeResetConfirm, updatePaymentResetHint, updateEditPaymentResetHint, updateRequestResetHint });
+
 // --- Person data & standing orders ---
 const sumAmounts = list => list.reduce((sum, entry) => sum + parseFloat(entry.amount || 0), 0);
 const matchesPaymentId = id => (entry, i) => String(entry.id ?? `idx-${i}`) === String(id);
@@ -5326,31 +5529,6 @@ function preprocessPerson(person) {
     person.totalPaid = sumAmounts(person.payments);
     person.statusHistory = safeList(person.statusHistory).sort((a, b) => a.startDate.localeCompare(b.startDate));
     return person;
-}
-
-const monthIndex = dateStr => {
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return parseInt(dateStr.slice(0, 4), 10) * 12 + parseInt(dateStr.slice(5, 7), 10) - 1;
-    const d = new Date(dateStr);
-    return d.getFullYear() * 12 + d.getMonth();
-};
-
-// Local fallback for "paid until" (the backend normally provides _paidUntil): consumes the paid credit month by
-// month at the rate of the status valid in that month and returns the last day of the last fully paid month.
-function calculatePaidUntil(person) {
-    const start = new Date(person.originalMemberSince || person.memberSince);
-    const history = safeList(person.statusHistory).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
-    const statusAt = month => {
-        const entry = history.find(e => !e.endDate || month < monthIndex(e.endDate));
-        return (entry && month >= monthIndex(entry.startDate) ? entry.status : null) || person.status;
-    };
-    let credit = person.totalPaid || 0;
-    let month = start.getFullYear() * 12 + start.getMonth();
-    for (let i = 0; credit > 0 && i < 1200; i++, month++) {
-        const rate = settings[statusAt(month)] || 0;
-        if (rate > credit) break;
-        credit -= rate;
-    }
-    return new Date(Math.floor(month / 12), month % 12, 0);
 }
 
 function parseUtcDate(str) {
@@ -5567,6 +5745,8 @@ function openRequestDetail(reqId) {
             <span class="reqd-row-value">${value}</span>
         </div>` : '';
     const text = req.type === 'expense' ? data.description : data.note;
+    // An open payment request dated before the fresh start: what approving it does (and does not) for the member
+    const resetHint = req.type === 'payment' && req.status === 'pending' ? feeResetPaymentHint(findPerson(req.personId), data.date) : '';
     $('reqd-body').innerHTML = `
         <div class="reqd-hero" style="--req-color: ${color};">
             <span class="reqd-amount">${requestAmount(req)}</span>
@@ -5579,6 +5759,7 @@ function openRequestDetail(reqId) {
             ${req.status !== 'pending' || !canApproveRequests() ? row('check', t('request_detail_status', 'Status'), `<span class="reqd-state" style="--state-color: ${(USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending)[0]};">${escapeHtml(requestStateLabel(req))}</span>`) : ''}
             ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Reason'), escapeHtml(req.rejectionReason || t('user_no_reason', 'No reason given'))) : ''}
         </div>
+        ${resetHint ? `<div class="fee-reset-note">${escapeHtml(resetHint)}</div>` : ''}
         ${data.receipt ? `<div class="reqd-receipts" id="reqd-receipts"></div>` : ''}`;
     if (data.receipt) viewRequestReceipt(data.receipt, 'reqd-receipts');
     const canApprove = canApproveRequests() && req.status === 'pending';
@@ -5668,6 +5849,7 @@ function editRecordedPaymentByIndex(index) {
     setText('edit-payment-person', ({ donation: `[${t('report_type_donation', 'Donation')}] `, expense: `[${t('report_type_expense', 'Expense')}] ` }[type] || '') + (tx.personName || tx.who || t('status_unknown', 'Unknown')));
     setValue('edit-payment-amount', String(payment.amount ?? ''));
     setValue('edit-payment-date', payment.date || '');
+    updateEditPaymentResetHint();
     setValue('edit-payment-desc', payment.description || '');
     setValue('edit-payment-issuer', isExpense ? (payment.issuer || payment.name || '') : '');
     show('edit-payment-issuer-group', isExpense, 'block');
@@ -5874,6 +6056,14 @@ async function confirmRejectRequest(reqId = openRequestId) {
 const paidUntilText = paidUntil => (paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Never'));
 const personPaidUntil = p => (p._paidUntil ? new Date(p._paidUntil) : null);
 const standingOrderCovers = meta => meta.isActiveStandingOrder && !meta.isOverdue;
+// A fee account that was started afresh (CALDERA) says from when it counts ("paid until" and the open amount look at
+// the time since then) and what happened on that day: credit was taken along, open fees were dropped
+const feeResetOutcome = p => (p._feeCarriedOver > 0 ? t('fee_reset_carried', 'Credit carried over: {amount}', { amount: euro(p._feeCarriedOver) })
+    : p._feeWrittenOff > 0 ? t('fee_reset_dropped', 'Open fees dropped: {amount}', { amount: euro(p._feeWrittenOff) })
+    : t('fee_reset_even', 'Everything was paid up'));
+const feeResetChip = p => (p._feeReset
+    ? `<span class="user-finance-chip fee-reset-chip">${svgIcon('rotate', 13, 2.2)}<span>${t('fee_reset_chip', 'Counts anew since {date}', { date: `<strong>${formatDateFast(p._feeReset)}</strong>` })}</span></span>`
+    : '');
 
 function renderUserView() {
     renderHomeMentoringCard();
@@ -5945,10 +6135,11 @@ function renderUserView() {
                     </div>
                     ${overdueBox('')}
                     <div class="user-finance-chips">
-                        <span class="user-finance-chip">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(settings[currentStatus] || 0)}</strong>` })}</span>
+                        <span class="user-finance-chip">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(p._monthlyFee ?? settings[currentStatus] ?? 0)}</strong>` })}</span>
                         <button type="button" class="user-finance-chip is-action" onclick="openUserRequestModal('status')" title="${requestStatus}" aria-label="${requestStatus}">
                             ${escapeHtml(getStatusLabels(false)[currentStatus] || currentStatus)}${svgIcon('chevronRight', 14, 2.5)}
                         </button>
+                        ${feeResetChip(p)}
                     </div>
                 </div>`;
         }
@@ -6054,19 +6245,24 @@ function generateTimelineHTML(person) {
     if (currentStart) events.push({ type: 'status', dateStr: currentStart, status: person.status });
     safeList(person.payments).forEach(p => events.push({ type: 'payment', dateStr: p.date, amount: p.amount, description: p.description }));
     if (events.length === 0) return `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">${t('timeline_no_entries', 'No entries found.')}</div>`;
+    // The fee account was started afresh (CALDERA): a line marks the day and says what was taken along or dropped
+    if (person._feeReset) events.push({ type: 'reset', dateStr: person._feeReset });
 
     const statusLabels = getStatusLabels(true);
-    const line = (title, meta) => `
-        <div class="timeline-item">
+    const line = (title, meta, cls = '') => `
+        <div class="timeline-item${cls}">
             <div class="timeline-dot"></div>
             <div class="timeline-content">
                 <div style="font-weight: 600;">${title}</div>
                 <div style="font-size: 0.85rem; color: var(--text-secondary);">${meta}</div>
             </div>
         </div>`;
-    // A payment without a date (older or imported data) goes to the end instead of breaking the whole view
-    return `<div class="timeline">${events.sort((a, b) => String(b.dateStr || '').localeCompare(String(a.dateStr || ''))).map(ev => {
+    // Newest first; on the day of a fresh start its line comes below that day's entries (they belong to the new
+    // account). A payment without a date (older or imported data) goes to the end instead of breaking the whole view
+    const newestFirst = (a, b) => String(b.dateStr || '').localeCompare(String(a.dateStr || '')) || (a.type === 'reset') - (b.type === 'reset');
+    return `<div class="timeline">${events.sort(newestFirst).map(ev => {
         const date = formatDateFast(ev.dateStr);
+        if (ev.type === 'reset') return line(t('fee_reset_timeline_title', 'Fresh start of the fees'), `${feeResetOutcome(person)} • ${date}`, ' timeline-reset');
         return ev.type === 'status'
             ? line(`${t('timeline_status_change', 'Status Change')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Valid from')} ${date}`)
             : line(`${t('timeline_payment', 'Payment')}: ${euro(ev.amount)}`, `${escapeHtml(ev.description) || t('timeline_no_note', 'No note')} • ${date}`);
@@ -6151,8 +6347,9 @@ function generatePersonHTML(p) {
                             <strong>${euro(p._overdueAmount || 0)}</strong>
                         </div>` : ''}
                         <div class="user-finance-chips">
-                            <span class="user-finance-chip">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(settings[currentStatus] || 0)}</strong>` })}</span>
+                            <span class="user-finance-chip">${t('user_fee_per_month', '{amount} a month', { amount: `<strong>${euro(p._monthlyFee ?? settings[currentStatus] ?? 0)}</strong>` })}</span>
                             <span class="user-finance-chip">${escapeHtml(statusLabels[p.status] || p.status)}</span>
+                            ${feeResetChip(p)}
                         </div>
                     </div>
                     ${renderStandingOrders(p)}
@@ -6740,12 +6937,14 @@ window.addEventListener('resize', debounce(() => {
 function openPaymentModal(id) {
     if (!canManageFinances()) return;
     currentPersonId = id;
+    updatePaymentResetHint();
     openModal('add-payment-modal');
 }
 
 // "Dauerauftrag" switches the date label to the start date
 function updatePaymentDateLabel() {
     setText('payment-date-label', isChecked('payment-is-standing-order') ? t('modal_date_start', 'Start Date') : t('modal_date', 'Date'));
+    updatePaymentResetHint();
 }
 
 async function addPayment() {
@@ -6912,7 +7111,8 @@ async function sendStatusEmail(personId) {
 
     const meta = person._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
     const readableStatus = getStatusLabels(false)[person._currentStatus || person.status] || person._currentStatus || person.status;
-    const paidUntil = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person);
+    // The server normally sends _paidUntil; without it the same rule is worked out here (assets/finance.js)
+    const paidUntil = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person, settings);
     const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Never');
     const today = new Date();
     const overdueMonths = paidUntil ? Math.max(0, (today.getFullYear() * 12 + today.getMonth()) - (paidUntil.getFullYear() * 12 + paidUntil.getMonth())) : 0;
@@ -6991,7 +7191,7 @@ const amountField = () => `
             <input type="text" inputmode="decimal" id="req-amount" class="form-input hero-amount-input" placeholder="${t('amount_placeholder', '0.00')}">
         </div>
     </div>`;
-const requestDateInput = () => `<input type="date" id="req-date" class="form-input" value="${getTodayStr()}">`;
+const requestDateInput = () => `<input type="date" id="req-date" class="form-input" value="${getTodayStr()}" oninput="updateRequestResetHint()">`;
 
 const REQUEST_FORMS = {
     payment: {
@@ -7001,7 +7201,7 @@ const REQUEST_FORMS = {
             + modalSection('⚙️', t('modal_section_payment_type', 'Payment type & date'), `
                 <div class="modal-switch-row">
                     <label class="switch">
-                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? ${jsArg(t('modal_date_start', 'Start Date'))} : ${jsArg(t('modal_date', 'Date'))}">
+                        <input type="checkbox" id="req-is-standing-order" onchange="document.getElementById('req-date-label').innerText = this.checked ? ${jsArg(t('modal_date_start', 'Start Date'))} : ${jsArg(t('modal_date', 'Date'))}; updateRequestResetHint()">
                         <span class="slider"></span>
                     </label>
                     <label for="req-is-standing-order" class="modal-switch-label">${t('modal_standing_order', 'Standing Order')}</label>
@@ -7009,6 +7209,7 @@ const REQUEST_FORMS = {
                 <div class="form-group">
                     <label class="form-label" id="req-date-label" for="req-date">${t('modal_date', 'Date')}</label>
                     ${requestDateInput()}
+                    <div id="req-reset-hint" class="fee-reset-note" hidden></div>
                 </div>`)
             + modalSection('📝', t('req_section_note', 'Note / Reference'), `
                 <div class="form-group">

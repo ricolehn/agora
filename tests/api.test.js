@@ -120,6 +120,30 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     await login(who, email);
     return uids[who];
   };
+  // The database snapshot the AI gets with a question of [who] (a stand-in provider takes the prompt)
+  async function aiSnapshot(who) {
+    const http = require('http');
+    let prompt = '';
+    const provider = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (part) => { raw += part; });
+      req.on('end', () => {
+        prompt = JSON.parse(raw).messages.find((m) => m.role === 'system').content;
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'OK' } }] })}\n\ndata: [DONE]\n\n`);
+      });
+    });
+    await new Promise((resolve) => provider.listen(0, '127.0.0.1', resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${provider.address().port}/v1`;
+      await ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, baseUrl, apiKey: 'test-key', model: 'm' }));
+      await ok(call(who, 'POST', '/api/ai/chat', { messages: [{ role: 'user', content: 'Wer ist überfällig?' }] }));
+      return JSON.parse(prompt.slice(prompt.indexOf('{')));
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  }
   const uploadReceipt = (who, name) => {
     const form = new FormData();
     form.append('name', name);
@@ -568,29 +592,201 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call('gerda', 'PATCH', '/api/db', { path: `people/${key}`, value: { uid: namesake } })).status, 403);
 
     // The AI gets her payment for the books, but not her as a member
-    const http = require('http');
-    let prompt = '';
-    const provider = http.createServer((req, res) => {
-      let raw = '';
-      req.on('data', (part) => { raw += part; });
-      req.on('end', () => {
-        prompt = JSON.parse(raw).messages.find((m) => m.role === 'system').content;
-        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'OK' } }] })}\n\ndata: [DONE]\n\n`);
-      });
-    });
-    await new Promise((resolve) => provider.listen(0, '127.0.0.1', resolve));
+    const snapshot = await aiSnapshot('owner');
+    assert.ok(!snapshot.members.some((m) => m.id === key), 'not in the member list');
+    assert.deepEqual(snapshot.paymentsOfDeletedMembers.filter((p) => p.name === 'Gerda Test'),
+      [{ name: 'Gerda Test', amount: 15, date: '2020-02-01', description: 'Beitrag' }]);
+  });
+
+  // --- CALDERA: a fresh start for all fee accounts on a chosen day (backend/feeReset.js) ---
+  const localDay = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const freshStart = (who, date, extra = {}) => call(who, 'POST', '/api/admin/fee-reset', { date, confirmDate: date, password: PASSWORD, ...extra });
+  const takeBack = (who, date, extra = {}) => call(who, 'POST', '/api/admin/fee-reset/remove', { date, confirmDate: date, password: PASSWORD, ...extra });
+  const freshStarts = async (who = 'owner') => (await ok(call(who, 'GET', '/api/fee-reset'))).resets;
+
+  test('a fresh start of the fee accounts is for system admins only, with the day twice and their own password', async () => {
+    const day = `${new Date().getFullYear()}-01-01`;
+    await account('admina', 'Adele', { admin: true });
+    // treasurers book payments and decide requests, but they do not draw this line; members and strangers even less
+    for (const who of ['treasurer', 'max', null]) {
+      for (const res of [await freshStart(who, day), await takeBack(who, day), await call(who, 'GET', `/api/admin/fee-reset/preview?date=${day}`)]) {
+        assert.ok([401, 403].includes(res.status), `${who}: ${res.status}`);
+      }
+    }
+    // an admin, but not confirmed: a single field, a wrong password or a day that is none starts nothing
+    for (const [why, body] of [
+      ['no password', { date: day, confirmDate: day }],
+      ['a wrong password', { date: day, confirmDate: day, password: 'falsch' }],
+      ['a password that is no text', { date: day, confirmDate: day, password: { $ne: '' } }],
+      ['the day not repeated', { date: day, password: PASSWORD }],
+      ['another day repeated', { date: day, confirmDate: `${new Date().getFullYear()}-01-02`, password: PASSWORD }],
+      ['no day', { confirmDate: day, password: PASSWORD }],
+      ['a day that does not exist', { date: '2026-02-30', confirmDate: '2026-02-30', password: PASSWORD }],
+      ['a mistyped year', { date: '1026-01-01', confirmDate: '1026-01-01', password: PASSWORD }],
+      ['a list of days', { date: [day], confirmDate: [day], password: PASSWORD }]
+    ]) {
+      const res = await call('owner', 'POST', '/api/admin/fee-reset', body);
+      assert.ok(res.status >= 400 && res.status < 500, `${why}: ${res.status}`);
+    }
+    const nothingSet = async (how) => {
+      assert.deepEqual(await freshStarts(), [], `${how}: nothing was set`);
+      assertHas(await read('owner', `people/${uids.max}`), { _feeReset: null, _feeCarriedOver: 0, _feeWrittenOff: 0 }, how);
+    };
+    await nothingSet('refused calls');
+    // the general data route offers no way around the confirmation ...
+    const settings = await read('owner', 'settings');
+    await call('owner', 'PUT', '/api/db', { path: 'feeResets', value: { resets: [{ date: day }] } });
+    await nothingSet('written as a value of its own');
     try {
-      const baseUrl = `http://127.0.0.1:${provider.address().port}/v1`;
-      await ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, baseUrl, apiKey: 'test-key', model: 'm' }));
-      await ok(call('owner', 'POST', '/api/ai/chat', { messages: [{ role: 'user', content: 'Wer ist überfällig?' }] }));
-      const snapshot = JSON.parse(prompt.slice(prompt.indexOf('{')));
-      assert.ok(!snapshot.members.some((m) => m.id === key), 'not in the member list');
-      assert.deepEqual(snapshot.paymentsOfDeletedMembers.filter((p) => p.name === 'Gerda Test'),
-        [{ name: 'Gerda Test', amount: 15, date: '2020-02-01', description: 'Beitrag' }]);
+      await call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...settings, feeResets: [{ date: day }], resets: [{ date: day }] } });
+      await nothingSet('written into the fee settings');
     } finally {
-      provider.close();
-      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: settings }));
+    }
+    // ... and what the server works out cannot be written into a record
+    await call('treasurer', 'PATCH', '/api/db', { path: `people/${uids.max}`, value: { _feeReset: day, _feeCarriedOver: 9999 } });
+    await nothingSet('written into a record');
+
+    // a system admin who does not see the finances can check a day: the numbers name nobody
+    const preview = await ok(call('admina', 'GET', `/api/admin/fee-reset/preview?date=${day}`));
+    assert.ok(preview.members >= 4, 'counts the paying members');
+    assert.doesNotMatch(JSON.stringify(preview), /Max|Mia|Test/);
+    assert.deepEqual(await freshStarts(), [], 'checking sets nothing');
+  });
+
+  test('a fresh start drops open fees and carries credit over; payments, the cash balance and "member since" stay', async () => {
+    const now = new Date();
+    // The first of this month: a day that has come
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const settings = await read('owner', 'settings');
+    const fee = settings.vollverdiener;
+    const behind = await account('rueck', 'Rudi');
+    const ahead = await account('voraus', 'Vera');
+    const joiner = await account('frisch', 'Frieda', { memberSince: localDay() });
+    await account('zweit', 'Zora', { admin: true });
+    const person = (key) => read('treasurer', `people/${key}`);
+    const book = async (key, payment) => {
+      const raw = await ok(call('treasurer', 'GET', `/api/db?path=people/${key}&raw=1`));
+      await ok(call('treasurer', 'POST', '/api/db/transaction', { path: `people/${key}`, currentVersion: raw.version, value: { ...raw.value, payments: [...raw.value.payments, payment] } }));
+    };
+    const cash = async () => (await ok(call('treasurer', 'GET', '/api/stats'))).totalBalance;
+    // Everyone who pays fees, as the treasury sees them - and by how much each balance rose from one reading to the next
+    const payers = async () => Object.values(await read('treasurer', 'people')).filter((p) => !p.isDeleted && p.pays !== false);
+    const cents = (amount) => Math.round(amount * 100) / 100;
+    const side = (amounts) => ({ count: amounts.length, total: cents(amounts.reduce((sum, amount) => sum + amount, 0)) });
+    const rises = (from, to) => to.map((p) => cents(p._currentBalance - from.find((was) => was.id === p.id)._currentBalance)).filter((rise) => rise > 0);
+    // What the months before this one cost a member since January 2025, as the server counts them
+    const owedBefore = -(await person(behind))._currentBalance - fee;
+    assert.ok(owedBefore > 100, 'more than a year of fees');
+    await book(behind, { id: 'old-100', amount: 100, date: '2025-03-01', description: 'Beitrag' });
+    await book(ahead, { id: 'old-big', amount: owedBefore + 300, date: '2025-03-01', description: 'Vorauszahlung' });
+    const before = { behind: await person(behind), ahead: await person(ahead), joiner: await person(joiner), cash: await cash() };
+    assertHas(before.behind, { _feeReset: null, _currentBalance: 100 - owedBefore - fee });
+    assertHas(before.ahead, { _feeReset: null, _currentBalance: 300 - fee });
+
+    try {
+      // the admin first sees what the day changes; checking sets nothing
+      const preview = await ok(call('owner', 'GET', `/api/admin/fee-reset/preview?date=${day}`));
+      assertHas(preview, { date: day, inEffect: true, owesMore: { count: 0, total: 0 }, repriced: false });
+      assert.equal(preview.feesBefore.vollverdiener, fee);
+      assert.deepEqual(await freshStarts(), []);
+      const asItWas = await payers();
+
+      const set = await ok(freshStart('owner', day));
+      assertHas(set.resets.find((reset) => reset.date === day), { state: 'active', setByName: 'Olga Owner' });
+      // the numbers that were shown are what the accounts then do: who owes less and by how much, whose credit goes along
+      const afresh = await payers();
+      assert.equal(preview.members, afresh.length);
+      assert.deepEqual(preview.behind, side(rises(asItWas, afresh)), 'the open fees that are dropped');
+      assert.ok(rises(asItWas, afresh).includes(owedBefore - 100), 'those of the member who was behind among them');
+      assert.deepEqual(preview.ahead, side(afresh.filter((p) => p._feeCarriedOver > 0).map((p) => p._feeCarriedOver)), 'the credit that is carried over');
+      assert.ok(preview.ahead.total >= 300);
+
+      // behind: the open fees are dropped, this month is owed
+      assertHas(await person(behind), { _feeReset: day, _feeWrittenOff: owedBefore - 100, _feeCarriedOver: 0, _currentBalance: -fee, _overdueAmount: fee });
+      // ahead: nothing that was paid is cut - the credit, the balance and "paid until" are what they were
+      assertHas(await person(ahead), { _feeReset: day, _feeCarriedOver: 300, _feeWrittenOff: 0, _currentBalance: before.ahead._currentBalance, _paidUntil: before.ahead._paidUntil });
+      // joined on the day or later: the account counts from the own start as always
+      assert.deepEqual(await person(joiner), before.joiner);
+
+      // nothing that is booked changed: "member since", the payments, the ledger and the cash balance
+      for (const [key, was] of [[behind, before.behind], [ahead, before.ahead]]) {
+        const is = await person(key);
+        for (const field of ['memberSince', 'originalMemberSince', 'payments', 'totalPaid', 'status', 'statusHistory']) assert.deepEqual(is[field], was[field], field);
+        assert.equal(is.memberSince, '2025-01-01');
+      }
+      assert.equal(await cash(), before.cash);
+      assert.deepEqual((await ok(call('treasurer', 'GET', '/api/transactions?search=Rudi'))).items.map((entry) => entry.amount), [100]);
+
+      // every member may read the day (their own record says what happened to their account); who set it and the
+      // fees of the time before are for the treasury
+      assert.deepEqual(await freshStarts('rueck'), [{ date: day, state: 'active' }]);
+      assertHas(Object.values(await read('rueck', 'people'))[0], { _feeReset: day, _feeWrittenOff: owedBefore - 100 });
+      const forTreasury = await ok(call('treasurer', 'GET', '/api/fee-reset'));
+      assert.equal(forTreasury.resets[0].feesBefore.vollverdiener, fee);
+      assert.ok(forTreasury.log.some((entry) => entry.action === 'set' && entry.date === day && entry.byName === 'Olga Owner'));
+
+      // new fees only count from the fresh start on: they neither shrink the credit nor bring dropped fees back
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...settings, vollverdiener: fee + 10 } }));
+      assertHas(await person(ahead), { _feeCarriedOver: 300, _currentBalance: 300 - (fee + 10) });
+      assertHas(await person(behind), { _feeWrittenOff: owedBefore - 100, _currentBalance: -(fee + 10) });
+      // taking it back now would calculate the time before at the new fee as well: the admin is told
+      const dearer = await ok(call('owner', 'GET', `/api/admin/fee-reset/preview?date=${day}&remove=1`));
+      assertHas(dearer, { inEffect: true, repriced: true, owesMore: { count: 0, total: 0 } });
+      assert.deepEqual([dearer.feesBefore.vollverdiener, dearer.feesWithout.vollverdiener], [fee, fee + 10]);
+      assert.ok(dearer.behind.total > preview.behind.total, 'more than the dropped fees would be owed');
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: settings }));
+
+      // a payment booked late for the time before first makes up for what was open then; one from the day on is credit
+      await book(behind, { id: 'late-50', amount: 50, date: '2025-04-01', description: 'Nachtrag' });
+      assertHas(await person(behind), { _feeWrittenOff: owedBefore - 150, _currentBalance: -fee });
+      await book(behind, { id: 'new-fee', amount: fee, date: localDay(), description: 'Beitrag' });
+      assertHas(await person(behind), { _currentBalance: 0, _overdueAmount: 0 });
+
+      // the AI is told the same numbers instead of adding up months and payments itself
+      const snapshot = await aiSnapshot('owner');
+      assertHas(snapshot.feeResets.find((reset) => reset.date === day), { state: 'active' });
+      assertHas(snapshot.members.find((m) => m.id === ahead).feeAccount, { startedAfreshOn: day, creditCarriedOverEur: 300, isOverdue: false });
+      assertHas(snapshot.members.find((m) => m.id === behind).feeAccount, { startedAfreshOn: day, openFeesDroppedEur: owedBefore - 150, overdueEur: 0 });
+
+      // one fresh start per day - also when two admins confirm at the same moment
+      assert.equal((await freshStart('owner', day)).status, 409);
+      const next = `${now.getFullYear() + 1}-01-01`;
+      const both = await Promise.all([freshStart('owner', next), freshStart('zweit', next)]);
+      assert.deepEqual(both.map((res) => res.status).sort(), [200, 409]);
+      // that one lies in the future: planned, and until its day everything is calculated as it is
+      assertHas((await freshStarts()).find((reset) => reset.date === next), { state: 'scheduled' });
+      assertHas(await person(ahead), { _feeReset: day, _feeCarriedOver: 300, _currentBalance: before.ahead._currentBalance });
+      // fees entered early for the time from then on change no month before it
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...settings, vollverdiener: fee + 10 } }));
+      assertHas(await person(ahead), { _currentBalance: before.ahead._currentBalance, _monthlyFee: fee });
+      assertHas(await person(joiner), { _currentBalance: before.joiner._currentBalance, _monthlyFee: fee });
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: settings }));
+
+      // taking one back needs the same confirmation - and then everything is calculated as before again
+      assert.equal((await takeBack('owner', day, { password: 'falsch' })).status, 403);
+      assert.equal((await takeBack('owner', day, { confirmDate: next })).status, 400);
+      assert.equal((await takeBack('owner', '2001-01-01')).status, 404);
+      assert.equal((await call('owner', 'GET', '/api/admin/fee-reset/preview?date=2001-01-01&remove=1')).status, 404);
+      // the planned one has dropped nothing so far: taking it back changes no account
+      const nobody = { count: 0, total: 0 };
+      assertHas(await ok(call('owner', 'GET', `/api/admin/fee-reset/preview?date=${next}&remove=1`)), { inEffect: false, behind: nobody, owesMore: nobody, repriced: false });
+      const undo = await ok(call('owner', 'GET', `/api/admin/fee-reset/preview?date=${day}&remove=1`));
+      const withIt = await payers();
+      await ok(takeBack('owner', next));
+      assert.deepEqual((await payers()).map((p) => p._currentBalance), withIt.map((p) => p._currentBalance));
+      await ok(takeBack('owner', day));
+      // again the numbers that were shown are what happens: who owes more, and how much
+      assertHas(undo, { inEffect: true, behind: side(rises(await payers(), withIt)), owesMore: nobody, repriced: false });
+      assert.ok(rises(await payers(), withIt).includes(owedBefore - 150), 'the fees that were dropped for the member who was behind');
+      assert.deepEqual(await freshStarts(), []);
+      assertHas(await person(ahead), { _feeReset: null, _feeCarriedOver: 0, _currentBalance: before.ahead._currentBalance });
+      assertHas(await person(behind), { _feeReset: null, _feeWrittenOff: 0, _currentBalance: before.behind._currentBalance + 50 + fee });
+      assert.ok((await ok(call('owner', 'GET', '/api/fee-reset'))).log.some((entry) => entry.action === 'removed' && entry.date === day), 'who took it back is kept');
+    } finally {
+      // the other tests calculate without a fresh start and at the usual fees
+      for (const reset of await freshStarts()) await takeBack('owner', reset.date);
+      await call('owner', 'PUT', '/api/db', { path: 'settings', value: settings });
     }
   });
 

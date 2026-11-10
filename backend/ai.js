@@ -1,6 +1,7 @@
-const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson } = require('./pocketbase');
+const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson, getFeeResets } = require('./pocketbase');
 const { toDateStr } = require('./utils/date');
 const { buildEventContext } = require('./eventContext');
+const { describeFeeResets } = require('./feeReset');
 
 const AI_STATE_KEY = 'ai_config';
 
@@ -34,6 +35,28 @@ async function setAiSettings(appConfig, patch) {
   return next;
 }
 
+const roundEur = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/**
+ * The member's fee account as the server works it out (derivedData.js) - the numbers the apps show. The AI used to
+ * add up months and payments itself, which is wrong once the fee accounts were started afresh (feeReset.js): open
+ * fees from before that day were dropped, credit was carried over, and the time before keeps its own monthly fees.
+ * null for members who pay no fees.
+ */
+function feeAccountOf(data) {
+  if (!data || data.pays === false) return null;
+  return {
+    countsFrom: data._feeReset || data.originalMemberSince || data.memberSince || '',
+    startedAfreshOn: data._feeReset || null,
+    creditCarriedOverEur: data._feeReset ? roundEur(data._feeCarriedOver) : 0,
+    openFeesDroppedEur: data._feeReset ? roundEur(data._feeWrittenOff) : 0,
+    paidUpToMonth: data._paidUntil ? toDateStr(new Date(data._paidUntil)).slice(0, 7) : null,
+    balanceEur: roundEur(data._currentBalance),
+    overdueEur: roundEur(data._overdueAmount),
+    isOverdue: data._statusMeta?.isOverdue === true
+  };
+}
+
 /**
  * Builds a full database context snapshot for the AI system prompt.
  * Includes all member, expense, request, and user records.
@@ -42,13 +65,14 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
   try {
     const canViewFinances = options.canViewFinances === true;
 
-    const [allPeople, expenses, users, settings, requests, donations] = await Promise.all([
+    const [allPeople, expenses, users, settings, requests, donations, feeResets] = await Promise.all([
       listPeopleRecords(appConfig).catch(() => []),
       canViewFinances ? listExpenseRecords(appConfig).catch(() => []) : Promise.resolve([]),
       listUserRecords(appConfig).catch(() => []),
       getStateValue(appConfig, 'settings', {}).catch(() => ({})),
       listRequestRecords(appConfig).catch(() => []),
-      canViewFinances ? getStateValue(appConfig, 'donations', {}).catch(() => ({})) : Promise.resolve({})
+      canViewFinances ? getStateValue(appConfig, 'donations', {}).catch(() => ({})) : Promise.resolve({}),
+      canViewFinances ? getFeeResets(appConfig).catch(() => []) : Promise.resolve([])
     ]);
 
     const today = new Date();
@@ -115,6 +139,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
         memberSince: p.memberSince || '',
         originalMemberSince: p.originalMemberSince || p.memberSince || '',
         totalPaid: Math.round(Number(String(p.totalPaid || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+        feeAccount: feeAccountOf(p.data),
         payments: payments.map((pay) => ({
           amount: Math.round(Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
           date: pay.date || '',
@@ -213,6 +238,8 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
         keinverdiener: settings.keinverdiener ?? null,
         pausiert: settings.pausiert ?? null
       };
+      // The days all fee accounts were started afresh (state: active = counted from, scheduled = still to come)
+      snapshot.feeResets = describeFeeResets(feeResets, todayStr);
       snapshot.expenses = expenseRecords;
       snapshot.paymentsOfDeletedMembers = deletedPeoplePayments;
       snapshot.donations = donations;
@@ -292,7 +319,7 @@ function buildSystemPrompt(appName, dbSnapshot, options = {}) {
     return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, events and general app usage. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.
 IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.\n\nCurrent database context:\n${dbSnapshot}`;
   }
-  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers".\n\nCurrent database context:\n${dbSnapshot}`;
+  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers". Fees: each member's "feeAccount" is the application's own calculation - take who is overdue (isOverdue), the open amount (overdueEur), the balance (balanceEur, negative means owed) and the last fully paid month (paidUpToMonth) from it instead of adding up months and payments yourself; it is null for members who pay no fees. "feeResets" lists the days on which all fee accounts were started afresh (state "active": counted from; "scheduled": still to come). On such a day the account of every member who had joined before it was settled: whoever was behind starts from zero (openFeesDroppedEur was dropped and is no longer owed), whoever had paid ahead keeps that credit (creditCarriedOverEur), and since that day ("startedAfreshOn"; "countsFrom" is where the account counts from) the months are owed and the payments credited anew, at the "contributionRates" of today - the time before kept the fees of its own. All payments stay in "payments", "totalPaid" and the cash balance; "memberSince" never changes.\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
 /**

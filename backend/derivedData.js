@@ -1,8 +1,90 @@
+const { feePeriods, feesOfMonth, feesBeforeDay, settledFeeResets, monthIndexOf, memberStartDay, paymentAmount } = require('./feeReset');
+const { toDateStr } = require('./utils/date');
+
 function getTodayStr() {
     return new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 }
 
 const AMOUNT_COMPARISON_EPSILON = 0.0001;
+
+const roundCents = (amount) => Math.round(amount * 100) / 100;
+
+/**
+ * The fees of the months [fromTotal] to [toTotal] (year * 12 + month, both included), each at the member's status in
+ * that month and at the fees of that month ([feesAt]: month → status → amount).
+ */
+function costOfMonths(person, fromTotal, toTotal, feesAt) {
+    const sortedHistory = person.statusHistory || [];
+    let historyIdx = 0;
+    let totalCost = 0;
+
+    for (let currentTotal = fromTotal; currentTotal <= toTotal; currentTotal++) {
+        const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
+        historyIdx = newIdx;
+
+        const status = historyStatus || person.status;
+        const fees = feesAt(currentTotal);
+
+        if (status && fees[status]) {
+            totalCost += fees[status];
+        }
+    }
+
+    return totalCost;
+}
+
+/**
+ * The member's fee account on the day [today]: the month it counts from (year, month), what has been paid into it and
+ * what a month costs (feesAt). Normally that is the month of "member since", every payment and the fees set now.
+ *
+ * A fresh start (feeReset.js) closes the account on its day and opens a new one. The old one is settled first: the
+ * months up to the one before the day against the payments before the day. Whoever was behind starts the new account
+ * from zero (writtenOff: the open fees that are dropped), whoever was ahead takes exactly that credit along
+ * (carriedOver). The new account counts the months from the month of the day on - or from "member since" for whoever
+ * joins later - against that credit and the payments from the day on. Every month costs the fees of its time: the
+ * months before a fresh start (a planned one too) keep the fees confirmed with it. "member since", the payments and
+ * the status history are only read, never changed.
+ */
+function feeAccount(person, settings = {}, feeResets = [], today = getTodayStr()) {
+    const memberSince = new Date(person.originalMemberSince || person.memberSince);
+    const account = { year: memberSince.getFullYear(), month: memberSince.getMonth(), paid: person.totalPaid || 0, feesAt: () => settings, reset: null, carriedOver: 0, writtenOff: 0 };
+    if (!Array.isArray(feeResets) || !feeResets.length) return account;
+
+    const periods = feePeriods(feeResets, settings);
+    account.feesAt = (monthTotal) => feesOfMonth(periods, monthTotal);
+    const joined = memberStartDay(person);
+    // Deleted people and records without a start have no fee account to settle. A fresh start only reaches members
+    // who had joined before its day: whoever joins on that day or later has nothing that was settled then, their
+    // account counts from "member since" with every payment, exactly as without it
+    const settled = person.isDeleted === true || joined === null ? [] : settledFeeResets(feeResets, today).filter((day) => day > joined);
+    if (!settled.length) return account;
+
+    const memberTotal = account.year * 12 + account.month;
+    const payments = (person.payments || []).map((payment) => ({ day: toDateStr(payment?.date), amount: paymentAmount(payment?.amount) }));
+    const paidBetween = (from, before) => payments.reduce((sum, payment) => (
+        (from === null || payment.day >= from) && (before === null || payment.day < before) ? sum + payment.amount : sum
+    ), 0);
+
+    let credit = 0;
+    let closing = 0;
+    let openedOn = null;
+    for (const day of settled) {
+        const firstMonth = openedOn === null ? memberTotal : Math.max(memberTotal, monthIndexOf(openedOn));
+        const owed = costOfMonths(person, firstMonth, monthIndexOf(day) - 1, account.feesAt);
+        closing = roundCents(credit + paidBetween(openedOn, day) - owed);
+        credit = Math.max(0, closing);
+        openedOn = day;
+    }
+
+    const firstMonth = Math.max(memberTotal, monthIndexOf(openedOn));
+    account.year = Math.floor(firstMonth / 12);
+    account.month = firstMonth % 12;
+    account.paid = credit + paidBetween(openedOn, null);
+    account.reset = openedOn;
+    account.carriedOver = credit;
+    account.writtenOff = closing < 0 ? -closing : 0;
+    return account;
+}
 
 function findStatusInHistory(history, idx, currentTotal) {
     let newIdx = idx;
@@ -72,55 +154,25 @@ function getCurrentStatus(person) {
     return getStatusForMonth(person, today.getFullYear(), today.getMonth());
 }
 
-function calculateTotalCostUntil(person, untilDate, settings) {
-    const memberSince = new Date(person.originalMemberSince || person.memberSince);
-    let totalCost = 0;
-
-    let year = memberSince.getFullYear();
-    let month = memberSince.getMonth();
-
-    const sortedHistory = person.statusHistory || [];
-    let historyIdx = 0;
-
+function calculateTotalCostUntil(person, untilDate, settings, account = feeAccount(person, settings)) {
     const targetTotal = untilDate.getFullYear() * 12 + untilDate.getMonth();
-
-    while ((year * 12 + month) <= targetTotal) {
-        const currentTotal = year * 12 + month;
-
-        const { status: historyStatus, newIdx } = findStatusInHistory(sortedHistory, historyIdx, currentTotal);
-        historyIdx = newIdx;
-
-        const status = historyStatus || person.status;
-
-        if (status && settings[status]) {
-            totalCost += settings[status];
-        }
-
-        month++;
-        if (month > 11) {
-            month = 0;
-            year++;
-        }
-    }
-
-    return totalCost;
+    return costOfMonths(person, account.year * 12 + account.month, targetTotal, account.feesAt);
 }
 
-function calculatePaymentStatus(person, settings) {
-    const totalPaid = person.totalPaid || 0;
-    const start = new Date(person.originalMemberSince || person.memberSince);
+function calculatePaymentStatus(person, settings, account = feeAccount(person, settings)) {
+    const totalPaid = account.paid;
     let result;
 
     if (totalPaid === 0) {
         result = {
-            paidUntil: new Date(start.getFullYear(), start.getMonth(), 0),
+            paidUntil: new Date(account.year, account.month, 0),
             remainingCredit: 0
         };
     } else {
         let remainingCredit = totalPaid;
 
-        let year = start.getFullYear();
-        let month = start.getMonth();
+        let year = account.year;
+        let month = account.month;
 
         const sortedHistory = person.statusHistory || [];
 
@@ -135,7 +187,7 @@ function calculatePaymentStatus(person, settings) {
             historyIdx = newIdx;
 
             const status = historyStatus || person.status;
-            const monthlyRate = status ? (settings[status] || 0) : 0;
+            const monthlyRate = status ? (account.feesAt(currentTotal)[status] || 0) : 0;
 
             if (monthlyRate > 0) {
                 if (remainingCredit >= monthlyRate) {
@@ -258,14 +310,14 @@ function calculateAnticipatedStandingOrderPayment(person, today = new Date()) {
     };
 }
 
-function calculateCurrentBalance(person, settings, today = new Date()) {
+function calculateCurrentBalance(person, settings, today = new Date(), account = feeAccount(person, settings)) {
     const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    const totalOwed = calculateTotalCostUntil(person, endOfCurrentMonth, settings);
-    const totalPaid = person.totalPaid || 0;
-    return totalPaid - totalOwed;
+    const totalOwed = calculateTotalCostUntil(person, endOfCurrentMonth, settings, account);
+    return account.paid - totalOwed;
 }
 
-function preprocessPersonServerSide(person, settings) {
+/** Sorts the person's status history and gives every entry its months (startTotal, endTotal), which the fee calculation reads. */
+function prepareStatusHistory(person) {
     const statusHistory = person.statusHistory || [];
     statusHistory.sort((a, b) => a.startDate.localeCompare(b.startDate));
     // ⚡ Bolt: Fast string slice for ISO dates to bypass new Date() overhead in history processing loops
@@ -290,9 +342,18 @@ function preprocessPersonServerSide(person, settings) {
         }
     });
     person.statusHistory = statusHistory;
+}
 
-    const { paidUntil, remainingCredit } = calculatePaymentStatus(person, settings);
-    const currentBalance = calculateCurrentBalance(person, settings);
+/**
+ * The person with what the server works out about their fees (the "_" fields). [feeResets]: the days the fee
+ * accounts were started afresh (feeReset.js).
+ */
+function preprocessPersonServerSide(person, settings, feeResets = []) {
+    prepareStatusHistory(person);
+
+    const account = feeAccount(person, settings, feeResets, getTodayStr());
+    const { paidUntil, remainingCredit } = calculatePaymentStatus(person, settings, account);
+    const currentBalance = calculateCurrentBalance(person, settings, new Date(), account);
     const { anticipated, hasActiveSO } = calculateAnticipatedStandingOrderPayment(person);
     // A deleted person is no member any more: only their payments stay, nothing is owed
     const isCurrent = person.isDeleted === true || (currentBalance + anticipated) >= -AMOUNT_COMPARISON_EPSILON;
@@ -321,6 +382,7 @@ function preprocessPersonServerSide(person, settings) {
             isActiveStandingOrder: hasActiveSO
         };
     const currentStatus = getCurrentStatus(person);
+    const now = new Date();
 
     return {
         ...person,
@@ -330,10 +392,95 @@ function preprocessPersonServerSide(person, settings) {
         _currentStatus: currentStatus,
         _currentBalance: currentBalance,
         _anticipatedPayment: anticipated,
-        _overpayment: currentBalance > 0 ? currentBalance : 0
+        _overpayment: currentBalance > 0 ? currentBalance : 0,
+        // The fresh start this fee account counts from ('YYYY-MM-DD', else null) with what happened on that day: the
+        // credit that was taken along, or the open fees that were dropped. Always set, so a copy the apps wrote back
+        // with the record never outlives a fresh start that was taken back
+        _feeReset: account.reset,
+        _feeCarriedOver: account.carriedOver,
+        _feeWrittenOff: account.writtenOff,
+        // What this month costs at the member's status (the status they start with, when they are still to join): the
+        // fee that is set now - unless a fresh start is still to come and the fees for the time from then on were
+        // entered already
+        _monthlyFee: account.feesAt(now.getFullYear() * 12 + now.getMonth())[currentStatus || person.status] || 0
     };
 }
 
+/** What the member's fee account holds on [day] with the fresh starts [feeResets]: what was paid into it against the months up to that of [day]. */
+function balanceOn(person, settings, feeResets, day) {
+    const account = feeAccount(person, settings, feeResets, day);
+    return account.paid - costOfMonths(person, account.year * 12 + account.month, monthIndexOf(day), account.feesAt);
+}
+
+const sameFees = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].every((status) => (a[status] || 0) === (b[status] || 0));
+
+/**
+ * What the fresh start on [date] changes, in numbers, for the admin who is about to set it - or to take it back, when
+ * [feeResets] has one on that day. Every paying member's balance is worked out with it and without it, with what is
+ * booked now, on the day it shows: today, or on its day when it is set for a day still to come.
+ *
+ *   behind:   who owes less with it than without it, and by how much: the open fees it drops (or, when it is taken
+ *             back, the ones that are owed again). Fees an earlier or later fresh start drops anyway are not counted
+ *   ahead:    who is ahead on its day, and the credit that is carried over
+ *   owesMore: who owes more (or has less credit) with it than without it. Only with [repriced]: the time before it
+ *             keeps other monthly fees (feesBefore) than it costs without it (feesWithout) - a fresh start that is
+ *             taken back after the fees were changed. Setting one changes the price of no month
+ *
+ * [people]: person records as stored, only read.
+ */
+function feeResetImpact(people, settings, feeResets, date, today) {
+    const stored = feeResets.some((reset) => reset.date === date);
+    const without = feeResets.filter((reset) => reset.date !== date);
+    const feesWithout = feesBeforeDay(without, settings, date);
+    const withDay = stored ? feeResets : [...feeResets, { date, feesBefore: feesWithout }];
+    const feesBefore = feesOfMonth(feePeriods(withDay, settings), monthIndexOf(date) - 1);
+    // Taking one back shows at once, setting one on its day at the earliest
+    const day = stored || date <= today ? today : date;
+    const impact = {
+        date,
+        inEffect: date <= today,
+        firstMonth: date.slice(0, 7),
+        members: 0,
+        behind: { count: 0, total: 0 },
+        ahead: { count: 0, total: 0 },
+        owesMore: { count: 0, total: 0 },
+        feesBefore,
+        feesWithout,
+        repriced: !sameFees(feesBefore, feesWithout)
+    };
+    const add = (side, amount) => {
+        side.count += 1;
+        side.total += amount;
+    };
+
+    for (const record of Array.isArray(people) ? people : []) {
+        if (!record || record.isDeleted === true || record.pays === false || memberStartDay(record) === null) continue;
+        impact.members += 1;
+        // A copy (the months are worked out on the entries of the status history) with what was paid added up from
+        // the payments themselves, so both balances count the same
+        const payments = Array.isArray(record.payments) ? record.payments : [];
+        const person = {
+            ...record,
+            payments,
+            totalPaid: payments.reduce((sum, payment) => sum + paymentAmount(payment?.amount), 0),
+            statusHistory: (record.statusHistory || []).map((entry) => ({ ...entry }))
+        };
+        prepareStatusHistory(person);
+
+        const difference = roundCents(balanceOn(person, settings, withDay, day) - balanceOn(person, settings, without, day));
+        if (difference > 0) add(impact.behind, difference);
+        if (difference < 0) add(impact.owesMore, -difference);
+        // The account as it is on that day - later fresh starts have not happened yet, and whoever joins later has
+        // no credit that is carried over
+        const carriedOver = feeAccount(person, settings, withDay, date).carriedOver;
+        if (carriedOver > 0) add(impact.ahead, carriedOver);
+    }
+
+    for (const side of [impact.behind, impact.ahead, impact.owesMore]) side.total = roundCents(side.total);
+    return impact;
+}
+
 module.exports = {
-    preprocessPersonServerSide
+    preprocessPersonServerSide,
+    feeResetImpact
 };
