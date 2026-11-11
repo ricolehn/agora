@@ -258,6 +258,24 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call('mia', 'GET', `/api/db?path=requests/${id}`)).status, 403);
   });
 
+  test('a member files requests only for themselves: whose record and which name come from their own record', async () => {
+    const people = Object.values(await read('treasurer', 'people'));
+    const [max, mia] = [uids.max, uids.mia].map((uid) => people.find((p) => p.uid === uid));
+    const id = `req-other-${Date.now()}`;
+    // Max names Mia's record and her name: approved, that used to change Mia's status - under her name
+    await ok(call('max', 'PUT', '/api/db', { path: `requests/${id}`, value: {
+      id, type: 'status', userId: uids.max, personId: mia.id, personName: mia.name, data: { status: 'pausiert', date: '2026-10-01' }, status: 'pending', timestamp: Date.now()
+    } }));
+    assertHas(await read('treasurer', `requests/${id}`), { personId: String(max.id), personName: max.name, userId: uids.max });
+    assert.ok(!Object.values(await read('mia', 'requests')).some((r) => r.id === id), 'not among Mia\'s requests');
+    // a treasurer still files and decides for anyone
+    const booked = `req-treasury-${Date.now()}`;
+    await ok(call('treasurer', 'PUT', '/api/db', { path: `requests/${booked}`, value: {
+      id: booked, type: 'payment', userId: uids.mia, personId: mia.id, personName: mia.name, data: { amount: 5, date: '2026-10-01' }, status: 'pending', timestamp: Date.now()
+    } }));
+    assertHas(await read('treasurer', `requests/${booked}`), { personId: String(mia.id), personName: mia.name });
+  });
+
   test('receipts: uploader and treasurers may open them, other members and traversal may not', async () => {
     const { filename } = await ok(uploadReceipt('max', 'Max Test'));
     assert.ok(filename && !filename.includes('/'), 'plain stored file name');
@@ -1163,6 +1181,13 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     }
     assert.equal(statuses[0], 404);
     assert.equal(statuses[30], 429);
+  });
+
+  test('the calendar feed, open without a session, is limited per address', async () => {
+    // Every call looks the token up in the database: without a limit anyone could keep it busy
+    const res = await fetch(`${base}/api/events/calendar.ics?user=nobody&token=wrong`, { headers: { 'X-Forwarded-For': '10.45.0.1' } });
+    assert.equal(res.status, 401);
+    assert.equal(res.headers.get('ratelimit-limit'), '240');
   });
 
   test('malformed input gets a client error, never a crash', async () => {

@@ -506,3 +506,22 @@ describe('registration code', () => {
     assert.equal(withSecureInviteCode(own), own);
   });
 });
+
+describe('owner', () => {
+  const { ownerClaim } = require('../backend/pocketbase');
+  const admin = { uid: 'a1', admin: true };
+  const member = { uid: 'm1', admin: false };
+
+  test('the recorded owner stays, whoever asks', () => {
+    assert.deepEqual(ownerClaim({ ownerUid: 'o' }, admin), { ownerUid: 'o', claim: false });
+    assert.deepEqual(ownerClaim({ superAdminUid: 'o' }, member), { ownerUid: 'o', claim: false }, 'older installations');
+  });
+
+  test('without a recorded owner an admin takes it over, a member never does', () => {
+    assert.deepEqual(ownerClaim({ ownerUid: null, superAdminUid: null }, admin), { ownerUid: 'a1', claim: true });
+    // the app asks on every sign-in: the first member to open it used to become the owner
+    assert.deepEqual(ownerClaim({}, member), { ownerUid: null, claim: false });
+    assert.deepEqual(ownerClaim(null, { uid: 'x' }), { ownerUid: null, claim: false });
+    assert.deepEqual(ownerClaim({}, { admin: true }), { ownerUid: null, claim: false }, 'no account, no owner');
+  });
+});

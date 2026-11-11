@@ -35,6 +35,17 @@ const withSecureInviteCode = (system) => {
   return !code || code === LEGACY_DEFAULT_INVITE_CODE ? { ...system, inviteCode: randomInviteCode() } : system;
 };
 
+/**
+ * The owner recorded in [system] ({ ownerUid, claim: false }). Setup records one; only an installation from before
+ * that has none, and then an admin of it ([user]) becomes the owner ({ ownerUid: their uid, claim: true }) - a member
+ * never does: the app asks on every sign-in, so the first member to open it would have taken over the instance.
+ */
+function ownerClaim(system, user) {
+  const recorded = system?.ownerUid || system?.superAdminUid || null;
+  if (recorded) return { ownerUid: recorded, claim: false };
+  return user?.admin === true && user.uid ? { ownerUid: user.uid, claim: true } : { ownerUid: null, claim: false };
+}
+
 const SUPERUSER_TOKEN_TTL_MS = 300_000; // 5 minutes
 let cachedSuperuserToken = null;
 let cachedSuperuserTokenExpiry = 0;
@@ -2155,6 +2166,7 @@ async function deleteFcmToken(appConfig, token, userId = null) {
 
 module.exports = {
   withSecureInviteCode,
+  ownerClaim,
   invalidateReadCache,
   getPushSubscriptionByEndpoint,
   upsertPushSubscription,

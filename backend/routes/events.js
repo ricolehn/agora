@@ -1315,7 +1315,8 @@ router.post('/api/user/calendar-feed/reset', verifyToken, async (req, res) => {
   }
 });
 
-router.get('/api/events/calendar.ics', authenticateCalendarFeed, async (req, res) => {
+// Reachable without a session (calendar apps send the feed's token): limited like the pages, it reads the database
+router.get('/api/events/calendar.ics', pageRateLimit, authenticateCalendarFeed, async (req, res) => {
   try {
     const currentUid = req.user.uid || req.user.id;
     const allEvents = await listEvents(context.appConfig, '', '+date,+startTime');

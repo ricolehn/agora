@@ -717,6 +717,18 @@ function toUserValue(record, allGroups = null) {
   };
 }
 
+/**
+ * Whom a member's own request is about, as the app files it: their person record (its id, the one an approval
+ * books to, and its name), else - a member without one - their account.
+ */
+async function ownRequestPerson(user) {
+  const own = (await listPeopleRecords(context.appConfig)).find((record) => !record.isDeleted && record.data?.uid === user.uid);
+  return {
+    personId: String(own?.data?.id || user.uid),
+    personName: own?.data?.name || user.name || user.email || ''
+  };
+}
+
 async function writeLogicalPath(targetPath, value, user, method = 'set', options = {}) {
   const normalizedPath = normalizeDataPath(targetPath);
   const [root, id, nested] = normalizedPath.split('/');
@@ -864,13 +876,16 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     if (!Object.hasOwn(REQUEST_TYPE_LABELS, nextValue.type)) {
       throw Object.assign(new Error('Unbekannte Anfrageart'), { status: 400 });
     }
-    // Members file requests, only treasurers decide on them
+    // Members file requests, only treasurers decide on them - and only for themselves: whose record a request books
+    // to and the name the treasurers see come from the member's own record, whatever was sent (a request naming
+    // another member used to change that member's record once approved, under that member's name)
     if (!canManageRequests) {
       nextValue.status = existing?.data?.status || 'pending';
       for (const key of ['decidedAt', 'rejectionReason']) {
         if (existing?.data?.[key]) nextValue[key] = existing.data[key];
         else delete nextValue[key];
       }
+      Object.assign(nextValue, await ownRequestPerson(user));
     }
     // A decision stands: a second treasurer or an outdated screen must not reject a request that was approved (and
     // booked), or approve a rejected one. Checked and written in the request's write queue: an approval and a

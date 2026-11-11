@@ -26,6 +26,7 @@ const { wantsNotification } = require('../notificationPrefs');
 
 const {
   DEFAULT_SYSTEM_STATE,
+  ownerClaim,
   getStateValue,
   upsertStateValue,
   updateUserRecord,
@@ -112,16 +113,13 @@ router.get('/api/stream', verifyToken, (req, res) => {
 router.post('/api/admin/bootstrap-super-admin', verifyToken, async (req, res) => {
   try {
     const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    let ownerUid = system?.ownerUid || system?.superAdminUid || null;
-    let createdNow = false;
-
-    if (!ownerUid) {
-      ownerUid = req.user.uid;
-      createdNow = true;
+    // Without a recorded owner only an admin takes it over, never a member (pocketbase.js ownerClaim)
+    const { ownerUid, claim: createdNow } = ownerClaim(system, req.user);
+    if (createdNow) {
       await upsertStateValue(context.appConfig, 'system', { ...system, ownerUid, superAdminUid: ownerUid });
     }
 
-    const isOwner = ownerUid === req.user.uid;
+    const isOwner = ownerUid !== null && ownerUid === req.user.uid;
     if (isOwner) {
       await updateUserRecord(context.appConfig, req.user.uid, { admin: true, owner: true, superAdmin: true, pays: true });
     }
