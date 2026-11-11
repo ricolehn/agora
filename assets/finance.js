@@ -175,7 +175,20 @@ function typedDayMatches(typed, iso) {
     return text === iso;
 }
 
+// How long the member card names a fresh start: a notice, not a fixture - the history keeps the day for good
+const FEE_RESET_NEWS_DAYS = 60;
+
+/**
+ * True while the fresh start on [day] is news on [today] (both "YYYY-MM-DD"): from its day on, for
+ * FEE_RESET_NEWS_DAYS days. Members only learn of a fresh start once its day has come (the server sends the day from
+ * then on), so a day still to come only shows here on a device whose clock is behind - and counts as news.
+ */
+function feeResetIsNews(day, today) {
+    if (!DAY.test(day || '') || !DAY.test(today || '')) return false;
+    return Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`) < FEE_RESET_NEWS_DAYS * 86400000;
+}
+
 export {
     parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense,
-    findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches
+    findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches, feeResetIsNews
 };

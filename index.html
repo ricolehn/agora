@@ -389,19 +389,19 @@
                         <span class="fee-reset-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></span>
                         <div class="fee-reset-head-text">
                             <h3 class="fee-reset-title" data-i18n="fee_reset_title">Fresh start for the fees</h3>
-                            <p class="fee-reset-desc" data-i18n="fee_reset_desc">Settles every fee account on a day you choose and starts it afresh: open fees are dropped, credit is carried over, and from that day on fees and payments count anew. Payments, the history, the cash balance and "member since" stay as they are.</p>
+                            <p class="fee-reset-desc" data-i18n="fee_reset_desc">On the chosen day, open fees are dropped and credit is carried over.</p>
                         </div>
                     </div>
                     <div id="fee-reset-list"></div>
                     <div id="fee-reset-form" class="fee-reset-form" style="display:none;">
                         <label class="form-label" for="fee-reset-date" data-i18n="fee_reset_date_label">Day of the fresh start</label>
                         <div class="fee-reset-form-row">
-                            <input type="date" id="fee-reset-date" class="form-input">
-                            <button type="button" class="btn btn-secondary" id="btn-fee-reset-review" onclick="reviewFeeReset()" data-i18n="fee_reset_review_btn">Check…</button>
+                            <input type="date" id="fee-reset-date" class="form-input" onkeydown="if(event.key==='Enter'){event.preventDefault();reviewFeeReset();}">
+                            <button type="button" class="btn btn-secondary" id="btn-fee-reset-review" onclick="reviewFeeReset()" data-i18n="fee_reset_review_btn">Review…</button>
                         </div>
-                        <p class="fee-reset-form-hint" data-i18n="fee_reset_form_hint">Past or future: it applies from that day on. Nothing happens before you have checked the numbers and confirmed with the day and your password. A fresh start set by mistake can be taken back here.</p>
+                        <p class="fee-reset-form-hint" data-i18n="fee_reset_form_hint">Past or future – you'll see what changes before anything happens.</p>
                     </div>
-                    <p id="fee-reset-readonly" class="fee-reset-form-hint" style="display:none;" data-i18n="fee_reset_readonly">Only system admins can set or take back a fresh start.</p>
+                    <p id="fee-reset-readonly" class="fee-reset-form-hint" style="display:none;" data-i18n="fee_reset_readonly">Only system admins can change this.</p>
                     <details id="fee-reset-log" class="fee-reset-log" hidden>
                         <summary data-i18n="fee_reset_log_title">Changes</summary>
                         <ul></ul>
@@ -1531,13 +1531,14 @@
     </div>
 </div>
 
-<!-- CALDERA: confirming a fresh start of the fee accounts (or taking one back). The numbers come from the server;
-     the button only works once the day is typed again and the password is entered -->
+<!-- CALDERA: confirming a fresh start of the fee accounts (or taking one back). The numbers come from the server and
+     stand as tiles, the rest in a few short lines; the button only works once the day is typed again and the password
+     is entered -->
 <div id="fee-reset-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-fee-reset">
     <div class="modal-content modal-content-enhanced">
         <div class="modal-header-enhanced">
             <div class="modal-header-title-group">
-                <div class="modal-icon-badge badge-expense">⚠️</div>
+                <div class="modal-icon-badge badge-fee-reset" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></div>
                 <div>
                     <div id="title-fee-reset" class="modal-title-main">Start the fees afresh?</div>
                     <div id="fee-reset-modal-subtitle" class="modal-subtitle"></div>
@@ -1550,6 +1551,7 @@
                 <div class="modal-section-header">
                     <span>📋</span> <span data-i18n="fee_reset_modal_effects">What happens</span>
                 </div>
+                <div id="fee-reset-modal-stats" class="fee-reset-stats"></div>
                 <ul id="fee-reset-modal-facts" class="fee-reset-facts"></ul>
             </div>
             <div class="modal-section-card">

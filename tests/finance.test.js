@@ -598,6 +598,18 @@ describe('fresh start of the fee accounts', () => {
     assert.equal(typedDayMatches('11.03.2026', '2026-11-03'), false);
     assert.equal(typedDayMatches('01.01.2027', 'nonsense'), false);
   });
+
+  test('the member card names a fresh start as a notice: from its day on, for 60 days', async () => {
+    const { feeResetIsNews } = await webApp();
+    assert.equal(feeResetIsNews('2026-11-01', '2026-11-01'), true, 'on its day');
+    assert.equal(feeResetIsNews('2026-11-01', '2026-12-30'), true, 'day 59');
+    assert.equal(feeResetIsNews('2026-11-01', '2026-12-31'), false, 'after 60 days it is old news');
+    assert.equal(feeResetIsNews('2026-11-01', '2027-06-01'), false);
+    // the server sends the day once it has come: a device whose clock is behind still shows it
+    assert.equal(feeResetIsNews('2026-11-01', '2026-10-31'), true);
+    for (const day of [null, undefined, '', 'nonsense', '2026-11']) assert.equal(feeResetIsNews(day, '2026-11-01'), false, String(day));
+    assert.equal(feeResetIsNews('2026-11-01', ''), false);
+  });
 });
 
 describe('web app bookings (assets/finance.js)', () => {

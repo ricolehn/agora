@@ -2,7 +2,7 @@ import { initializeApp, getDatabase, ref, set, get, child, update, query, orderB
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
 import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
-import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches } from "./finance.js";
+import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches, feeResetIsNews } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
 const auth = getAuth();
@@ -5341,10 +5341,33 @@ const feeResetStateLabel = state => (state === 'active' ? t('fee_reset_state_act
     : t('fee_reset_state_replaced', 'Replaced'));
 const FEE_RESET_STATE_CLASSES = { active: 'active', scheduled: 'planned', replaced: 'ended' };
 // "50,00 € / 25,00 € / 10,00 €": the monthly fees in the order of the fee settings
-const feeListText = fees => ['vollverdiener', 'geringverdiener', 'keinverdiener'].filter(key => typeof fees?.[key] === 'number').map(key => euro(fees[key])).join(' / ');
+const FEE_KEYS = ['vollverdiener', 'geringverdiener', 'keinverdiener'];
+const feeListText = fees => FEE_KEYS.filter(key => typeof fees?.[key] === 'number').map(key => euro(fees[key])).join(' / ');
+const sameFees = (a, b) => FEE_KEYS.every(key => (a?.[key] ?? null) === (b?.[key] ?? null));
+// "Full earner €50.00 → €60.00": only the fees that differ
+const feeChangeText = (from, to) => {
+    const labels = getStatusLabels(false);
+    return FEE_KEYS.filter(key => typeof from?.[key] === 'number' && typeof to?.[key] === 'number' && from[key] !== to[key])
+        .map(key => `${labels[key]} ${euro(from[key])} → ${euro(to[key])}`).join(', ');
+};
 const utcDate = day => new Date(`${day}T00:00:00Z`);
 const longDayText = day => intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
+const longDateText = day => intlFormatter(Intl.DateTimeFormat, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
 const monthText = month => intlFormatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(`${month}-01`));
+
+/**
+ * Per fresh start (earliest first): true where the time before it keeps other fees than the time after it costs -
+ * read backwards like the calculation (backend/feeReset.js feePeriods): one without fees of its own costs the same.
+ */
+function feesChangedAt(resets) {
+    let after = settings;
+    return [...resets].reverse().map(reset => {
+        const before = reset.feesBefore || after;
+        const changed = !sameFees(before, after);
+        after = before;
+        return changed;
+    }).reverse();
+}
 
 function renderFeeResetCard() {
     const card = $('card-fee-reset');
@@ -5358,33 +5381,31 @@ function renderFeeResetCard() {
     // Under the fee inputs: from when a change of the fees counts - the months before the latest fresh start (a
     // planned one too) keep the fees that were confirmed with it
     const latest = feeResets.map(reset => String(reset.date)).sort().pop();
-    const note = $('rates-reset-note');
-    if (note) {
-        note.textContent = latest ? t('fee_reset_rates_note', 'Changes count from the fresh start on {date} on. The time before it keeps its fees.', { date: formatDateFast(latest) }) : '';
-        note.hidden = !latest;
-    }
+    showFeeResetNote('rates-reset-note', latest ? t('fee_reset_rates_note', 'Changes apply from {month}.', { month: monthText(latest.slice(0, 7)) }) : '');
 
     const list = $('fee-reset-list');
     if (list) {
         const takeBack = escapeHtml(t('fee_reset_remove_btn', 'Take back'));
-        const rows = [...feeResets].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(reset => {
+        const byDay = [...feeResets].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const changed = feesChangedAt(byDay);
+        // The newest first: the day, who set it and - only where they differ from what came after - the fees kept
+        const rows = byDay.map((reset, i) => {
             const cls = FEE_RESET_STATE_CLASSES[reset.state] || 'ended';
             const facts = [
-                reset.feesBefore ? t('fee_reset_row_fees', 'Fees before: {fees}', { fees: feeListText(reset.feesBefore) }) : '',
-                reset.setByName ? t('fee_reset_row_by', 'Set by {name}', { name: reset.setByName }) : ''
-            ].filter(Boolean).map(escapeHtml).join(' · ');
+                reset.setByName ? t('fee_reset_row_by', 'Set by {name}', { name: reset.setByName }) : '',
+                changed[i] ? t('fee_reset_row_fees', 'Fees until then: {fees}', { fees: feeListText(reset.feesBefore) }) : ''
+            ].filter(Boolean).map(fact => `<div class="so-row-facts">${escapeHtml(fact)}</div>`).join('');
             return `
-                <div class="so-row${cls === 'ended' ? ' is-ended' : ''}">
-                    <span class="so-row-icon" aria-hidden="true">${svgIcon('rotate', 16, 2.2)}</span>
+                <div class="so-row fee-reset-row${cls === 'ended' ? ' is-ended' : ''}">
                     <div class="so-row-text">
-                        <div class="so-row-amount"><strong>${escapeHtml(formatDateFast(reset.date))}</strong></div>
-                        ${facts ? `<div class="so-row-facts">${facts}</div>` : ''}
+                        <div class="so-row-amount"><strong>${escapeHtml(longDateText(reset.date))}</strong></div>
+                        ${facts}
                     </div>
                     <span class="so-row-state ${cls}">${escapeHtml(feeResetStateLabel(reset.state))}</span>
                     ${admin ? `<button type="button" class="so-row-edit" data-date="${escapeHtml(reset.date)}" onclick="reviewFeeReset(this.dataset.date)" title="${takeBack}" aria-label="${takeBack}">${svgIcon('trash', 15, 2)}</button>` : ''}
                 </div>`;
-        }).join('');
-        list.innerHTML = rows ? `<div class="so-rows">${rows}</div>` : `<p class="fee-reset-none">${escapeHtml(t('fee_reset_none', 'No fresh start so far: every fee account counts from "member since".'))}</p>`;
+        }).reverse().join('');
+        list.innerHTML = rows ? `<div class="so-rows">${rows}</div>` : `<p class="fee-reset-none">${escapeHtml(t('fee_reset_none', 'No fresh start yet.'))}</p>`;
     }
 
     // Who set or took back which day (the newest first)
@@ -5411,47 +5432,47 @@ function updateFeeResetConfirm() {
 }
 
 // What the day changes, in numbers the server works out for everyone (also for an admin who does not see the finances):
-// who owes less or more with the fresh start than without it, and by how much (backend/derivedData.js)
+// who owes less or more with the fresh start than without it, and by how much (backend/derivedData.js). The numbers
+// stand as tiles - the amount, what it is, how many members - and what else needs saying gets a short line each
 function renderFeeResetDialog(impact, remove) {
-    const date = formatDateFast(impact.date);
-    const amount = side => euro(side.total);
-    const others = impact.members - impact.behind.count - impact.ahead.count;
-    const fees = feeListText(impact.feesBefore);
-    const facts = remove ? [
-        t('fee_reset_undo_fact_all', 'The fee accounts are calculated again as if this fresh start had never been set.'),
-        impact.inEffect ? '' : t('fee_reset_undo_fact_planned', 'Its day has not come yet: nothing has been dropped or carried over so far.'),
-        impact.behind.count === 1 ? t('fee_reset_undo_fact_behind_one', '<strong>1 member</strong> then owes <strong>{amount}</strong> more.', { amount: amount(impact.behind) })
-            : impact.behind.count ? t('fee_reset_undo_fact_behind', '<strong>{count} members</strong> then owe more: <strong>{amount}</strong> in total.', { count: impact.behind.count, amount: amount(impact.behind) })
-            : impact.inEffect ? t('fee_reset_undo_fact_no_behind', 'Nobody owes more through it: no open fees come back.')
-            : '',
-        impact.owesMore.count === 1 ? t('fee_reset_undo_fact_better_one', '<strong>1 member</strong> is then better off by <strong>{amount}</strong>.', { amount: amount(impact.owesMore) })
-            : impact.owesMore.count ? t('fee_reset_undo_fact_better', '<strong>{count} members</strong> are then better off: by <strong>{amount}</strong> in total.', { count: impact.owesMore.count, amount: amount(impact.owesMore) })
-            : '',
-        // Where the time before it costs the same either way, taking it back takes no credit away
-        impact.inEffect && !impact.repriced && impact.ahead.count ? t('fee_reset_undo_fact_ahead', 'The credit that was carried over (<strong>{amount}</strong>) is not lost: every payment keeps counting.', { amount: amount(impact.ahead) }) : '',
-        impact.repriced ? t('fee_reset_undo_fact_fees', 'The fees kept for the time before it ({fees}) no longer apply: that time is then calculated at {feesNow}.', { fees, feesNow: feeListText(impact.feesWithout) }) : '',
-        t('fee_reset_fact_untouched', 'Payments, the history, standing orders, "member since" and the cash balance stay as they are.')
+    const members = count => (count === 1 ? t('fee_reset_members_one', '1 member')
+        : count ? t('fee_reset_members', '{count} members', { count })
+        : t('fee_reset_members_none', 'Nobody'));
+    // A tile without members stays grey: nothing to look at there
+    const tile = (side, label, tone) => `
+        <div class="fee-reset-stat${side.count ? ` is-${tone}` : ''}">
+            <span class="fee-reset-stat-amount">${escapeHtml(euro(side.total))}</span>
+            <span class="fee-reset-stat-label">${escapeHtml(label)}</span>
+            <span class="fee-reset-stat-count">${escapeHtml(members(side.count))}</span>
+        </div>`;
+    const tiles = remove ? [
+        // A planned one that changes nothing needs no "nobody" tile: its line says so
+        impact.inEffect || impact.behind.count ? tile(impact.behind, t('fee_reset_tile_more', 'more to pay'), 'danger') : '',
+        // Only where the fees kept for the time before it are higher than without it (lowered since), see the README
+        impact.owesMore.count ? tile(impact.owesMore, t('fee_reset_tile_less', 'less to pay'), 'success') : ''
     ] : [
-        impact.inEffect ? t('fee_reset_fact_now', 'It applies right away: this day has come.')
-            : t('fee_reset_fact_later', 'It applies from <strong>{date}</strong> on; until then everything is calculated as before. The numbers here count the payments booked so far - what is paid until then still changes them.', { date }),
-        impact.behind.count === 1 ? t('fee_reset_fact_behind_one', '<strong>1 member</strong> is behind: the open fees of <strong>{amount}</strong> are dropped.', { amount: amount(impact.behind) })
-            : impact.behind.count ? t('fee_reset_fact_behind', '<strong>{count} members</strong> are behind: their open fees of <strong>{amount}</strong> are dropped.', { count: impact.behind.count, amount: amount(impact.behind) })
-            : t('fee_reset_fact_no_behind', 'No open fees are dropped.'),
-        impact.ahead.count === 1 ? t('fee_reset_fact_ahead_one', '<strong>1 member</strong> has paid ahead: the credit of <strong>{amount}</strong> is carried over in full.', { amount: amount(impact.ahead) })
-            : impact.ahead.count ? t('fee_reset_fact_ahead', '<strong>{count} members</strong> have paid ahead: their credit of <strong>{amount}</strong> is carried over in full.', { count: impact.ahead.count, amount: amount(impact.ahead) })
-            : '',
-        // Paid up exactly, joining later, or behind with fees another fresh start drops anyway
-        !(impact.behind.count + impact.ahead.count) ? ''
-            : others === 1 ? t('fee_reset_fact_others_one', 'For <strong>1 other member</strong> nothing changes.')
-            : others > 1 ? t('fee_reset_fact_others', 'For the other <strong>{count} members</strong> nothing changes.', { count: others })
-            : '',
-        t('fee_reset_fact_fees', 'From <strong>{month}</strong> on the monthly fees are owed anew. The time before keeps its fees ({fees}), also when you change the fees afterwards.', { month: monthText(impact.firstMonth), fees }),
-        t('fee_reset_fact_untouched', 'Payments, the history, standing orders, "member since" and the cash balance stay as they are.')
+        tile(impact.behind, t('fee_reset_tile_dropped', 'open fees dropped'), 'warning'),
+        tile(impact.ahead, t('fee_reset_tile_carried', 'credit carried over'), 'success')
+    ];
+    const facts = remove ? [
+        impact.inEffect ? t('fee_reset_undo_fact_all', 'Accounts are calculated as if it never happened.')
+            : t('fee_reset_undo_fact_planned', 'Its day hasn\'t come yet – nothing was dropped or carried over.'),
+        // Where the time before it costs the same either way, taking it back takes no credit away
+        impact.inEffect && !impact.repriced && impact.ahead.count ? t('fee_reset_undo_fact_ahead', 'The credit carried over ({amount}) stays.', { amount: euro(impact.ahead.total) }) : '',
+        impact.repriced ? t('fee_reset_undo_fact_fees', 'Earlier months then cost: {changes}.', { changes: feeChangeText(impact.feesBefore, impact.feesWithout) || feeListText(impact.feesWithout) }) : '',
+        t('fee_reset_fact_untouched', 'Payments, history and cash balance stay as they are.')
+    ] : [
+        // A day still to come: the numbers count the payments booked so far
+        impact.inEffect ? t('fee_reset_fact_now', 'Takes effect right away.')
+            : t('fee_reset_fact_later', 'Takes effect on {date} – the numbers can still change until then.', { date: longDateText(impact.date) }),
+        t('fee_reset_fact_fees', 'Fees count anew from {month}.', { month: monthText(impact.firstMonth) }),
+        t('fee_reset_fact_untouched', 'Payments, history and cash balance stay as they are.')
     ];
     setText('title-fee-reset', remove ? t('fee_reset_remove_title', 'Take back the fresh start?') : t('fee_reset_set_title', 'Start the fees afresh?'));
     setText('fee-reset-modal-subtitle', longDayText(impact.date));
-    $('fee-reset-modal-facts').innerHTML = facts.filter(Boolean).map(fact => `<li>${fact}</li>`).join('');
-    setText('fee-reset-typed-label', t('fee_reset_type_label', 'To confirm, type the day: {date}', { date }));
+    $('fee-reset-modal-stats').innerHTML = tiles.join('');
+    $('fee-reset-modal-facts').innerHTML = facts.filter(Boolean).map(fact => `<li>${escapeHtml(fact)}</li>`).join('');
+    setText('fee-reset-typed-label', t('fee_reset_type_label', 'Type {date} to confirm', { date: formatDateFast(impact.date) }));
     setText('btn-fee-reset-confirm', remove ? t('fee_reset_remove_btn', 'Take back') : t('fee_reset_set_btn', 'Start afresh'));
     ['fee-reset-typed', 'fee-reset-password'].forEach(id => setValue(id, ''));
     updateFeeResetConfirm();
@@ -5501,16 +5522,21 @@ async function confirmFeeReset() {
 function feeResetPaymentHint(person, day) {
     const dropped = person ? droppedFeesBefore(person, day) : 0;
     return dropped > 0
-        ? t('fee_reset_payment_hint', 'This day is before the fresh start of the fees on {date}, when {amount} of open fees were dropped. A payment dated before it first makes up for those; only what goes beyond becomes credit.', { date: formatDateFast(person._feeReset), amount: euro(dropped) })
+        ? t('fee_reset_payment_hint', 'Before the fresh start ({date}): this first pays off the old arrears of {amount}.', { date: formatDateFast(person._feeReset), amount: euro(dropped) })
         : '';
 }
 
-function showFeeResetHint(id, person, day) {
+// The notes about a fresh start carry its symbol, so they are recognised at a glance wherever they show
+const feeResetNoteHtml = text => (text ? `${svgIcon('rotate', 14, 2.4)}<span>${escapeHtml(text)}</span>` : '');
+
+function showFeeResetNote(id, text) {
     const el = $(id);
     if (!el) return;
-    el.textContent = feeResetPaymentHint(person, day);
-    el.hidden = !el.textContent;
+    el.innerHTML = feeResetNoteHtml(text);
+    el.hidden = !text;
 }
+
+const showFeeResetHint = (id, person, day) => showFeeResetNote(id, feeResetPaymentHint(person, day));
 
 const updatePaymentResetHint = () => showFeeResetHint('payment-reset-hint', isChecked('payment-is-standing-order') ? null : findPerson(currentPersonId), inputValue('payment-date'));
 const updateEditPaymentResetHint = () => showFeeResetHint('edit-payment-reset-hint', currentEditedPayment?.type === 'payment' ? findPerson(currentEditedPayment.personId) : null, inputValue('edit-payment-date'));
@@ -5759,7 +5785,7 @@ function openRequestDetail(reqId) {
             ${req.status !== 'pending' || !canApproveRequests() ? row('check', t('request_detail_status', 'Status'), `<span class="reqd-state" style="--state-color: ${(USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending)[0]};">${escapeHtml(requestStateLabel(req))}</span>`) : ''}
             ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Reason'), escapeHtml(req.rejectionReason || t('user_no_reason', 'No reason given'))) : ''}
         </div>
-        ${resetHint ? `<div class="fee-reset-note">${escapeHtml(resetHint)}</div>` : ''}
+        ${resetHint ? `<div class="fee-reset-note">${feeResetNoteHtml(resetHint)}</div>` : ''}
         ${data.receipt ? `<div class="reqd-receipts" id="reqd-receipts"></div>` : ''}`;
     if (data.receipt) viewRequestReceipt(data.receipt, 'reqd-receipts');
     const canApprove = canApproveRequests() && req.status === 'pending';
@@ -6060,9 +6086,10 @@ const standingOrderCovers = meta => meta.isActiveStandingOrder && !meta.isOverdu
 // the time since then) and what happened on that day: credit was taken along, open fees were dropped
 const feeResetOutcome = p => (p._feeCarriedOver > 0 ? t('fee_reset_carried', 'Credit carried over: {amount}', { amount: euro(p._feeCarriedOver) })
     : p._feeWrittenOff > 0 ? t('fee_reset_dropped', 'Open fees dropped: {amount}', { amount: euro(p._feeWrittenOff) })
-    : t('fee_reset_even', 'Everything was paid up'));
-const feeResetChip = p => (p._feeReset
-    ? `<span class="user-finance-chip fee-reset-chip">${svgIcon('rotate', 13, 2.2)}<span>${t('fee_reset_chip', 'Counts anew since {date}', { date: `<strong>${formatDateFast(p._feeReset)}</strong>` })}</span></span>`
+    : t('fee_reset_even', 'All paid up'));
+// The chip is a notice: it shows from the day on for about two months (assets/finance.js), the history keeps the day
+const feeResetChip = p => (p._feeReset && feeResetIsNews(p._feeReset, getTodayStr())
+    ? `<span class="user-finance-chip fee-reset-chip">${svgIcon('rotate', 13, 2.4)}<span>${t('fee_reset_chip', 'Fresh start on {date}', { date: `<strong>${formatDateFast(p._feeReset)}</strong>` })}</span></span>`
     : '');
 
 function renderUserView() {
@@ -6245,7 +6272,7 @@ function generateTimelineHTML(person) {
     if (currentStart) events.push({ type: 'status', dateStr: currentStart, status: person.status });
     safeList(person.payments).forEach(p => events.push({ type: 'payment', dateStr: p.date, amount: p.amount, description: p.description }));
     if (events.length === 0) return `<div style="font-size:0.8rem; color:var(--text-secondary); font-style:italic;">${t('timeline_no_entries', 'No entries found.')}</div>`;
-    // The fee account was started afresh (CALDERA): a line marks the day and says what was taken along or dropped
+    // The fee account was started afresh (CALDERA): its day is a marked point on the line, with what happened then
     if (person._feeReset) events.push({ type: 'reset', dateStr: person._feeReset });
 
     const statusLabels = getStatusLabels(true);
@@ -6260,12 +6287,25 @@ function generateTimelineHTML(person) {
     // Newest first; on the day of a fresh start its line comes below that day's entries (they belong to the new
     // account). A payment without a date (older or imported data) goes to the end instead of breaking the whole view
     const newestFirst = (a, b) => String(b.dateStr || '').localeCompare(String(a.dateStr || '')) || (a.type === 'reset') - (b.type === 'reset');
-    return `<div class="timeline">${events.sort(newestFirst).map(ev => {
+    const sorted = events.sort(newestFirst);
+    // Below the fresh start lies the settled time: its entries stay, a little quieter (the server counts the same way)
+    const resetAt = sorted.findIndex(ev => ev.type === 'reset');
+    return `<div class="timeline">${sorted.map((ev, i) => {
         const date = formatDateFast(ev.dateStr);
-        if (ev.type === 'reset') return line(t('fee_reset_timeline_title', 'Fresh start of the fees'), `${feeResetOutcome(person)} • ${date}`, ' timeline-reset');
+        const settled = resetAt >= 0 && i > resetAt ? ' is-settled' : '';
+        if (ev.type === 'reset') {
+            return `
+                <div class="timeline-item timeline-reset">
+                    <div class="timeline-dot" aria-hidden="true">${svgIcon('rotate', 12, 3)}</div>
+                    <div class="timeline-content">
+                        <div class="timeline-reset-title"><span>${t('fee_reset_timeline_title', 'Fresh start')}</span><span class="timeline-reset-date">${date}</span></div>
+                        <div class="timeline-reset-meta">${feeResetOutcome(person)}</div>
+                    </div>
+                </div>`;
+        }
         return ev.type === 'status'
-            ? line(`${t('timeline_status_change', 'Status Change')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Valid from')} ${date}`)
-            : line(`${t('timeline_payment', 'Payment')}: ${euro(ev.amount)}`, `${escapeHtml(ev.description) || t('timeline_no_note', 'No note')} • ${date}`);
+            ? line(`${t('timeline_status_change', 'Status Change')}: ${escapeHtml(statusLabels[ev.status] || ev.status)}`, `${t('timeline_valid_from', 'Valid from')} ${date}`, settled)
+            : line(`${t('timeline_payment', 'Payment')}: ${euro(ev.amount)}`, `${escapeHtml(ev.description) || t('timeline_no_note', 'No note')} • ${date}`, settled);
     }).join('')}</div>`;
 }
 

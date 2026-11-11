@@ -1006,8 +1006,13 @@ h1, h2, h3,
 .fee-reset-log ul { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .fee-reset-log li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; }
 .fee-reset-log li span { opacity: 0.75; white-space: nowrap; }
-/* A quiet amber note: from when changed fees count, what a payment before the fresh start does */
+/* Rows without a symbol of their own (the card has it): the day first, who set it below */
+.fee-reset-row { padding-left: 16px; }
+/* A quiet amber note with the fresh-start symbol: from when changed fees count, what a payment before the day does */
 .fee-reset-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
     margin-top: 8px;
     padding: 9px 12px;
     border-radius: 12px;
@@ -1017,20 +1022,68 @@ h1, h2, h3,
     background: color-mix(in srgb, var(--warning) 10%, var(--surface));
     border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
 }
+.fee-reset-note svg { flex-shrink: 0; margin-top: 2px; color: var(--warning); }
 .fee-reset-note[hidden] { display: none; }
 #reqd-body .fee-reset-note { margin: 12px 0 0; }
-/* The dialog: what happens as a short list, then the two confirmations and the buttons side by side. The list can run
-   to a dozen lines: a little more height than other dialogs get, so the buttons show without scrolling */
+/* The dialog: the numbers as tiles (amount, what it is, how many members), a few short lines below them, then the two
+   confirmations and the buttons side by side. A little more height than other dialogs get, so the buttons show */
 #fee-reset-modal .modal-content-enhanced { max-height: min(90vh, 760px); }
-.fee-reset-facts { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 7px; font-size: 0.86rem; line-height: 1.45; color: var(--text-secondary); }
-.fee-reset-facts strong { color: var(--text); font-weight: 700; }
+.badge-fee-reset { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.fee-reset-stats { display: flex; gap: 8px; }
+.fee-reset-stats:empty { display: none; }
+.fee-reset-stat {
+    --tone: var(--text-secondary);
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+}
+.fee-reset-stat.is-warning { --tone: var(--warning); }
+.fee-reset-stat.is-success { --tone: var(--success); }
+.fee-reset-stat.is-danger { --tone: var(--danger); }
+.fee-reset-stat:is(.is-warning, .is-success, .is-danger) {
+    background: color-mix(in srgb, var(--tone) 9%, var(--surface));
+    border-color: color-mix(in srgb, var(--tone) 26%, transparent);
+}
+.fee-reset-stat-amount { font-size: 1.2rem; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--tone) 78%, var(--text)); }
+.fee-reset-stat-label { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+.fee-reset-stat-count { font-size: 0.76rem; color: var(--text-secondary); }
+.fee-reset-facts { margin: 2px 0 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 5px; font-size: 0.84rem; line-height: 1.45; color: var(--text-secondary); }
 .fee-reset-actions { display: flex; gap: 10px; }
 .fee-reset-actions .btn { flex: 1; }
 .fee-reset-actions .btn-danger:not(:disabled) { background: var(--danger); color: #ffffff; }
-/* At a member: the chip spans both columns, the line in the history carries an amber dot */
+/* At a member: the chip spans both columns */
 .user-finance-chip.fee-reset-chip { grid-column: 1 / -1; gap: 6px; }
 .user-finance-chip.fee-reset-chip svg { flex-shrink: 0; color: var(--warning); }
-.timeline-reset .timeline-dot { background: var(--warning); }
+/* In the history the fresh start is a marked point on the line: the amber symbol on the line, the day and what
+   happened in a tinted box. Below it lies the settled time - its entries stay, a little quieter */
+.timeline-reset .timeline-dot {
+    left: -36px;
+    top: 8px;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background: var(--warning);
+}
+.timeline-reset .timeline-content {
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
+}
+.timeline-reset-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-weight: 700; }
+.timeline-reset-date { flex-shrink: 0; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.timeline-reset-meta { font-size: 0.85rem; color: var(--text-secondary); }
+.timeline-item.is-settled .timeline-dot { background: var(--border); }
+.timeline-item.is-settled .timeline-content { opacity: 0.6; }
 
 /* ==========================================================================
    One look for every profile picture without a photo (the one of the finance history):
