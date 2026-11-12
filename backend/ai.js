@@ -1,7 +1,8 @@
-const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson, getFeeResets } = require('./pocketbase');
+const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson, getFeeState } = require('./pocketbase');
 const { toDateStr } = require('./utils/date');
 const { buildEventContext } = require('./eventContext');
 const { describeFeeResets } = require('./feeReset');
+const { describeFeeSchedule } = require('./feeSchedule');
 
 const AI_STATE_KEY = 'ai_config';
 
@@ -65,14 +66,13 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
   try {
     const canViewFinances = options.canViewFinances === true;
 
-    const [allPeople, expenses, users, settings, requests, donations, feeResets] = await Promise.all([
+    const [allPeople, expenses, users, requests, donations, fees] = await Promise.all([
       listPeopleRecords(appConfig).catch(() => []),
       canViewFinances ? listExpenseRecords(appConfig).catch(() => []) : Promise.resolve([]),
       listUserRecords(appConfig).catch(() => []),
-      getStateValue(appConfig, 'settings', {}).catch(() => ({})),
       listRequestRecords(appConfig).catch(() => []),
       canViewFinances ? getStateValue(appConfig, 'donations', {}).catch(() => ({})) : Promise.resolve({}),
-      canViewFinances ? getFeeResets(appConfig).catch(() => []) : Promise.resolve([])
+      canViewFinances ? getFeeState(appConfig).catch(() => null) : Promise.resolve(null)
     ]);
 
     const today = new Date();
@@ -232,14 +232,19 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
     };
 
     if (canViewFinances) {
+      // The monthly fees of this month, and the fees over time: those from the beginning (from: null) and every
+      // change with the month it counts from (state: current = counts this month, planned = still to come)
+      const feesOverTime = fees ? describeFeeSchedule(fees.schedule, todayStr) : null;
+      const rates = feesOverTime ? feesOverTime.current : {};
       snapshot.contributionRates = {
-        vollverdiener: settings.vollverdiener ?? null,
-        geringverdiener: settings.geringverdiener ?? null,
-        keinverdiener: settings.keinverdiener ?? null,
-        pausiert: settings.pausiert ?? null
+        vollverdiener: rates.vollverdiener ?? null,
+        geringverdiener: rates.geringverdiener ?? null,
+        keinverdiener: rates.keinverdiener ?? null,
+        pausiert: rates.pausiert ?? null
       };
+      snapshot.contributionRatesOverTime = feesOverTime ? feesOverTime.entries : [];
       // The days all fee accounts were started afresh (state: active = counted from, scheduled = still to come)
-      snapshot.feeResets = describeFeeResets(feeResets, todayStr);
+      snapshot.feeResets = describeFeeResets(fees ? fees.resets : [], todayStr);
       snapshot.expenses = expenseRecords;
       snapshot.paymentsOfDeletedMembers = deletedPeoplePayments;
       snapshot.donations = donations;
@@ -319,7 +324,7 @@ function buildSystemPrompt(appName, dbSnapshot, options = {}) {
     return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, events and general app usage. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.
 IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.\n\nCurrent database context:\n${dbSnapshot}`;
   }
-  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers". Fees: each member's "feeAccount" is the application's own calculation - take who is overdue (isOverdue), the open amount (overdueEur), the balance (balanceEur, negative means owed) and the last fully paid month (paidUpToMonth) from it instead of adding up months and payments yourself; it is null for members who pay no fees. "feeResets" lists the days on which all fee accounts were started afresh (state "active": counted from; "scheduled": still to come). On such a day the account of every member who had joined before it was settled: whoever was behind starts from zero (openFeesDroppedEur was dropped and is no longer owed), whoever had paid ahead keeps that credit (creditCarriedOverEur), and since that day ("startedAfreshOn"; "countsFrom" is where the account counts from) the months are owed and the payments credited anew, at the "contributionRates" of today - the time before kept the fees of its own. All payments stay in "payments", "totalPaid" and the cash balance; "memberSince" never changes.\n\nCurrent database context:\n${dbSnapshot}`;
+  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers". Fees: each member's "feeAccount" is the application's own calculation - take who is overdue (isOverdue), the open amount (overdueEur), the balance (balanceEur, negative means owed) and the last fully paid month (paidUpToMonth) from it instead of adding up months and payments yourself; it is null for members who pay no fees. "feeResets" lists the days on which all fee accounts were started afresh (state "active": counted from; "scheduled": still to come). On such a day the account of every member who had joined before it was settled: whoever was behind starts from zero (openFeesDroppedEur was dropped and is no longer owed), whoever had paid ahead keeps that credit (creditCarriedOverEur), and since that day ("startedAfreshOn"; "countsFrom" is where the account counts from) the months are owed and the payments credited anew. Every month costs the fees of its time: "contributionRates" are the monthly fees of the current month, "contributionRatesOverTime" lists the fees from the beginning ("from": null) and every change with the month it counts from ("from": YYYY-MM; state "current": counts this month, "planned": still to come, "past": replaced by a later change) - the months before a change keep the fees before it. All payments stay in "payments", "totalPaid" and the cash balance; "memberSince" never changes.\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
 /**

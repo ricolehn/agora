@@ -20,6 +20,8 @@ let settings = { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, paus
 // members get the day their own account counts from with their record (_feeReset)
 let feeResets = [];
 let feeResetLog = [];
+// The monthly fees over time (CALDERA): what a month costs now, the change still to come and all of them (GET /api/fees)
+let feePlan = null;
 let currentPersonId = null;
 let isAuthenticated = false;
 let currentUser = null;
@@ -3972,9 +3974,10 @@ async function loadMemberData() {
 
 async function loadAdminData() {
     const withFinances = canViewFinances();
-    const [pData, sData, rData, uData, resetData] = await Promise.all([
+    const [pData, sData, rData, uData, resetData, feeData] = await Promise.all([
         ...['people', 'settings', withFinances && 'requests', 'users'].map(path => path ? apiGet(path).catch(() => null) : null),
-        apiJson('/fee-reset').catch(() => null)
+        apiJson('/fee-reset').catch(() => null),
+        apiJson('/fees').catch(() => null)
     ]);
     people = safeList(pData).filter(p => !p.isDeleted);
     requests = safeList(rData);
@@ -3983,6 +3986,7 @@ async function loadAdminData() {
     }
     // A failed request keeps what is shown (like the settings)
     if (resetData) applyFeeResets(resetData);
+    applyFeePlan(feeData);
     users = Object.entries(uData || {}).map(([uid, data]) => {
         if (!withFinances) return { ...data, uid };
         const linked = findLinkedPerson(uid);
@@ -4069,9 +4073,9 @@ async function renderViews(full = true) {
         renderAdminRequests();
         renderUnlinkedUsers();
     }
+    renderFeeCard();
     renderFeeResetCard();
     if (full) {
-        ['vollverdiener', 'geringverdiener', 'keinverdiener'].forEach(key => setValue('rate-' + key, settings[key] || 0));
         updateNotificationPreferencesUI();
         ensurePushNotificationSubscription();
     }
@@ -5294,24 +5298,10 @@ async function uploadChurchLogo() {
     }
 }
 
-async function autoSaveRate(fieldId) {
-    const el = $(fieldId);
-    if (!el) return;
-    const val = parseAmount(el.value);
-    if (isNaN(val) || val < 0) return;
-    settings[['vollverdiener', 'geringverdiener'].find(key => fieldId === 'rate-' + key) || 'keinverdiener'] = val;
-    await attempt(async () => {
-        await set(ref(db, 'settings'), settings);
-        // What a month costs and what is owed are worked out by the server: fetch the records again
-        await loadData(true);
-        showToast(t('toast_settings_saved', 'Settings saved'));
-    }, t('alert_settings_save_failed', 'Settings could not be saved.'), { toast: 'error' });
-}
-
 Object.assign(window, {
     filterByGroup, submitQuickAddGroup, submitSaveGroup, deleteCurrentGroup, openAssignGroupModal, submitAssignGroups, switchSysSettingsTab,
     updateUserMemberSince, toggleUserSystemAdmin, toggleUserPays, openCreateUserModal, submitCreateUser, openResetPasswordModal, submitResetPassword,
-    deleteUserAccount, saveAdvancedSystemConfig, saveAiConfig, uploadChurchLogo, autoSaveRate,
+    deleteUserAccount, saveAdvancedSystemConfig, saveAiConfig, uploadChurchLogo,
     clearGroupFilter: () => filterByGroup(null),
     openManageGroupModal: groupId => {
         const group = systemGroups.find(g => g.id === groupId);
@@ -5327,6 +5317,304 @@ Object.assign(window, {
     }
 });
 
+// --- The monthly fees over time (CALDERA) ---
+// Every change of the fees says from which month it counts; the months before keep the old fees
+// (backend/feeSchedule.js). The card on the fees page shows what a month costs now, the change that is still to come
+// and all of them over time. Only system admins change them, in a dialog of two steps: the fees and their month, then
+// what that does in numbers (the server works them out for everyone) - and only then it is saved.
+function applyFeePlan(data) {
+    if (data && Array.isArray(data.entries)) feePlan = data;
+}
+
+// "50,00 € / 25,00 € / 10,00 €": the monthly fees in the order of the fee settings
+const FEE_KEYS = ['vollverdiener', 'geringverdiener', 'keinverdiener'];
+const feeListText = fees => FEE_KEYS.filter(key => typeof fees?.[key] === 'number').map(key => euro(fees[key])).join(' / ');
+const utcDate = day => new Date(`${day}T00:00:00Z`);
+const longDayText = day => intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
+const longDateText = day => intlFormatter(Intl.DateTimeFormat, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
+const monthText = month => intlFormatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(`${month}-01`));
+// 'YYYY-MM' with [count] months added
+const addMonths = (month, count) => {
+    const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + count;
+    return `${Math.floor(index / 12)}-${pad2((index % 12) + 1)}`;
+};
+
+// A fresh start and a change of the fees say what they are today with the same three words
+const feeStateLabel = state => (['active', 'current'].includes(state) ? t('fee_reset_state_active', 'In effect')
+    : ['scheduled', 'planned'].includes(state) ? t('fee_reset_state_scheduled', 'Planned')
+    : t('fee_reset_state_replaced', 'Replaced'));
+const FEE_STATE_CLASSES = { active: 'active', current: 'active', scheduled: 'planned', planned: 'planned', replaced: 'ended', past: 'ended' };
+// Who set or took back what (the newest first), in the log under both cards
+function renderFeeLog(id, entries, textOf) {
+    const log = $(id);
+    if (!log) return;
+    const lines = [...entries].reverse().slice(0, 10).map(entry => (
+        `<li>${escapeHtml(textOf(entry, entry.byName || t('status_unknown', 'Unknown')))}${entry.at ? `<span>${escapeHtml(dateTimeFormatter.format(new Date(entry.at)))}</span>` : ''}</li>`
+    )).join('');
+    log.hidden = !lines;
+    const items = log.querySelector('ul');
+    if (items) items.innerHTML = lines;
+}
+
+// The numbers of a dialog as tiles - the amount, what it is, how many members. One without members stays grey:
+// nothing to look at there
+const feeImpactMembers = count => (count === 1 ? t('fee_reset_members_one', '1 member')
+    : count ? t('fee_reset_members', '{count} members', { count })
+    : t('fee_reset_members_none', 'Nobody'));
+const feeImpactTile = (side, label, tone) => `
+    <div class="fee-reset-stat${side.count ? ` is-${tone}` : ''}">
+        <span class="fee-reset-stat-amount">${escapeHtml(euro(side.total))}</span>
+        <span class="fee-reset-stat-label">${escapeHtml(label)}</span>
+        <span class="fee-reset-stat-count">${escapeHtml(feeImpactMembers(side.count))}</span>
+    </div>`;
+
+function renderFeeCard() {
+    if (!$('card-rates') || !feePlan) return;
+    const admin = isSuperAdminUser();
+    const labels = getStatusLabels(false);
+    const entries = safeList(feePlan.entries);
+
+    // What a month costs now, and since when
+    setText('fee-plan-caption', feePlan.since ? t('fees_since', 'Since {month}', { month: monthText(feePlan.since) }) : t('fees_now', 'This month'));
+    $('fee-plan-now').innerHTML = FEE_KEYS.map(key => `
+        <div class="fee-plan-tile">
+            <span class="fee-plan-tile-label">${escapeHtml(labels[key])}</span>
+            <span class="fee-plan-tile-amount">${escapeHtml(euro(feePlan.current?.[key] || 0))}</span>
+        </div>`).join('');
+
+    // The change that is still to come next: only the fees that will differ
+    const next = feePlan.next;
+    const nextNote = $('fee-plan-next');
+    nextNote.hidden = !next;
+    nextNote.innerHTML = next ? `${svgIcon('calendar', 14, 2.2)}<span>${escapeHtml(t('fees_next', 'From {month}: {fees}', {
+        month: monthText(next.from),
+        fees: FEE_KEYS.filter(key => (feePlan.current?.[key] || 0) !== (next.fees?.[key] || 0)).map(key => `${labels[key]} ${euro(next.fees?.[key] || 0)}`).join(', ') || feeListText(next.fees)
+    }))}</span>` : '';
+
+    show('fee-plan-form', admin, 'block');
+    show('fee-plan-readonly', !admin, 'block');
+
+    // Over time, the newest first: the month a change counts from and what it changed - the fees from the beginning
+    // with all three amounts. Admins edit every entry and take a change back; the fees from the beginning stay
+    const edit = escapeHtml(t('btn_edit', 'Edit'));
+    const takeBack = escapeHtml(t('fee_reset_remove_btn', 'Take back'));
+    const rows = entries.map((entry, i) => {
+        const cls = FEE_STATE_CLASSES[entry.state] || 'ended';
+        const title = entry.from ? monthText(entry.from) : t('fees_from_start', 'From the beginning');
+        const changed = i > 0 ? FEE_KEYS.filter(key => (entries[i - 1].fees?.[key] || 0) !== (entry.fees?.[key] || 0)) : [];
+        const facts = [
+            ...(changed.length ? changed.map(key => `${labels[key]} ${euro(entries[i - 1].fees?.[key] || 0)} → ${euro(entry.fees?.[key] || 0)}`) : [feeListText(entry.fees)]),
+            entry.setByName ? t('fee_reset_row_by', 'Set by {name}', { name: entry.setByName }) : ''
+        ].filter(Boolean).map(fact => `<div class="so-row-facts">${escapeHtml(fact)}</div>`).join('');
+        return `
+            <div class="so-row fee-reset-row fee-plan-row${cls === 'ended' ? ' is-ended' : ''}">
+                <div class="so-row-text">
+                    <div class="so-row-amount fee-plan-row-title"><strong>${escapeHtml(title)}</strong><span class="so-row-state ${cls}">${escapeHtml(feeStateLabel(entry.state))}</span></div>
+                    ${facts}
+                </div>
+                ${admin ? `<button type="button" class="so-row-edit" data-from="${escapeHtml(entry.from || '')}" onclick="openFeeChange(this.dataset.from || null)" title="${edit}" aria-label="${edit}">${svgIcon('edit', 15, 2)}</button>` : ''}
+                ${admin && entry.from ? `<button type="button" class="so-row-edit" data-from="${escapeHtml(entry.from)}" onclick="reviewFeeRemoval(this.dataset.from)" title="${takeBack}" aria-label="${takeBack}">${svgIcon('trash', 15, 2)}</button>` : ''}
+            </div>`;
+    }).reverse().join('');
+    // One fee for all time and nobody to change it: the tiles say it all
+    $('fee-plan-history').innerHTML = rows && (admin || entries.length > 1)
+        ? `<div class="fee-plan-history-title">${escapeHtml(t('fees_history_title', 'Fees over time'))}</div><div class="so-rows">${rows}</div>` : '';
+
+    renderFeeLog('fee-plan-log', safeList(feePlan.log), (entry, name) => (
+        entry.action === 'removed' ? t('fees_log_removed', '{name} took back the fees from {month}', { name, month: monthText(entry.from) })
+        : entry.from ? t('fees_log_set', '{name} set the fees from {month}: {fees}', { name, month: monthText(entry.from), fees: feeListText(entry.fees) })
+        : t('fees_log_set_start', '{name} set the fees from the beginning: {fees}', { name, fees: feeListText(entry.fees) })
+    ));
+}
+
+// What the dialog is open for: { adding, base, replaces } while the fees are entered, plus { body, version } once the
+// server has worked out what they do, or { remove } for taking a change back
+let feeChangeDraft = null;
+
+const feeChangeMonth = () => `${inputValue('fee-change-year')}-${inputValue('fee-change-month')}`;
+// The fees that count in [month] as the card knows them (the entries come earliest first)
+const feesOfPlanMonth = month => safeList(feePlan?.entries).filter(entry => !entry.from || entry.from <= month).pop()?.fees || {};
+// An amount as it is typed: "45.5" / "45,5"
+const feeInputText = amount => String(Number(amount) || 0).replace('.', uiLang === 'en' ? '.' : ',');
+
+function showFeeChangeStep(step) {
+    show('fee-change-form', step === 'form', 'flex');
+    show('fee-change-review', step === 'review', 'flex');
+}
+
+// Under the month: what choosing it means - a month still to come moves nothing yet, one that has passed reaches back
+function updateFeeChangeHint() {
+    const hint = $('fee-change-hint');
+    const draft = feeChangeDraft;
+    if (!hint || !draft || !feePlan) return;
+    const month = feeChangeMonth();
+    const first = safeList(feePlan.entries).find(entry => entry.from)?.from;
+    const taken = !draft.base && month !== draft.replaces && safeList(feePlan.entries).some(entry => entry.from === month);
+    hint.classList.toggle('is-warning', !draft.base && month < feePlan.month);
+    hint.textContent = draft.base ? (first ? t('fees_hint_start_until', 'Counts for every month before {month}.', { month: monthText(first) }) : t('fees_hint_start', 'Counts for every month.'))
+        : taken ? t('fees_hint_taken', 'There are fees from {month} already: these replace them.', { month: monthText(month) })
+        : month > feePlan.month ? t('fees_hint_later', 'Nothing changes before {month}.', { month: monthText(month) })
+        : month === feePlan.month ? t('fees_hint_now', 'Counts from this month on.')
+        : t('fees_hint_back', 'Reaches back: the months since {month} cost these fees too.', { month: monthText(month) });
+}
+
+// New fees start out as what each status costs in the chosen month. Choosing another month takes the fields the admin
+// has not typed in along - a status that is not meant to change must not fall back to an older fee by the way
+function touchFeeAmount(key) {
+    feeChangeDraft?.touched?.add(key);
+}
+
+function updateFeeChangeMonth() {
+    const draft = feeChangeDraft;
+    if (draft?.adding) {
+        const fees = feesOfPlanMonth(feeChangeMonth());
+        FEE_KEYS.filter(key => !draft.touched.has(key)).forEach(key => setValue('fee-change-' + key, feeInputText(fees[key])));
+    }
+    updateFeeChangeHint();
+}
+
+// Opens the dialog: for new fees from a month (no argument), for the entry of [from] ('YYYY-MM'), or for the fees
+// from the beginning (null)
+function openFeeChange(from) {
+    if (!isSuperAdminUser() || !feePlan) return;
+    const adding = from === undefined;
+    const entry = adding ? null : safeList(feePlan.entries).find(e => (e.from || null) === (from || null));
+    if (!adding && !entry) return;
+    // New fees count from next month unless the admin says otherwise: nobody is behind for a month that has begun
+    const month = adding ? addMonths(feePlan.month, 1) : entry.from;
+    feeChangeDraft = { adding, base: !adding && !entry.from, replaces: entry?.from || undefined, touched: new Set() };
+    const fees = entry ? entry.fees : feesOfPlanMonth(month);
+    const labels = getStatusLabels(false);
+    FEE_KEYS.forEach(key => {
+        setText('fee-change-label-' + key, `${labels[key]} (€)`);
+        setValue('fee-change-' + key, feeInputText(fees[key]));
+    });
+
+    const monthName = intlFormatter(Intl.DateTimeFormat, { month: 'long', timeZone: 'UTC' });
+    $('fee-change-month').innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${pad2(i + 1)}">${escapeHtml(monthName.format(utcDate(`2024-${pad2(i + 1)}-01`)))}</option>`).join('');
+    // Fifteen years back, ten ahead (as far as the server takes a month) - and the year of the entry, wherever it lies
+    const thisYear = Number(feePlan.month.slice(0, 4));
+    const years = new Set(Array.from({ length: 26 }, (_, i) => thisYear - 15 + i));
+    if (month) years.add(Number(month.slice(0, 4)));
+    $('fee-change-year').innerHTML = [...years].sort((a, b) => a - b).map(year => `<option value="${year}">${year}</option>`).join('');
+    setValue('fee-change-month', (month || feePlan.month).slice(5, 7));
+    setValue('fee-change-year', (month || feePlan.month).slice(0, 4));
+    show('fee-change-when', !feeChangeDraft.base, '');
+
+    setText('title-fee-change', adding ? t('fees_change_title', 'Change the fees') : t('fees_edit_title', 'Edit the fees'));
+    setText('fee-change-subtitle', adding ? '' : entry.from ? t('fees_stretch_from', 'From {month}', { month: monthText(entry.from) }) : t('fees_from_start', 'From the beginning'));
+    setText('btn-fee-change-back', t('btn_back', 'Back'));
+    setText('btn-fee-change-confirm', t('btn_save', 'Save'));
+    updateFeeChangeHint();
+    showFeeChangeStep('form');
+    openModal('fee-change-modal');
+    $('fee-change-modal')._customOnClose = () => { feeChangeDraft = null; };
+}
+
+// The second step: which months cost something else, who owes more or less today (as tiles), and a few short lines
+function renderFeeChangeReview(impact) {
+    const stretches = safeList(impact.stretches);
+    const when = stretch => (!stretch.first && !stretch.last ? t('fees_stretch_all', 'Every month')
+        : !stretch.first ? t('fees_stretch_until', 'Until {month}', { month: monthText(stretch.last) })
+        : !stretch.last ? t('fees_stretch_from', 'From {month}', { month: monthText(stretch.first) })
+        : stretch.first === stretch.last ? monthText(stretch.first)
+        : t('fees_stretch_range', '{from} to {to}', { from: monthText(stretch.first), to: monthText(stretch.last) }));
+    // Per stretch of months: every fee that differs on a line of its own - "Full earner   €50.00 → €60.00"
+    const labels = getStatusLabels(false);
+    $('fee-change-stretches').innerHTML = stretches.map(stretch => `
+        <div class="fee-change-stretch">
+            <strong>${escapeHtml(when(stretch))}</strong>
+            ${FEE_KEYS.filter(key => (stretch.before?.[key] || 0) !== (stretch.after?.[key] || 0)).map(key => (
+                `<span>${escapeHtml(labels[key])}<b>${escapeHtml(`${euro(stretch.before?.[key] || 0)} → ${euro(stretch.after?.[key] || 0)}`)}</b></span>`
+            )).join('')}
+        </div>`).join('');
+    // A change still to come moves no account today: no tiles, its line says so
+    $('fee-change-stats').innerHTML = [
+        impact.more.count ? feeImpactTile(impact.more, t('fee_reset_tile_more', 'more to pay'), 'danger') : '',
+        impact.less.count ? feeImpactTile(impact.less, t('fee_reset_tile_less', 'less to pay'), 'success') : ''
+    ].join('');
+    const firstMonth = stretches[0]?.first;
+    const facts = [
+        !impact.inEffect && firstMonth ? t('fees_hint_later', 'Nothing changes before {month}.', { month: monthText(firstMonth) })
+            : impact.more.count || impact.less.count ? t('fees_fact_now', 'Shows in the accounts right away.')
+            : t('fees_fact_now_none', 'No account changes today.'),
+        impact.freshStart ? t('fees_fact_fresh_start', 'Reaches back before the fresh start of {date}: what was dropped or carried over then is worked out again.', { date: formatDateFast(impact.freshStart) }) : '',
+        t('fee_reset_fact_untouched', 'Payments, history and cash balance stay as they are.')
+    ];
+    $('fee-change-facts').innerHTML = facts.filter(Boolean).map(fact => `<li>${escapeHtml(fact)}</li>`).join('');
+}
+
+// Asks the server what [body] does and shows it; the version of the fees the numbers are for goes back with the save
+async function previewFeeChange(body, button) {
+    const failed = t('fees_load_failed', 'The fees could not be loaded.');
+    return once('fee-change-review', () => attempt(async () => {
+        const impact = await apiJson('/admin/fees/preview', 'POST', body, failed);
+        feeChangeDraft = { ...feeChangeDraft, body, version: impact.version };
+        renderFeeChangeReview(impact);
+        showFeeChangeStep('review');
+    }, err => err.message || failed, button ? { button, loading: t('btn_loading', 'Loading...') } : {}));
+}
+
+async function reviewFeeChange() {
+    const draft = feeChangeDraft;
+    if (!draft || draft.remove || !isSuperAdminUser()) return;
+    const fees = {};
+    for (const key of FEE_KEYS) {
+        const amount = parseAmount(inputValue('fee-change-' + key));
+        if (isNaN(amount) || amount < 0) {
+            $('fee-change-' + key)?.focus();
+            return showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
+        }
+        fees[key] = amount;
+    }
+    const from = draft.base ? null : feeChangeMonth();
+    setText('fee-change-subtitle', from ? t('fees_stretch_from', 'From {month}', { month: monthText(from) }) : t('fees_from_start', 'From the beginning'));
+    await previewFeeChange({ from, fees, ...(draft.replaces ? { replaces: draft.replaces } : {}) }, 'btn-fee-change-review');
+}
+
+function backToFeeChange() {
+    // Taking a change back has no first step to go back to
+    if (!feeChangeDraft || feeChangeDraft.remove) return closeModal('fee-change-modal');
+    showFeeChangeStep('form');
+}
+
+// Taking back the change of [from]: straight to what that does
+async function reviewFeeRemoval(from) {
+    if (!isSuperAdminUser() || !feePlan || !from) return;
+    feeChangeDraft = { remove: true };
+    setText('title-fee-change', t('fees_remove_title', 'Take back this change?'));
+    setText('fee-change-subtitle', t('fees_stretch_from', 'From {month}', { month: monthText(from) }));
+    setText('btn-fee-change-back', t('btn_cancel', 'Cancel'));
+    setText('btn-fee-change-confirm', t('fee_reset_remove_btn', 'Take back'));
+    if (!await previewFeeChange({ from, remove: true })) return void (feeChangeDraft = null);
+    openModal('fee-change-modal');
+    $('fee-change-modal')._customOnClose = () => { feeChangeDraft = null; };
+}
+
+async function confirmFeeChange() {
+    const draft = feeChangeDraft;
+    if (!draft?.body || !isSuperAdminUser()) return;
+    const failed = t('fees_save_failed', 'The fees could not be saved.');
+    await once('fee-change-confirm', () => attempt(async () => {
+        const data = await apiJson(draft.remove ? '/admin/fees/remove' : '/admin/fees', 'POST', { ...draft.body, version: draft.version }, failed).catch(async err => {
+            // Someone else changed the fees since the numbers were shown: show what is there now, nothing was saved
+            if (err.status === 409) {
+                applyFeePlan(await apiJson('/fees').catch(() => null));
+                renderFeeCard();
+                backToFeeChange();
+            }
+            throw err;
+        });
+        applyFeePlan(data);
+        closeModal('fee-change-modal');
+        showToast(draft.remove ? t('fees_removed', 'Change taken back') : t('fees_saved', 'Fees saved'));
+        // What a month costs and what is owed are worked out by the server: fetch the records again
+        await loadData(true);
+    }, err => err.message || failed, { button: 'btn-fee-change-confirm' }));
+}
+
+Object.assign(window, { openFeeChange, reviewFeeChange, backToFeeChange, reviewFeeRemoval, confirmFeeChange, touchFeeAmount, updateFeeChangeMonth });
+
 // --- Fresh start of the fee accounts (CALDERA) ---
 // On a day the system admins choose, every fee account is settled and started afresh: open fees are dropped, credit is
 // carried over, and from then on months and payments count anew (backend/feeReset.js). The card lives on the fees
@@ -5334,39 +5622,6 @@ Object.assign(window, {
 function applyFeeResets(data) {
     feeResets = safeList(data?.resets);
     feeResetLog = safeList(data?.log);
-}
-
-const feeResetStateLabel = state => (state === 'active' ? t('fee_reset_state_active', 'In effect')
-    : state === 'scheduled' ? t('fee_reset_state_scheduled', 'Planned')
-    : t('fee_reset_state_replaced', 'Replaced'));
-const FEE_RESET_STATE_CLASSES = { active: 'active', scheduled: 'planned', replaced: 'ended' };
-// "50,00 € / 25,00 € / 10,00 €": the monthly fees in the order of the fee settings
-const FEE_KEYS = ['vollverdiener', 'geringverdiener', 'keinverdiener'];
-const feeListText = fees => FEE_KEYS.filter(key => typeof fees?.[key] === 'number').map(key => euro(fees[key])).join(' / ');
-const sameFees = (a, b) => FEE_KEYS.every(key => (a?.[key] ?? null) === (b?.[key] ?? null));
-// "Full earner €50.00 → €60.00": only the fees that differ
-const feeChangeText = (from, to) => {
-    const labels = getStatusLabels(false);
-    return FEE_KEYS.filter(key => typeof from?.[key] === 'number' && typeof to?.[key] === 'number' && from[key] !== to[key])
-        .map(key => `${labels[key]} ${euro(from[key])} → ${euro(to[key])}`).join(', ');
-};
-const utcDate = day => new Date(`${day}T00:00:00Z`);
-const longDayText = day => intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
-const longDateText = day => intlFormatter(Intl.DateTimeFormat, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));
-const monthText = month => intlFormatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(`${month}-01`));
-
-/**
- * Per fresh start (earliest first): true where the time before it keeps other fees than the time after it costs -
- * read backwards like the calculation (backend/feeReset.js feePeriods): one without fees of its own costs the same.
- */
-function feesChangedAt(resets) {
-    let after = settings;
-    return [...resets].reverse().map(reset => {
-        const before = reset.feesBefore || after;
-        const changed = !sameFees(before, after);
-        after = before;
-        return changed;
-    }).reverse();
 }
 
 function renderFeeResetCard() {
@@ -5378,50 +5633,28 @@ function renderFeeResetCard() {
     show('fee-reset-form', admin, 'block');
     show('fee-reset-readonly', !admin, 'block');
 
-    // Under the fee inputs: from when a change of the fees counts - the months before the latest fresh start (a
-    // planned one too) keep the fees that were confirmed with it
-    const latest = feeResets.map(reset => String(reset.date)).sort().pop();
-    showFeeResetNote('rates-reset-note', latest ? t('fee_reset_rates_note', 'Changes apply from {month}.', { month: monthText(latest.slice(0, 7)) }) : '');
-
     const list = $('fee-reset-list');
     if (list) {
         const takeBack = escapeHtml(t('fee_reset_remove_btn', 'Take back'));
-        const byDay = [...feeResets].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-        const changed = feesChangedAt(byDay);
-        // The newest first: the day, who set it and - only where they differ from what came after - the fees kept
-        const rows = byDay.map((reset, i) => {
-            const cls = FEE_RESET_STATE_CLASSES[reset.state] || 'ended';
-            const facts = [
-                reset.setByName ? t('fee_reset_row_by', 'Set by {name}', { name: reset.setByName }) : '',
-                changed[i] ? t('fee_reset_row_fees', 'Fees until then: {fees}', { fees: feeListText(reset.feesBefore) }) : ''
-            ].filter(Boolean).map(fact => `<div class="so-row-facts">${escapeHtml(fact)}</div>`).join('');
+        // The newest first: the day and who set it (what the months cost is the card above's business)
+        const rows = [...feeResets].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(reset => {
+            const cls = FEE_STATE_CLASSES[reset.state] || 'ended';
             return `
                 <div class="so-row fee-reset-row${cls === 'ended' ? ' is-ended' : ''}">
                     <div class="so-row-text">
                         <div class="so-row-amount"><strong>${escapeHtml(longDateText(reset.date))}</strong></div>
-                        ${facts}
+                        ${reset.setByName ? `<div class="so-row-facts">${escapeHtml(t('fee_reset_row_by', 'Set by {name}', { name: reset.setByName }))}</div>` : ''}
                     </div>
-                    <span class="so-row-state ${cls}">${escapeHtml(feeResetStateLabel(reset.state))}</span>
+                    <span class="so-row-state ${cls}">${escapeHtml(feeStateLabel(reset.state))}</span>
                     ${admin ? `<button type="button" class="so-row-edit" data-date="${escapeHtml(reset.date)}" onclick="reviewFeeReset(this.dataset.date)" title="${takeBack}" aria-label="${takeBack}">${svgIcon('trash', 15, 2)}</button>` : ''}
                 </div>`;
-        }).reverse().join('');
+        }).join('');
         list.innerHTML = rows ? `<div class="so-rows">${rows}</div>` : `<p class="fee-reset-none">${escapeHtml(t('fee_reset_none', 'No fresh start yet.'))}</p>`;
     }
 
-    // Who set or took back which day (the newest first)
-    const log = $('fee-reset-log');
-    if (log) {
-        const entries = [...feeResetLog].reverse().slice(0, 10).map(entry => {
-            const params = { name: entry.byName || t('status_unknown', 'Unknown'), date: formatDateFast(entry.date) };
-            const what = entry.action === 'set'
-                ? t('fee_reset_log_set', '{name} set a fresh start for {date}', params)
-                : t('fee_reset_log_removed', '{name} took back the fresh start of {date}', params);
-            return `<li>${escapeHtml(what)}${entry.at ? `<span>${escapeHtml(dateTimeFormatter.format(new Date(entry.at)))}</span>` : ''}</li>`;
-        }).join('');
-        log.hidden = !entries;
-        const items = log.querySelector('ul');
-        if (items) items.innerHTML = entries;
-    }
+    renderFeeLog('fee-reset-log', feeResetLog, (entry, name) => (entry.action === 'set'
+        ? t('fee_reset_log_set', '{name} set a fresh start for {date}', { name, date: formatDateFast(entry.date) })
+        : t('fee_reset_log_removed', '{name} took back the fresh start of {date}', { name, date: formatDateFast(entry.date) })));
 }
 
 let feeResetDraft = null;
@@ -5435,31 +5668,18 @@ function updateFeeResetConfirm() {
 // who owes less or more with the fresh start than without it, and by how much (backend/derivedData.js). The numbers
 // stand as tiles - the amount, what it is, how many members - and what else needs saying gets a short line each
 function renderFeeResetDialog(impact, remove) {
-    const members = count => (count === 1 ? t('fee_reset_members_one', '1 member')
-        : count ? t('fee_reset_members', '{count} members', { count })
-        : t('fee_reset_members_none', 'Nobody'));
-    // A tile without members stays grey: nothing to look at there
-    const tile = (side, label, tone) => `
-        <div class="fee-reset-stat${side.count ? ` is-${tone}` : ''}">
-            <span class="fee-reset-stat-amount">${escapeHtml(euro(side.total))}</span>
-            <span class="fee-reset-stat-label">${escapeHtml(label)}</span>
-            <span class="fee-reset-stat-count">${escapeHtml(members(side.count))}</span>
-        </div>`;
     const tiles = remove ? [
         // A planned one that changes nothing needs no "nobody" tile: its line says so
-        impact.inEffect || impact.behind.count ? tile(impact.behind, t('fee_reset_tile_more', 'more to pay'), 'danger') : '',
-        // Only where the fees kept for the time before it are higher than without it (lowered since), see the README
-        impact.owesMore.count ? tile(impact.owesMore, t('fee_reset_tile_less', 'less to pay'), 'success') : ''
+        impact.inEffect || impact.behind.count ? feeImpactTile(impact.behind, t('fee_reset_tile_more', 'more to pay'), 'danger') : ''
     ] : [
-        tile(impact.behind, t('fee_reset_tile_dropped', 'open fees dropped'), 'warning'),
-        tile(impact.ahead, t('fee_reset_tile_carried', 'credit carried over'), 'success')
+        feeImpactTile(impact.behind, t('fee_reset_tile_dropped', 'open fees dropped'), 'warning'),
+        feeImpactTile(impact.ahead, t('fee_reset_tile_carried', 'credit carried over'), 'success')
     ];
     const facts = remove ? [
         impact.inEffect ? t('fee_reset_undo_fact_all', 'Accounts are calculated as if it never happened.')
             : t('fee_reset_undo_fact_planned', 'Its day hasn\'t come yet – nothing was dropped or carried over.'),
-        // Where the time before it costs the same either way, taking it back takes no credit away
-        impact.inEffect && !impact.repriced && impact.ahead.count ? t('fee_reset_undo_fact_ahead', 'The credit carried over ({amount}) stays.', { amount: euro(impact.ahead.total) }) : '',
-        impact.repriced ? t('fee_reset_undo_fact_fees', 'Earlier months then cost: {changes}.', { changes: feeChangeText(impact.feesBefore, impact.feesWithout) || feeListText(impact.feesWithout) }) : '',
+        // Every month costs the same either way, so taking it back takes no credit away
+        impact.inEffect && impact.ahead.count ? t('fee_reset_undo_fact_ahead', 'The credit carried over ({amount}) stays.', { amount: euro(impact.ahead.total) }) : '',
         t('fee_reset_fact_untouched', 'Payments, history and cash balance stay as they are.')
     ] : [
         // A day still to come: the numbers count the payments booked so far

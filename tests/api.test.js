@@ -4,10 +4,8 @@
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
-const net = require('net');
 const path = require('path');
-const { spawn } = require('child_process');
-const { REPO_ROOT, BACKEND_DIR, assertHas } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, assertHas, freePort, waitFor, start } = require('./helpers');
 const { startFakeNextcloud } = require('./fakeNextcloud');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
@@ -42,44 +40,6 @@ function unzip(buffer) {
     at += 46 + nameLength + buffer.readUInt16LE(at + 30) + buffer.readUInt16LE(at + 32);
   }
   return entries;
-}
-
-const freePort = () => new Promise((resolve, reject) => {
-  const server = net.createServer();
-  server.unref();
-  server.on('error', reject);
-  server.listen(0, '127.0.0.1', () => {
-    const { port } = server.address();
-    server.close(() => resolve(port));
-  });
-});
-
-async function waitFor(url, label, processes) {
-  const deadline = Date.now() + 60000;
-  while (Date.now() < deadline) {
-    const crashed = processes.find((p) => p.exitCode !== null);
-    if (crashed) throw new Error(`${label}: ${crashed.label} exited early (${crashed.exitCode})\n${crashed.log.join('')}`);
-    try {
-      if ((await fetch(url)).ok) return;
-    } catch { /* not up yet */ }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`${label} did not come up: ${url}`);
-}
-
-function start(label, command, args, env) {
-  const child = spawn(command, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
-  child.label = label;
-  child.log = [];
-  // API_TEST_LOG=1 prints the server output (debugging a failing test)
-  const keep = (chunk) => {
-    child.log.push(chunk.toString());
-    if (child.log.length > 200) child.log.shift();
-    if (process.env.API_TEST_LOG) process.stderr.write(`[${label}] ${chunk}`);
-  };
-  child.stdout.on('data', keep);
-  child.stderr.on('data', keep);
-  return child;
 }
 
 describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP tests' }, () => {
@@ -621,6 +581,21 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
   const freshStart = (who, date, extra = {}) => call(who, 'POST', '/api/admin/fee-reset', { date, confirmDate: date, password: PASSWORD, ...extra });
   const takeBack = (who, date, extra = {}) => call(who, 'POST', '/api/admin/fee-reset/remove', { date, confirmDate: date, password: PASSWORD, ...extra });
   const freshStarts = async (who = 'owner') => (await ok(call(who, 'GET', '/api/fee-reset'))).resets;
+  // ... and the monthly fees over time (backend/feeSchedule.js)
+  const monthsFrom = (month, count) => {
+    const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + count;
+    return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+  };
+  const feesNow = (who = 'owner') => ok(call(who, 'GET', '/api/fees'));
+  const feePreview = (who, body) => call(who, 'POST', '/api/admin/fees/preview', body);
+  // A change of the fees ([body]: { from, fees, replaces } or { from, remove: true }), checked and saved as it was checked
+  const setFees = async (who, body) => {
+    const preview = await ok(feePreview(who, body));
+    return ok(call(who, 'POST', body.remove ? '/api/admin/fees/remove' : '/api/admin/fees', { ...body, version: preview.version }));
+  };
+  const withoutFeeChanges = async () => {
+    for (const entry of (await feesNow()).entries) if (entry.from) await setFees('owner', { from: entry.from, remove: true });
+  };
 
   test('a fresh start of the fee accounts is for system admins only, with the day twice and their own password', async () => {
     const day = `${new Date().getFullYear()}-01-01`;
@@ -744,16 +719,18 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal(forTreasury.resets[0].feesBefore.vollverdiener, fee);
       assert.ok(forTreasury.log.some((entry) => entry.action === 'set' && entry.date === day && entry.byName === 'Olga Owner'));
 
-      // new fees only count from the fresh start on: they neither shrink the credit nor bring dropped fees back
+      // a fee an older app saves into the fee settings counts from this month on - here the month of the fresh start:
+      // it neither shrinks the credit nor brings dropped fees back
       await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...settings, vollverdiener: fee + 10 } }));
       assertHas(await person(ahead), { _feeCarriedOver: 300, _currentBalance: 300 - (fee + 10) });
       assertHas(await person(behind), { _feeWrittenOff: owedBefore - 100, _currentBalance: -(fee + 10) });
-      // taking it back now would calculate the time before at the new fee as well: the admin is told
+      // taking the fresh start back now changes the price of no month (it used to charge the time before at the
+      // fee set now): exactly the dropped fees would be owed again
       const dearer = await ok(call('owner', 'GET', `/api/admin/fee-reset/preview?date=${day}&remove=1`));
-      assertHas(dearer, { inEffect: true, repriced: true, owesMore: { count: 0, total: 0 } });
-      assert.deepEqual([dearer.feesBefore.vollverdiener, dearer.feesWithout.vollverdiener], [fee, fee + 10]);
-      assert.ok(dearer.behind.total > preview.behind.total, 'more than the dropped fees would be owed');
+      assertHas(dearer, { inEffect: true, repriced: false, behind: preview.behind, owesMore: { count: 0, total: 0 } });
+      assert.deepEqual([dearer.feesBefore.vollverdiener, dearer.feesWithout.vollverdiener], [fee, fee]);
       await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: settings }));
+      assert.deepEqual((await feesNow()).entries.map((entry) => entry.from), [null], 'set back in the same month, the change is gone');
 
       // a payment booked late for the time before first makes up for what was open then; one from the day on is credit
       await book(behind, { id: 'late-50', amount: 50, date: '2025-04-01', description: 'Nachtrag' });
@@ -775,11 +752,12 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       // that one lies in the future: planned, and until its day everything is calculated as it is
       assertHas((await freshStarts()).find((reset) => reset.date === next), { state: 'scheduled' });
       assertHas(await person(ahead), { _feeReset: day, _feeCarriedOver: 300, _currentBalance: before.ahead._currentBalance });
-      // fees entered early for the time from then on change no month before it
-      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...settings, vollverdiener: fee + 10 } }));
+      // fees for the time from then on are set with their month: no month before it costs anything else
+      const fromNext = { from: next.slice(0, 7), fees: { vollverdiener: fee + 10, geringverdiener: settings.geringverdiener, keinverdiener: settings.keinverdiener } };
+      assertHas(await setFees('owner', fromNext), { next: { from: fromNext.from, fees: { ...(await feesNow()).current, vollverdiener: fee + 10 } } });
       assertHas(await person(ahead), { _currentBalance: before.ahead._currentBalance, _monthlyFee: fee });
       assertHas(await person(joiner), { _currentBalance: before.joiner._currentBalance, _monthlyFee: fee });
-      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: settings }));
+      await setFees('owner', { from: fromNext.from, remove: true });
 
       // taking one back needs the same confirmation - and then everything is calculated as before again
       assert.equal((await takeBack('owner', day, { password: 'falsch' })).status, 403);
@@ -805,6 +783,148 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       // the other tests calculate without a fresh start and at the usual fees
       for (const reset of await freshStarts()) await takeBack('owner', reset.date);
       await call('owner', 'PUT', '/api/db', { path: 'settings', value: settings });
+      await withoutFeeChanges();
+    }
+  });
+
+  // --- CALDERA: the monthly fees over time (backend/feeSchedule.js) ---
+  test('the fees have a history: a change counts from its month, and only system admins save it as it was checked', async () => {
+    const month = localDay().slice(0, 7);
+    const [last, next] = [monthsFrom(month, -1), monthsFrom(month, 1)];
+    const start = await feesNow();
+    const fee = start.current.vollverdiener;
+    const table = (full) => ({ vollverdiener: full, geringverdiener: start.current.geringverdiener, keinverdiener: start.current.keinverdiener });
+    await account('feeadmin', 'Ferdi', { admin: true });
+    const monthly = await account('monatlich', 'Mona');
+    const person = (key) => read('treasurer', `people/${key}`);
+    // Everyone who pays fees, as the treasury sees them - and by how much each balance fell from one reading to the next
+    const payers = async () => Object.values(await read('treasurer', 'people')).filter((p) => !p.isDeleted && p.pays !== false);
+    const cents = (amount) => Math.round(amount * 100) / 100;
+    const side = (amounts) => ({ count: amounts.length, total: cents(amounts.reduce((sum, amount) => sum + amount, 0)) });
+    const falls = (from, to) => to.map((p) => cents(from.find((was) => was.id === p.id)._currentBalance - p._currentBalance)).filter((fall) => fall > 0);
+    const nobody = { count: 0, total: 0 };
+
+    try {
+      // everyone signed in reads what a month costs; who set it, the log and the version are for the treasury
+      assertHas(start, { month, since: null, next: null });
+      assert.deepEqual(start.entries.map((entry) => [entry.from, entry.state]), [[null, 'current']]);
+      const forMember = await feesNow('max');
+      assert.deepEqual([forMember.current, forMember.entries], [start.current, [{ from: null, fees: start.current, state: 'current' }]]);
+      assert.ok(!('log' in forMember) && !('version' in forMember));
+      assert.equal((await call(null, 'GET', '/api/fees')).status, 401);
+
+      // treasurers book the money, but they do not set what a month costs; members and strangers even less
+      const dearer = { from: next, fees: table(fee + 10) };
+      for (const who of ['treasurer', 'max', null]) {
+        for (const res of [await feePreview(who, dearer), await call(who, 'POST', '/api/admin/fees', { ...dearer, version: start.version }), await call(who, 'POST', '/api/admin/fees/remove', { from: next, version: start.version })]) {
+          assert.ok([401, 403].includes(res.status), `${who}: ${res.status}`);
+        }
+      }
+      // an admin, but not as it was checked - or with a month or an amount that is none: nothing is saved
+      for (const [why, body, status] of [
+        ['no version', dearer, 400],
+        ['another version', { ...dearer, version: 'x'.repeat(16) }, 409],
+        ['a version that is no text', { ...dearer, version: { $ne: '' } }, 400],
+        ['no month', { fees: table(fee + 10), version: start.version }, 400],
+        ['a month that does not exist', { ...dearer, from: `${next.slice(0, 4)}-13`, version: start.version }, 400],
+        ['a mistyped year', { ...dearer, from: '1026-01', version: start.version }, 400],
+        ['a list of months', { ...dearer, from: [next], version: start.version }, 400],
+        ['an amount typed as text', { from: next, fees: table('60'), version: start.version }, 400],
+        ['a negative amount', { from: next, fees: table(-1), version: start.version }, 400],
+        ['a status without an amount', { from: next, fees: { vollverdiener: fee + 10 }, version: start.version }, 400],
+        ['the fees that count anyway', { from: next, fees: table(fee), version: start.version }, 409],
+        ['a change that is not there', { ...dearer, replaces: last, version: start.version }, 404]
+      ]) {
+        assert.equal((await call('owner', 'POST', '/api/admin/fees', body)).status, status, why);
+      }
+      assert.equal((await call('owner', 'POST', '/api/admin/fees/remove', { from: next, version: start.version })).status, 404);
+      for (const body of [undefined, {}, { from: next }, { from: 'next month', fees: table(fee + 10) }]) assert.equal((await feePreview('owner', body)).status, 400);
+      // the general data route offers no way around it: the history is no value of its own there, and what is
+      // written into the fee settings next to the fees is no history
+      await call('owner', 'PUT', '/api/db', { path: 'feeSchedule', value: { base: table(1), changes: [] } });
+      const settings = await read('owner', 'settings');
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...settings, feeSchedule: { base: table(1), changes: [] }, base: table(1), changes: [{ from: last, fees: table(1) }] } }));
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: settings }));
+      assert.deepEqual(await feesNow(), start, 'nothing was set');
+
+      // a higher fee from next month on. The admin first sees what it does - today it moves no account - and the
+      // numbers name nobody
+      const planned = await ok(feePreview('feeadmin', dearer));
+      assertHas(planned, { from: next, remove: false, movedFrom: null, inEffect: false, more: nobody, less: nobody, freshStart: null, version: start.version });
+      assert.deepEqual(planned.stretches, [{ first: next, last: null, before: start.current, after: { ...start.current, vollverdiener: fee + 10 } }]);
+      assert.ok(planned.members >= 4, 'counts the paying members');
+      assert.doesNotMatch(JSON.stringify(planned), /Max|Mia|Mona|Test/);
+      assert.deepEqual(await feesNow(), start, 'checking sets nothing');
+      const asItWas = await payers();
+      const was = await person(monthly);
+
+      // saved as it was checked: planned, with who set it
+      const saved = await ok(call('feeadmin', 'POST', '/api/admin/fees', { ...dearer, version: planned.version }));
+      assertHas(saved, { since: null, current: start.current, next: { from: next, fees: { ...start.current, vollverdiener: fee + 10 } } });
+      assert.deepEqual(saved.entries.map((entry) => [entry.from, entry.state]), [[null, 'current'], [next, 'planned']]);
+      assert.match(saved.entries[1].setByName, /Ferdi/);
+      assert.ok(saved.log.some((entry) => entry.action === 'set' && entry.from === next && /Ferdi/.test(entry.byName)));
+      // until its month comes every account stands where it stood, and the apps read the fees of this month
+      assert.deepEqual((await payers()).map((p) => [p.id, p._currentBalance, p._monthlyFee]), asItWas.map((p) => [p.id, p._currentBalance, p._monthlyFee]));
+      assert.equal((await read('max', 'settings')).vollverdiener, fee);
+      // what was checked before is no longer what is there: saving on top of it is refused
+      assert.equal((await call('owner', 'POST', '/api/admin/fees', { from: monthsFrom(next, 1), fees: table(fee + 20), version: planned.version })).status, 409);
+      // two admins at the same moment: one change is saved, the other admin is told to check again
+      const both = await Promise.all([
+        call('owner', 'POST', '/api/admin/fees', { from: monthsFrom(next, 2), fees: table(fee + 20), version: saved.version }),
+        call('feeadmin', 'POST', '/api/admin/fees', { from: monthsFrom(next, 3), fees: table(fee + 30), version: saved.version })
+      ]);
+      assert.deepEqual(both.map((res) => res.status).sort(), [200, 409]);
+      const [second, ...more] = (await feesNow()).entries.filter((entry) => entry.from > next);
+      assert.deepEqual(more, []);
+      await setFees('owner', { from: second.from, remove: true });
+
+      // moved to last month, it reaches back - the numbers that are shown are what the accounts then do: last
+      // month and this one cost 10 more
+      const move = { from: last, replaces: next, fees: table(fee + 10) };
+      const reach = await ok(feePreview('owner', move));
+      assertHas(reach, { from: last, movedFrom: next, inEffect: true, less: nobody, freshStart: null });
+      assert.deepEqual(reach.stretches.map((stretch) => [stretch.first, stretch.last, stretch.before.vollverdiener, stretch.after.vollverdiener]), [[last, month, fee, fee + 10]]);
+      const moved = await ok(call('owner', 'POST', '/api/admin/fees', { ...move, version: reach.version }));
+      assert.deepEqual(moved.entries.map((entry) => [entry.from, entry.state]), [[null, 'past'], [last, 'current']]);
+      assertHas(moved, { since: last, next: null });
+      assert.deepEqual(reach.more, side(falls(asItWas, await payers())), 'who owes more, and how much');
+      assertHas(await person(monthly), { _currentBalance: was._currentBalance - 20, _monthlyFee: fee + 10 });
+      assert.equal((await read('max', 'settings')).vollverdiener, fee + 10);
+      assert.ok(moved.log.some((entry) => entry.action === 'set' && entry.from === last && entry.movedFrom === next));
+
+      // an app without the history saves the fee settings with another fee: it has no month, so it counts from this
+      // month on - last month keeps its 10 more
+      const appSettings = await read('owner', 'settings');
+      assert.equal((await call('treasurer', 'PUT', '/api/db', { path: 'settings', value: { ...appSettings, vollverdiener: 1 } })).status, 403);
+      await ok(call('owner', 'PUT', '/api/db', { path: 'settings', value: { ...appSettings, vollverdiener: fee + 15 } }));
+      const byApp = await feesNow();
+      assert.deepEqual(byApp.entries.map((entry) => [entry.from, entry.fees.vollverdiener, entry.state]), [[null, fee, 'past'], [last, fee + 10, 'past'], [month, fee + 15, 'current']]);
+      assert.ok(byApp.log.some((entry) => entry.action === 'set' && entry.from === month && entry.byName === 'Olga Owner'));
+      assertHas(await person(monthly), { _currentBalance: was._currentBalance - 25, _monthlyFee: fee + 15 });
+
+      // the AI is told what a month costs now, and over time
+      const snapshot = await aiSnapshot('owner');
+      assert.equal(snapshot.contributionRates.vollverdiener, fee + 15);
+      assert.deepEqual(snapshot.contributionRatesOverTime.map((entry) => [entry.from, entry.fees.vollverdiener, entry.state]), [[null, fee, 'past'], [last, fee + 10, 'past'], [month, fee + 15, 'current']]);
+
+      // the fees from the beginning count for every month before the first change (checked here, not saved)
+      const corrected = await ok(feePreview('owner', { from: null, fees: table(fee - 5) }));
+      assert.deepEqual(corrected.stretches.map((stretch) => [stretch.first, stretch.last]), [[null, monthsFrom(last, -1)]]);
+      assert.ok(corrected.less.count >= 1 && corrected.more.count === 0);
+
+      // taken back one after the other, everything is calculated as before again
+      const undo = await ok(feePreview('owner', { from: month, remove: true }));
+      assertHas(undo, { from: month, remove: true, inEffect: true, more: nobody });
+      assert.deepEqual(undo.stretches.map((stretch) => [stretch.first, stretch.last, stretch.before.vollverdiener, stretch.after.vollverdiener]), [[month, null, fee + 15, fee + 10]]);
+      for (const from of [month, last]) await setFees('owner', { from, remove: true });
+      const end = await feesNow();
+      assert.deepEqual([end.entries, end.version], [start.entries, start.version]);
+      assert.deepEqual((await payers()).map((p) => [p.id, p._currentBalance]), asItWas.map((p) => [p.id, p._currentBalance]));
+      assert.ok(end.log.some((entry) => entry.action === 'removed' && entry.from === last), 'who took it back is kept');
+    } finally {
+      // the other tests calculate at the usual fees
+      await withoutFeeChanges();
     }
   });
 

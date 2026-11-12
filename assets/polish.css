@@ -1057,6 +1057,84 @@ h1, h2, h3,
 .fee-reset-actions { display: flex; gap: 10px; }
 .fee-reset-actions .btn { flex: 1; }
 .fee-reset-actions .btn-danger:not(:disabled) { background: var(--danger); color: #ffffff; }
+/* --- The monthly fees over time (CALDERA): what a month costs now as three tiles, the change that is still to come,
+   all of them over time, and the dialog that changes them in two steps --- */
+.fee-plan-icon { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.fee-plan-caption { margin-bottom: 7px; font-size: 0.72rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+.fee-plan-now { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.fee-plan-tile {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--surface-alt);
+    border: 1px solid var(--hairline);
+}
+.fee-plan-tile-label { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fee-plan-tile-amount { font-size: 1.3rem; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+/* The change still to come: a quiet line in the colour of "planned" */
+.fee-plan-next {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: var(--text);
+    background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+}
+.fee-plan-next svg { flex-shrink: 0; margin-top: 3px; color: var(--warning); }
+.fee-plan-next[hidden] { display: none; }
+.fee-plan-form { margin-top: 14px; }
+.fee-plan-form .btn { width: 100%; }
+.fee-plan-history { margin-top: 20px; }
+.fee-plan-history:empty { display: none; }
+.fee-plan-history-title { margin-bottom: 8px; font-size: 0.86rem; font-weight: 700; color: var(--text); }
+/* A row: the month with what it is today next to it, every fee that changed on a line of its own, who set it - and
+   edit and take back side by side */
+.fee-plan-row-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 2px; }
+.fee-plan-row .so-row-facts { display: block; white-space: normal; overflow: visible; font-variant-numeric: tabular-nums; }
+.so-row-edit + .so-row-edit { margin-left: -4px; }
+/* The dialog. First step: the three fees side by side, the month and the year, and a line that says what the month
+   means. Second step: the months that cost something else, the numbers as tiles, a few short lines */
+#fee-change-modal .modal-content-enhanced { max-height: min(90vh, 760px); }
+/* Each step lays its parts out like the dialog body does */
+#fee-change-form, #fee-change-review { flex-direction: column; gap: 10px; }
+.badge-fee-change { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.fee-change-amounts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.fee-change-amounts .form-group { margin: 0; min-width: 0; }
+.fee-change-amounts .form-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fee-change-when { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 10px; }
+.fee-change-hint { margin: 8px 0 0; font-size: 0.82rem; line-height: 1.45; color: var(--text-secondary); }
+.fee-change-hint.is-warning { color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
+.fee-change-stretches { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.fee-change-stretch {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+}
+.fee-change-stretch strong { margin-bottom: 1px; font-size: 0.9rem; font-weight: 700; color: var(--text); }
+.fee-change-stretch span { display: flex; justify-content: space-between; gap: 12px; font-size: 0.84rem; line-height: 1.45; color: var(--text-secondary); }
+.fee-change-stretch span b { flex-shrink: 0; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.fee-change-stretches:empty { display: none; }
+#fee-change-review .fee-reset-stats { margin-bottom: 10px; }
+/* On phones three tiles side by side cut their labels short: one row per status, the amount on the right */
+@media (max-width: 480px) {
+    .fee-plan-now { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    .fee-plan-tile { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+    .fee-plan-tile-label { font-size: 0.88rem; }
+    .fee-plan-tile-amount { flex-shrink: 0; font-size: 1.1rem; }
+    .fee-change-amounts { grid-template-columns: minmax(0, 1fr); }
+}
 /* At a member: the chip spans both columns */
 .user-finance-chip.fee-reset-chip { grid-column: 1 / -1; gap: 6px; }
 .user-finance-chip.fee-reset-chip svg { flex-shrink: 0; color: var(--warning); }

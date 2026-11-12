@@ -986,7 +986,8 @@ function stripNormalizedPersonData(value) {
 }
 
 const { preprocessPersonServerSide } = require('./derivedData');
-const { FEE_RESET_STATE_KEY, normalizeFeeResets, normalizeFeeResetLog } = require('./feeReset');
+const { readFeeState, changeFeeSchedule, changeFeeResets, saveFeeSettings } = require('./feeState');
+const { toDateStr } = require('./utils/date');
 
 function buildPaymentRecordPayload(personKey, payment, index = 0) {
   const normalized = payment && typeof payment === 'object' ? { ...payment } : {};
@@ -1062,32 +1063,59 @@ function toSortedChildValues(records, sortField) {
     .filter(Boolean);
 }
 
+// What is stored about the fees - the fees over time, the fresh starts and the fee settings - is read as one and
+// changed by the rules in feeState.js. One change at a time, whichever of the three it is: two admins at the same
+// moment cannot both pass a check and overwrite each other, and a fresh start never meets a half-written history.
+const FEE_STATE_LOCK = 'app_state:fees';
+const feeStore = (appConfig) => ({
+  get: (key) => getStateValue(appConfig, key, key === 'settings' ? DEFAULT_SETTINGS : null),
+  set: (key, value) => upsertStateValue(appConfig, key, value)
+});
+const todayStr = () => toDateStr(new Date());
+
+/** { settings, resets, resetLog, schedule, log, stored }: see feeState.js. */
+function getFeeState(appConfig) {
+  return readFeeState(feeStore(appConfig));
+}
+
 /**
  * The days the fee accounts were started afresh, with the log of who set or took back which (feeReset.js). Kept
  * apart from the fee settings; only the confirmed admin calls in routes/finance.js write it.
  */
 async function getFeeResetState(appConfig) {
-  const value = await getStateValue(appConfig, FEE_RESET_STATE_KEY, null);
-  return { resets: normalizeFeeResets(value), log: normalizeFeeResetLog(value) };
+  const state = await getFeeState(appConfig);
+  return { resets: state.resets, log: state.resetLog };
 }
 
 async function getFeeResets(appConfig) {
-  return (await getFeeResetState(appConfig)).resets;
+  return (await getFeeState(appConfig)).resets;
 }
 
 /**
- * Changes the fee resets: [change] gets the stored state and returns the next one (or throws to refuse). One change
- * at a time, so two admins at the same moment cannot both pass a check and overwrite each other.
+ * Changes the fresh starts: [change] gets the stored { resets, log } and the fees over time and returns the next
+ * { resets, log } (or throws to refuse).
  */
 function updateFeeResetState(appConfig, change) {
-  return queueRecordWrite(`app_state:${FEE_RESET_STATE_KEY}`, async () => {
-    const next = await change(await getFeeResetState(appConfig));
-    await upsertStateValue(appConfig, FEE_RESET_STATE_KEY, { resets: next.resets, log: next.log });
-    return next;
-  });
+  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeResets(feeStore(appConfig), change, todayStr()));
 }
 
-function hydratePersonRecord(record, payments = [], statusHistory = [], appSettings = {}, feeResets = []) {
+/**
+ * Changes the fees over time (feeSchedule.js): [change] gets the fee state and returns the next { schedule, log }
+ * (or throws to refuse). Only the admin calls in routes/finance.js write it.
+ */
+function updateFeeSchedule(appConfig, change) {
+  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeSchedule(feeStore(appConfig), change, todayStr()));
+}
+
+/**
+ * An app saves the fee settings as a whole, by [actor] ({ by, byName }). Apps without the fees over time write their
+ * fees here: other fees than those of this month count from this month on.
+ */
+function saveSettings(appConfig, value, actor) {
+  return queueRecordWrite(FEE_STATE_LOCK, () => saveFeeSettings(feeStore(appConfig), value, actor, todayStr(), Date.now()));
+}
+
+function hydratePersonRecord(record, payments = [], statusHistory = [], appSettings = {}, feeResets = [], feeSchedule = null) {
   if (!record) return null;
   const data = record.data && typeof record.data === 'object' ? { ...record.data } : {};
   const normalizedPayments = toSortedChildValues(payments, 'date');
@@ -1105,7 +1133,7 @@ function hydratePersonRecord(record, payments = [], statusHistory = [], appSetti
   if (record.data?.isDeleted || record.isDeleted) {
     data.isDeleted = true;
   }
-  return preprocessPersonServerSide(data, appSettings, feeResets);
+  return preprocessPersonServerSide(data, appSettings, feeResets, feeSchedule);
 }
 
 async function syncCollectionRecords(collectionName, keyField, existingRecords, nextPayloads, appConfig) {
@@ -1450,18 +1478,16 @@ function buildRequestRecordPayload(requestKey, value) {
 async function getPeopleRecord(appConfig, personKey) {
   const record = await getFirstRecord('people', pbFilterEquals('personKey', personKey), appConfig);
   if (!record) return null;
-  const [payments, statusHistory, settingsRecord, feeResets] = await Promise.all([
+  const [payments, statusHistory, fees] = await Promise.all([
     listAllRecords('payments', pbFilterEquals('personKey', personKey), appConfig),
     listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig),
-    getStateRecord(appConfig, 'settings'),
-    getFeeResets(appConfig)
+    getFeeState(appConfig)
   ]);
-  const settings = settingsRecord ? settingsRecord.value : DEFAULT_SETTINGS;
   return {
     ...record,
     _childPayments: payments,
     _childStatusHistory: statusHistory,
-    data: hydratePersonRecord(record, payments, statusHistory, settings, feeResets)
+    data: hydratePersonRecord(record, payments, statusHistory, fees.settings, fees.resets, fees.schedule)
   };
 }
 
@@ -1474,20 +1500,18 @@ async function listPeopleRecords(appConfig, query = {}) {
   }
   const people = await listAllRecords('people', filter, appConfig);
   const personKeys = people.map((record) => record.personKey);
-  const [payments, statusHistory, settingsRecord, feeResets] = await Promise.all([
+  const [payments, statusHistory, fees] = await Promise.all([
     listChildRecordsForPeople('payments', personKeys, appConfig),
     listChildRecordsForPeople('status_history', personKeys, appConfig),
-    getStateRecord(appConfig, 'settings'),
-    getFeeResets(appConfig)
+    getFeeState(appConfig)
   ]);
-  const settings = settingsRecord ? settingsRecord.value : DEFAULT_SETTINGS;
   const paymentsByPersonKey = groupRecordsBy(payments, 'personKey');
   const historyByPersonKey = groupRecordsBy(statusHistory, 'personKey');
 
   return people.map((record) => ({
     ...record,
     isDeleted: Boolean(record.isDeleted || record.data?.isDeleted),
-    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], settings, feeResets)
+    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], fees.settings, fees.resets, fees.schedule)
   }));
 }
 
@@ -2222,9 +2246,12 @@ module.exports = {
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
+  getFeeState,
   getFeeResetState,
   getFeeResets,
   updateFeeResetState,
+  updateFeeSchedule,
+  saveSettings,
   queueRecordWrite,
   isOutdatedVersion,
   removePeopleRecord,

@@ -269,15 +269,17 @@ describe('fresh start of the fee accounts', () => {
   const { pathToFileURL } = require('url');
   const { preprocessPersonServerSide, feeResetImpact } = require('../backend/derivedData');
   const feeReset = require('../backend/feeReset');
+  const feeSchedule = require('../backend/feeSchedule');
   const { freezeTime, assertHas } = require('./helpers');
   const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'assets', 'finance.js')).href);
 
+  // These tests give the calculation one fee for all time and the fees each fresh start kept: the data of an
+  // instance from before the fees had a history (backend/feeSchedule.js), which it must go on reading as it did
   const FEES = { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, pausiert: 0 };
   // The fresh start of the examples: 1 January 2027, the time before keeps the fees it had
   const DAY = '2027-01-01';
   const FRESH = [{ date: DAY, feesBefore: FEES }];
   // A member since January 2025 (the 24 months up to the fresh start cost 1200) with payments as [amount, day].
-  // Joined in the middle of the month: a "member since" on the 1st is read as the month before west of Greenwich
   const member = (payments = [], extra = {}) => ({
     id: 'p1', uid: 'u1', name: 'Paula', status: 'vollverdiener', memberSince: '2025-01-15', originalMemberSince: '2025-01-15',
     standingOrders: [], statusHistory: [{ status: 'vollverdiener', startDate: '2025-01-15' }],
@@ -290,9 +292,9 @@ describe('fresh start of the fee accounts', () => {
   const ahead = member([[1500, '2025-06-10']]);
   // The record as the server serves it on that day: at noon there, in whatever time zone the tests run
   const noon = (day) => new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), 12).toISOString();
-  const on = (t, day, person, resets = FRESH, fees = FEES) => {
+  const on = (t, day, person, resets = FRESH, fees = FEES, schedule = null) => {
     const restore = freezeTime(t, noon(day));
-    try { return preprocessPersonServerSide(structuredClone(person), fees, resets); } finally { restore(); }
+    try { return preprocessPersonServerSide(structuredClone(person), fees, resets, schedule); } finally { restore(); }
   };
   const paidUpTo = (served) => { const date = new Date(served._paidUntil); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; };
 
@@ -515,6 +517,116 @@ describe('fresh start of the fee accounts', () => {
     assertHas(feeResetImpact(people, dearer, FRESH, DAY, '2026-11-10'), { inEffect: false, behind: { count: 3, total: 690 }, owesMore: nobody, repriced: true });
   });
 
+  test('lived through day by day for four years, every account only moves by what happens that day', (t) => {
+    // The books kept by hand, one balance per member: on the 1st the fee of the month is owed, a payment counts when
+    // it is booked, and on the day of a fresh start what is open is dropped and credit stays. The server must serve
+    // exactly that balance on every day from October 2026 to December 2030 - through a fresh start planned in
+    // November for 1 January, a fee entered in December that counts from January, a fee entered late that reaches
+    // back three months, a second fresh start in the middle of a month and a fee raised for the month after.
+    const month = (day) => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1;
+    const dayAfter = (day) => { const next = new Date(`${day}T12:00:00Z`); next.setUTCDate(next.getUTCDate() + 1); return next.toISOString().slice(0, 10); };
+    // 50 on the same day of every month, from the month of [first] to that of [last]
+    const monthly = (first, last, dayOfMonth) => Array.from({ length: month(last) - month(first) + 1 }, (_, i) => month(first) + i)
+      .map((m) => [50, `${Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, '0')}-${dayOfMonth}`]);
+    // By the end of September 2026 a member since January 2025 owed 21 months, the last of them (charged) at 50.
+    // closing: how the account stood on the day of its fresh start (credit that is carried over, or less than
+    // nothing: the fees that were dropped)
+    const kept = (record) => {
+      const months = record.memberSince < '2026-10-01' ? 21 : 0;
+      return { record, balance: record.totalPaid - months * 50, closing: 0, from: null, charged: months ? 50 : 0, last: 0 };
+    };
+    const world = {
+      punctual: kept(member(monthly('2025-01-01', '2026-09-01', '03'))), // pays the fee of the month on the 3rd
+      late: kept(member(monthly('2025-02-01', '2026-09-01', '10'))), // pays the fee of the month before on the 10th
+      behind: kept(member([[450, '2025-06-10']])), // nothing more until April 2027, then every month on the 10th
+      never: kept(member()), // one single payment, on the day of the second fresh start
+      ahead: kept(member([[2000, '2025-02-01']])),
+      lower: kept(member(monthly('2025-01-01', '2026-09-01', '03'))), // the lower fee from July 2027 on
+      joiner: kept(member([], { memberSince: '2027-03-10', originalMemberSince: '2027-03-10', statusHistory: [{ status: 'vollverdiener', startDate: '2027-03-10' }] }))
+    };
+    // as the admin calls change them: the fees over time, each change with the month it counts from, and the days
+    // of the fresh starts
+    let schedule = feeSchedule.scheduleFromLegacy([], FEES);
+    let resets = [];
+    const feesFrom = (from, fees) => { schedule = feeSchedule.withFeeChange(schedule, { from, fees }); };
+    const freshStart = (date) => { resets = feeReset.normalizeFeeResets([...resets, { date }]); };
+    const closings = () => Object.values(world).map((m) => m.closing);
+
+    for (let day = '2026-10-01'; day <= '2030-12-31'; day = dayAfter(day)) {
+      const [first, dayOfMonth] = [day.endsWith('-01'), day.slice(8)];
+      // what the admins do
+      if (day === '2026-11-11') freshStart('2027-01-01'); // planned: nothing moves before its day
+      if (day === '2026-12-01') feesFrom('2027-01', { vollverdiener: 60 }); // entered early: December still costs 50
+      if (day === '2028-05-20') feesFrom('2028-03', { geringverdiener: 30 }); // entered late: reaches back to March
+      if (day === '2029-06-15') freshStart('2029-07-15');
+      if (day === '2030-03-15') feesFrom('2030-04', { vollverdiener: 65 }); // for the month after: nobody is behind for it
+      if (day === '2027-07-01') Object.assign(world.lower.record, { status: 'geringverdiener', statusHistory: [{ status: 'vollverdiener', startDate: '2025-01-15', endDate: day }, { status: 'geringverdiener', startDate: day }] });
+
+      for (const m of Object.values(world)) {
+        if (first) [m.last, m.charged] = [m.charged, 0];
+        // a fresh start today, for whoever had joined before: what is open is dropped, credit stays - and the month
+        // of the fresh start is owed in the new account
+        if (resets.some((reset) => reset.date === day) && m.record.memberSince < day) {
+          m.closing = m.balance + m.charged;
+          m.balance = Math.max(0, m.closing) - m.charged;
+          m.from = day;
+        }
+        // a new month, from the month of "member since" on. The full fee: 50, 60 from January 2027, 65 from April
+        // 2030. The lower fee: 25, and 30 once that was entered
+        if (first && month(day) >= month(m.record.memberSince)) {
+          m.charged = m.record.status === 'geringverdiener' ? (day < '2028-05-20' ? 25 : 30) : day < '2027-01-01' ? 50 : day < '2030-04-01' ? 60 : 65;
+          m.balance -= m.charged;
+        }
+        // the lower fee of 30 counts from March 2028 but was entered on 20 May: March, April and May cost 5 more
+        if (day === '2028-05-20' && m.record.status === 'geringverdiener') m.balance -= 3 * 5;
+      }
+
+      // what is booked today: who, how much, dated when
+      const booked = [];
+      if (dayOfMonth === '03') booked.push(['punctual', world.punctual.charged, day], ['lower', world.lower.charged, day]);
+      if (dayOfMonth === '10') booked.push(['late', world.late.last, day]);
+      if (dayOfMonth === '10' && day >= '2027-04-01') booked.push(['behind', world.behind.charged, day]);
+      if (dayOfMonth === '12' && day >= '2027-03-12') booked.push(['joiner', world.joiner.charged, day]);
+      if (day === '2026-12-28') booked.push(['joiner', 50, day]); // a first fee, paid before joining
+      if (day === '2027-01-11') booked.push(['behind', 100, '2026-12-20']); // booked late, for the time before the fresh start
+      if (day === '2029-07-15') booked.push(['never', 60, day]); // paid on the day of a fresh start: into the new account
+      for (const [who, amount, dated] of booked) {
+        const m = world[who];
+        m.record.payments.push({ id: `${who}-${day}`, amount, date: dated });
+        m.record.totalPaid += amount;
+        if (m.from && dated < m.from) {
+          // it belongs to the time before the fresh start: it first makes up for what was dropped then
+          const credit = Math.max(0, m.closing);
+          m.closing += amount;
+          m.balance += Math.max(0, m.closing) - credit;
+        } else m.balance += amount;
+      }
+
+      for (const [who, m] of Object.entries(world)) {
+        const served = on(t, day, m.record, resets, FEES, schedule);
+        for (const [what, is, byHand] of [['balance', served._currentBalance, m.balance], ['open', served._overdueAmount, Math.max(0, -m.balance)],
+          ['carried over', served._feeCarriedOver, Math.max(0, m.closing)], ['dropped', served._feeWrittenOff, Math.max(0, -m.closing)]]) {
+          assert.ok(Math.abs(is - byHand) < 0.005, `${who} on ${day}: ${what} ${is}, by hand ${byHand}`);
+        }
+        assert.equal(served._feeReset, m.from, `${who} on ${day}: counts from`);
+        assert.equal(served._statusMeta.isOverdue, m.balance < 0, `${who} on ${day}: overdue`);
+      }
+      // 1 January 2027: December open (late), 1200 owed and 450 paid (behind), 2000 paid (ahead); the joiner is not
+      // a member yet
+      if (day === '2027-01-01') assert.deepEqual(closings(), [0, -50, -750, -1200, 800, 0, 0]);
+      // 15 July 2029, at 60 a month since 2027: what was paid before the 15th belongs to the time before - credit
+      // for July where nothing was open (60, with the 50 the late payer and the joiner have had since; of the 30 at
+      // the lower fee, 15 make up for the months that cost more after the fact), and where months were open it
+      // makes up for those first (behind: 180 open, 60 paid on the 10th)
+      if (day === '2029-07-15') assert.deepEqual(closings(), [60, 50, -120, -1800, -1000, 15, 110]);
+    }
+    // December 2030. The raise to 65 counts from April 2030 and moved no month before it: whoever pays the fee of
+    // the month is where they were (paid up, the July of 2029 behind, 50 ahead; the late payer one month of 65
+    // behind, less their 50). Only the fee entered late left its 15. Who pays nothing owes July 2029 to March 2030
+    // at 60 and the nine months since at 65 - less the 60 one of them paid on the day of the fresh start
+    assert.deepEqual(Object.values(world).map((m) => m.balance), [0, -15, -60, -1065, -1125, -15, 50]);
+  });
+
   test('only real days are days, and only days within reach can be set', () => {
     for (const day of ['2027-01-01', '2028-02-29']) assert.equal(feeReset.parseDay(day), day);
     for (const junk of ['2027-02-30', '2027-13-01', '27-01-01', '01.01.2027', '2027-1-1', ' 2027-01-01', '', null, undefined, 20270101, {}]) {
@@ -609,6 +721,445 @@ describe('fresh start of the fee accounts', () => {
     assert.equal(feeResetIsNews('2026-11-01', '2026-10-31'), true);
     for (const day of [null, undefined, '', 'nonsense', '2026-11']) assert.equal(feeResetIsNews(day, '2026-11-01'), false, String(day));
     assert.equal(feeResetIsNews('2026-11-01', ''), false);
+  });
+});
+
+// CALDERA: the monthly fees over time - every change of the fees says from which month it counts, and the months
+// before keep the old fees (backend/feeSchedule.js). What is stored about the fees changes by the rules of
+// backend/feeState.js
+describe('the monthly fees over time', () => {
+  const { preprocessPersonServerSide, feeResetImpact, feeChangeImpact } = require('../backend/derivedData');
+  const feeReset = require('../backend/feeReset');
+  const fees = require('../backend/feeSchedule');
+  const feeState = require('../backend/feeState');
+  const { freezeTime, assertHas } = require('./helpers');
+
+  const FEES = { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, pausiert: 0 };
+  // A history is the fees from the beginning and the changes, each with the month it counts from
+  const flat = (base = FEES) => ({ base, changes: [] });
+  const from = (schedule, month, table, replaces) => fees.withFeeChange(schedule, { from: month, fees: table, replaces });
+  // The history of the examples: 50 from the beginning, 60 from January 2027
+  const RAISED = from(flat(), '2027-01', { vollverdiener: 60 });
+  const full = (schedule, month) => fees.feesInMonth(schedule, month).vollverdiener;
+  // A member since January 2025 with payments as [amount, day]
+  const member = (payments = [], extra = {}) => ({
+    id: 'p1', uid: 'u1', name: 'Paula', status: 'vollverdiener', memberSince: '2025-01-15', originalMemberSince: '2025-01-15',
+    standingOrders: [], statusHistory: [{ status: 'vollverdiener', startDate: '2025-01-15' }],
+    payments: payments.map(([amount, date], i) => ({ id: `pay${i}`, amount, date })),
+    totalPaid: payments.reduce((sum, [amount]) => sum + amount, 0),
+    ...extra
+  });
+  // [amount] on the 3rd of every month from [first] to [last] ('YYYY-MM')
+  const monthly = (first, last, amount) => {
+    const paid = [];
+    for (let month = first; month <= last; month = fees.addMonths(month, 1)) paid.push([amount, `${month}-03`]);
+    return paid;
+  };
+  // paid 50 every month, January 2025 to March 2028: always on time
+  const punctual = member(monthly('2025-01', '2028-03', 50));
+  const noon = (day) => new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), 12).toISOString();
+  const on = (t, day, person, schedule, resets = []) => {
+    const restore = freezeTime(t, noon(day));
+    try { return preprocessPersonServerSide(structuredClone(person), {}, resets, schedule); } finally { restore(); }
+  };
+  const paidUpTo = (served) => { const date = new Date(served._paidUntil); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; };
+  const nobody = { count: 0, total: 0 };
+
+  test('a change of the fees counts from its month: the months before keep the old fees', (t) => {
+    assertHas(on(t, '2028-03-15', punctual, flat()), { _currentBalance: 0, _overdueAmount: 0, _monthlyFee: 50 });
+    // 60 from April 2028, entered in March: no month before April costs anything else, nobody is behind
+    const raised = from(flat(), '2028-04', { vollverdiener: 60 });
+    assert.deepEqual(on(t, '2028-03-15', punctual, raised), on(t, '2028-03-15', punctual, flat()));
+    assert.deepEqual(['2025-01', '2028-03', '2028-04', '2031-12'].map((month) => full(raised, month)), [50, 50, 60, 60]);
+    // from April on a month costs 60
+    assertHas(on(t, '2028-04-15', punctual, raised), { _currentBalance: -60, _overdueAmount: 60, _monthlyFee: 60 });
+    // the statuses the change does not name keep what they cost
+    assert.deepEqual(fees.feesInMonth(raised, '2028-04'), { ...FEES, vollverdiener: 60 });
+    // with one fee for all time - as it was - the same 60 cost every month since 2025: 39 months at 10 more
+    assertHas(on(t, '2028-03-15', punctual, flat({ ...FEES, vollverdiener: 60 })), { _currentBalance: -390, _overdueAmount: 390 });
+    // paid until: what was paid is used up at the fees of each month - 2000 pay the 39 months at 50, and the 50
+    // that are left do not pay an April at 60
+    const paidAhead = member([[2000, '2025-02-01']]);
+    assert.deepEqual([paidUpTo(on(t, '2028-03-15', paidAhead, flat())), paidUpTo(on(t, '2028-03-15', paidAhead, raised))], ['2028-04', '2028-03']);
+  });
+
+  test('fees and payments with cents: who paid every month exactly is paid up to this month', async (t) => {
+    const { calculatePaidUntil } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'assets', 'finance.js')).href);
+    // added up as they are, amounts like 49.99 drift by a fraction of a cent: "paid until" used to show the month
+    // before for one in five of these members
+    for (const fee of [49.99, 33.33, 9.99, 19.9, 15.55, 66.67, 8.33, 0.1, 12.5, 50]) {
+      for (const count of [1, 2, 3, 5, 7, 12, 24, 36, 47]) {
+        const last = fees.addMonths('2025-01', count - 1);
+        const exact = member(monthly('2025-01', last, fee));
+        const served = on(t, `${last}-20`, exact, flat({ ...FEES, vollverdiener: fee }));
+        assert.equal(paidUpTo(served), last, `${count} months at ${fee}`);
+        assert.ok(Math.abs(served._currentBalance) < 0.005 && served._overdueAmount === 0 && !served._statusMeta.isOverdue, `${count} months at ${fee}: paid up`);
+        // the web app's own "paid until" (when the server sent none) counts the same way
+        const shown = calculatePaidUntil({ ...served, _paidUntil: null }, { ...FEES, vollverdiener: fee });
+        assert.equal(`${shown.getFullYear()}-${String(shown.getMonth() + 1).padStart(2, '0')}`, last, `${count} months at ${fee}, in the web app`);
+        // one cent short is one month short, one cent more is not one month more
+        const short = member([...monthly('2025-01', last, fee), [-0.01, `${last}-04`]]);
+        assert.equal(paidUpTo(on(t, `${last}-20`, short, flat({ ...FEES, vollverdiener: fee }))), fees.addMonths(last, -1), `${count} months at ${fee}, a cent short`);
+        const more = member([...monthly('2025-01', last, fee), [0.01, `${last}-04`]]);
+        assert.equal(paidUpTo(on(t, `${last}-20`, more, flat({ ...FEES, vollverdiener: fee }))), last, `${count} months at ${fee}, a cent more`);
+      }
+    }
+  });
+
+  test('who joined on a 1st owes from that month on, wherever the server stands', async (t) => {
+    const { calculatePaidUntil } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'assets', 'finance.js')).href);
+    // read as a date, "2025-03-01" is midnight in Greenwich: still February west of it, where the member was charged
+    // one month too many (and a fresh start dropped it as open fees)
+    const sinceTheFirst = (payments) => member(payments, { memberSince: '2025-03-01', originalMemberSince: '2025-03-01', statusHistory: [{ status: 'vollverdiener', startDate: '2025-03-01' }] });
+    const [had, home] = [process.env.TZ, Intl.DateTimeFormat().resolvedOptions().timeZone];
+    t.after(() => { process.env.TZ = home; if (had === undefined) delete process.env.TZ; });
+    for (const zone of ['Pacific/Honolulu', 'America/Los_Angeles', 'America/New_York', 'UTC', 'Europe/Berlin', 'Asia/Kolkata', 'Pacific/Auckland']) {
+      process.env.TZ = zone;
+      // 50 every month from March 2025 to February 2026: paid up, to the month
+      const served = on(t, '2026-02-20', sinceTheFirst(monthly('2025-03', '2026-02', 50)), flat());
+      assertHas(served, { _currentBalance: 0, _overdueAmount: 0 }, zone);
+      assert.equal(paidUpTo(served), '2026-02', zone);
+      assert.equal(paidUpTo(on(t, '2026-02-20', sinceTheFirst([]), flat())), '2025-02', `${zone}: nothing paid, the month before the first`);
+      // a status counts from the month of its day, also on a 1st
+      const reduced = sinceTheFirst(monthly('2025-03', '2026-02', 50));
+      reduced.statusHistory = [{ status: 'vollverdiener', startDate: '2025-03-01', endDate: '2025-12-01' }, { status: 'geringverdiener', startDate: '2025-12-01' }];
+      assertHas(on(t, '2026-02-20', { ...reduced, status: 'geringverdiener' }, flat()), { _currentBalance: 75, _monthlyFee: 25 }, `${zone}: 25 from December`);
+      // a fresh start on 1 January 2026 finds the ten months of 2025 paid: nothing to drop, nothing to carry over
+      const fresh = on(t, '2026-02-20', sinceTheFirst(monthly('2025-03', '2026-02', 50)), flat(), ['2026-01-01']);
+      assertHas(fresh, { _feeReset: '2026-01-01', _feeWrittenOff: 0, _feeCarriedOver: 0, _currentBalance: 0 }, `${zone}, after a fresh start`);
+      // the web app's own "paid until" (when the server sent none), in a browser in that zone
+      for (const account of [served, fresh]) {
+        const shown = calculatePaidUntil({ ...account, _paidUntil: null }, FEES);
+        assert.equal(`${shown.getFullYear()}-${String(shown.getMonth() + 1).padStart(2, '0')}`, '2026-02', `${zone}, in the web app`);
+      }
+    }
+  });
+
+  test('a change may count from a month still to come, from this month or from a month in the past', (t) => {
+    // still to come: nothing moves until the month comes
+    const planned = from(flat(), '2028-07', { vollverdiener: 60 });
+    assert.deepEqual(on(t, '2028-03-15', punctual, planned), on(t, '2028-03-15', punctual, flat()));
+    assert.deepEqual(['2028-06-30', '2028-07-01'].map((day) => on(t, day, punctual, planned)._monthlyFee), [50, 60]);
+    // from this month: March costs 10 more
+    assertHas(on(t, '2028-03-15', punctual, from(flat(), '2028-03', { vollverdiener: 60 })), { _currentBalance: -10, _monthlyFee: 60 });
+    // from a month in the past, it reaches back: January, February and March cost 10 more
+    assertHas(on(t, '2028-03-15', punctual, from(flat(), '2028-01', { vollverdiener: 60 })), { _currentBalance: -30, _overdueAmount: 30 });
+    // a member who is still to join is shown the fee of this month
+    const nextYear = member([], { memberSince: '2029-06-15', originalMemberSince: '2029-06-15', statusHistory: [{ status: 'vollverdiener', startDate: '2029-06-15' }] });
+    assertHas(on(t, '2028-03-15', nextYear, planned), { _currentStatus: null, _monthlyFee: 50, _currentBalance: 0 });
+  });
+
+  test('the fees from the beginning can be corrected, a change can be edited, moved and taken back', () => {
+    const months = (schedule) => ['2026-12', '2027-01', '2027-02', '2027-03'].map((month) => full(schedule, month));
+    assert.deepEqual(months(RAISED), [50, 60, 60, 60]);
+    // the fees from the beginning count for the time before the first change
+    assert.deepEqual(months(from(RAISED, null, { vollverdiener: 45 })), [45, 60, 60, 60]);
+    // edited: another amount from the same month
+    assert.deepEqual(months(from(RAISED, '2027-01', { vollverdiener: 65 }, '2027-01')), [50, 65, 65, 65]);
+    // moved to March: January and February cost the fees before it again
+    const moved = from(RAISED, '2027-03', { vollverdiener: 60 }, '2027-01');
+    assert.deepEqual([months(moved), moved.changes.map((change) => change.from)], [[50, 50, 50, 60], ['2027-03']]);
+    // taken back: as if it had never been set
+    assert.deepEqual(fees.withoutFeeChange(RAISED, '2027-01'), flat());
+    // every change is the fees from its month on, until the next one - one entered for a month in between does not
+    // reach into the later one
+    const three = from(from(RAISED, '2029-07', { vollverdiener: 65, geringverdiener: 30 }), '2028-01', { keinverdiener: 0 });
+    assert.deepEqual(['2026-12', '2027-06', '2028-06', '2030-01'].map((month) => fees.feesInMonth(three, month)), [
+      FEES, { ...FEES, vollverdiener: 60 }, { ...FEES, vollverdiener: 60, keinverdiener: 0 }, { ...FEES, vollverdiener: 65, geringverdiener: 30 }
+    ]);
+    // fees from a month that are the fees counting before it anyway say nothing and are not kept - a change set
+    // back to what it changed is gone
+    assert.deepEqual(from(RAISED, '2028-01', { vollverdiener: 60 }), RAISED);
+    assert.deepEqual(from(RAISED, '2027-01', { vollverdiener: 50 }, '2027-01'), flat());
+    // but what was entered stays until it is taken back, also while another change makes it say nothing: with the
+    // fee of 2027 edited to 65 and back, the 65 from 2029 are still there
+    const twice = from(RAISED, '2029-01', { vollverdiener: 65 });
+    const swallowed = from(twice, '2027-01', { vollverdiener: 65 }, '2027-01');
+    assert.deepEqual([swallowed.changes.map((change) => change.from), full(swallowed, '2028-06'), full(swallowed, '2029-06')], [['2027-01', '2029-01'], 65, 65]);
+    assert.deepEqual(from(swallowed, '2027-01', { vollverdiener: 60 }, '2027-01'), twice);
+    // the same with the fees from the beginning: at 60 from the beginning, "60 from January 2027" waits
+    const waiting = from(RAISED, null, { vollverdiener: 60 });
+    assert.deepEqual([waiting.changes.map((change) => change.from), months(waiting)], [['2027-01'], [60, 60, 60, 60]]);
+    assert.deepEqual(from(waiting, null, { vollverdiener: 50 }), RAISED);
+    // none of this touches the history it started from
+    assert.deepEqual(months(RAISED), [50, 60, 60, 60]);
+  });
+
+  test('only real months and amounts are taken, and a change has to change something', () => {
+    for (const month of ['2027-01', '2028-12']) assert.equal(fees.parseMonth(month), month);
+    for (const junk of ['2027-13', '2027-00', '2027-1', '27-01', '2027-01-01', '01.2027', ' 2027-01', '', null, undefined, 202701, {}]) assert.equal(fees.parseMonth(junk), null, String(junk));
+    assert.deepEqual([fees.addMonths('2027-01', -1), fees.addMonths('2027-12', 1), fees.addMonths('2027-06-15', 0)], ['2026-12', '2028-01', '2027-06']);
+
+    const table = { vollverdiener: 60, geringverdiener: 30, keinverdiener: 10 };
+    const check = (input, schedule = RAISED) => fees.checkFeeChange(schedule, input, '2026-11-11');
+    // past, this month, still to come, or the fees from the beginning
+    for (const month of ['2025-01', '2026-11', '2028-04', '2036-11', null]) assert.deepEqual(check({ from: month, fees: table }).change, { from: month, fees: table, replaces: null });
+    // a mistyped month is refused instead of quietly counting from somewhere
+    for (const month of ['2028-13', 'April', '', undefined, 0, '1999-12', '1026-11', '2036-12', '2207-01']) assert.equal(check({ from: month, fees: table }).status, 400, String(month));
+    // every status needs an amount of 0 or more - a typed text, a missing or a huge one is not taken
+    for (const amount of [undefined, null, '60', -1, NaN, Infinity, 100000.01]) assert.equal(check({ from: '2028-04', fees: { ...table, vollverdiener: amount } }).status, 400, String(amount));
+    assert.deepEqual(check({ from: '2028-04', fees: { vollverdiener: 0, geringverdiener: 0, keinverdiener: 0 } }).change.fees, { vollverdiener: 0, geringverdiener: 0, keinverdiener: 0 });
+    assert.equal(check({ from: '2028-04' }).status, 400);
+    // amounts are kept in cents, and no other status can be written this way
+    assert.deepEqual(check({ from: '2028-04', fees: { ...table, vollverdiener: 59.999, pausiert: 5, extra: 1 } }).change.fees, table);
+
+    // an edited or moved change has to be there, and does not land on another one
+    const two = from(RAISED, '2028-01', { vollverdiener: 65 });
+    assert.deepEqual(check({ from: '2027-03', fees: table, replaces: '2027-01' }, two).change, { from: '2027-03', fees: table, replaces: '2027-01' });
+    assert.equal(check({ from: '2027-03', fees: table, replaces: '2026-01' }, two).status, 404);
+    assert.equal(check({ from: '2028-01', fees: table, replaces: '2027-01' }, two).status, 409);
+    assert.equal(check({ from: null, fees: table, replaces: '2027-01' }, two).status, 400, 'a change always has its month');
+    // the fees that count anyway are no change
+    assert.equal(check({ from: '2027-01', fees: { vollverdiener: 60, geringverdiener: 25, keinverdiener: 10 } }).status, 409);
+    assert.equal(check({ from: '2029-01', fees: { vollverdiener: 60, geringverdiener: 25, keinverdiener: 10 } }).status, 409);
+    assert.equal(check({ from: null, fees: { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10 } }).status, 409);
+
+    assert.deepEqual(fees.checkFeeRemoval(RAISED, '2027-01'), { from: '2027-01' });
+    for (const month of ['2027-02', null, undefined, 'nonsense']) assert.equal(fees.checkFeeRemoval(RAISED, month).status, 404, String(month));
+  });
+
+  test('the history says what it is today, and its version changes when a month costs something else', () => {
+    const schedule = fees.withFeeChange(RAISED, { from: '2028-07', fees: { vollverdiener: 65 }, setAt: 5, setBy: 'u1', setByName: 'Olga' });
+    const now = fees.describeFeeSchedule(schedule, '2027-06-15');
+    assertHas(now, { month: '2027-06', current: { ...FEES, vollverdiener: 60 }, since: '2027-01', next: { from: '2028-07', fees: { ...FEES, vollverdiener: 65 } } });
+    assert.deepEqual(now.entries.map((entry) => [entry.from, entry.state, entry.fees.vollverdiener]), [[null, 'past', 50], ['2027-01', 'current', 60], ['2028-07', 'planned', 65]]);
+    // before the first change the fees from the beginning count; a change counts from the first day of its month
+    assertHas(fees.describeFeeSchedule(schedule, '2026-12-31'), { current: FEES, since: null, next: { from: '2027-01', fees: { ...FEES, vollverdiener: 60 } } });
+    assert.deepEqual(fees.describeFeeSchedule(schedule, '2026-12-31').entries.map((entry) => entry.state), ['current', 'planned', 'planned']);
+    assertHas(fees.describeFeeSchedule(schedule, '2028-07-01'), { since: '2028-07', next: null });
+    // an entry that changes nothing at the moment is neither "since" nor "to come": the page says since when the
+    // fees have really been what they are, and when they will really be others
+    const quiet = from(from(from(RAISED, '2029-01', { vollverdiener: 65 }), '2027-06', { vollverdiener: 65 }), '2027-01', { vollverdiener: 65 }, '2027-01');
+    assert.deepEqual(quiet.changes.map((change) => [change.from, change.fees.vollverdiener]), [['2027-01', 65], ['2027-06', 65], ['2029-01', 65]]);
+    assertHas(fees.describeFeeSchedule(quiet, '2027-08-15'), { since: '2027-01', next: null, current: { ...FEES, vollverdiener: 65 } });
+    assertHas(fees.describeFeeSchedule(quiet, '2026-12-15'), { since: null, next: { from: '2027-01', fees: { ...FEES, vollverdiener: 65 } } });
+    // with 70 from 2030: in March 2027 the next change is that one - not the entry of June, which changes nothing
+    const later = from(quiet, '2030-01', { vollverdiener: 70 });
+    assertHas(fees.describeFeeSchedule(later, '2027-03-15'), { since: '2027-01', next: { from: '2030-01', fees: { ...FEES, vollverdiener: 70 } } });
+    assert.deepEqual(fees.describeFeeSchedule(later, '2027-03-15').entries.map((entry) => [entry.from, entry.state]), [[null, 'past'], ['2027-01', 'current'], ['2027-06', 'planned'], ['2029-01', 'planned'], ['2030-01', 'planned']]);
+    // taking one change back leaves every other one as it was entered, also those that say nothing at the moment
+    assert.deepEqual(fees.withoutFeeChange(later, '2030-01'), quiet);
+    assert.deepEqual(fees.withoutFeeChange(later, '2029-01').changes.map((change) => change.from), ['2027-01', '2027-06', '2030-01']);
+    // members get the fees; who set them is for those who see the finances
+    assert.deepEqual(Object.keys(now.entries[2]), ['from', 'fees', 'state']);
+    assertHas(fees.describeFeeSchedule(schedule, '2027-06-15', { withDetails: true }).entries[2], { setAt: 5, setByName: 'Olga' });
+
+    // the version: the same for the same prices, whoever set them - another one as soon as a month costs something else
+    assert.equal(fees.feeScheduleVersion(schedule), fees.feeScheduleVersion(from(RAISED, '2028-07', { vollverdiener: 65 })));
+    const versions = [schedule, RAISED, flat(), from(schedule, '2028-08', { vollverdiener: 65 }, '2028-07'), from(schedule, null, { keinverdiener: 5 })].map(fees.feeScheduleVersion);
+    assert.equal(new Set(versions).size, versions.length);
+  });
+
+  test('the stored history is read as a clean one', () => {
+    const stored = { base: { ...FEES, note: 'x', keinverdiener: '10' }, log: [{ action: 'set', from: '2027-01', fees: FEES, at: 5, by: 'u1', byName: 'Olga' }, { action: 'removed', from: null }, { action: 'other', from: '2027-01' }, { action: 'set', from: 'nonsense' }, null],
+      changes: [{ from: '2028-07', fees: { ...FEES, vollverdiener: 65 }, setAt: 7, setByName: 'Olga' }, { from: '2027-01', fees: { ...FEES, vollverdiener: 55 } }, { from: 'nonsense', fees: FEES }, null,
+        { from: '2027-01', fees: { ...FEES, vollverdiener: 60 } }, { from: '2029-01', fees: { ...FEES, vollverdiener: 65 } }] };
+    const schedule = fees.normalizeFeeSchedule(stored);
+    // real months only, each once (the entry stored last counts), the earliest first - also one that changes
+    // nothing at the moment
+    assert.deepEqual(schedule.changes.map((change) => [change.from, change.fees.vollverdiener]), [['2027-01', 60], ['2028-07', 65], ['2029-01', 65]]);
+    assert.deepEqual(schedule.base, { vollverdiener: 50, geringverdiener: 25, pausiert: 0 });
+    assertHas(schedule.changes[1], { setAt: 7, setBy: '', setByName: 'Olga' });
+    for (const none of [undefined, null, [], 'x', {}, { changes: [] }]) assert.equal(fees.normalizeFeeSchedule(none), null);
+    assert.deepEqual(fees.normalizeFeeScheduleLog(stored).map((entry) => [entry.action, entry.from]), [['set', '2027-01'], ['removed', null]]);
+    assert.deepEqual(fees.normalizeFeeScheduleLog(undefined), []);
+    // only the newest entries of the log are kept
+    let log = [];
+    for (let i = 0; i < 130; i += 1) log = fees.withFeeLogEntry(log, { action: 'set', from: '2027-01', at: i });
+    assert.deepEqual([log.length, log[0].at, log[99].at], [100, 30, 129]);
+  });
+
+  test('an instance from before the history costs exactly what it cost', (t) => {
+    const dearer = { ...FEES, vollverdiener: 60, reportStartDate: null };
+    const JANUARY = { date: '2027-01-01', feesBefore: FEES };
+    const behind = member([[900, '2025-06-10']]);
+    const ahead = member([[1500, '2025-06-10']]);
+    const cases = {
+      // one fee for all time
+      'no fresh start': [[], dearer, { base: { ...FEES, vollverdiener: 60 }, changes: [] }],
+      // a fresh start kept the fees of the time before it; the fees set now counted from its month on
+      'a fresh start that kept other fees': [[JANUARY], dearer, { base: FEES, changes: ['2027-01'] }],
+      'a fresh start that kept the same fees': [[JANUARY], FEES, { base: FEES, changes: [] }],
+      // one without fees of its own took those of the time after it
+      'a fresh start without kept fees': [[{ date: '2027-01-01' }], dearer, { base: { ...FEES, vollverdiener: 60 }, changes: [] }],
+      'two fresh starts': [[JANUARY, { date: '2029-07-15', feesBefore: { ...FEES, vollverdiener: 55 } }], dearer, { base: FEES, changes: ['2027-01', '2029-07'] }],
+      'two fresh starts in one month': [[JANUARY, { date: '2027-01-20', feesBefore: { ...FEES, vollverdiener: 55 } }], dearer, { base: FEES, changes: ['2027-01'] }]
+    };
+    for (const [name, [resets, settings, expected]] of Object.entries(cases)) {
+      const schedule = fees.scheduleFromLegacy(resets, settings);
+      assert.deepEqual([schedule.base, schedule.changes.map((change) => change.from)], [expected.base, expected.changes], name);
+      // every month costs what it cost ...
+      const periods = feeReset.feePeriods(resets, settings);
+      for (let month = '2024-01'; month <= '2031-12'; month = fees.addMonths(month, 1)) {
+        assert.deepEqual(fees.feesInMonth(schedule, month), feeReset.feesOfMonth(periods, feeReset.monthIndexOf(month)), `${name}: ${month}`);
+      }
+      // ... and every account stands where it stood, before and after the fresh starts
+      for (const person of [behind, ahead, punctual]) {
+        for (const day of ['2026-12-15', '2027-01-01', '2027-02-15', '2029-07-15', '2030-03-01']) {
+          const restore = freezeTime(t, noon(day));
+          const [was, is] = [preprocessPersonServerSide(structuredClone(person), settings, resets), preprocessPersonServerSide(structuredClone(person), settings, resets, schedule)];
+          restore();
+          assert.deepEqual(is, was, `${name}: ${person.totalPaid} paid, on ${day}`);
+        }
+      }
+    }
+    // a fresh start that was planned with the new fee entered early: the fee counts from its month, still to come
+    const planned = fees.describeFeeSchedule(fees.scheduleFromLegacy([JANUARY], dearer), '2026-12-15');
+    assertHas(planned, { current: FEES, since: null, next: { from: '2027-01', fees: { ...FEES, vollverdiener: 60 } } });
+  });
+
+  test('before it is saved, the admin sees in numbers what a change of the fees does', (t) => {
+    const paidAhead = member([[2000, '2025-02-01']], { id: 'p2' });
+    const lowFee = member(monthly('2025-01', '2028-03', 25), { id: 'p3', status: 'geringverdiener', statusHistory: [{ status: 'geringverdiener', startDate: '2025-01-15' }] });
+    const people = [punctual, paidAhead, lowFee, { ...punctual, id: 'p4', pays: false }, { id: 'p5', name: 'Gone', isDeleted: true, payments: [] }];
+    const untouched = structuredClone(people);
+    const impact = (after, before = flat(), resets = []) => feeChangeImpact(people, resets, before, after, '2028-03-15');
+    const dearer = { ...FEES, vollverdiener: 60 };
+
+    // the full fee at 60 from January 2028, entered in March: January, February and March cost the two full earners
+    // 10 more each - one is behind for it, the other has less credit
+    assertHas(impact(from(flat(), '2028-01', { vollverdiener: 60 })), {
+      inEffect: true, members: 3, more: { count: 2, total: 60 }, less: nobody, freshStart: null,
+      stretches: [{ first: '2028-01', last: null, before: FEES, after: dearer }]
+    });
+    assert.deepEqual(people, untouched, 'the records are only read');
+    // from April, the month after: it moves no account today
+    assertHas(impact(from(flat(), '2028-04', { vollverdiener: 60 })), { inEffect: false, members: 3, more: nobody, less: nobody, stretches: [{ first: '2028-04', last: null, before: FEES, after: dearer }] });
+    // lowered to 40 from January 2027: 15 months at 10 less for each of the two
+    assertHas(impact(from(flat(), '2027-01', { vollverdiener: 40 })), { inEffect: true, more: nobody, less: { count: 2, total: 300 } });
+    // the fees from the beginning: all 39 months
+    assertHas(impact(from(flat(), null, { vollverdiener: 60 })), { more: { count: 2, total: 780 }, stretches: [{ first: null, last: null, before: FEES, after: dearer }] });
+    // a change of the lower fee only reaches who pays it
+    assertHas(impact(from(flat(), '2028-03', { geringverdiener: 30 })), { more: { count: 1, total: 5 } });
+
+    // moved from January to March 2027: January and February cost the old fee again
+    assertHas(impact(from(RAISED, '2027-03', { vollverdiener: 60 }, '2027-01'), RAISED), { less: { count: 2, total: 40 }, stretches: [{ first: '2027-01', last: '2027-02', before: dearer, after: FEES }] });
+    // taken back: from its month on the fees before it count again - 15 months at 10 less for each of the two
+    assertHas(impact(fees.withoutFeeChange(RAISED, '2027-01'), RAISED), { less: { count: 2, total: 300 }, stretches: [{ first: '2027-01', last: null, before: dearer, after: FEES }] });
+    // a change in between counts until the next one
+    const later = from(RAISED, '2028-01', { vollverdiener: 65 });
+    assert.deepEqual(impact(from(later, '2027-07', { vollverdiener: 62 }), later).stretches, [{ first: '2027-07', last: '2027-12', before: dearer, after: { ...FEES, vollverdiener: 62 } }]);
+
+    // the numbers are what the served balances then do
+    const balances = (schedule) => people.slice(0, 3).map((person) => on(t, '2028-03-15', person, schedule)._currentBalance);
+    assert.deepEqual([balances(flat()), balances(from(flat(), '2028-01', { vollverdiener: 60 }))], [[0, 50, 0], [-30, 20, 0]]);
+
+    // a fresh start that has come and lies after a month that costs something else: what was dropped or carried
+    // over on it is worked out again, and the admin is told which one
+    const freshStarts = [{ date: '2027-01-01' }, { date: '2029-01-01' }];
+    assert.equal(impact(from(flat(), '2026-07', { vollverdiener: 60 }), flat(), freshStarts).freshStart, '2027-01-01');
+    assert.equal(impact(from(flat(), null, { vollverdiener: 60 }), flat(), freshStarts).freshStart, '2027-01-01');
+    // from the month of the fresh start on, the change only reaches the account that was opened then
+    assert.equal(impact(from(flat(), '2027-01', { vollverdiener: 60 }), flat(), freshStarts).freshStart, null);
+    // a change moved from before the fresh start to after it, with another amount: two stretches cost something
+    // else, and the earlier one lies before the fresh start
+    const early = from(flat(), '2026-07', { vollverdiener: 60 });
+    const movedAcross = impact(from(early, '2027-03', { vollverdiener: 65 }, '2026-07'), early, freshStarts);
+    assert.deepEqual([movedAcross.stretches.map((stretch) => [stretch.first, stretch.last]), movedAcross.freshStart], [[['2026-07', '2027-02'], ['2027-03', null]], '2027-01-01']);
+  });
+
+  test('a fresh start and the fees do not move each other', (t) => {
+    const DAY = '2027-01-01';
+    const behind = member([[900, '2025-06-10']]);
+    const ahead = member([[1500, '2025-06-10']], { id: 'p2' });
+    const freshStart = [{ date: DAY }];
+    // the 24 months before it cost 50: 300 open are dropped, 300 paid ahead are carried over - and since January a
+    // month costs 60
+    assertHas(on(t, '2027-02-15', behind, RAISED, freshStart), { _feeReset: DAY, _feeWrittenOff: 300, _currentBalance: -120 });
+    assertHas(on(t, '2027-02-15', ahead, RAISED, freshStart), { _feeReset: DAY, _feeCarriedOver: 300, _currentBalance: 180 });
+    // fees changed later, from a month after it: what was dropped or carried over stays what it was
+    const again = from(RAISED, '2027-02', { vollverdiener: 70 });
+    assertHas(on(t, '2027-02-15', behind, again, freshStart), { _feeWrittenOff: 300, _currentBalance: -130 });
+    assertHas(on(t, '2027-02-15', ahead, again, freshStart), { _feeCarriedOver: 300, _currentBalance: 170 });
+    // setting it or taking it back changes the price of no month - also after the fees were changed (taken back, it
+    // used to charge the time before at the fees set now)
+    const people = [behind, ahead];
+    for (const [resets, schedule] of [[[], RAISED], [freshStart, RAISED], [freshStart, again]]) {
+      assertHas(feeResetImpact(people, {}, resets, DAY, '2027-03-01', schedule), { behind: { count: 1, total: 300 }, ahead: { count: 1, total: 300 }, owesMore: nobody, feesBefore: FEES, feesWithout: FEES, repriced: false });
+    }
+    assert.deepEqual(on(t, '2027-02-15', behind, RAISED, [])._currentBalance, 900 - 24 * 50 - 2 * 60);
+    // only fees changed for the time before it work out again what was settled then - at 40 a month, 60 were open
+    assertHas(on(t, '2027-02-15', behind, from(RAISED, null, { vollverdiener: 40 }), freshStart), { _feeWrittenOff: 60, _currentBalance: -120 });
+  });
+
+  // What is stored: a plain map in the place of the database
+  const memory = (values = {}) => {
+    const map = new Map(Object.entries(structuredClone(values)));
+    return { map, get: async (key) => (map.has(key) ? structuredClone(map.get(key)) : null), set: async (key, value) => { map.set(key, structuredClone(value)); } };
+  };
+  const olga = { by: 'u1', byName: 'Olga Owner' };
+
+  test('the history of an older instance is written down with the first change, before it', async () => {
+    // one fresh start that kept 50 for the time before it, and 60 set since
+    const store = memory({ settings: { ...FEES, vollverdiener: 60, reportStartDate: '2026-01-01' }, feeResets: { resets: [{ date: '2027-01-01', feesBefore: FEES, setByName: 'Olga Owner' }], log: [] } });
+    const read = await feeState.readFeeState(store);
+    assertHas(read, { stored: false, log: [], schedule: { base: FEES, changes: [{ from: '2027-01', fees: { ...FEES, vollverdiener: 60 }, setAt: null, setBy: '', setByName: '' }] } });
+    assert.deepEqual([read.resets.map((reset) => reset.date), store.map.has('feeSchedule')], [['2027-01-01'], false], 'reading writes nothing');
+
+    // the fresh start is taken back: no month costs anything else for it
+    await feeState.changeFeeResets(store, (current, schedule) => {
+      assert.deepEqual(schedule, read.schedule, 'the change sees the fees over time');
+      return { resets: [], log: [...current.log, { action: 'removed', date: '2027-01-01', at: 9, by: 'u1', byName: 'Olga Owner' }] };
+    }, '2027-03-01');
+    const after = await feeState.readFeeState(store);
+    assertHas(after, { stored: true, resets: [], schedule: read.schedule });
+    assert.equal(after.resetLog.length, 1);
+    // the fee settings keep the fees of the month for older apps to read - and whatever else was in them
+    assert.deepEqual(store.map.get('settings'), { ...FEES, vollverdiener: 60, reportStartDate: '2026-01-01' });
+    // a refused change stores nothing
+    const empty = memory({ settings: FEES });
+    await assert.rejects(feeState.changeFeeSchedule(empty, () => { throw new Error('refused'); }, '2027-03-01'), /refused/);
+    assert.deepEqual([...empty.map.keys()], ['settings']);
+  });
+
+  test('a change of the fees is stored with its log, and the fee settings follow', async () => {
+    const store = memory({ settings: { ...FEES, reportStartDate: null } });
+    const state = await feeState.changeFeeSchedule(store, (current) => ({
+      schedule: fees.withFeeChange(current.schedule, { from: '2028-07', fees: { vollverdiener: 60 }, setAt: 5, ...{ setBy: olga.by, setByName: olga.byName } }),
+      log: fees.withFeeLogEntry(current.log, { action: 'set', from: '2028-07', fees: { ...FEES, vollverdiener: 60 }, movedFrom: null, at: 5, ...olga })
+    }), '2028-03-15');
+    assertHas(state, { stored: true });
+    assert.deepEqual(await feeState.readFeeState(store), state, 'what is answered is what is stored');
+    assert.deepEqual(state.log, [{ action: 'set', from: '2028-07', fees: { ...FEES, vollverdiener: 60 }, movedFrom: null, at: 5, ...olga }]);
+    // still to come in March: the settings read 50 until July comes, whatever was stored last
+    assert.equal(store.map.get('settings').vollverdiener, 50);
+    assert.deepEqual(['2028-06-30', '2028-07-01'].map((day) => feeState.settingsOn(state, day).vollverdiener), [50, 60]);
+    assert.equal(feeState.settingsOn(state, '2028-07-01').reportStartDate, null);
+  });
+
+  test('an app without the history saves the fee settings: other fees count from this month on', async () => {
+    const store = memory({ settings: { ...FEES, reportStartDate: null } });
+    const saved = [];
+    const save = async (value, day, at = 1) => {
+      const state = await feeState.saveFeeSettings(store, value, olga, day, at);
+      saved.push(state.feesChangedFrom);
+      return state.schedule;
+    };
+    // saved with the fees as they are: no fee changes, the rest is stored
+    assert.deepEqual(await save({ ...FEES, reportStartDate: '2026-01-01' }, '2028-03-15'), flat());
+    assert.deepEqual(store.map.get('settings'), { ...FEES, reportStartDate: '2026-01-01' });
+    // the full fee raised in March 2028: from March on - not for the 38 months before, as it was
+    const raised = await save({ ...FEES, vollverdiener: 60 }, '2028-03-15', 7);
+    assert.deepEqual(raised, { base: FEES, changes: [{ from: '2028-03', fees: { ...FEES, vollverdiener: 60 }, setAt: 7, setBy: 'u1', setByName: 'Olga Owner' }] });
+    assert.deepEqual((await feeState.readFeeState(store)).log, [{ action: 'set', from: '2028-03', fees: { ...FEES, vollverdiener: 60 }, movedFrom: null, at: 7, ...olga }]);
+    // the next field right after (the older screens save every field on its own): still one change of March
+    const both = await save({ ...FEES, vollverdiener: 60, geringverdiener: 30 }, '2028-03-15');
+    assert.deepEqual(both.changes.map((change) => [change.from, change.fees]), [['2028-03', { ...FEES, vollverdiener: 60, geringverdiener: 30 }]]);
+    // a month later another amount: the next change, March stays
+    const april = await save({ ...FEES, vollverdiener: 65, geringverdiener: 30 }, '2028-04-02');
+    assert.deepEqual(april.changes.map((change) => [change.from, change.fees.vollverdiener]), [['2028-03', 60], ['2028-04', 65]]);
+    // set back within the month: that change is gone again
+    assert.deepEqual((await save({ ...FEES, vollverdiener: 60, geringverdiener: 30 }, '2028-04-20')).changes.map((change) => change.from), ['2028-03']);
+    // what is no amount keeps what the fee is, and the settings never lose their fees
+    assert.deepEqual(await save({ vollverdiener: '70', geringverdiener: -5, keinverdiener: null, reportStartDate: null }, '2028-04-20'), both);
+    assert.deepEqual(store.map.get('settings'), { ...FEES, vollverdiener: 60, geringverdiener: 30, reportStartDate: null });
+    for (const nothing of [null, undefined, 'x', []]) assert.deepEqual(await save(nothing, '2028-04-20'), both);
+    // a change still to come is not touched by a fee saved for now
+    await feeState.changeFeeSchedule(store, (current) => ({ schedule: fees.withFeeChange(current.schedule, { from: '2029-01', fees: { vollverdiener: 70 } }), log: current.log }), '2028-04-20');
+    const now = await save({ ...FEES, vollverdiener: 62, geringverdiener: 30 }, '2028-05-05');
+    assert.deepEqual(now.changes.map((change) => [change.from, change.fees.vollverdiener]), [['2028-03', 60], ['2028-05', 62], ['2029-01', 70]]);
+    // the answer says from which month a fee was changed, for the server's log: only where one was
+    assert.deepEqual(saved, [null, '2028-03', '2028-03', '2028-04', '2028-04', null, null, null, null, null, '2028-05']);
   });
 });
 

@@ -362,22 +362,32 @@
                 </div>
             </div>
 
-            <div class="card card-settings" data-settings-page="fees" id="card-rates">
-                <div class="card-header" data-i18n="rates_title">Monthly Fees</div>
+            <!-- CALDERA: the monthly fees over time. What a month costs now, the change that is still to come, and
+                 every change with the month it counts from - the months before it keep the old fees. Everyone on
+                 this page reads them; only system admins change them, after seeing what the change does (the dialog
+                 below) -->
+            <div class="card card-settings fee-plan-card" data-settings-page="fees" id="card-rates">
                 <div class="card-body">
-                    <div class="form-group">
-                        <label class="form-label" for="rate-vollverdiener" data-i18n="rate_full">Full earner (€)</label>
-                <input type="text" inputmode="decimal" id="rate-vollverdiener" class="form-input" value="50" onblur="autoSaveRate('rate-vollverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
+                    <div class="fee-reset-head">
+                        <span class="fee-reset-icon fee-plan-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></span>
+                        <div class="fee-reset-head-text">
+                            <h3 class="fee-reset-title" data-i18n="rates_title">Monthly Fees</h3>
+                            <p class="fee-reset-desc" data-i18n="fees_desc">What a month costs, by status.</p>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="rate-geringverdiener" data-i18n="rate_low">Low earner (€)</label>
-                <input type="text" inputmode="decimal" id="rate-geringverdiener" class="form-input" value="25" onblur="autoSaveRate('rate-geringverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
+                    <div id="fee-plan-caption" class="fee-plan-caption"></div>
+                    <div id="fee-plan-now" class="fee-plan-now"></div>
+                    <div id="fee-plan-next" class="fee-plan-next" hidden></div>
+                    <div id="fee-plan-form" class="fee-plan-form" style="display:none;">
+                        <button type="button" class="btn btn-secondary" id="btn-fee-change" onclick="openFeeChange()" data-i18n="fees_change_btn">Change fees…</button>
+                        <p class="fee-reset-form-hint" data-i18n="fees_change_hint">You choose the month a change counts from – the months before keep the old fees.</p>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="rate-keinverdiener" data-i18n="rate_none">Non-earner (€)</label>
-                <input type="text" inputmode="decimal" id="rate-keinverdiener" class="form-input" value="10" onblur="autoSaveRate('rate-keinverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
-                    </div>
-                    <div id="rates-reset-note" class="fee-reset-note" hidden></div>
+                    <p id="fee-plan-readonly" class="fee-reset-form-hint" style="display:none;" data-i18n="fee_reset_readonly">Only system admins can change this.</p>
+                    <div id="fee-plan-history" class="fee-plan-history"></div>
+                    <details id="fee-plan-log" class="fee-reset-log" hidden>
+                        <summary data-i18n="fee_reset_log_title">Changes</summary>
+                        <ul></ul>
+                    </details>
                 </div>
             </div>
 
@@ -1570,6 +1580,75 @@
             <div class="fee-reset-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('fee-reset-modal')" data-i18n="btn_cancel">Cancel</button>
                 <button type="button" id="btn-fee-reset-confirm" class="btn btn-danger" onclick="confirmFeeReset()" disabled>Start afresh</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CALDERA: change the monthly fees. Two steps in one dialog: the fees and the month they count from, then what
+     that does in numbers (which months cost something else, who owes more or less today) - only then it is saved.
+     Taking a change back opens the second step right away -->
+<div id="fee-change-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="title-fee-change">
+    <div class="modal-content modal-content-enhanced">
+        <div class="modal-header-enhanced">
+            <div class="modal-header-title-group">
+                <div class="modal-icon-badge badge-fee-change" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></div>
+                <div>
+                    <div id="title-fee-change" class="modal-title-main">Change the fees</div>
+                    <div id="fee-change-subtitle" class="modal-subtitle"></div>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal('fee-change-modal')" data-i18n-aria-label="btn_close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body-enhanced">
+            <div id="fee-change-form">
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>💶</span> <span data-i18n="fees_form_amounts">Fee per month</span>
+                    </div>
+                    <div class="fee-change-amounts">
+                        <div class="form-group">
+                            <label class="form-label" for="fee-change-vollverdiener" id="fee-change-label-vollverdiener"></label>
+                            <input type="text" inputmode="decimal" id="fee-change-vollverdiener" class="form-input" autocomplete="off" oninput="touchFeeAmount('vollverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();reviewFeeChange();}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="fee-change-geringverdiener" id="fee-change-label-geringverdiener"></label>
+                            <input type="text" inputmode="decimal" id="fee-change-geringverdiener" class="form-input" autocomplete="off" oninput="touchFeeAmount('geringverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();reviewFeeChange();}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="fee-change-keinverdiener" id="fee-change-label-keinverdiener"></label>
+                            <input type="text" inputmode="decimal" id="fee-change-keinverdiener" class="form-input" autocomplete="off" oninput="touchFeeAmount('keinverdiener')" onkeydown="if(event.key==='Enter'){event.preventDefault();reviewFeeChange();}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>📅</span> <span data-i18n="fees_form_from">Counts from</span>
+                    </div>
+                    <div id="fee-change-when" class="fee-change-when">
+                        <select id="fee-change-month" class="form-input" data-i18n-aria-label="fees_form_month" aria-label="Month" onchange="updateFeeChangeMonth()"></select>
+                        <select id="fee-change-year" class="form-input" data-i18n-aria-label="fees_form_year" aria-label="Year" onchange="updateFeeChangeMonth()"></select>
+                    </div>
+                    <p id="fee-change-hint" class="fee-change-hint"></p>
+                </div>
+                <div class="fee-reset-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('fee-change-modal')" data-i18n="btn_cancel">Cancel</button>
+                    <button type="button" id="btn-fee-change-review" class="btn btn-primary" onclick="reviewFeeChange()" data-i18n="fee_reset_review_btn">Review…</button>
+                </div>
+            </div>
+            <div id="fee-change-review" style="display:none;">
+                <div class="modal-section-card">
+                    <div class="modal-section-header">
+                        <span>📋</span> <span data-i18n="fee_reset_modal_effects">What happens</span>
+                    </div>
+                    <div id="fee-change-stretches" class="fee-change-stretches"></div>
+                    <div id="fee-change-stats" class="fee-reset-stats"></div>
+                    <ul id="fee-change-facts" class="fee-reset-facts"></ul>
+                </div>
+                <div class="fee-reset-actions">
+                    <button type="button" id="btn-fee-change-back" class="btn btn-secondary" onclick="backToFeeChange()">Back</button>
+                    <button type="button" id="btn-fee-change-confirm" class="btn btn-primary" onclick="confirmFeeChange()">Save</button>
+                </div>
             </div>
         </div>
     </div>

@@ -1,17 +1,18 @@
 // CALDERA: a fresh start for all fee accounts on a day the admins choose.
 //
 // The fee calculation (derivedData.js) counts every month since "member since" against every payment a member ever
-// made, all at the monthly fees that are set now. A fresh start closes that account on a chosen day and opens a new
+// made. A fresh start closes that account on a chosen day and opens a new
 // one: whoever was behind starts from zero (the open fees are dropped), whoever had paid ahead takes exactly that
 // credit along, and from that day on months and payments are counted anew. Nothing is deleted or rewritten for it -
 // payments, the status history, the cash balance and "member since" stay what they are, the calculation just draws
 // a line. So the day may lie in the past or in the future (it applies from that day on), a later fresh start draws
 // the next line, and one set by mistake can be taken back.
 //
-// The time before a fresh start keeps the monthly fees that were set when it was confirmed (feesBefore) - from that
-// moment on, also while the day is still to come: new fees only count from the month of the fresh start on. So a
-// change of the fees, before or after the day, never shrinks a credit that is carried over or brings dropped fees
-// back.
+// What a month costs is not the fresh start's business: the fees have a history of their own, in which every change
+// says from which month it counts (feeSchedule.js). Before that history there was one fee for all time, and a fresh
+// start kept the fees that were set when it was confirmed for the time before it (feesBefore). The history of an
+// instance from then is read off these kept fees (feePeriods, scheduleFromLegacy), and they are still recorded with
+// every fresh start: what the months before it cost when it was set.
 //
 // The days live in a state value of their own: the fee settings are written as a whole by every admin screen and by
 // older apps, which would silently drop a field they do not know. They only change through the confirmed admin calls
@@ -40,11 +41,14 @@ function paymentAmount(value) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
-/** The monthly fees in the fee settings (status → amount): the entries the fee calculation reads. */
+/**
+ * The monthly fees in the fee settings (status → amount): the entries the fee calculation reads, in whole cents (a
+ * fee an app worked out can carry a fraction of a cent that nobody entered).
+ */
 function monthlyFees(settings) {
   const fees = {};
   for (const [status, amount] of Object.entries(settings && typeof settings === 'object' ? settings : {})) {
-    if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) fees[status] = amount;
+    if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) fees[status] = Math.round(amount * 100) / 100;
   }
   return fees;
 }
@@ -83,10 +87,10 @@ function normalizeFeeResetLog(value) {
 const monthIndexOf = (day) => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1;
 
 /**
- * What each month costs: the months before the month of a fresh start - a planned one too - keep the monthly fees
- * confirmed with it, the months from the latest one on cost what is set now ([settings]). Returned as periods, the
- * earliest first: { beforeMonth, fees } holds for the months below beforeMonth. A fresh start without fees of its
- * own takes those of the time after it.
+ * What each month cost before the fees had a history (feeSchedule.js): the months before the month of a fresh
+ * start - a planned one too - keep the monthly fees confirmed with it, the months from the latest one on cost what
+ * is set now ([settings]). Returned as periods, the earliest first: { beforeMonth, fees } holds for the months below
+ * beforeMonth. A fresh start without fees of its own takes those of the time after it.
  */
 function feePeriods(resets, settings) {
   const periods = [{ beforeMonth: Infinity, fees: monthlyFees(settings) }];
@@ -108,8 +112,9 @@ function settledFeeResets(resets, today) {
 }
 
 /**
- * The monthly fees a fresh start on [date] keeps for the time before it: what the month before its month costs as
- * things are stored now - setting a fresh start changes the price of no month.
+ * The monthly fees a fresh start on [date] keeps for the time before it, on data from before the fees had a history:
+ * what the month before its month costs as things are stored now - setting a fresh start changes the price of no
+ * month.
  */
 function feesBeforeDay(resets, settings, date) {
   const others = normalizeFeeResets(resets).filter((reset) => reset.date !== date);
@@ -178,5 +183,7 @@ module.exports = {
   memberStartDay,
   describeFeeResets,
   checkNewFeeReset,
-  withLogEntry
+  withLogEntry,
+  text,
+  moment
 };

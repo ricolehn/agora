@@ -1,7 +1,9 @@
 // Shared helpers for the test suite (node:test, no extra dependencies).
 const fs = require('fs');
+const net = require('net');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const BACKEND_DIR = path.join(REPO_ROOT, 'backend');
@@ -57,4 +59,54 @@ function assertHas(actual, expected, message) {
   for (const [key, value] of Object.entries(expected)) assert.deepEqual(actual?.[key], value, `${message ? message + ': ' : ''}field "${key}"`);
 }
 
-module.exports = { REPO_ROOT, BACKEND_DIR, backendRequire, tempDir, withEnv, freezeTime, assertHas };
+// --- Starting the real server (and PocketBase) for the tests over HTTP ---
+
+const freePort = () => new Promise((resolve, reject) => {
+  const server = net.createServer();
+  server.unref();
+  server.on('error', reject);
+  server.listen(0, '127.0.0.1', () => {
+    const { port } = server.address();
+    server.close(() => resolve(port));
+  });
+});
+
+/** Waits until [url] answers (asked every [every] ms); fails when one of [processes] has exited meanwhile. */
+async function waitFor(url, label, processes, every = 250) {
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const crashed = processes.find((p) => p.exitCode !== null);
+    if (crashed) throw new Error(`${label}: ${crashed.label} exited early (${crashed.exitCode})\n${crashed.log.join('')}`);
+    try {
+      if ((await fetch(url)).ok) return;
+    } catch { /* not up yet */ }
+    await new Promise((resolve) => setTimeout(resolve, every));
+  }
+  throw new Error(`${label} did not come up: ${url}`);
+}
+
+function start(label, command, args, env) {
+  const child = spawn(command, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.label = label;
+  child.log = [];
+  // API_TEST_LOG=1 prints the server output (debugging a failing test)
+  const keep = (chunk) => {
+    child.log.push(chunk.toString());
+    if (child.log.length > 200) child.log.shift();
+    if (process.env.API_TEST_LOG) process.stderr.write(`[${label}] ${chunk}`);
+  };
+  child.stdout.on('data', keep);
+  child.stderr.on('data', keep);
+  return child;
+}
+
+/** Stops a process started with start() and waits until it is gone (its port is free again). */
+function stop(child) {
+  if (!child || child.exitCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    child.once('exit', resolve);
+    child.kill();
+  });
+}
+
+module.exports = { REPO_ROOT, BACKEND_DIR, backendRequire, tempDir, withEnv, freezeTime, assertHas, freePort, waitFor, start, stop };

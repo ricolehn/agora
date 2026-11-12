@@ -18,7 +18,8 @@ Agora is a web-based financial management application for small groups, clubs, o
 - **Request Management (with approvals):** Users can submit requests (payments, status changes, expenses) which admins can review and approve or reject.
 - **Accounts & Person Management:** Nextcloud-inspired user management with role controls (Owner, System Admin, Member) and member statuses (e.g., Vollverdiener, Geringverdiener, etc.).
 - **Payments & Standing Orders:** Record recurring and one-time payments efficiently.
-- **Fresh start for the fees** *(CALDERA)*: on a day the system admins choose - past or future - every fee account is settled and started afresh: whoever was behind starts from zero, whoever had paid ahead takes exactly that credit along, and from that day on months and payments count anew. Nothing is deleted: payments, the history, the cash balance and "member since" stay as they are, and the time before keeps the monthly fees it had, so new fees only count from the fresh start on. Members who join later simply count from their own start. Set in *Settings → Monthly Fees*, see below.
+- **Fresh start for the fees** *(CALDERA)*: on a day the system admins choose - past or future - every fee account is settled and started afresh: whoever was behind starts from zero, whoever had paid ahead takes exactly that credit along, and from that day on months and payments count anew. Nothing is deleted: payments, the history, the cash balance and "member since" stay as they are. Members who join later simply count from their own start. Set in *Settings → Monthly Fees*, see below.
+- **Monthly fees over time** *(CALDERA)*: a change of the fees says from which month it counts - still to come, this month, or reaching back - and the months before keep the old fees. So raising a fee no longer puts everyone who paid month by month behind. Before anything is saved, the admin sees which months cost something else and who owes how much more or less. Every change can be edited, moved to another month or taken back. In *Settings → Monthly Fees*, see below.
 - **Donations:** Separate tracking for general donations.
 - **Expenses:** Log expenses with optional receipt uploads.
 - **Own address for every page:** `/events`, `/events/Jugendfreizeit_2026`, `/settings/profile`, `/songbook/Amazing_Grace`, `/mentoring/chat/<id>` … – links can be shared and bookmarked, a reload stays on the page, and the browser back button walks back step by step. Repeating titles get the date (`/events/Gottesdienst_2026-10-12`); old `#` links keep working.
@@ -184,12 +185,12 @@ API for the apps (all with the member's token; paths relative to the base folder
 
 ## 🔄 Fresh start for the fees
 
-The fee calculation counts every month since "member since" against every payment a member ever made, at the monthly fees that are set now. A fresh start draws a line on a chosen day:
+The fee calculation counts every month since "member since" against every payment a member ever made. A fresh start draws a line on a chosen day:
 
 - **Behind on that day:** the open fees are dropped, the new account starts from zero.
 - **Paid ahead on that day:** exactly that credit is carried over into the new account - nothing that was paid is lost.
 - **From that day on:** the months from the month of the day on are owed anew and payments from the day on are credited. A payment dated before the day belongs to the time before it: it first makes up for fees that were open then, what goes beyond is credit.
-- **The time before keeps its fees:** the monthly fees as they are when the fresh start is confirmed are kept for the months before it - from that moment on, also while the day is still to come. Fees changed afterwards only count from the month of the fresh start on, so new fees never shrink a credit that is carried over.
+- **No month costs anything else:** what a month costs is said by the fees over time (see below), where every change has the month it counts from. A fresh start, set or taken back, changes the price of none - and fees changed for a month after it never shrink a credit that was carried over.
 - **Untouched:** payments, the history, standing orders, the cash balance, reports and "member since". Members who join on the day or later count from their own start as always.
 
 The day may lie in the past (it applies right away) or in the future (it applies when the day comes; until then everything is calculated as before). A later fresh start draws the next line.
@@ -200,11 +201,40 @@ For the apps (all with the member's token):
 
 | Call | What |
 | --- | --- |
-| `GET /api/fee-reset` | `{ today, resets: [{ date, state }] }` - `state` is `active` (counted from), `scheduled` or `replaced`; with finance or admin rights also `feesBefore`, `setByName`, `setAt` and the `log` |
-| `GET /api/admin/fee-reset/preview?date=[&remove=1]` | what setting the day (or with `remove=1`: taking it back) changes: `{ date, inEffect, firstMonth, members, behind, ahead, owesMore, feesBefore, feesWithout, repriced }` - system admins. `behind`, `ahead` and `owesMore` are `{ count, total }`: the members who owe less with the fresh start than without it (their open fees that it drops), those whose credit is carried over on that day, and those who owe more with it. The last only happens when `repriced`: the time before keeps other fees (`feesBefore`) than it costs without the fresh start (`feesWithout`), i.e. when one is taken back after the fees were changed |
+| `GET /api/fee-reset` | `{ today, resets: [{ date, state }] }` - `state` is `active` (counted from), `scheduled` or `replaced`; with finance or admin rights also `feesBefore` (what the month before it cost when it was set), `setByName`, `setAt` and the `log` |
+| `GET /api/admin/fee-reset/preview?date=[&remove=1]` | what setting the day (or with `remove=1`: taking it back) changes: `{ date, inEffect, firstMonth, members, behind, ahead, owesMore, feesBefore, feesWithout, repriced }` - system admins. `behind` and `ahead` are `{ count, total }`: the members who owe less with the fresh start than without it (their open fees that it drops) and those whose credit is carried over on that day. `owesMore` is nobody and `repriced` false: a fresh start changes the price of no month |
 | `POST /api/admin/fee-reset`, `POST /api/admin/fee-reset/remove` | `{ date, confirmDate, password }`: sets a fresh start / takes it back - system admins, the day twice and their own password |
 
 Person records carry what the server worked out: `_feeReset` (the day the account counts from, else `null`), `_feeCarriedOver` and `_feeWrittenOff` (the credit taken along / the open fees dropped on that day) and `_monthlyFee` (what this month costs at the member's status). `_paidUntil`, `_overdueAmount` and the other fields describe the account since then.
+</details>
+
+<details>
+<summary><b>Monthly fees over time (CALDERA)</b></summary>
+
+## 📅 Monthly fees over time
+
+The fees have a history: the fees **from the beginning** and the **changes**, each with the month it counts from. A month costs the fees of the latest change at or before it - so the months before a change keep the old fees, whenever the change is entered.
+
+- **Still to come:** "60 from January" entered in November moves no account until January comes. Until then the apps show the fee of the current month.
+- **This month or reaching back:** a change may count from the current month or from one that has passed. It then shows in the accounts at once: whoever paid those months at the old fee owes the difference (or has less credit).
+- **Checked first:** before anything is saved, the admin sees which months cost something else, and who owes how much more or less today. What is saved is what was checked - if someone else changed the fees in between, the change is refused and checked again.
+- **Edit, move, take back:** every change can get other amounts or another month, or be taken back (from its month on the fees before it count again). The fees from the beginning can be corrected too: they count for every month before the first change.
+- **Fresh starts stay what they are:** a change for the time after a fresh start never touches what was dropped or carried over on it. One that reaches back before it works that out again - the admin is told so before saving.
+
+Only **system admins** change the fees - not treasurers - in *Settings → Monthly Fees*; who set or took back what is kept in a log. New fees are offered from next month on, so nobody is behind for a month that has already begun.
+
+**After the update** nothing costs anything else: an instance from before the history gets one that says exactly what was charged until now (one fee for all time, and the fees each fresh start kept for the time before it). **Older apps** keep working: they read the fees of the current month from the fee settings as before, and a fee they save there - they know no month - counts from the current month on.
+
+For the apps (all with the member's token):
+
+| Call | What |
+| --- | --- |
+| `GET /api/fees` | `{ today, month, current, since, next, entries }` - `current`: the fees of this month (`{ vollverdiener, geringverdiener, keinverdiener, pausiert }`), `since`: the month they count from (`null`: from the beginning), `next`: the change still to come (`{ from, fees }`, else `null`), `entries`: the fees from the beginning (`from: null`) and every change (`from: 'YYYY-MM'`), the earliest first, each with `fees` and `state` (`current`, `planned` or `past`). With finance or admin rights also `setByName`, `setAt`, the `log` and the `version` |
+| `POST /api/admin/fees/preview` | `{ from, fees, replaces }` - `from`: the month the fees count from (`null`: from the beginning), `fees`: `{ vollverdiener, geringverdiener, keinverdiener }` as numbers, `replaces`: the month of the change that is edited or moved. Or `{ from, remove: true }` to take the change of that month back. Answers what it does without saving anything: `{ from, remove, movedFrom, stretches, inEffect, members, more, less, freshStart, version }` - `stretches`: the months that cost something else (`{ first, last, before, after }`; `first: null` from the beginning, `last: null` open end), `inEffect`: one of them has come, `more` / `less`: `{ count, total }` of the members who owe more or less today, `freshStart`: the fresh start the change reaches back before (else `null`). System admins |
+| `POST /api/admin/fees`, `POST /api/admin/fees/remove` | the same body with the `version` of the preview: saves the change / takes it back. `409` when the fees were changed since (check again) or when nothing would change. System admins |
+| `GET /api/db?path=settings` | as before: the fee settings with the fees of the current month. `PUT` with other fees: a change from the current month on (the way of apps without the history) |
+
+Person records carry `_monthlyFee`: what this month costs at the member's status.
 </details>
 
 <details>
@@ -277,19 +307,21 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
 | `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
 | `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
-| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, what the web app books (`assets/finance.js`) |
+| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, the monthly fees over time (their rules, and what is stored about them), what the web app books (`assets/finance.js`) |
 | `community.test.js` | events, guests and shared places, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
 | `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
-| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses |
+| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, the monthly fees over time, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses |
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
+| `years.test.js` | the fee accounts over years: two communities lived through day by day for twelve years, with everything that can happen in an order nobody planned (payments early, late and corrected, statuses changed after the fact, fees set for months to come and months past, edited, moved and taken back, fresh starts, an older app saving a fee) - every number the apps show compared with a second set of books that shares no code with the server (`tests/feeBooks.js`). And five years with the real server and PocketBase, which is stopped and wakes up on a later day (`tests/clock.js`) |
 
 ```bash
 cd backend && npm ci
-POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests in api.test.js are skipped
+POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests (api.test.js, the real server in years.test.js) are skipped
+YEARS_SEEDS=1-200 node --test ../tests/years.test.js   # a long look: 200 other communities (a few minutes)
 ```
 
-Shared helpers (temporary folders, environment variables, a frozen clock) are in `tests/helpers.js`. Every pull request to `develop` runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
+Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
 
 Writing tests that protect without getting in the way:
 

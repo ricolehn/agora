@@ -11,6 +11,8 @@ const { runAutomatedStandingOrders } = require('./standingOrders');
 const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests, repairRequestAuthors } = require('./requestRetention');
 const { wantsNotification, mergeNotificationSettings } = require('./notificationPrefs');
 const { translate, translator, userLanguage, instanceLanguage, normalizeLanguage, BASE_LANGUAGE } = require('./i18n');
+const { settingsOn } = require('./feeState');
+const { toDateStr } = require('./utils/date');
 
 const {
   DEFAULT_SETTINGS,
@@ -24,6 +26,8 @@ const {
   getStateValue,
   upsertStateValue,
   getStateRecord,
+  getFeeState,
+  saveSettings,
   getUserRecord,
   listUserRecords,
   updateUserRecord,
@@ -531,8 +535,10 @@ async function readLogicalPath(targetPath, query, user) {
   }
 
   if (root === 'settings' && !id) {
-    const record = await getStateRecord(context.appConfig, 'settings');
-    return { value: record?.value || DEFAULT_SETTINGS, version: record?.updated || null };
+    // With the fees of this month, whatever was stored last: a change of the fees may count from a month that has
+    // come since (feeState.js)
+    const [record, fees] = await Promise.all([getStateRecord(context.appConfig, 'settings'), getFeeState(context.appConfig)]);
+    return { value: settingsOn(fees, toDateStr(new Date())), version: record?.updated || null };
   }
 
   if (root === 'system' && !id) {
@@ -741,7 +747,11 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
 
   if (root === 'settings' && !id) {
     if (!user.admin) throw Object.assign(new Error('Admin access required'), { status: 403 });
-    await upsertStateValue(context.appConfig, 'settings', value || DEFAULT_SETTINGS);
+    // Apps without the fees over time write their fees here: other fees than those of this month count from this
+    // month on (feeState.js). The web app changes the fees with the month they count from (routes/finance.js)
+    const actor = { by: String(user.uid || user.id || ''), byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() };
+    const saved = await saveSettings(context.appConfig, value || DEFAULT_SETTINGS, actor);
+    if (saved.feesChangedFrom) console.log(`[Finance] Admin ${actor.by} set the fees from ${saved.feesChangedFrom} (saved with the fee settings)`);
     return;
   }
 

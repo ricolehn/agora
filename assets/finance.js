@@ -131,7 +131,6 @@ const monthIndex = dateStr => {
  * the credit that was carried over (_feeCarriedOver) and the payments from that day on.
  */
 function calculatePaidUntil(person, fees) {
-    const start = new Date(person.originalMemberSince || person.memberSince);
     const history = list(person.statusHistory).slice().sort((a, b) => a.startDate.localeCompare(b.startDate));
     const statusAt = month => {
         const entry = history.find(e => !e.endDate || month < monthIndex(e.endDate));
@@ -141,10 +140,14 @@ function calculatePaidUntil(person, fees) {
     let credit = reset
         ? list(person.payments).reduce((sum, payment) => (String(payment?.date || '').slice(0, 10) >= reset ? sum + (parseFloat(payment.amount) || 0) : sum), Number(person._feeCarriedOver) || 0)
         : person.totalPaid || 0;
-    let month = start.getFullYear() * 12 + start.getMonth();
+    // (the month as it is written: read as a date, a 1st is still the month before west of Greenwich)
+    let month = monthIndex(person.originalMemberSince || person.memberSince);
     if (reset) month = Math.max(month, monthIndex(reset));
+    // In whole cents, like the server: added up as they are, amounts like 49.99 drift by a fraction of a cent
+    const cents = amount => Math.round(amount * 100);
+    credit = cents(credit);
     for (let i = 0; credit > 0 && i < 1200; i++, month++) {
-        const rate = fees[statusAt(month)] || 0;
+        const rate = cents(fees[statusAt(month)] || 0);
         if (rate > credit) break;
         credit -= rate;
     }

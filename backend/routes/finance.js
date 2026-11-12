@@ -30,28 +30,38 @@ const {
 } = require('../transactions');
 
 const {
-  DEFAULT_SETTINGS,
   getPeopleRecord,
   upsertPeopleRecord,
   normalizeDataPath,
   listRequestRecords,
   listPeopleRecords,
   loginUser,
-  getStateValue,
-  getFeeResetState,
-  updateFeeResetState
+  getFeeState,
+  updateFeeResetState,
+  updateFeeSchedule
 } = require('../pocketbase');
 
 const {
   parseDay,
+  monthIndexOf,
   normalizeFeeResets,
   describeFeeResets,
   checkNewFeeReset,
-  feesBeforeDay,
   withLogEntry
 } = require('../feeReset');
 
-const { feeResetImpact } = require('../derivedData');
+const {
+  feesInMonth,
+  feeScheduleVersion,
+  withFeeChange,
+  withoutFeeChange,
+  withFeeLogEntry,
+  checkFeeChange,
+  checkFeeRemoval,
+  describeFeeSchedule
+} = require('../feeSchedule');
+
+const { feeResetImpact, feeChangeImpact } = require('../derivedData');
 
 const { toDateStr } = require('../utils/date');
 
@@ -173,11 +183,12 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) =>
 // system admins only - not for treasurers - and needs the day a second time (typed in the dialog) and the admin's
 // own password: no stray tap, replayed request or session left open starts it.
 
+// Who set what and the logs of changes: for those who see the finances or run the instance
+const isFeeInsider = (user) => user?.admin === true || user?.canViewFinances === true;
+
 function feeResetAnswer(state, user) {
   const today = toDateStr(new Date());
-  // The fees kept for the time before, who set a day and the log of changes: for those who see the finances or run
-  // the instance
-  const insider = user?.admin === true || user?.canViewFinances === true;
+  const insider = isFeeInsider(user);
   return {
     today,
     resets: describeFeeResets(state.resets, today, { withDetails: insider }),
@@ -227,9 +238,12 @@ const actingAdmin = (user) => ({
   byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()
 });
 
+// The fresh starts of a fee state, as feeResetAnswer reads them
+const freshStartsOf = (fees) => ({ resets: fees.resets, log: fees.resetLog });
+
 router.get('/api/fee-reset', dbRateLimit, verifyToken, async (req, res) => {
   try {
-    res.json(feeResetAnswer(await getFeeResetState(context.appConfig), req.user));
+    res.json(feeResetAnswer(freshStartsOf(await getFeeState(context.appConfig)), req.user));
   } catch (error) {
     answerFeeResetError(res, error, 'The fresh start could not be loaded.');
   }
@@ -239,21 +253,17 @@ router.get('/api/fee-reset', dbRateLimit, verifyToken, async (req, res) => {
 router.get('/api/admin/fee-reset/preview', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const today = toDateStr(new Date());
-    const [state, people, settings] = await Promise.all([
-      getFeeResetState(context.appConfig),
-      listPeopleRecords(context.appConfig),
-      getStateValue(context.appConfig, 'settings', DEFAULT_SETTINGS)
-    ]);
+    const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
     let date;
     if (req.query.remove === '1') {
       date = parseDay(req.query.date);
-      if (!date || !state.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
+      if (!date || !fees.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
     } else {
-      const check = checkNewFeeReset(state.resets, req.query.date, today);
+      const check = checkNewFeeReset(fees.resets, req.query.date, today);
       if (check.error) throw refuse(check.status, check.error);
       date = check.date;
     }
-    res.json(feeResetImpact(people.map((record) => record.data), settings, state.resets, date, today));
+    res.json(feeResetImpact(people.map((record) => record.data), fees.settings, fees.resets, date, today, fees.schedule));
   } catch (error) {
     answerFeeResetError(res, error, 'The fresh start could not be loaded.');
   }
@@ -263,18 +273,18 @@ router.post('/api/admin/fee-reset', authRateLimit, verifyToken, verifyAdmin, asy
   try {
     const today = toDateStr(new Date());
     // What is wrong with the day itself is said before the password is asked for
-    const early = checkNewFeeReset((await getFeeResetState(context.appConfig)).resets, req.body?.date, today);
+    const early = checkNewFeeReset((await getFeeState(context.appConfig)).resets, req.body?.date, today);
     if (early.error) throw refuse(early.status, early.error);
     const date = await confirmedFeeResetDay(req, res);
     if (!date) return;
     const { by, byName } = actingAdmin(req.user);
     const at = Date.now();
-    const state = await updateFeeResetState(context.appConfig, async (current) => {
+    const state = await updateFeeResetState(context.appConfig, (current, schedule) => {
       const check = checkNewFeeReset(current.resets, date, today);
       if (check.error) throw refuse(check.status, check.error);
-      // The time before the day keeps the monthly fees that are set now: fees changed later only count from the
-      // fresh start on, so they never shrink a credit that was carried over
-      const feesBefore = feesBeforeDay(current.resets, await getStateValue(context.appConfig, 'settings', DEFAULT_SETTINGS), date);
+      // Kept with the day: what the month before it costs as it is set (the fees over time say what every month
+      // costs, feeSchedule.js - a fresh start changes the price of none)
+      const feesBefore = feesInMonth(schedule, monthIndexOf(date) - 1);
       return {
         resets: normalizeFeeResets([...current.resets, { date, feesBefore, setAt: at, setBy: by, setByName: byName }]),
         log: withLogEntry(current.log, { action: 'set', date, at, by, byName })
@@ -290,7 +300,7 @@ router.post('/api/admin/fee-reset', authRateLimit, verifyToken, verifyAdmin, asy
 
 router.post('/api/admin/fee-reset/remove', authRateLimit, verifyToken, verifyAdmin, async (req, res) => {
   try {
-    const known = (await getFeeResetState(context.appConfig)).resets;
+    const known = (await getFeeState(context.appConfig)).resets;
     if (!known.some((reset) => reset.date === req.body?.date)) throw noSuchFeeReset();
     const date = await confirmedFeeResetDay(req, res);
     if (!date) return;
@@ -309,6 +319,102 @@ router.post('/api/admin/fee-reset/remove', authRateLimit, verifyToken, verifyAdm
     answerFeeResetError(res, error, 'The fresh start could not be saved.');
   }
 });
+
+// --- CALDERA: the monthly fees over time (feeSchedule.js) ---
+// Every change of the fees says from which month it counts; the months before keep the old fees. Every signed-in
+// member may read what the months cost (their own fee account is charged it). Setting, editing or taking back a
+// change is for system admins - like the fee settings before - and only as it was checked: a call names the version
+// of the history its numbers were shown for, so nothing is saved on top of a change someone else made in between.
+
+function feeAnswer(fees, user) {
+  const today = toDateStr(new Date());
+  const insider = isFeeInsider(user);
+  return {
+    today,
+    ...describeFeeSchedule(fees.schedule, today, { withDetails: insider }),
+    ...(insider ? { log: fees.log, version: feeScheduleVersion(fees.schedule) } : {})
+  };
+}
+
+/**
+ * The history a call asks for: { after, entry } - the fees over time with the change, and its line in the log - or
+ * the refusal why not. [body]: { from, fees, replaces } (from null: the fees from the beginning; replaces: the month
+ * of the change that is edited or moved), or { from, remove: true } to take the change of that month back.
+ */
+function wantedFees(schedule, body, today, who = {}) {
+  if (body?.remove === true) {
+    const check = checkFeeRemoval(schedule, body.from);
+    if (check.error) throw refuse(check.status, check.error);
+    return {
+      after: withoutFeeChange(schedule, check.from),
+      entry: { action: 'removed', from: check.from, fees: feesInMonth(schedule, check.from), movedFrom: null }
+    };
+  }
+  const check = checkFeeChange(schedule, body, today);
+  if (check.error) throw refuse(check.status, check.error);
+  const { from, replaces } = check.change;
+  const after = withFeeChange(schedule, { ...check.change, ...who });
+  return {
+    after,
+    entry: { action: 'set', from, fees: from === null ? after.base : feesInMonth(after, from), movedFrom: replaces && replaces !== from ? replaces : null }
+  };
+}
+
+router.get('/api/fees', dbRateLimit, verifyToken, async (req, res) => {
+  try {
+    res.json(feeAnswer(await getFeeState(context.appConfig), req.user));
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fees could not be loaded.');
+  }
+});
+
+// What a change would do, in numbers, before anything is saved: who owes more or less today, and which months
+// cost something else. The version in the answer goes back with the call that saves it
+router.post('/api/admin/fees/preview', protectedActionRateLimit, verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const today = toDateStr(new Date());
+    const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
+    const { after, entry } = wantedFees(fees.schedule, req.body, today);
+    res.json({
+      from: entry.from,
+      remove: entry.action === 'removed',
+      movedFrom: entry.movedFrom,
+      ...feeChangeImpact(people.map((record) => record.data), fees.resets, fees.schedule, after, today),
+      version: feeScheduleVersion(fees.schedule)
+    });
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fees could not be loaded.');
+  }
+});
+
+async function changeFees(req, res, body) {
+  try {
+    const today = toDateStr(new Date());
+    const { by, byName } = actingAdmin(req.user);
+    const at = Date.now();
+    let saved = null;
+    const state = await updateFeeSchedule(context.appConfig, (current) => {
+      if (typeof body.version !== 'string' || !body.version) throw refuse(400, 'Please check the change of the fees before saving it.');
+      if (body.version !== feeScheduleVersion(current.schedule)) throw refuse(409, 'The fees were changed in the meantime. Please check them again.');
+      const { after, entry } = wantedFees(current.schedule, body, today, { setAt: at, setBy: by, setByName: byName });
+      saved = entry;
+      return { schedule: after, log: withFeeLogEntry(current.log, { ...entry, at, by, byName }) };
+    });
+    console.log(`[Finance] Admin ${by} ${saved.action === 'removed' ? 'took back' : 'set'} the fees from ${saved.from || 'the beginning'}`);
+    broadcastDataUpdate();
+    res.json({ success: true, ...feeAnswer(state, req.user) });
+  } catch (error) {
+    answerFeeResetError(res, error, 'The fees could not be saved.');
+  }
+}
+
+router.post('/api/admin/fees', protectedActionRateLimit, verifyToken, verifyAdmin, (req, res) => (
+  changeFees(req, res, { from: req.body?.from, fees: req.body?.fees, replaces: req.body?.replaces, version: req.body?.version })
+));
+
+router.post('/api/admin/fees/remove', protectedActionRateLimit, verifyToken, verifyAdmin, (req, res) => (
+  changeFees(req, res, { from: req.body?.from, remove: true, version: req.body?.version })
+));
 
 router.post('/api/upload', protectedActionRateLimit, verifyToken, (req, res) => {
   upload.single('receipt')(req, res, (error) => {
