@@ -659,6 +659,9 @@
                         <label for="super-admin-ai-enabled" style="margin:0; font-weight:600; cursor:pointer;" data-i18n="ai_enabled">Enable AI Support</label>
                     </div>
 
+                    <!-- A server of an earlier version (the previous backend runs while the database upgrade could not finish) stores no provider: why, filled in by app.js -->
+                    <div id="super-admin-ai-server-note" class="fee-reset-note ai-server-note" role="status" hidden></div>
+
                     <div class="form-group">
                         <label class="form-label" for="super-admin-ai-provider" style="color: var(--text-secondary);" data-i18n="ai_provider">Provider</label>
                         <select id="super-admin-ai-provider" class="form-input super-admin-input" onchange="changeAiProvider()">

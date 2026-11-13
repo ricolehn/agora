@@ -5269,6 +5269,11 @@ const AI_PROVIDER_MODELS = {
 // The service the stored key and model belong to, and that model
 let aiSavedProvider = 'custom';
 let aiSavedModel = '';
+// Does the server store the service and the effort level? A server of an earlier version does not - also the previous
+// backend that runs while the database upgrade could not finish (backend/legacy): it answers without a service,
+// talks only to the OpenAI-compatible one and ignores the choice, so the page went back to "OpenAI-compatible" after
+// every save while saving said it was done
+let aiProvidersSupported = true;
 
 // Another service: the address only for the OpenAI-compatible one, its models to choose from, and its own key
 function changeAiProvider(fromLoad = false) {
@@ -5300,7 +5305,9 @@ async function loadAiConfig({ fresh = false } = {}) {
         const data = await res.json();
         aiEnabled = !!data.enabled;
         updateAiNavVisibility();
-        if (aiFormDirty() && !(fresh && aiFormEdits === editsBefore)) return;
+        // A server of an earlier version names no service (see aiProvidersSupported)
+        const supported = typeof data.provider === 'string';
+        if (aiFormDirty() && !(fresh && aiFormEdits === editsBefore)) return void showAiServerSupport(supported);
         aiFormCleanAt = aiFormEdits;
         const enabledEl = $('super-admin-ai-enabled');
         if (enabledEl) enabledEl.checked = data.enabled;
@@ -5311,9 +5318,36 @@ async function loadAiConfig({ fresh = false } = {}) {
         changeAiProvider(true);
         setValue('super-admin-ai-effort', ['low', 'medium', 'high', 'xhigh', 'max'].includes(data.effort) ? data.effort : 'medium');
         showAiEffortHint();
+        showAiServerSupport(supported);
     } catch (err) {
         console.error('KI-Konfiguration konnte nicht geladen werden:', err);
     }
+}
+
+// A server of an earlier version: the service stays the OpenAI-compatible one and the effort level cannot be chosen,
+// and the note says why - with the reason the database upgrade gives when the previous backend runs in its place
+async function showAiServerSupport(supported) {
+    aiProvidersSupported = supported;
+    for (const id of ['super-admin-ai-provider', 'super-admin-ai-effort']) {
+        const el = $(id);
+        if (el) el.disabled = !supported;
+    }
+    if (!supported && inputValue('super-admin-ai-provider') !== 'custom') {
+        setValue('super-admin-ai-provider', 'custom');
+        changeAiProvider();
+    }
+    const note = $('super-admin-ai-server-note');
+    if (!note) return;
+    if (supported) return void (note.hidden = true);
+    // The previous backend reports why the upgrade waits (/api/status → upgrade)
+    const upgrade = await fetch(`${API}/status`).then(res => res.json()).then(status => status?.upgrade || null).catch(() => null);
+    // A newer answer came in the meantime
+    if (aiProvidersSupported) return;
+    const text = upgrade
+        ? t('ai_server_upgrade_pending', 'The server still runs the previous version of Agora: the upgrade of its database could not finish. Until it has, only an OpenAI-compatible service can be used and the effort level is not stored. The next start of the server tries the upgrade again; the server log tells more. Reason: {reason}', { reason: upgrade.reason || t('error_unknown', 'Unknown error') })
+        : t('ai_server_outdated', 'The server runs an earlier version of Agora: only an OpenAI-compatible service can be used and the effort level is not stored. Update the server to choose Anthropic, Google or OpenAI.');
+    note.innerHTML = `${svgIcon('alert', 14, 2.4)}<span>${escapeHtml(text)}</span>`;
+    note.hidden = false;
 }
 
 // What the chosen effort level costs: the explanation of the selected level only
@@ -5336,7 +5370,14 @@ async function saveAiConfig() {
         };
         // Another service needs its own key (an empty one would replace the stored key)
         if (payload.provider !== aiSavedProvider && !payload.apiKey.trim()) throw new Error(t('ai_key_needed', 'Please enter the API key for the chosen provider.'));
-        await apiJson('/admin/ai-config', 'PUT', payload);
+        const saved = await apiJson('/admin/ai-config', 'PUT', payload);
+        // What the server stored: one of an earlier version names no service - it keeps the OpenAI-compatible one. The
+        // page then shows what the server has and why, instead of "saved" for a choice that is gone on the next visit
+        if ((typeof saved.provider === 'string' ? saved.provider : 'custom') !== payload.provider) {
+            aiFormCleanAt = aiFormEdits;
+            await loadAiConfig();
+            throw new Error(t('ai_provider_not_stored', 'The server runs an earlier version of Agora and did not store the provider – see the note above.'));
+        }
         // Saved: the form shows the stored settings (unless the admin changed something while it was saving)
         if (aiFormEdits === editsSaved) aiFormCleanAt = editsSaved;
         aiSavedProvider = payload.provider;

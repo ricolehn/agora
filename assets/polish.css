@@ -1025,6 +1025,8 @@ h1, h2, h3,
 .fee-reset-note svg { flex-shrink: 0; margin-top: 2px; color: var(--warning); }
 .fee-reset-note[hidden] { display: none; }
 #reqd-body .fee-reset-note { margin: 12px 0 0; }
+/* The same note in the AI settings: a server of an earlier version stores no provider (app.js, showAiServerSupport) */
+.ai-server-note { margin: 0 0 15px; }
 /* The dialog: the numbers as tiles (amount, what it is, how many members), a few short lines below them, then the two
    confirmations and the buttons side by side. A little more height than other dialogs get, so the buttons show */
 #fee-reset-modal .modal-content-enhanced { max-height: min(90vh, 760px); }

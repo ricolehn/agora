@@ -40,17 +40,19 @@ const router = express.Router();
 const isEffort = (value) => typeof value === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, value);
 const isProvider = (value) => typeof value === 'string' && Object.hasOwn(AI_PROVIDERS, value);
 
+/** The AI settings as the settings page shows them (the key only as '***'). */
+const aiConfigView = (aiSettings) => ({
+  enabled: aiSettings.enabled,
+  provider: aiProviderIdOf(aiSettings),
+  baseUrl: aiSettings.baseUrl || '',
+  apiKey: '***',
+  model: aiSettings.model || '',
+  effort: aiEffortOf(aiSettings)
+});
+
 router.get('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, res) => {
   try {
-    const aiSettings = await getAiSettings(context.appConfig);
-    res.json({
-      enabled: aiSettings.enabled,
-      provider: aiProviderIdOf(aiSettings),
-      baseUrl: aiSettings.baseUrl || '',
-      apiKey: '***',
-      model: aiSettings.model || '',
-      effort: aiEffortOf(aiSettings)
-    });
+    res.json(aiConfigView(await getAiSettings(context.appConfig)));
   } catch (err) {
     console.error('Failed to get AI config:', err);
     res.status(500).json({ error: 'Failed to get AI config' });
@@ -86,9 +88,11 @@ router.put('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, re
     if (body.effort !== undefined && body.effort !== null && !isEffort(body.effort)) {
       return res.status(400).json({ error: 'The effort level must be low, medium, high, xhigh or max.' });
     }
-    await setAiSettings(context.appConfig, body);
+    const saved = await setAiSettings(context.appConfig, body);
     broadcastDataUpdate();
-    res.json({ success: true });
+    // What was stored: the settings page checks the service against it (a server of an earlier version - the previous
+    // backend runs while the database upgrade could not finish - answers without it and stores no service)
+    res.json({ success: true, ...aiConfigView(saved) });
   } catch (err) {
     console.error('Failed to save AI config:', err);
     res.status(500).json({ error: 'Failed to save AI config' });

@@ -2588,7 +2588,9 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.match(keyAgain.body.error, /API key again/);
       assert.equal((await call('owner', 'PUT', '/api/admin/ai-config', { provider: 'mistral', apiKey: 'x' })).status, 400);
       for (const name of ['anthropic', 'gemini', 'openai']) {
-        await usePreset(name);
+        // Saving answers with what was stored: the settings page checks the chosen service against it (a server of an
+        // earlier version - the previous backend while the database upgrade waits - answers without one)
+        assert.deepEqual(await usePreset(name), { success: true, enabled: true, provider: name, baseUrl: provider.baseUrl, apiKey: '***', model: '', effort: 'medium' });
         const settings = await ok(call('owner', 'GET', '/api/admin/ai-config'));
         // The address entered for the OpenAI-compatible service stays for when it is chosen again
         assert.deepEqual(settings, { enabled: true, provider: name, baseUrl: provider.baseUrl, apiKey: '***', model: '', effort: 'medium' });
