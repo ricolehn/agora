@@ -200,3 +200,75 @@ describe('songbook (assets/songbook.js)', () => {
     assert.ok(!text.includes('[g]'));
   });
 });
+
+describe('AI reply steps (assets/aiReply.js)', () => {
+  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'aiReply.js')).href);
+
+  test('the live title: the newest heading of the thoughts, else the newest sentence, without filler words', async () => {
+    const { liveTitle } = await load();
+    assert.equal(liveTitle('**Checking the expenses**\n\nI look at December.\n\n**Calculating monthly expenses**\n\nThe totals per'), 'Calculating monthly expenses');
+    assert.equal(liveTitle('## Finding Nick in the members\nHe joined'), 'Finding Nick in the members');
+    assert.equal(liveTitle('Okay, the user asks about Christmas. Let me check the December expenses.'), 'Let me check the December expenses');
+    // The sentence being written counts once it says something; before, the last finished one
+    assert.equal(liveTitle('I need the yearly totals. Then I'), 'I need the yearly totals');
+    assert.equal(liveTitle('I need the yearly totals. Then I compare them with the budget'), 'Then I compare them with the budget');
+    assert.equal(liveTitle('Gut, jetzt rechne ich die Monatsausgaben zusammen.'), 'Jetzt rechne ich die Monatsausgaben zusammen');
+    assert.equal(liveTitle('   \n '), '');
+    const long = liveTitle(`Now I compare ${'every single payment of every member '.repeat(4)}since 2019.`);
+    assert.ok(long.length <= 72 && long.endsWith('…'), long);
+  });
+
+  test('the steps: thoughts per round, text before a lookup becomes a note, lookups get what they found', async () => {
+    const { createReplyWork, splitAiThinking } = await load();
+    const work = createReplyWork();
+    for (const part of [
+      { reasoning: 'Die Zusammenfassung reicht nicht.' },
+      { content: 'Ich schaue nach.' },
+      { lookup: { id: 1, tool: 'expenses', step: 'Suche die Weihnachtskosten' } },
+      { lookupDone: { id: 1, count: 3, unit: 'entries', eur: 57.85 } },
+      { reasoning: '\n\n' }, { reasoning: 'Drei Einträge.' },
+      { content: '\n\n' }, { content: 'Zusammen 57,85 €.' }
+    ]) work.add(part);
+    assert.deepEqual(work.steps, [
+      { kind: 'thought', text: 'Die Zusammenfassung reicht nicht.' },
+      { kind: 'note', text: 'Ich schaue nach.' },
+      { kind: 'lookup', lookup: { id: 1, tool: 'expenses', step: 'Suche die Weihnachtskosten' }, done: { id: 1, count: 3, unit: 'entries', eur: 57.85 } },
+      { kind: 'thought', text: '\n\nDrei Einträge.' }
+    ]);
+    assert.equal(splitAiThinking(work.content).answer, 'Zusammen 57,85 €.');
+    assert.equal(work.lookups, 1);
+
+    // <think> blocks in the text (models without a reasoning field) go into the steps as thoughts
+    const inline = createReplyWork();
+    for (const part of [{ content: '<think>Erst nachschlagen.</think>Moment.' }, { lookup: { id: 1, tool: 'members' } }]) inline.add(part);
+    assert.deepEqual(inline.steps.map((step) => [step.kind, step.text]), [['thought', 'Erst nachschlagen.'], ['note', 'Moment.'], ['lookup', undefined]]);
+  });
+
+  test('a lookup is named in the model\'s words when it gave some, else by what it reads; what it found is counted', async () => {
+    const { lookupTitle, lookupWhat, lookupFound, liveLabel, createReplyWork } = await load();
+    const lookup = { id: 2, tool: 'expenses', from: '2019', to: '2024', about: 'Christmas' };
+    assert.equal(lookupWhat(lookup), 'expenses 2019–2024 “Christmas”');
+    assert.equal(lookupWhat({ tool: 'members', from: '2019' }), 'members since 2019');
+    assert.equal(lookupWhat({ tool: 'something new' }), 'data');
+    assert.equal(lookupTitle(lookup), 'expenses 2019–2024 “Christmas”');
+    assert.equal(lookupTitle({ ...lookup, step: '  finding   Nick in the members ' }), 'Finding Nick in the members');
+    assert.equal(lookupFound({ count: 3, unit: 'entries', eur: 57.85 }), '3 entries · 57.85 €');
+    assert.equal(lookupFound({ count: 1, unit: 'events', cut: true }), '1 event · shortened');
+    assert.equal(lookupFound({ error: 'forbidden' }), 'not allowed');
+    assert.equal(lookupFound({ error: 'something' }), 'failed');
+    assert.equal(lookupFound(null), '');
+
+    // The live line: the lookup it is on (also while it reads the result), then the newest thought
+    const work = createReplyWork();
+    assert.equal(liveLabel(work), '');
+    work.add({ reasoning: '**Reading the question**' });
+    assert.equal(liveLabel(work), 'Reading the question');
+    work.add({ lookup: { ...lookup, step: 'Suche die Weihnachtskosten' } });
+    assert.equal(liveLabel(work), 'Suche die Weihnachtskosten');
+    work.add({ lookupDone: { id: 2, count: 3, unit: 'entries' } });
+    assert.equal(liveLabel(work), 'Suche die Weihnachtskosten');
+    work.add({ reasoning: 'Jetzt rechne ich die Summe pro Jahr aus.' });
+    assert.equal(liveLabel(work), 'Jetzt rechne ich die Summe pro Jahr aus');
+    assert.equal(liveLabel(work, 'Prüfe die Mitglieder.'), 'Prüfe die Mitglieder');
+  });
+});

@@ -164,6 +164,8 @@ function withRows(result, rows, limits) {
 }
 
 const failure = (message) => JSON.stringify({ error: message });
+const NOT_ALLOWED = 'The asking person may not see this. Do not try to answer it in another way.';
+const FAILED = 'The lookup failed. Answer with what you have and say that it is incomplete.';
 
 // --- The parameters the tools share ---------------------------------------------------------------------------------
 // Every question that may look things up carries these definitions, also when it needs no lookup: they are kept short.
@@ -174,7 +176,13 @@ const PERIOD = {
   to: { type: 'string', description: 'To day, month or year' }
 };
 const groupBy = (keys, example) => ({ type: 'array', items: { type: 'string', enum: keys }, description: `Sum up per these, e.g. ${example}` });
-const tool = (name, description, properties, required) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, ...(required ? { required } : {}) } } });
+// What the model is doing with a lookup, in its own words: the chat shows it while the lookup runs (also with
+// providers that keep their thoughts to themselves)
+const STEP = { type: 'string', description: 'What you are doing, a few words in the language of the question (shown to the person)' };
+const tool = (name, description, properties, required = []) => ({
+  type: 'function',
+  function: { name, description, parameters: { type: 'object', properties: { step: STEP, ...properties }, required: ['step', ...required] } }
+});
 
 // --- Money: member payments, expenses, donations ----------------------------------------------------------------------
 
@@ -337,6 +345,7 @@ async function membersLookup(args, user, limits) {
   const sort = ['gap', 'overdue', 'paid'].includes(args.sort) ? args.sort : 'name';
   rows.sort((a, b) => (sort === 'name' ? a.sort.name.localeCompare(b.sort.name, 'de') : (b.sort[sort] - a.sort[sort]) || a.sort.name.localeCompare(b.sort.name, 'de')));
   return withRows({
+    total: { members: rows.length },
     period: { from: from || 'membership start', to: until },
     columns: ['name', 'status', 'memberSince', 'statusHistory', 'standingOrders', 'feePerMonthEur', 'balanceEur', 'overdueEur', 'paidUpToMonth', 'payments', 'eur', 'monthsWithPayment', 'months', 'longestGapMonths', 'lastPayment', 'paymentsPerYear'],
     ...(sort !== 'name' ? { order: `${sort} first` } : {})
@@ -457,6 +466,7 @@ async function totalsLookup(args, user, limits) {
     .reverse()
     .map(([key, entry]) => [key, eur(entry.cents[0]), eur(entry.cents[1]), eur(entry.cents[2]), eur(entry.cents[0] + entry.cents[1] - entry.cents[2]), eur(entry.balance), entry.entries]);
   return withRows({
+    total: { periods: rows.length },
     today: toDateStr(new Date()),
     columns: [per, 'memberPaymentsEur', 'donationsEur', 'expensesEur', 'differenceEur', 'cashBalanceAtEndEur', 'entries'],
     order: 'newest first'
@@ -572,7 +582,7 @@ function argumentsOf(raw) {
  */
 async function runAiTool(name, rawArguments, { user, limits }) {
   if (!TOOLS[name]) return failure(`There is no lookup "${String(name).slice(0, 40)}". Use one of the tools offered.`);
-  if (!mayUse(name, user)) return failure('The asking person may not see this. Do not try to answer it in another way.');
+  if (!mayUse(name, user)) return failure(NOT_ALLOWED);
   let args;
   try {
     args = argumentsOf(rawArguments);
@@ -583,7 +593,7 @@ async function runAiTool(name, rawArguments, { user, limits }) {
     return await TOOLS[name].run(args, user, limits);
   } catch (err) {
     console.error(`[AI] lookup ${name} failed:`, err);
-    return failure('The lookup failed. Answer with what you have and say that it is incomplete.');
+    return failure(FAILED);
   }
 }
 
@@ -598,12 +608,33 @@ function describeLookup(name, rawArguments) {
   ].filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()).join(', ');
   // The money lookup is named by what it reads: payments, expenses or donations
   const shown = name === 'money' ? (Object.hasOwn(MONEY, args.kind) ? args.kind : 'money') : TOOLS[name] ? name : 'unknown';
+  // The model's own words for what it does: one line of plain text
+  const step = typeof args.step === 'string' ? args.step.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
   return {
     tool: shown,
+    ...(step ? { step: step.length > 90 ? `${step.slice(0, 89)}…` : step } : {}),
     ...(dayFrom(args.from) ? { from: short(args.from) } : {}),
     ...(dayTo(args.to) ? { to: short(args.to) } : {}),
     ...(about ? { about: about.length > 60 ? `${about.slice(0, 59)}…` : about } : {})
   };
 }
 
-module.exports = { aiToolDefinitions, runAiTool, describeLookup, seesFinances, AI_TOOL_NAMES: Object.keys(TOOLS) };
+/**
+ * What a lookup found, for the chat: { count, unit, eur?, cut? } - or { error }: forbidden, failed. [text]: the
+ * result runAiTool gave.
+ */
+function foundIn(text) {
+  let result;
+  try {
+    result = JSON.parse(text);
+  } catch {
+    return { error: 'failed' };
+  }
+  if (result?.error) return { error: result.error === NOT_ALLOWED ? 'forbidden' : 'failed' };
+  const total = result?.total || {};
+  const unit = ['entries', 'events', 'changes', 'members', 'periods'].find((key) => Number.isFinite(total[key]));
+  if (!unit) return { error: 'failed' };
+  return { count: total[unit], unit, ...(Number.isFinite(total.eur) ? { eur: total.eur } : {}), ...(result.cut ? { cut: true } : {}) };
+}
+
+module.exports = { aiToolDefinitions, runAiTool, describeLookup, foundIn, seesFinances, AI_TOOL_NAMES: Object.keys(TOOLS) };

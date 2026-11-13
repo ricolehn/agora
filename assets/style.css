@@ -2209,26 +2209,6 @@ details[open] .ai-thinking-summary::before { transform: rotate(90deg); }
     border-top: 1px solid var(--border-light);
 }
 
-/* What the AI looked up for a reply ("Looking up payments 2019–2024 …") */
-.ai-lookups {
-    margin-bottom: 8px;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-}
-
-.ai-lookups:empty { display: none; }
-
-.ai-lookups.is-live { animation: ai-lookup-pulse 1.4s ease-in-out infinite; }
-
-@keyframes ai-lookup-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.55; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .ai-lookups.is-live { animation: none; }
-}
-
 /* Markdown styles inside assistant bubbles */
 .ai-chat-bubble-assistant p { margin: 0 0 8px; }
 .ai-chat-bubble-assistant p:last-child { margin-bottom: 0; }

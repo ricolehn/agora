@@ -1880,12 +1880,52 @@ h1, h2, h3,
     animation: aiWelcomeUp 0.3s var(--ease);
 }
 
+/* The live line names what the AI is doing (a lookup in its own words, the title of its newest thought): long
+   titles end in "…" instead of breaking the line */
+.ai-thinking-summary { max-width: 100%; }
+.ai-thinking-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The steps inside the thinking field: thoughts, notes the AI wrote on the way, lookups with what they found */
+.ai-steps { display: flex; flex-direction: column; gap: 10px; white-space: normal; max-height: 340px; }
+.ai-step-text { overflow-wrap: anywhere; }
+.ai-step-text > br { display: none; }
+.ai-step-text > p { margin: 0 0 6px; }
+.ai-step-text > :last-child { margin-bottom: 0; }
+.ai-step-text strong { color: var(--text); font-weight: 600; }
+.ai-step-text:empty, .ai-step-detail:empty { display: none; }
+.ai-step-note .ai-step-text { color: var(--text); }
+.ai-step-lookup { display: flex; align-items: flex-start; gap: 9px; }
+.ai-step-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-top: 1px;
+    border-radius: 7px;
+    background: color-mix(in srgb, #7c6fd6 12%, var(--surface));
+    color: #6c5fd0;
+}
+.ai-step-body { min-width: 0; }
+.ai-step-title { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
+.ai-step-detail { margin-top: 1px; font-size: 0.78rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.ai-thinking.is-live .ai-step-lookup.is-running .ai-step-title {
+    background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #8f84e6 50%, var(--text) 65%, var(--text) 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: aiShimmer 1.8s linear infinite;
+}
+
 /* Dark: the same orb and cards, the headline a little lighter */
+[data-theme="dark"] .ai-step-icon { background: color-mix(in srgb, #7c6fd6 26%, var(--surface)); color: #b4aaf7; }
 [data-theme="dark"] .ai-chat-welcome-ask { background-image: linear-gradient(100deg, #a99cf5 0%, #9d90f2 35%, #6cc3d8 75%, #63c7b2 100%); }
 [data-theme="dark"] .ai-chat-idea-icon { background: color-mix(in srgb, var(--c) 22%, var(--surface)); color: color-mix(in srgb, var(--c) 70%, #ffffff); }
 [data-theme="dark"] .ai-orb-glow { opacity: 0.45; }
 [data-theme="dark"] .ai-thinking.is-live .ai-thinking-label { background-image: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #b4aaf7 50%, var(--text-secondary) 65%, var(--text-secondary) 100%); }
 
 @media (prefers-reduced-motion: reduce) {
-    .ai-orb-core, .ai-orb-glow, .ai-orb-glyph, .ai-thinking-label { animation: none !important; }
+    .ai-orb-core, .ai-orb-glow, .ai-orb-glyph, .ai-thinking-label, .ai-step-title { animation: none !important; }
 }

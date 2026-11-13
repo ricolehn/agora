@@ -2,6 +2,7 @@ import { initializeApp, getDatabase, ref, set, get, child, update, query, orderB
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
 import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
+import { splitAiThinking, createReplyWork, liveLabel, lookupTitle, lookupWhat, lookupFound } from "./aiReply.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches, feeResetIsNews } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -255,6 +256,7 @@ const ICONS = {
     grid: '<rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect>',
     palette: '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.1 0 5.6-2.5 5.6-5.6C21.8 6 17.4 2 12 2z"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
@@ -7847,39 +7849,17 @@ function addAiReportButton(bubble, answer, prompt) {
     bubble.appendChild(btn);
 }
 
-// Splits a reply into the answer and the thought process: reasoning sent apart, or <think>/<thought> blocks in
-// the text (an unclosed block means the model is still thinking)
-function splitAiThinking(rawContent, reasoningContent = '') {
-    let inline = '';
-    let open = false;
-    const answer = rawContent.replace(/<(think|thought)>([\s\S]*?)(<\/\1>|$)/gi, (_, tag, inner, close) => {
-        inline += inner;
-        if (!close) open = true;
-        return '';
-    }).replace(/<\/?(?:think|thought)?$|<\/?(?:t|th|thi|thin|tho|thou|thoug|though)$/i, '').trim();
-    return { answer, thinking: (reasoningContent + inline).trim(), open };
-}
-
-// A lookup the server makes for the AI ({ tool, from, to, about }) as the chat names it: "payments 2019–2024 ("Christmas")"
-const AI_LOOKUP_NAMES = {
-    payments: 'payments', expenses: 'expenses', donations: 'donations', money: 'money', members: 'members',
-    events: 'events', money_totals: 'totals', finance_changes: 'change log'
+// The icon of each lookup in the thinking field
+const AI_LOOKUP_ICONS = {
+    payments: 'coin', expenses: 'receipt', donations: 'heart', money: 'coin', members: 'users',
+    events: 'calendar', money_totals: 'poll', finance_changes: 'history'
 };
-function aiLookupLabel(lookup = {}) {
-    const tool = Object.hasOwn(AI_LOOKUP_NAMES, lookup.tool) ? lookup.tool : 'unknown';
-    const parts = [t(`ai_lookup_${tool}`, AI_LOOKUP_NAMES[tool] || 'data')];
-    const from = typeof lookup.from === 'string' ? lookup.from : '';
-    const to = typeof lookup.to === 'string' ? lookup.to : '';
-    if (from && to) parts.push(from === to ? from : `${from}–${to}`);
-    else if (from) parts.push(t('ai_lookup_since', 'since {from}', { from }));
-    else if (to) parts.push(t('ai_lookup_until', 'until {to}', { to }));
-    if (typeof lookup.about === 'string' && lookup.about) parts.push(t('ai_lookup_about', '“{about}”', { about: lookup.about }));
-    return parts.join(' ');
-}
 
-// One assistant reply while it streams in: a small "Thinking…" line with the seconds (the thoughts open on a tap)
-// until the first words arrive, then the answer. Drawn at most once per frame, so long thoughts stay smooth. When
-// the AI looks something up, a line says what ("Looking up payments 2019–2024 …"), and afterwards what it looked up.
+// One assistant reply while it streams in (assets/aiReply.js keeps its steps). A small line on top says what the AI
+// is doing right now - "Thinking", the title of its newest thought, or the lookup it runs, in its own words - with
+// the seconds; then the answer comes. Afterwards the line says "Thought" and opens on a tap: the thoughts, the notes
+// it wrote on the way and the lookups with what they found, in order. Drawn at most once per frame, so long thoughts
+// stay smooth.
 function createAiReply(bubble) {
     const row = bubble.closest('.ai-chat-row');
     const orb = row?.querySelector('.ai-orb');
@@ -7888,81 +7868,103 @@ function createAiReply(bubble) {
     const label = createEl('span', 'ai-thinking-label', t('ai_thinking', 'Thinking'));
     const time = createEl('span', 'ai-thinking-time');
     summary.append(label, time);
-    const pre = createEl('pre', 'ai-thinking-content');
-    details.append(summary, pre);
-    const lookupsEl = createEl('div', 'ai-lookups');
+    const stepsEl = createEl('div', 'ai-thinking-content ai-steps');
+    details.append(summary, stepsEl);
     const answerEl = createEl('div', 'ai-answer');
-    bubble.replaceChildren(details, lookupsEl, answerEl);
+    bubble.replaceChildren(details, answerEl);
     orb?.classList.add('is-thinking');
     // A closed "Thinking" line is not a toggle until there is something to show
     summary.addEventListener('click', event => { if (details.classList.contains('is-empty')) event.preventDefault(); });
 
+    const work = createReplyWork();
     const started = Date.now();
-    let thoughtFor = 0;
-    let content = '';
-    let reasoning = '';
+    // When the answer began (0: the AI is still working - a lookup after some text makes that text a note again)
+    let answeringSince = 0;
     let shownAnswer = null;
-    const lookups = [];
-    let lookingUp = false;
+    const drawn = [];
     let frame = 0;
-    const seconds = () => Math.max(1, Math.round(((thoughtFor || Date.now()) - started) / 1000));
-    const tick = setInterval(() => { if (!thoughtFor) time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() }); }, 1000);
+    const seconds = () => Math.max(1, Math.round(((answeringSince || Date.now()) - started) / 1000));
+    const tick = setInterval(() => { if (!answeringSince) time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() }); }, 1000);
+    const doneLabel = () => (work.lookups ? t('ai_thought_lookups', 'Thought · looked up {n}×', { n: work.lookups }) : t('ai_thought', 'Thought'));
+    const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+
+    const drawStep = (step, index) => {
+        let el = drawn[index];
+        if (!el || el.dataset.kind !== step.kind) {
+            const next = createEl('div', `ai-step ai-step-${step.kind}`);
+            next.dataset.kind = step.kind;
+            if (step.kind === 'lookup') {
+                const icon = createEl('span', 'ai-step-icon');
+                icon.innerHTML = svgIcon(AI_LOOKUP_ICONS[step.lookup.tool] || 'search', 13);
+                const body = createEl('div', 'ai-step-body');
+                body.append(createEl('div', 'ai-step-title'), createEl('div', 'ai-step-detail'));
+                next.append(icon, body);
+            } else {
+                next.appendChild(createEl('div', 'ai-step-text'));
+            }
+            if (el) el.replaceWith(next);
+            else stepsEl.appendChild(next);
+            drawn[index] = el = next;
+        }
+        if (step.kind === 'lookup') {
+            // The model's words on top, below what was looked up and what was found
+            const title = lookupTitle(step.lookup, t);
+            const what = lookupWhat(step.lookup, t);
+            setText(el.querySelector('.ai-step-title'), title);
+            setText(el.querySelector('.ai-step-detail'), [title !== what ? what : '', lookupFound(step.done, t, euro)].filter(Boolean).join(' · '));
+            el.classList.toggle('is-running', !step.done);
+        } else if (el.dataset.text !== step.text) {
+            // Thoughts come as markdown too (summaries put a bold title above every step)
+            el.dataset.text = step.text;
+            el.firstChild.replaceChildren(renderMarkdown(step.text.trim()));
+        }
+    };
 
     const draw = () => {
         frame = 0;
-        const { answer, thinking, open } = splitAiThinking(content, reasoning);
-        const stillThinking = !answer || open;
-        if (!stillThinking && !thoughtFor) {
-            thoughtFor = Date.now();
-            details.classList.remove('is-live');
-            orb?.classList.remove('is-thinking');
-            label.textContent = t('ai_thought', 'Thought');
+        const { answer, thinking: inline, open } = splitAiThinking(work.content);
+        const answering = Boolean(answer) && !open;
+        // A <think> block in the current text is the newest thought
+        const steps = inline ? [...work.steps, { kind: 'thought', text: inline }] : work.steps;
+        const follow = details.open && stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 24;
+        steps.forEach(drawStep);
+        while (drawn.length > steps.length) drawn.pop().remove();
+        if (follow) stepsEl.scrollTop = stepsEl.scrollHeight;
+        details.classList.toggle('is-empty', !steps.some(step => step.kind !== 'thought' || step.text.trim()));
+        if (answering && !answeringSince) {
+            answeringSince = Date.now();
             time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() });
+        } else if (!answering && answeringSince) {
+            answeringSince = 0;
         }
-        details.classList.toggle('is-empty', !thinking);
-        if (pre.textContent !== thinking) {
-            const follow = details.open && pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24;
-            pre.textContent = thinking;
-            if (follow) pre.scrollTop = pre.scrollHeight;
-        }
+        details.classList.toggle('is-live', !answering);
+        orb?.classList.toggle('is-thinking', !answering);
+        setText(label, answering ? doneLabel() : liveLabel(work, inline, t) || t('ai_thinking', 'Thinking'));
         if (answer !== shownAnswer) {
             shownAnswer = answer;
             answerEl.replaceChildren(renderMarkdown(answer));
-        }
-        if (lookups.length) {
-            const line = lookingUp
-                ? t('ai_looking_up', 'Looking up {what} …', { what: lookups[lookups.length - 1] })
-                : t('ai_looked_up', 'Looked up: {what}', { what: lookups.join(' · ') });
-            if (lookupsEl.textContent !== line) lookupsEl.textContent = line;
-            lookupsEl.classList.toggle('is-live', lookingUp);
         }
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(draw); };
 
     return {
         add(part) {
-            if (part.lookup && typeof part.lookup === 'object') {
-                lookups.push(aiLookupLabel(part.lookup));
-                lookingUp = true;
-            } else if (part.content || part.reasoning) {
-                lookingUp = false;
-            }
-            content += part.content || '';
-            reasoning += part.reasoning || '';
+            work.add(part);
             schedule();
         },
-        get content() { return content; },
-        get reasoning() { return reasoning; },
-        // The reply is complete: last drawing, no thinking line when there were no thoughts
+        // The text of the answer (what came after the last lookup) and all thoughts
+        get content() { return work.content; },
+        get reasoning() { return work.steps.filter(step => step.kind === 'thought').map(step => step.text).join(''); },
+        // The reply is complete: last drawing, no thinking line when there was nothing to show
         finish() {
             clearInterval(tick);
             if (frame) cancelAnimationFrame(frame);
-            lookingUp = false;
             draw();
-            if (!thoughtFor) {
-                thoughtFor = Date.now();
-                label.textContent = t('ai_thought', 'Thought');
+            if (!answeringSince) {
+                answeringSince = Date.now();
+                time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() });
             }
+            setText(label, doneLabel());
             details.classList.remove('is-live');
             orb?.classList.remove('is-thinking');
             if (details.classList.contains('is-empty')) details.remove();
@@ -7970,6 +7972,7 @@ function createAiReply(bubble) {
         stop() {
             clearInterval(tick);
             if (frame) cancelAnimationFrame(frame);
+            details.classList.remove('is-live');
             orb?.classList.remove('is-thinking');
         }
     };

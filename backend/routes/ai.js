@@ -25,7 +25,7 @@ const {
   sanitizeAiMessages,
   aiStreamEvents
 } = require('../ai');
-const { aiToolDefinitions, runAiTool, describeLookup, AI_TOOL_NAMES } = require('../aiTools');
+const { aiToolDefinitions, runAiTool, describeLookup, foundIn, AI_TOOL_NAMES } = require('../aiTools');
 
 // While a model thinks, nothing may flow for minutes: a comment line every 15 s keeps proxies and the browser
 // from closing the connection. A reply never takes longer than 10 minutes.
@@ -268,13 +268,16 @@ async function answerQuestion(question) {
       let result = NO_MORE_LOOKUPS;
       if (lookupsLeft > 0 && charsLeft >= MIN_LOOKUP_CHARS) {
         lookupsLeft -= 1;
-        send({ lookup: describeLookup(call.name, call.arguments) });
+        // The chat shows the lookup while it runs (in the model's own words, when it gave some) and then what it found
+        const id = limits.lookups - lookupsLeft;
+        send({ lookup: { id, ...describeLookup(call.name, call.arguments) } });
         // The permissions are checked again for every lookup: they can change while a question runs
         const user = await question.freshUser();
         result = user
           ? await runAiTool(call.name, call.arguments, { user, limits: { rows: limits.rows, chars: Math.min(limits.chars, charsLeft) } })
           : JSON.stringify({ error: 'The asking person may no longer use the assistant: answer without lookups.' });
         charsLeft -= result.length;
+        send({ lookupDone: { id, ...(user ? foundIn(result) : { error: 'forbidden' }) } });
       }
       lookups.push({ name: call.name, arguments: call.arguments, result });
       conversation.push({ role: 'tool', tool_call_id: call.id, content: result });

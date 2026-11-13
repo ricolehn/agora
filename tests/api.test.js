@@ -2089,7 +2089,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const provider = await standInProvider((body) => {
       if (questionOf(body) === 'Hallo?') return [{ content: 'Hallo!' }];
       const results = toolResults(body);
-      if (!results.length) return [{ content: 'Ich schaue nach.' }, ...toolCall(0, 'money', { kind: 'expenses', from: '2016', to: '2018', search: ['christvesper', 'Heiligabend'], groupBy: ['year'] })];
+      if (!results.length) return [{ content: 'Ich schaue nach.' }, ...toolCall(0, 'money', { step: 'Suche die Weihnachtskosten', kind: 'expenses', from: '2016', to: '2018', search: ['christvesper', 'Heiligabend'], groupBy: ['year'] })];
       return [{ content: `Zusammen ${results[0].total.eur} EUR: ${results[0].descriptions.join('; ')}` }];
     });
     try {
@@ -2098,6 +2098,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.deepEqual(await askAi('kira', 'Hallo?'), [{ content: 'Hallo!' }, '[DONE]']);
       assert.equal(provider.requests.length, 1);
       assert.deepEqual(provider.requests[0].tools.map((entry) => entry.function.name).sort(), ALL_LOOKUPS);
+      // Every lookup asks the model to say what it does (the chat shows it, also for models that keep their thoughts)
+      assert.ok(provider.requests[0].tools.every((entry) => entry.function.parameters.required.includes('step')));
       assert.match(systemOf(provider.requests[0]), /Lookups: the context below is a summary/);
       assert.ok(!('reasoning_effort' in provider.requests[0]) && !('tool_choice' in provider.requests[0]));
 
@@ -2106,7 +2108,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal(provider.requests.length, 3);
       const second = provider.requests[2];
       const asked = second.messages.find((message) => message.role === 'assistant');
-      assert.deepEqual(asked.tool_calls, [{ id: 'call_money_0', type: 'function', function: { name: 'money', arguments: JSON.stringify({ kind: 'expenses', from: '2016', to: '2018', search: ['christvesper', 'Heiligabend'], groupBy: ['year'] }) } }]);
+      assert.deepEqual(asked.tool_calls, [{ id: 'call_money_0', type: 'function', function: { name: 'money', arguments: JSON.stringify({ step: 'Suche die Weihnachtskosten', kind: 'expenses', from: '2016', to: '2018', search: ['christvesper', 'Heiligabend'], groupBy: ['year'] }) } }]);
       assert.equal(asked.content, 'Ich schaue nach.');
       assert.equal(second.messages.find((message) => message.role === 'tool').tool_call_id, 'call_money_0');
       // Exact amounts (summed in cents), the newest year first, and the descriptions it counted (2015 is outside)
@@ -2119,7 +2121,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       });
       assert.deepEqual(events, [
         { content: 'Ich schaue nach.' },
-        { lookup: { tool: 'expenses', from: '2016', to: '2018', about: 'christvesper, Heiligabend' } },
+        { lookup: { id: 1, tool: 'expenses', step: 'Suche die Weihnachtskosten', from: '2016', to: '2018', about: 'christvesper, Heiligabend' } },
+        { lookupDone: { id: 1, count: 2, unit: 'entries', eur: 57.85 } },
         { content: '\n\n' },
         { content: 'Zusammen 57.85 EUR: Christvesper Blumen (1×, 45.5); Heiligabend Kerzen (1×, 12.35)' },
         '[DONE]'
@@ -2220,8 +2223,10 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     try {
       await useProvider(provider, { effort: 'high' });
       // Karl may not see the finances: only the events lookup is offered, and every finance lookup is refused all the same
-      await askAi('karl', 'Was war los?');
+      const karlEvents = await askAi('karl', 'Was war los?');
       assert.deepEqual(provider.requests[0].tools.map((entry) => entry.function.name), ['events']);
+      // The chat hears what was refused: the four finance lookups, the events were found
+      assert.deepEqual(karlEvents.filter((event) => event.lookupDone).map((event) => event.lookupDone.error || event.lookupDone.unit), ['forbidden', 'events', 'forbidden', 'forbidden', 'forbidden']);
       assert.match(systemOf(provider.requests[0]), /Lookups: the events list below covers/);
       assert.ok(!systemOf(provider.requests[0]).includes('Lookups: the context below'));
       const [payments, events, ...finance] = toolResults(provider.requests[1]);
@@ -2369,11 +2374,15 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       await useProvider(provider, { effort: 'high' });
       const events = await askAi('kira', 'Überblick bitte');
       assert.deepEqual(lookupsIn(events), [
-        { tool: 'members', from: '2025', about: 'Mia' },
-        { tool: 'events', about: 'KI-Jugendabend' },
-        { tool: 'money_totals' },
-        { tool: 'finance_changes' }
+        { id: 1, tool: 'members', from: '2025', about: 'Mia' },
+        { id: 2, tool: 'events', about: 'KI-Jugendabend' },
+        { id: 3, tool: 'money_totals' },
+        { id: 4, tool: 'finance_changes' }
       ]);
+      // What each found, for the chat
+      const found = events.filter((event) => event.lookupDone).map((event) => event.lookupDone);
+      assert.deepEqual(found.slice(0, 2), [{ id: 1, count: 1, unit: 'members' }, { id: 2, count: 3, unit: 'events' }]);
+      assert.deepEqual(found.slice(2).map((entry) => [entry.id, entry.unit]), [[3, 'periods'], [4, 'changes']]);
       const [members, recurring, totals, changes] = toolResults(provider.requests[1]);
       // Mia as API v2 has her
       const mia = (await ok(call('treasurer', 'GET', '/api/v2/members?limit=500'))).items.find((member) => member.name === 'Mia Test');
