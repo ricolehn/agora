@@ -9,15 +9,18 @@
 const express = require('express');
 const crypto = require('crypto');
 const { isDeepStrictEqual } = require('util');
-const { context, verifyToken, protectedActionRateLimit, broadcastDataUpdate, userMatchesTargetGroups, writeLogicalPath } = require('../context');
+const { context, verifyToken, protectedActionRateLimit, broadcastDataUpdate, writeLogicalPath } = require('../context');
 const client = require('../db/client');
 const finance = require('../db/stores/finance');
 const eventsStore = require('../db/stores/events');
-const { toCents, amountValue, fromCents } = require('../db/codec');
+const { fromCents } = require('../db/codec');
 const { createItemStore } = require('../itemStore');
 const { listGroupRecords, listMentoringThreadsForUser, listMentoringMessages, listMentorRecords, listUserRecords } = require('../pocketbase');
 const { seatCounts } = require('../eventSeats');
 const { canUserAccessEventDutyPlan } = require('../eventAccess');
+// The reads are shared with the AI assistant's lookups (aiTools.js)
+const data = require('../v2Data');
+const { DAY, cents, isoOf, isoFromMillis, memberOf, paymentOf, statusPeriodOf, standingOrderOf, eventOf, seesEvent } = data;
 
 const router = express.Router();
 const BASE = '/api/v2';
@@ -38,10 +41,7 @@ const handle = (handler) => async (req, res) => {
   }
 };
 
-const cents = (amount) => toCents(amountValue(amount)).cents;
-const isoOf = (stored) => (stored ? new Date(String(stored).replace(' ', 'T')).toISOString() : null);
-const isoFromMillis = (value) => (Number.isFinite(value) && value > 0 && value <= 8.64e15 ? new Date(value).toISOString() : null);
-const uidOf = (req) => req.user.uid || req.user.id;
+const uidOf = (req) => data.uidOf(req.user);
 const canView = (req) => req.user.canViewFinances === true;
 const canManage = (req) => req.user.canManageFinances === true;
 const needs = (allowed) => {
@@ -49,7 +49,6 @@ const needs = (allowed) => {
 };
 const invalid = (message) => Object.assign(new Error(message), { status: 400 });
 const notFound = (what) => Object.assign(new Error(`${what} not found.`), { status: 404 });
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // --- Pages: newest first (or as named), cut after an item (not a position: an item added meanwhile shifts nothing) ---
 
@@ -83,49 +82,8 @@ function page(items, req, sortKey, { ascending = false } = {}) {
 
 // --- Finance ------------------------------------------------------------------------------------------------------
 
-/** A member with what the server works out for them (from the member and its hydrated data). */
-function memberOf(row, person) {
-  const data = person?.data || {};
-  return {
-    id: row.id,
-    key: finance.keyOfMember(row),
-    userId: row.user || null,
-    name: row.name,
-    status: row.status || null,
-    memberSince: row.memberSince || null,
-    originalMemberSince: row.originalMemberSince || null,
-    pays: row.pays !== false,
-    isDeleted: row.isDeleted === true,
-    totalPaidCents: cents(person?.totalPaid),
-    balanceCents: data._currentBalance === undefined ? null : cents(data._currentBalance),
-    overdueCents: data._overdueAmount === undefined ? null : cents(data._overdueAmount),
-    monthlyFeeCents: data._monthlyFee === undefined ? null : cents(data._monthlyFee),
-    paidUntil: data._paidUntil ? String(data._paidUntil).slice(0, 10) : null,
-    isOverdue: data._statusMeta?.isOverdue === true,
-    version: row.updated
-  };
-}
-
-const paymentOf = (row, memberVersion) => ({
-  id: row.id,
-  memberId: row.member,
-  amountCents: row.amountCents,
-  date: row.date || null,
-  description: row.description || '',
-  receipt: row.receipt || null,
-  source: row.source || 'manual',
-  standingOrderId: row.standingOrder || null,
-  clientId: row.clientId ?? null,
-  ...(memberVersion ? { memberVersion } : {})
-});
-
 /** The member rows and their worked-out data, by member id - all of them, or the reader's own (no finance rights). */
-async function membersFor(req) {
-  const [rows, people] = await Promise.all([client.listAllRecords(finance.COLLECTIONS.MEMBERS, '', context.appConfig), finance.listPeopleRecords(context.appConfig)]);
-  const byKey = new Map(people.map((person) => [person.personKey, person]));
-  const visible = rows.filter((row) => !finance.isOrphan(row) && (canView(req) || row.user === uidOf(req)));
-  return visible.map((row) => ({ row, person: byKey.get(finance.keyOfMember(row)) }));
-}
+const membersFor = (req) => data.membersFor(req.user);
 
 async function memberRow(id) {
   const row = typeof id === 'string' && id ? await client.getRecord(finance.COLLECTIONS.MEMBERS, id, context.appConfig) : null;
@@ -147,21 +105,14 @@ router.get(`${BASE}/members/:id`, verifyToken, handle(async (req, res) => {
   res.json({
     ...memberOf(row, person),
     payments: payments.map((payment) => paymentOf(payment)).sort((a, b) => String(b.date).localeCompare(String(a.date))),
-    statusPeriods: periods.map((period) => ({ id: period.id, status: period.status || null, startDate: period.startDate || null, endDate: period.endDate || null })),
-    standingOrders: orders.sort((a, b) => (a.position || 0) - (b.position || 0)).map((order) => ({
-      id: order.id, amountCents: order.amountCents, startDate: order.startDate || null, endDate: order.endDate || null, note: order.note || '', lastBookedOn: order.lastAutoPayment || null
-    }))
+    statusPeriods: periods.map(statusPeriodOf),
+    standingOrders: orders.sort((a, b) => (a.position || 0) - (b.position || 0)).map(standingOrderOf)
   });
 }));
 
 router.get(`${BASE}/payments`, verifyToken, handle(async (req, res) => {
-  const visible = new Set((await membersFor(req)).map(({ row }) => row.id));
-  const filters = [];
-  if (req.query.member) filters.push(client.pbFilterEquals('member', String(req.query.member)));
-  if (DAY.test(String(req.query.from || ''))) filters.push(`date >= ${JSON.stringify(req.query.from)}`);
-  if (DAY.test(String(req.query.to || ''))) filters.push(`date <= ${JSON.stringify(req.query.to)}`);
-  const rows = await client.listAllRecords(finance.COLLECTIONS.PAYMENTS, filters.join(' && '), context.appConfig);
-  res.json(page(rows.filter((row) => visible.has(row.member)).map((row) => paymentOf(row)), req, (payment) => payment.date));
+  const payments = await data.paymentsFor(req.user, { member: req.query.member, from: req.query.from, to: req.query.to });
+  res.json(page(payments, req, (payment) => payment.date));
 }));
 
 // A payment is part of its member's books: written through the member (as v1 does), based on the member's version
@@ -261,14 +212,13 @@ router.delete(`${BASE}/payments/:id`, protectedActionRateLimit, verifyToken, han
 // Donations and expenses: lists saved as a whole (as v1 does), based on the list's version
 const LISTS = {
   donations: {
-    rows: async () => (await client.listAllRecords(finance.COLLECTIONS.DONATIONS, '', context.appConfig)).sort((a, b) => (a.position || 0) - (b.position || 0)),
+    ...data.LIST_READS.donations,
     values: async () => {
       const value = await finance.getDonationsValue(context.appConfig);
       return Array.isArray(value) ? value : Object.values(value || {});
     },
     version: () => finance.donationsVersion(context.appConfig),
     save: (list, version) => finance.saveDonations(context.appConfig, list, { expectedVersion: version }),
-    toV2: (row) => ({ id: row.id, amountCents: row.amountCents, date: row.date || null, donorName: row.donorName || '', description: row.description || '' }),
     fromV2: (body, current = {}) => {
       const next = paymentInput(body, current);
       if (body.donorName !== undefined) next.name = String(body.donorName).slice(0, 200);
@@ -277,11 +227,10 @@ const LISTS = {
     fresh: () => ({ amount: 0, name: '', date: '', description: '' })
   },
   expenses: {
-    rows: () => client.listAllRecords(finance.COLLECTIONS.EXPENSES, '', context.appConfig),
+    ...data.LIST_READS.expenses,
     values: async () => (await finance.listExpenseRecords(context.appConfig)).map((record) => record.data),
     version: () => finance.expensesVersion(context.appConfig),
     save: (list, version) => finance.syncExpenseRecords(context.appConfig, list, { expectedVersion: version }),
-    toV2: (row) => ({ id: row.id, amountCents: row.amountCents, date: row.date || null, issuer: row.issuer || '', description: row.description || '', receipt: row.receipt || null }),
     fromV2: (body, current = {}) => {
       const next = paymentInput(body, current);
       if (body.issuer !== undefined) next.issuer = String(body.issuer).slice(0, 200);
@@ -390,7 +339,7 @@ router.post(`${BASE}/requests/:id/decision`, protectedActionRateLimit, verifyTok
 
 router.get(`${BASE}/finance/summary`, verifyToken, handle(async (req, res) => {
   needs(canView(req));
-  const months = await client.listAllRecords('finance_monthly_totals', '', context.appConfig, 'month');
+  const months = await data.monthlyTotalRows();
   const totals = {};
   for (const row of months) totals[row.kind] = (totals[row.kind] || 0) + row.totalCents;
   res.json({
@@ -401,11 +350,8 @@ router.get(`${BASE}/finance/summary`, verifyToken, handle(async (req, res) => {
 
 router.get(`${BASE}/finance/changes`, verifyToken, handle(async (req, res) => {
   needs(canView(req) || req.user.admin === true);
-  const filters = [];
-  if (req.query.area) filters.push(client.pbFilterEquals('area', String(req.query.area)));
-  if (req.query.member) filters.push(client.pbFilterEquals('member', String(req.query.member)));
-  const rows = await client.listAllRecords(finance.COLLECTIONS.CHANGES, filters.join(' && '), context.appConfig);
-  res.json(page(rows.map((row) => ({ id: row.id, area: row.area, action: row.action, at: isoOf(row.at), by: row.by || null, byName: row.byName || '', memberId: row.member || null, target: row.target || null, details: row.details ?? null })), req, (change) => change.at));
+  const changes = await data.financeChanges({ area: req.query.area, member: req.query.member });
+  res.json(page(changes, req, (change) => change.at));
 }));
 
 router.get(`${BASE}/fees`, verifyToken, handle(async (req, res) => {
@@ -443,41 +389,7 @@ router.get(`${BASE}/groups`, verifyToken, handle(async (req, res) => {
   res.json({ items: (await listGroupRecords(context.appConfig)).map((group) => ({ id: group.id, name: group.name, permissions: group.permissions })) });
 }));
 
-const eventOf = (event, counts, mine) => ({
-  id: event.id,
-  title: event.title,
-  date: event.date,
-  endDate: event.endDate || null,
-  startTime: event.startTime || null,
-  endTime: event.endTime || null,
-  location: event.location || '',
-  description: event.description || '',
-  kind: event.eventType || (event.isRecurring ? 'termin' : 'event'),
-  status: event.status || 'scheduled',
-  isPinned: event.isPinned === true,
-  requiresRegistration: event.requiresRegistration === true,
-  minParticipants: event.minParticipants || 0,
-  maxParticipants: event.maxParticipants || 0,
-  targetGroups: Array.isArray(event.targetGroups) ? event.targetGroups : [],
-  createdBy: event.createdBy || null,
-  imageUrl: event.imageUrl || null,
-  isPublic: event.isPublic === true,
-  registeredCount: counts.registered,
-  waitlistCount: counts.waitlist,
-  // null: no minimum
-  minimumReached: (event.minParticipants || 0) > 0 ? counts.registered >= event.minParticipants : null,
-  myRegistration: mine ? { id: mine.id, status: mine.status } : null,
-  createdAt: event.created || null
-});
-
-async function visibleEvents(req) {
-  const uid = uidOf(req);
-  const filters = [];
-  if (DAY.test(String(req.query.from || ''))) filters.push(`(date >= ${JSON.stringify(req.query.from)} || endDate >= ${JSON.stringify(req.query.from)})`);
-  if (DAY.test(String(req.query.to || ''))) filters.push(`date <= ${JSON.stringify(req.query.to)}`);
-  const events = await eventsStore.listEvents(context.appConfig, filters.join(' && '));
-  return events.filter((event) => event.createdBy === uid || userMatchesTargetGroups(req.user, event.targetGroups));
-}
+const visibleEvents = (req) => data.visibleEvents(req.user, { from: req.query.from, to: req.query.to });
 
 router.get(`${BASE}/events`, verifyToken, handle(async (req, res) => {
   const uid = uidOf(req);
@@ -494,7 +406,7 @@ router.get(`${BASE}/events`, verifyToken, handle(async (req, res) => {
 router.get(`${BASE}/events/:id`, verifyToken, handle(async (req, res) => {
   const uid = uidOf(req);
   const event = await eventsStore.getEventRecord(context.appConfig, req.params.id);
-  if (!event || !(event.createdBy === uid || userMatchesTargetGroups(req.user, event.targetGroups))) throw notFound('Event');
+  if (!event || !seesEvent(req.user, event)) throw notFound('Event');
   const is = client.pbFilterEquals('event', event.id);
   const [registrations, guests, duties, groups] = await Promise.all([
     eventsStore.listEventRegistrations(context.appConfig, is), eventsStore.listEventGuests(context.appConfig, is), eventsStore.listEventDuties(context.appConfig, is),

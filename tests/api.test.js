@@ -1981,4 +1981,495 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
     }
   });
+
+  // --- AI lookups: the model may look up the full history (backend/aiTools.js, routes/ai.js) --------------------------
+
+  // A stand-in AI provider (OpenAI-compatible): [answer](body, n) decides every answer - { status, message } for an
+  // error, otherwise the deltas to stream ({ content }, { reasoning }, { tool_calls }). It keeps every request.
+  async function standInProvider(answer) {
+    const http = require('http');
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (part) => { raw += part; });
+      req.on('end', async () => {
+        const body = JSON.parse(raw);
+        requests.push(body);
+        const reply = await answer(body, requests.length - 1);
+        if (!Array.isArray(reply)) {
+          res.writeHead(reply.status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: reply.message } }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        for (const delta of reply) res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
+        res.end('data: [DONE]\n\n');
+      });
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { requests, baseUrl: `http://127.0.0.1:${server.address().port}/v1`, close: () => server.close() };
+  }
+  // The AI settings with the stand-in provider (effort: as stored, unless named)
+  const useProvider = (provider, extra = {}) => ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, baseUrl: provider.baseUrl, apiKey: 'test-key', model: 'stand-in', ...extra }));
+  // Asks the AI as [who]: what the server streams back (lookups, thoughts, text, '[DONE]')
+  async function askAi(who, content) {
+    const res = await call(who, 'POST', '/api/ai/chat', { messages: [{ role: 'user', content }] });
+    assert.equal(res.status, 200, JSON.stringify(res.body).slice(0, 200));
+    return String(res.body).split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim())
+      .map((data) => (data === '[DONE]' ? data : JSON.parse(data)));
+  }
+  // A tool call as OpenAI streams it: the name first, then the arguments in pieces
+  const toolCall = (index, name, args) => {
+    const text = JSON.stringify(args);
+    return [
+      { tool_calls: [{ index, id: `call_${name}_${index}`, type: 'function', function: { name, arguments: '' } }] },
+      { tool_calls: [{ index, function: { arguments: text.slice(0, Math.ceil(text.length / 2)) } }] },
+      { tool_calls: [{ index, function: { arguments: text.slice(Math.ceil(text.length / 2)) } }] }
+    ];
+  };
+  const toolResults = (body) => body.messages.filter((message) => message.role === 'tool').map((message) => JSON.parse(message.content));
+  const questionOf = (body) => body.messages.filter((message) => message.role === 'user').pop().content;
+  const systemOf = (body) => body.messages[0].content;
+  const lookupsIn = (events) => events.filter((event) => event.lookup).map((event) => event.lookup);
+  const textOf = (events) => events.filter((event) => typeof event.content === 'string').map((event) => event.content).join('');
+  // Accounts that may use the assistant: with the finances, or without
+  let aiGroups = null;
+  async function aiAccount(who, firstName, withFinances) {
+    if (!aiGroups) {
+      aiGroups = {
+        finance: await ok(call('owner', 'POST', '/api/admin/groups', { name: 'KI mit Kasse', permissions: ['access_ai', 'view_finances'] })),
+        plain: await ok(call('owner', 'POST', '/api/admin/groups', { name: 'KI', permissions: ['access_ai'] }))
+      };
+    }
+    const uid = await account(who, firstName);
+    const group = withFinances ? aiGroups.finance : aiGroups.plain;
+    await ok(call('owner', 'PUT', `/api/admin/users/${uid}/groups`, { groups: [group.id || group.group?.id] }));
+    return uid;
+  }
+  // Appends entries to the donations or expenses (as the web app saves them)
+  async function addToList(root, entries) {
+    const current = await ok(call('treasurer', 'GET', `/api/db?path=${root}`));
+    const list = Array.isArray(current) ? current : Object.values(current || {});
+    await ok(call('treasurer', 'PUT', '/api/db', { path: root, value: [...list, ...entries] }));
+  }
+  const ALL_LOOKUPS = ['events', 'finance_changes', 'members', 'money', 'money_totals'];
+
+  test('AI settings: the effort level is medium until one is chosen, and only low, medium or high are taken', async () => {
+    const provider = await standInProvider(() => [{ content: 'OK' }]);
+    try {
+      await useProvider(provider);
+      const settings = await ok(call('owner', 'GET', '/api/admin/ai-config'));
+      assert.deepEqual(settings, { enabled: true, baseUrl: provider.baseUrl, apiKey: '***', model: 'stand-in', effort: 'medium' });
+      await useProvider(provider, { effort: 'high' });
+      assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, 'high');
+      // A save without one (an older app) keeps it
+      await useProvider(provider);
+      assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, 'high');
+      for (const wrong of ['max', 5, 'HIGH', '__proto__']) {
+        assert.equal((await call('owner', 'PUT', '/api/admin/ai-config', { effort: wrong })).status, 400, String(wrong));
+      }
+      assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, 'high');
+      // Only the owner's settings page sees and sets it
+      assert.equal((await call('treasurer', 'PUT', '/api/admin/ai-config', { effort: 'low' })).status, 403);
+      await useProvider(provider, { effort: 'medium' });
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: only when the model asks - the result has the exact amounts, the chat sees what is looked up', async () => {
+    await aiAccount('kira', 'Kira', true);
+    await addToList('expenses', [
+      { id: 1796000000001, amount: 45.5, description: 'Christvesper Blumen', issuer: 'Theo', date: '2016-12-20' },
+      { id: 1796000000002, amount: '12,35', description: 'Heiligabend Kerzen', issuer: 'Theo', date: '2018-12-22' },
+      { id: 1796000000003, amount: 300, description: 'Saalmiete', issuer: 'Theo', date: '2018-01-05' },
+      { id: 1796000000004, amount: 99, description: 'Christvesper Technik', issuer: 'Theo', date: '2015-12-24' }
+    ]);
+    const provider = await standInProvider((body) => {
+      if (questionOf(body) === 'Hallo?') return [{ content: 'Hallo!' }];
+      const results = toolResults(body);
+      if (!results.length) return [{ content: 'Ich schaue nach.' }, ...toolCall(0, 'money', { kind: 'expenses', from: '2016', to: '2018', search: ['christvesper', 'Heiligabend'], groupBy: ['year'] })];
+      return [{ content: `Zusammen ${results[0].total.eur} EUR: ${results[0].descriptions.join('; ')}` }];
+    });
+    try {
+      await useProvider(provider, { effort: 'medium' });
+      // An ordinary question: one request, the lookups offered but not used - the answer as it always came
+      assert.deepEqual(await askAi('kira', 'Hallo?'), [{ content: 'Hallo!' }, '[DONE]']);
+      assert.equal(provider.requests.length, 1);
+      assert.deepEqual(provider.requests[0].tools.map((entry) => entry.function.name).sort(), ALL_LOOKUPS);
+      assert.match(systemOf(provider.requests[0]), /Lookups: the context below is a summary/);
+      assert.ok(!('reasoning_effort' in provider.requests[0]) && !('tool_choice' in provider.requests[0]));
+
+      // A question that needs older entries: the model looks them up, gets them, answers
+      const events = await askAi('kira', 'Was hat Weihnachten 2016 bis 2018 gekostet?');
+      assert.equal(provider.requests.length, 3);
+      const second = provider.requests[2];
+      const asked = second.messages.find((message) => message.role === 'assistant');
+      assert.deepEqual(asked.tool_calls, [{ id: 'call_money_0', type: 'function', function: { name: 'money', arguments: JSON.stringify({ kind: 'expenses', from: '2016', to: '2018', search: ['christvesper', 'Heiligabend'], groupBy: ['year'] }) } }]);
+      assert.equal(asked.content, 'Ich schaue nach.');
+      assert.equal(second.messages.find((message) => message.role === 'tool').tool_call_id, 'call_money_0');
+      // Exact amounts (summed in cents), the newest year first, and the descriptions it counted (2015 is outside)
+      assert.deepEqual(toolResults(second)[0], {
+        kind: 'expenses',
+        total: { entries: 2, eur: 57.85 },
+        descriptions: ['Christvesper Blumen (1×, 45.5)', 'Heiligabend Kerzen (1×, 12.35)'],
+        columns: ['year', 'eur', 'entries'],
+        rows: [['2018', 12.35, 1], ['2016', 45.5, 1]]
+      });
+      assert.deepEqual(events, [
+        { content: 'Ich schaue nach.' },
+        { lookup: { tool: 'expenses', from: '2016', to: '2018', about: 'christvesper, Heiligabend' } },
+        { content: '\n\n' },
+        { content: 'Zusammen 57.85 EUR: Christvesper Blumen (1×, 45.5); Heiligabend Kerzen (1×, 12.35)' },
+        '[DONE]'
+      ]);
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: the effort level limits them - none on low (the request as before), 4 on medium, 10 and more thinking on high', async () => {
+    let parallel = 1;
+    let obeys = true;
+    const provider = await standInProvider((body) => {
+      // Looks up for as long as it may (or longer, when it does not obey tool_choice)
+      if (!body.tools || (body.tool_choice === 'none' && obeys)) return [{ content: `Fertig nach ${toolResults(body).length}` }];
+      return Array.from({ length: parallel }, (_, index) => toolCall(index, 'money_totals', { per: 'year' })).flat();
+    });
+    try {
+      // Low: the compact context only - the request is exactly the one it always was
+      await useProvider(provider, { effort: 'low' });
+      const low = await askAi('kira', 'Wie steht die Kasse?');
+      assert.deepEqual(low, [{ content: 'Fertig nach 0' }, '[DONE]']);
+      assert.equal(provider.requests.length, 1);
+      assert.deepEqual(Object.keys(provider.requests[0]).sort(), ['messages', 'model', 'stream']);
+      assert.ok(!systemOf(provider.requests[0]).includes('Lookups:'));
+
+      // Medium: 4 lookups, then the model has to answer (tool_choice "none")
+      await useProvider(provider, { effort: 'medium' });
+      provider.requests.length = 0;
+      const medium = await askAi('kira', 'Wie steht die Kasse?');
+      assert.equal(lookupsIn(medium).length, 4);
+      assert.equal(provider.requests.length, 5);
+      assert.deepEqual(provider.requests.map((body) => body.tool_choice ?? null), [null, null, null, null, 'none']);
+      assert.ok(provider.requests.every((body) => !('reasoning_effort' in body)));
+      assert.equal(textOf(medium).trim(), 'Fertig nach 4');
+
+      // Several at once: the first ones run, the rest are told there are no lookups left
+      parallel = 3;
+      provider.requests.length = 0;
+      const several = await askAi('kira', 'Wie steht die Kasse?');
+      assert.equal(lookupsIn(several).length, 4);
+      assert.equal(provider.requests.length, 3);
+      const told = toolResults(provider.requests[2]);
+      assert.equal(told.length, 6);
+      assert.equal(told.filter((result) => result.error?.startsWith('No more lookups')).length, 2);
+
+      // High: 10 lookups, and every request asks for more thinking
+      parallel = 1;
+      await useProvider(provider, { effort: 'high' });
+      provider.requests.length = 0;
+      const high = await askAi('kira', 'Wie steht die Kasse?');
+      assert.equal(lookupsIn(high).length, 10);
+      assert.equal(provider.requests.length, 11);
+      assert.ok(provider.requests.every((body) => body.reasoning_effort === 'high'));
+
+      // A provider that ignores tool_choice: one last request with the results as text and without tools
+      obeys = false;
+      await useProvider(provider, { effort: 'medium' });
+      provider.requests.length = 0;
+      const stubborn = await askAi('kira', 'Wie steht die Kasse?');
+      assert.equal(lookupsIn(stubborn).length, 4);
+      assert.equal(provider.requests.length, 6);
+      const last = provider.requests[5];
+      assert.ok(!('tools' in last));
+      assert.match(questionOf(last), /^Wie steht die Kasse\?\n\nLookups already made for this question, with their results:\nmoney_totals \{"per":"year"\}: \{/);
+      assert.equal(stubborn[stubborn.length - 1], '[DONE]');
+      assert.match(textOf(stubborn), /Fertig nach 0$/);
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: every lookup checks the asking person\'s permissions - finances, calendar, duty roster', async () => {
+    const karl = await aiAccount('karl', 'Karl', false);
+    await ok(call('owner', 'POST', '/api/admin/groups', { name: 'KI-Leitung', permissions: [] }));
+    // An event for everyone with a duty roster Karl may not see, and one only for a group Karl is not in
+    const open = await ok(call('owner', 'POST', '/api/events', {
+      title: 'KI-Gemeindeabend', date: '2027-03-05', startTime: '19:00', requiresRegistration: true, maxParticipants: 20,
+      duties: [{ roleName: 'Technik', assignedUser: uids.treasurer }]
+    }));
+    await ok(call('owner', 'POST', '/api/events', { title: 'KI-Gemeindeabend Leitung', date: '2027-03-06', targetGroups: ['KI-Leitung'] }));
+    await ok(call('mia', 'POST', `/api/events/${open.event.id}/register`, {}));
+    let beforeLookup = null;
+    const provider = await standInProvider(async (body) => {
+      const results = toolResults(body);
+      if (results.length) return [{ content: 'Fertig.' }];
+      if (beforeLookup) await beforeLookup();
+      return [
+        ...toolCall(0, 'money', { kind: 'payments', groupBy: ['year'] }),
+        ...toolCall(1, 'events', { title: ['KI-Gemeindeabend'] }),
+        ...toolCall(2, 'members', {}),
+        ...toolCall(3, 'money_totals', {}),
+        ...toolCall(4, 'finance_changes', {})
+      ];
+    });
+    try {
+      await useProvider(provider, { effort: 'high' });
+      // Karl may not see the finances: only the events lookup is offered, and every finance lookup is refused all the same
+      await askAi('karl', 'Was war los?');
+      assert.deepEqual(provider.requests[0].tools.map((entry) => entry.function.name), ['events']);
+      assert.match(systemOf(provider.requests[0]), /Lookups: the events list below covers/);
+      assert.ok(!systemOf(provider.requests[0]).includes('Lookups: the context below'));
+      const [payments, events, ...finance] = toolResults(provider.requests[1]);
+      for (const refused of [payments, ...finance]) assert.match(refused.error, /may not see this/);
+      assert.equal(finance.length, 3);
+      // Only what Karl sees in the calendar; sign-ups as numbers, no roster for him
+      assert.deepEqual(events.columns, ['date', 'time', 'title', 'place', 'status', 'registered', 'waitlist', 'places', 'duties', 'about']);
+      assert.deepEqual(events.rows, [['2027-03-05', '19:00', 'KI-Gemeindeabend', '', '', 1, 0, 20, null, '']]);
+      assert.ok(!JSON.stringify(events).includes('Mia'), 'no names of who signed up');
+
+      // The owner created both events: both, with the roster and its names
+      provider.requests.length = 0;
+      await askAi('owner', 'Was war los?');
+      const [, ownerEvents] = toolResults(provider.requests[1]);
+      assert.deepEqual(ownerEvents.rows.map((entry) => [entry[2], entry[8]]), [['KI-Gemeindeabend Leitung', ''], ['KI-Gemeindeabend', 'Technik: Theo Test']]);
+
+      // With the finances: every lookup, the payments are there
+      await aiAccount('kai', 'Kai', true);
+      provider.requests.length = 0;
+      await askAi('kai', 'Was war los?');
+      assert.deepEqual(provider.requests[0].tools.map((entry) => entry.function.name).sort(), ALL_LOOKUPS);
+      const [kaiPayments] = toolResults(provider.requests[1]);
+      assert.ok(Array.isArray(kaiPayments.rows) && kaiPayments.rows.length > 0, 'with finance rights the payments are there');
+
+      // Permissions taken away while a question runs: the next lookup is refused
+      const financeGroup = aiGroups.finance.id || aiGroups.finance.group?.id;
+      beforeLookup = async () => {
+        await ok(call('owner', 'PUT', `/api/admin/groups/${financeGroup}`, { permissions: ['access_ai'] }));
+        beforeLookup = null;
+      };
+      provider.requests.length = 0;
+      await askAi('kai', 'Was war los?');
+      assert.ok(provider.requests[0].tools.some((entry) => entry.function.name === 'money'), 'offered when the question came');
+      assert.match(toolResults(provider.requests[1])[0].error, /may not see this/);
+      await ok(call('owner', 'PUT', `/api/admin/groups/${financeGroup}`, { permissions: ['access_ai', 'view_finances'] }));
+
+      // The assistant taken away while a question runs: no lookups at all
+      beforeLookup = async () => {
+        await ok(call('owner', 'PUT', `/api/admin/users/${karl}/groups`, { groups: [] }));
+        beforeLookup = null;
+      };
+      provider.requests.length = 0;
+      await askAi('karl', 'Was war los?');
+      assert.ok(toolResults(provider.requests[1]).every((result) => /no longer use the assistant/.test(result.error)));
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: results stay within the caps of the effort level and say when they were cut', async () => {
+    await addToList('donations', Array.from({ length: 130 }, (_, index) => ({
+      id: 1797000000000 + index, amount: 5 + (index % 7) / 4, name: 'Kappenspender', date: `2017-${String((index % 12) + 1).padStart(2, '0')}-1${index % 9}`, description: `Kappensammlung ${index} für die Jugendfreizeit im Sommer`
+    })));
+    const expected = Math.round(Array.from({ length: 130 }, (_, index) => Math.round((5 + (index % 7) / 4) * 100)).reduce((a, b) => a + b, 0)) / 100;
+    let calls = 1;
+    const provider = await standInProvider((body) => {
+      if (toolResults(body).length || body.tool_choice === 'none') return [{ content: 'Fertig.' }];
+      return Array.from({ length: calls }, (_, index) => toolCall(index, 'money', { kind: 'donations', search: ['Kappenspender'] })).flat();
+    });
+    try {
+      await useProvider(provider, { effort: 'medium' });
+      await askAi('kira', 'Wer hat gespendet?');
+      const [medium] = toolResults(provider.requests[1]);
+      const mediumText = provider.requests[1].messages.find((message) => message.role === 'tool').content;
+      assert.deepEqual(medium.total, { entries: 130, eur: expected }, 'the total counts everything');
+      assert.ok(medium.rows.length > 0 && medium.rows.length <= 50, `${medium.rows.length} rows`);
+      assert.ok(mediumText.length <= 8000, `${mediumText.length} characters`);
+      assert.equal(medium.cut, `only ${medium.rows.length} of 130 rows (newest first): narrow the filters or sum up with groupBy for the rest`);
+
+      // All lookups of one question together stay within the total: the last one gets what is left
+      calls = 4;
+      provider.requests.length = 0;
+      await askAi('kira', 'Wer hat gespendet?');
+      const texts = provider.requests[1].messages.filter((message) => message.role === 'tool').map((message) => message.content);
+      assert.equal(texts.length, 4);
+      assert.ok(texts.reduce((total, text) => total + text.length, 0) <= 24000, `${texts.map((text) => text.length)}`);
+      const fourth = JSON.parse(texts[3]);
+      assert.ok(fourth.rows.length < medium.rows.length && fourth.cut.startsWith(`only ${fourth.rows.length} of 130 rows`));
+
+      // High: larger results - all 130 rows
+      calls = 1;
+      await useProvider(provider, { effort: 'high' });
+      provider.requests.length = 0;
+      await askAi('kira', 'Wer hat gespendet?');
+      const [high] = toolResults(provider.requests[1]);
+      assert.equal(high.rows.length, 130);
+      assert.ok(!('cut' in high));
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: categories come from the descriptions (and the issuer), and the result names every description counted', async () => {
+    await addToList('expenses', [
+      { id: 1798000000001, amount: 25, description: 'Blumen Erntedank', issuer: 'Theo', date: '2019-10-01' },
+      { id: 1798000000002, amount: 40, description: 'Blumenschmuck Ostern', issuer: 'Theo', date: '2020-04-01' },
+      { id: 1798000000003, amount: 18, description: 'Deko', issuer: 'Blumen Müller', date: '2020-05-01' },
+      { id: 1798000000004, amount: 300, description: 'Saalmiete Januar', issuer: 'Theo', date: '2020-01-10' },
+      { id: 1798000000005, amount: 300, description: 'Raummiete Februar', issuer: 'Theo', date: '2020-02-10' },
+      { id: 1798000000006, amount: 120, description: 'Beamer Reparatur', issuer: 'Theo', date: '2020-03-01' },
+      { id: 1798000000007, amount: 15, description: 'Kaffee', issuer: 'Theo', date: '2020-03-02' }
+    ]);
+    const categories = [{ name: 'Blumen', words: ['blume'] }, { name: 'Miete', words: ['miete'] }, { name: 'Technik', words: ['beamer', 'mikrofon'] }];
+    const provider = await standInProvider((body) => {
+      const [result] = toolResults(body);
+      if (!result) return toolCall(0, 'money', { kind: 'expenses', from: '2019', to: '2020', categories, groupBy: ['category', 'year'] });
+      return [{ content: result.categories.map((category) => `${category.name}: ${category.eur} EUR (gezählt: ${category.descriptions.join(', ')})`).join('\n') }];
+    });
+    try {
+      await useProvider(provider, { effort: 'medium' });
+      const events = await askAi('kira', 'Was haben wir für Blumen, Miete und Technik ausgegeben?');
+      const [result] = toolResults(provider.requests[1]);
+      assert.deepEqual(result.categories, [
+        { name: 'Blumen', entries: 3, eur: 83, descriptions: ['Blumenschmuck Ostern (1×, 40)', 'Blumen Erntedank (1×, 25)', 'Deko · Blumen Müller (1×, 18)'] },
+        { name: 'Miete', entries: 2, eur: 600, descriptions: ['Raummiete Februar (1×, 300)', 'Saalmiete Januar (1×, 300)'] },
+        { name: 'Technik', entries: 1, eur: 120, descriptions: ['Beamer Reparatur (1×, 120)'] },
+        { name: 'other', entries: 1, eur: 15, descriptions: ['Kaffee (1×, 15)'] }
+      ]);
+      assert.deepEqual(result.columns, ['category', 'year', 'eur', 'entries']);
+      assert.deepEqual(result.rows, [['Miete', '2020', 600, 2], ['Technik', '2020', 120, 1], ['Blumen', '2019', 25, 1], ['Blumen', '2020', 58, 2], ['other', '2020', 15, 1]]);
+      // The answer names what it counted (the prompt asks for it, the result has it)
+      assert.match(systemOf(provider.requests[0]), /always say which descriptions you counted/);
+      const answer = textOf(events);
+      for (const description of ['Blumen Erntedank', 'Blumenschmuck Ostern', 'Deko · Blumen Müller', 'Saalmiete Januar', 'Raummiete Februar', 'Beamer Reparatur']) assert.ok(answer.includes(description), description);
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: members, events, totals and the change log read what API v2 reads', async () => {
+    await ok(call('owner', 'POST', '/api/events', { title: 'KI-Jugendabend', date: '2027-01-08', startTime: '19:00', isRecurring: true, recurringRule: 'weekly', recurringCount: 3 }));
+    const provider = await standInProvider((body) => {
+      if (toolResults(body).length) return [{ content: 'Fertig.' }];
+      return [
+        ...toolCall(0, 'members', { names: ['Mia'], from: '2025', sort: 'gap' }),
+        ...toolCall(1, 'events', { title: ['KI-Jugendabend'], groupBy: ['title'] }),
+        ...toolCall(2, 'money_totals', { per: 'year' }),
+        ...toolCall(3, 'finance_changes', { area: 'donation', groupBy: ['by'] })
+      ];
+    });
+    try {
+      await useProvider(provider, { effort: 'high' });
+      const events = await askAi('kira', 'Überblick bitte');
+      assert.deepEqual(lookupsIn(events), [
+        { tool: 'members', from: '2025', about: 'Mia' },
+        { tool: 'events', about: 'KI-Jugendabend' },
+        { tool: 'money_totals' },
+        { tool: 'finance_changes' }
+      ]);
+      const [members, recurring, totals, changes] = toolResults(provider.requests[1]);
+      // Mia as API v2 has her
+      const mia = (await ok(call('treasurer', 'GET', '/api/v2/members?limit=500'))).items.find((member) => member.name === 'Mia Test');
+      const row = Object.fromEntries(members.columns.map((column, index) => [column, members.rows[0][index]]));
+      assert.equal(members.rows.length, 1);
+      assert.equal(row.name, 'Mia Test');
+      assert.equal(row.status, mia.status);
+      assert.equal(row.balanceEur, mia.balanceCents / 100);
+      assert.equal(row.overdueEur, mia.overdueCents / 100);
+      assert.equal(typeof row.longestGapMonths, 'number');
+      // The recurring event: three dates under one title
+      assert.deepEqual(recurring.rows.map((entry) => entry.slice(0, 3)), [['KI-Jugendabend', 3, 0]]);
+      assert.deepEqual(recurring.rows[0].slice(7, 9), ['2027-01-08', '2027-01-22']);
+      // The cash balance at the end of the newest year is everything API v2 sums up
+      const summary = await ok(call('treasurer', 'GET', '/api/v2/finance/summary'));
+      const balance = (summary.totalsCents.memberPayments + summary.totalsCents.donations - summary.totalsCents.expenses) / 100;
+      assert.equal(totals.columns[5], 'cashBalanceAtEndEur');
+      assert.equal(totals.rows[0][5], balance);
+      // The change log: the donations the treasurer changed
+      assert.deepEqual(changes.columns, ['by', 'changes']);
+      assert.ok(changes.rows.some(([by, count]) => by === 'Theo Test' && count > 0));
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI lookups: a provider without tool calls gets the question again without them, remembered until the settings are saved', async () => {
+    // A second account: the chat takes 20 questions a minute from one address
+    await aiAccount('kora', 'Kora', true);
+    let refuse = 'tools';
+    const provider = await standInProvider((body) => {
+      if (refuse === 'tools' && body.tools) return { status: 400, message: 'registry.ollama.ai/library/gemma:2b does not support tools' };
+      if (refuse === 'reasoning' && body.reasoning_effort) return { status: 400, message: 'Unrecognized request argument supplied: reasoning_effort' };
+      if (refuse === 'length') return { status: 400, message: 'This model\'s maximum context length is 128000 tokens. However, your messages resulted in 130000 tokens (129000 in the messages, 1000 in the functions).' };
+      if (refuse === 'toolChoice') {
+        if (body.tool_choice === 'none') return { status: 400, message: 'tool_choice "none" is not supported' };
+        if (body.tools) return toolCall(0, 'money_totals', { per: 'year' });
+        return [{ content: 'Antwort aus den Ergebnissen.' }];
+      }
+      return [{ content: 'Antwort.' }];
+    });
+    try {
+      await useProvider(provider, { effort: 'medium' });
+      assert.deepEqual(await askAi('kora', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      assert.equal(provider.requests.length, 2);
+      assert.ok(provider.requests[0].tools && !provider.requests[1].tools);
+      // Without lookups the prompt says nothing about them
+      assert.ok(!systemOf(provider.requests[1]).includes('Lookups:'));
+      // Remembered: the next question goes without tools right away
+      await askAi('kora', 'Hallo?');
+      assert.equal(provider.requests.length, 3);
+      assert.ok(!provider.requests[2].tools);
+      // ... and not shown in the settings
+      assert.deepEqual(Object.keys(await ok(call('owner', 'GET', '/api/admin/ai-config'))).sort(), ['apiKey', 'baseUrl', 'effort', 'enabled', 'model']);
+      // Saving the settings tries again
+      await useProvider(provider);
+      await askAi('kora', 'Hallo?');
+      assert.equal(provider.requests.length, 5);
+      assert.ok(provider.requests[3].tools && !provider.requests[4].tools);
+
+      // A model without reasoning_effort: asked again without it (the lookups stay), and remembered
+      refuse = 'reasoning';
+      await useProvider(provider, { effort: 'high' });
+      provider.requests.length = 0;
+      assert.deepEqual(await askAi('kora', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      assert.deepEqual(provider.requests.map((body) => [body.reasoning_effort ?? null, Boolean(body.tools)]), [['high', true], [null, true]]);
+      await askAi('kora', 'Hallo?');
+      assert.deepEqual(provider.requests.slice(2).map((body) => [body.reasoning_effort ?? null, Boolean(body.tools)]), [[null, true]]);
+
+      // A question that is too long is no refusal of the tools: the error is shown, nothing is remembered
+      refuse = 'length';
+      await useProvider(provider, { effort: 'medium' });
+      provider.requests.length = 0;
+      assert.deepEqual(await askAi('kora', 'Hallo?'), [{ error: 'This model\'s maximum context length is 128000 tokens. However, your messages resulted in 130000 tokens (129000 in the messages, 1000 in the functions).' }]);
+      assert.equal(provider.requests.length, 1);
+      refuse = null;
+      await askAi('kora', 'Hallo?');
+      assert.ok(provider.requests[1].tools, 'the lookups are still offered');
+
+      // A provider that takes tool calls but refuses what follows them (here tool_choice "none" once the lookups are
+      // used up): the results go to it once more as text, without tools
+      refuse = 'toolChoice';
+      provider.requests.length = 0;
+      const answered = await askAi('kora', 'Wie steht die Kasse?');
+      assert.equal(lookupsIn(answered).length, 4);
+      assert.deepEqual(answered.slice(-2), [{ content: 'Antwort aus den Ergebnissen.' }, '[DONE]']);
+      assert.equal(provider.requests.length, 6);
+      assert.ok(!('tools' in provider.requests[5]) && questionOf(provider.requests[5]).includes('Lookups already made for this question'));
+      assert.ok(provider.requests[0].tools, 'not taken for a provider without tools: nothing remembered');
+      provider.requests.length = 0;
+      await askAi('kora', 'Hallo?');
+      assert.ok(provider.requests[0].tools);
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
 });

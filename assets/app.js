@@ -5257,10 +5257,18 @@ async function loadAiConfig() {
         const enabledEl = $('super-admin-ai-enabled');
         if (enabledEl) enabledEl.checked = data.enabled;
         for (const [key, id] of Object.entries(AI_FIELDS)) setValue(id, data[key] || '');
+        setValue('super-admin-ai-effort', ['low', 'medium', 'high'].includes(data.effort) ? data.effort : 'medium');
+        showAiEffortHint();
         updateAiNavVisibility();
     } catch (err) {
         console.error('KI-Konfiguration konnte nicht geladen werden:', err);
     }
+}
+
+// What the chosen effort level costs: the explanation of the selected level only
+function showAiEffortHint() {
+    const level = inputValue('super-admin-ai-effort') || 'medium';
+    document.querySelectorAll('.ai-effort-hint').forEach(el => { el.style.display = el.dataset.effort === level ? '' : 'none'; });
 }
 
 async function saveAiConfig() {
@@ -5270,7 +5278,8 @@ async function saveAiConfig() {
             enabled: $('super-admin-ai-enabled')?.checked ?? false,
             baseUrl: inputValue(AI_FIELDS.baseUrl).trim(),
             apiKey: inputValue(AI_FIELDS.apiKey),
-            model: inputValue(AI_FIELDS.model).trim()
+            model: inputValue(AI_FIELDS.model).trim(),
+            effort: inputValue('super-admin-ai-effort') || 'medium'
         };
         await apiJson('/admin/ai-config', 'PUT', payload);
         aiEnabled = payload.enabled;
@@ -5301,7 +5310,7 @@ async function uploadChurchLogo() {
 Object.assign(window, {
     filterByGroup, submitQuickAddGroup, submitSaveGroup, deleteCurrentGroup, openAssignGroupModal, submitAssignGroups, switchSysSettingsTab,
     updateUserMemberSince, toggleUserSystemAdmin, toggleUserPays, openCreateUserModal, submitCreateUser, openResetPasswordModal, submitResetPassword,
-    deleteUserAccount, saveAdvancedSystemConfig, saveAiConfig, uploadChurchLogo,
+    deleteUserAccount, saveAdvancedSystemConfig, saveAiConfig, showAiEffortHint, uploadChurchLogo,
     clearGroupFilter: () => filterByGroup(null),
     openManageGroupModal: groupId => {
         const group = systemGroups.find(g => g.id === groupId);
@@ -7851,8 +7860,26 @@ function splitAiThinking(rawContent, reasoningContent = '') {
     return { answer, thinking: (reasoningContent + inline).trim(), open };
 }
 
+// A lookup the server makes for the AI ({ tool, from, to, about }) as the chat names it: "payments 2019–2024 ("Christmas")"
+const AI_LOOKUP_NAMES = {
+    payments: 'payments', expenses: 'expenses', donations: 'donations', money: 'money', members: 'members',
+    events: 'events', money_totals: 'totals', finance_changes: 'change log'
+};
+function aiLookupLabel(lookup = {}) {
+    const tool = Object.hasOwn(AI_LOOKUP_NAMES, lookup.tool) ? lookup.tool : 'unknown';
+    const parts = [t(`ai_lookup_${tool}`, AI_LOOKUP_NAMES[tool] || 'data')];
+    const from = typeof lookup.from === 'string' ? lookup.from : '';
+    const to = typeof lookup.to === 'string' ? lookup.to : '';
+    if (from && to) parts.push(from === to ? from : `${from}–${to}`);
+    else if (from) parts.push(t('ai_lookup_since', 'since {from}', { from }));
+    else if (to) parts.push(t('ai_lookup_until', 'until {to}', { to }));
+    if (typeof lookup.about === 'string' && lookup.about) parts.push(t('ai_lookup_about', '“{about}”', { about: lookup.about }));
+    return parts.join(' ');
+}
+
 // One assistant reply while it streams in: a small "Thinking…" line with the seconds (the thoughts open on a tap)
-// until the first words arrive, then the answer. Drawn at most once per frame, so long thoughts stay smooth.
+// until the first words arrive, then the answer. Drawn at most once per frame, so long thoughts stay smooth. When
+// the AI looks something up, a line says what ("Looking up payments 2019–2024 …"), and afterwards what it looked up.
 function createAiReply(bubble) {
     const row = bubble.closest('.ai-chat-row');
     const orb = row?.querySelector('.ai-orb');
@@ -7863,8 +7890,9 @@ function createAiReply(bubble) {
     summary.append(label, time);
     const pre = createEl('pre', 'ai-thinking-content');
     details.append(summary, pre);
+    const lookupsEl = createEl('div', 'ai-lookups');
     const answerEl = createEl('div', 'ai-answer');
-    bubble.replaceChildren(details, answerEl);
+    bubble.replaceChildren(details, lookupsEl, answerEl);
     orb?.classList.add('is-thinking');
     // A closed "Thinking" line is not a toggle until there is something to show
     summary.addEventListener('click', event => { if (details.classList.contains('is-empty')) event.preventDefault(); });
@@ -7874,6 +7902,8 @@ function createAiReply(bubble) {
     let content = '';
     let reasoning = '';
     let shownAnswer = null;
+    const lookups = [];
+    let lookingUp = false;
     let frame = 0;
     const seconds = () => Math.max(1, Math.round(((thoughtFor || Date.now()) - started) / 1000));
     const tick = setInterval(() => { if (!thoughtFor) time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() }); }, 1000);
@@ -7899,11 +7929,24 @@ function createAiReply(bubble) {
             shownAnswer = answer;
             answerEl.replaceChildren(renderMarkdown(answer));
         }
+        if (lookups.length) {
+            const line = lookingUp
+                ? t('ai_looking_up', 'Looking up {what} …', { what: lookups[lookups.length - 1] })
+                : t('ai_looked_up', 'Looked up: {what}', { what: lookups.join(' · ') });
+            if (lookupsEl.textContent !== line) lookupsEl.textContent = line;
+            lookupsEl.classList.toggle('is-live', lookingUp);
+        }
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(draw); };
 
     return {
         add(part) {
+            if (part.lookup && typeof part.lookup === 'object') {
+                lookups.push(aiLookupLabel(part.lookup));
+                lookingUp = true;
+            } else if (part.content || part.reasoning) {
+                lookingUp = false;
+            }
             content += part.content || '';
             reasoning += part.reasoning || '';
             schedule();
@@ -7914,6 +7957,7 @@ function createAiReply(bubble) {
         finish() {
             clearInterval(tick);
             if (frame) cancelAnimationFrame(frame);
+            lookingUp = false;
             draw();
             if (!thoughtFor) {
                 thoughtFor = Date.now();

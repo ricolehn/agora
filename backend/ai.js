@@ -1,10 +1,14 @@
 const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson, getFeeState } = require('./pocketbase');
+const { queueRecordWrite } = require('./db/writeQueue');
 const { toDateStr } = require('./utils/date');
 const { buildEventContext } = require('./eventContext');
 const { describeFeeResets } = require('./feeReset');
 const { describeFeeSchedule } = require('./feeSchedule');
 
 const AI_STATE_KEY = 'ai_config';
+// The AI settings are read and written one change at a time (the admins' saves, and what the chat remembers about
+// the provider)
+const AI_STATE_LOCK = 'state:ai';
 
 const AI_CONFIG_DEFAULTS = {
   enabled: false,
@@ -12,6 +16,38 @@ const AI_CONFIG_DEFAULTS = {
   apiKey: '',
   model: 'gpt-4o-mini'
 };
+
+// How much a question may cost, per effort level (Settings → AI; set by the admins, stored with the AI settings):
+//  - low: the compact context only, one request per question - as before there were lookups.
+//  - medium (the default): the model may look up the full history when a question needs it.
+//  - high: more and larger lookups, and more thinking for models that support it (reasoning_effort).
+// lookups: how many lookups one question may make; rows / chars: the most one lookup's result may hold (rows, and
+// characters of its JSON); total: the characters all results of one question may hold together. A question without
+// lookups costs about the same on every level (medium and high add the short description of the lookups); each round
+// of lookups sends the question with its context once more.
+const AI_EFFORT_LEVELS = Object.freeze({
+  low: Object.freeze({ lookups: 0, rows: 0, chars: 0, total: 0, reasoningEffort: null }),
+  medium: Object.freeze({ lookups: 4, rows: 50, chars: 8000, total: 24000, reasoningEffort: null }),
+  high: Object.freeze({ lookups: 10, rows: 200, chars: 24000, total: 120000, reasoningEffort: 'high' })
+});
+const DEFAULT_AI_EFFORT = 'medium';
+
+/** The effort level of [settings] (missing or unknown: medium). */
+const aiEffortOf = (settings) => (typeof settings?.effort === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, settings.effort) ? settings.effort : DEFAULT_AI_EFFORT);
+
+/** The provider a question goes to: its address and model as the chat uses them, and both together as its key. */
+function aiProviderOf(settings) {
+  const baseUrl = (settings?.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const model = settings?.model || 'gpt-4o-mini';
+  return { baseUrl, model, key: `${baseUrl}|${model}` };
+}
+
+// What the chat remembers when the provider refused a part of the request: until the settings are saved again,
+// questions to this address and model go without it
+const UNSUPPORTED_FIELDS = { tools: 'toolsUnsupportedFor', reasoningEffort: 'reasoningEffortUnsupportedFor' };
+
+/** Does the provider of [settings] take [feature] ('tools' or 'reasoningEffort'), as far as the chat knows. */
+const aiProviderTakes = (settings, feature) => settings?.[UNSUPPORTED_FIELDS[feature]] !== aiProviderOf(settings).key;
 
 async function getAiSettings(appConfig) {
   return getStateValue(appConfig, AI_STATE_KEY, AI_CONFIG_DEFAULTS);
@@ -22,18 +58,35 @@ async function getAiSettings(appConfig) {
  * Pass `apiKey: '***'` as a sentinel to keep the existing key unchanged.
  */
 async function setAiSettings(appConfig, patch) {
-  const current = await getAiSettings(appConfig);
-  const next = {
-    enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
-    baseUrl: typeof patch.baseUrl === 'string' ? patch.baseUrl.trim() : current.baseUrl,
-    // A sentinel value of '***' means "keep the existing key"
-    apiKey: typeof patch.apiKey === 'string' && patch.apiKey !== '***'
-      ? patch.apiKey
-      : current.apiKey,
-    model: typeof patch.model === 'string' ? patch.model.trim() : current.model
-  };
-  await upsertStateValue(appConfig, AI_STATE_KEY, next);
-  return next;
+  return queueRecordWrite(AI_STATE_LOCK, async () => {
+    const current = await getAiSettings(appConfig);
+    const next = {
+      enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
+      baseUrl: typeof patch.baseUrl === 'string' ? patch.baseUrl.trim() : current.baseUrl,
+      // A sentinel value of '***' means "keep the existing key"
+      apiKey: typeof patch.apiKey === 'string' && patch.apiKey !== '***'
+        ? patch.apiKey
+        : current.apiKey,
+      model: typeof patch.model === 'string' ? patch.model.trim() : current.model
+    };
+    // The effort level is stored once it was chosen (without one, a question costs "medium"). What the chat
+    // remembered about the provider is dropped: saving the settings tries everything again.
+    const effort = typeof patch.effort === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, patch.effort) ? patch.effort : current.effort;
+    if (typeof effort === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, effort)) next.effort = effort;
+    await upsertStateValue(appConfig, AI_STATE_KEY, next);
+    return next;
+  });
+}
+
+/** Remembers that the provider [providerKey] refused [feature] ('tools' or 'reasoningEffort'). */
+async function rememberAiUnsupported(appConfig, providerKey, feature) {
+  const field = UNSUPPORTED_FIELDS[feature];
+  return queueRecordWrite(AI_STATE_LOCK, async () => {
+    const current = await getAiSettings(appConfig);
+    // The settings were changed meanwhile: the new provider gets its own chance
+    if (aiProviderOf(current).key !== providerKey || current[field] === providerKey) return;
+    await upsertStateValue(appConfig, AI_STATE_KEY, { ...current, [field]: providerKey });
+  });
 }
 
 const roundEur = (value) => Math.round((Number(value) || 0) * 100) / 100;
@@ -365,18 +418,27 @@ function sanitizeAiMessages(rawMessages, maxMessages = 50, maxCharPerMsg = 12000
   return sanitized.slice(-maxMessages);
 }
 
+// What the model is told when it may look things up (aiTools.js) - only then: without lookups the prompt is the one
+// it always was. No braces in here: the context after it is JSON.
+const LOOKUP_GUIDE = {
+  finance: 'Lookups: the context below is a summary - the newest entries of every history, the totals per month and year, the events from two weeks back to a year ahead. When a question needs more than that (older or all single entries, sums by description, person or period, a member\'s whole history, past events, the change log), call the lookup tools: they read the complete history with the application\'s exact amounts. Look up only what the question needs, and let the tools filter and sum up (groupBy) so the results stay small. Categories such as flowers, rent or technology are not stored: find them by words in the descriptions (and the issuer or donor) - give several spellings and both languages - and always say which descriptions you counted. The costs of an event are the expenses whose description names the event or its date. A result that says it was cut covers only part of the data: say so, or narrow the lookup. Mark every estimate or forecast clearly as an estimate and name the numbers it rests on.',
+  events: 'Lookups: the events list below covers two weeks back to a year ahead. For other periods, or to count the dates of a recurring event, call the events lookup - it reads the whole calendar this person can see. Mark every estimate clearly as an estimate and name the numbers it rests on.'
+};
+
 /**
  * Builds the system prompt injected at the start of every chat request.
  * @param {string} appName - The configured application name.
  * @param {string} dbSnapshot - JSON string from buildDatabaseSnapshot.
+ * @param {{ canViewFinances?: boolean, lookups?: boolean }} options - lookups: the model is offered the lookup tools.
  */
 function buildSystemPrompt(appName, dbSnapshot, options = {}) {
   const canViewFinances = options.canViewFinances === true;
+  const lookups = options.lookups === true ? `\n\n${LOOKUP_GUIDE[canViewFinances ? 'finance' : 'events']}` : '';
   if (!canViewFinances) {
     return `You are a helpful support assistant for the ${appName || 'Agora'} application. Answer questions about the community, member directory, events and general app usage. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates.
-IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.\n\nCurrent database context:\n${dbSnapshot}`;
+IMPORTANT: You do not possess, receive, or have access to any financial data, contribution rates, payments, expenses, donations, or account balances in your database context. All financial records are completely excluded from your view. You cannot view or provide any financial information. If the user asks about finances, explain politely that you do not have access to any financial data and that viewing finances requires financial management permissions.${lookups}\n\nCurrent database context:\n${dbSnapshot}`;
   }
-  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers". Fees: each member's "feeAccount" is the application's own calculation - take who is overdue (isOverdue), the open amount (overdueEur), the balance (balanceEur, negative means owed) and the last fully paid month (paidUpToMonth) from it instead of adding up months and payments yourself; it is null for members who pay no fees. "feeResets" lists the days on which all fee accounts were started afresh (state "active": counted from; "scheduled": still to come). On such a day the account of every member who had joined before it was settled: whoever was behind starts from zero (openFeesDroppedEur was dropped and is no longer owed), whoever had paid ahead keeps that credit (creditCarriedOverEur), and since that day ("startedAfreshOn"; "countsFrom" is where the account counts from) the months are owed and the payments credited anew. Every month costs the fees of its time: "contributionRates" are the monthly fees of the current month, "contributionRatesOverTime" lists the fees from the beginning ("from": null) and every change with the month it counts from ("from": YYYY-MM; state "current": counts this month, "planned": still to come, "past": replaced by a later change) - the months before a change keep the fees before it. All payments stay in the books, in "totalPaid" and the cash balance; "memberSince" never changes. Histories are shortened to stay readable after years: per member the newest payments ("recentPayments", "paymentCount" in total, "firstPaymentDate"), the newest expenses, donations and requests (with "expenseCount" and "donationCount"); "monthlyTotals" (the last three years) and "yearlyTotals" sum up all money in EUR per month and year (memberPaymentsEur, donationsEur, expensesEur). Say so when a question needs older single entries than the context holds.\n\nCurrent database context:\n${dbSnapshot}`;
+  return `You are a helpful support assistant for the ${appName || 'Agora'} management application. Answer questions about the application data, members, finances, events and settings. Be concise and helpful. Events: the "events" list holds the appointments and events this person can see (two weeks back to a year ahead) with time, place, organizer, description, registration state, their own duty and - where they may see it - the duty roster and order of service. Dates are YYYY-MM-DD, "today" is the current date; answer with readable dates. Deleted members are not in "members" and owe nothing: only their booked payments stay, in "paymentsOfDeletedMembers". Fees: each member's "feeAccount" is the application's own calculation - take who is overdue (isOverdue), the open amount (overdueEur), the balance (balanceEur, negative means owed) and the last fully paid month (paidUpToMonth) from it instead of adding up months and payments yourself; it is null for members who pay no fees. "feeResets" lists the days on which all fee accounts were started afresh (state "active": counted from; "scheduled": still to come). On such a day the account of every member who had joined before it was settled: whoever was behind starts from zero (openFeesDroppedEur was dropped and is no longer owed), whoever had paid ahead keeps that credit (creditCarriedOverEur), and since that day ("startedAfreshOn"; "countsFrom" is where the account counts from) the months are owed and the payments credited anew. Every month costs the fees of its time: "contributionRates" are the monthly fees of the current month, "contributionRatesOverTime" lists the fees from the beginning ("from": null) and every change with the month it counts from ("from": YYYY-MM; state "current": counts this month, "planned": still to come, "past": replaced by a later change) - the months before a change keep the fees before it. All payments stay in the books, in "totalPaid" and the cash balance; "memberSince" never changes. Histories are shortened to stay readable after years: per member the newest payments ("recentPayments", "paymentCount" in total, "firstPaymentDate"), the newest expenses, donations and requests (with "expenseCount" and "donationCount"); "monthlyTotals" (the last three years) and "yearlyTotals" sum up all money in EUR per month and year (memberPaymentsEur, donationsEur, expensesEur). Say so when a question needs older single entries than the context holds.${lookups}\n\nCurrent database context:\n${dbSnapshot}`;
 }
 
 /**
@@ -410,7 +472,52 @@ function aiStreamEvents(chunk) {
   return events;
 }
 
+/**
+ * Adds the tool calls in one parsed chunk of an OpenAI-compatible stream to [calls] (a Map, in the order they came).
+ * They come in pieces by their index (OpenAI); some providers send each call whole, without an index, and some send
+ * the arguments as an object instead of JSON text. Returns [calls].
+ */
+function addToolCallParts(calls, chunk, knownNames = []) {
+  const choice = chunk?.choices?.[0];
+  const parts = choice?.delta?.tool_calls ?? choice?.message?.tool_calls;
+  if (!Array.isArray(parts)) return calls;
+  for (const part of parts) {
+    if (!part || typeof part !== 'object') continue;
+    const known = [...calls.values()];
+    let key = Number.isInteger(part.index) ? part.index : null;
+    if (key === null) {
+      // Without an index: a call with an id not seen yet is a new one, anything else goes on with the last one
+      const continues = known.length > 0 && (!part.id || known[known.length - 1].id === part.id || known.some((call) => call.id === part.id));
+      key = continues ? [...calls.keys()].pop() : `call${calls.size}`;
+    }
+    let call = calls.get(key);
+    if (!call) calls.set(key, (call = { id: '', name: '', arguments: '' }));
+    if (typeof part.id === 'string' && part.id) call.id = part.id;
+    const name = part.function?.name;
+    // A name comes once (OpenAI), again with every piece, or in pieces
+    if (typeof name === 'string' && name && call.name !== name && !knownNames.includes(call.name)) call.name += name;
+    const args = part.function?.arguments;
+    if (typeof args === 'string') call.arguments += args;
+    else if (args && typeof args === 'object') call.arguments = JSON.stringify(args);
+  }
+  return calls;
+}
+
+/** Under which name a parsed chunk carries the thought process ('reasoning_content', 'reasoning', ...), or null. */
+function reasoningKeyOf(chunk) {
+  const delta = chunk?.choices?.[0]?.delta || chunk?.choices?.[0]?.message || {};
+  return ['reasoning_content', 'reasoning', 'thinking', 'reasoning_details'].find((key) => typeof delta[key] === 'string' ? delta[key] : Array.isArray(delta[key]) && delta[key].length) || null;
+}
+
 module.exports = {
+  AI_EFFORT_LEVELS,
+  DEFAULT_AI_EFFORT,
+  aiEffortOf,
+  aiProviderOf,
+  aiProviderTakes,
+  rememberAiUnsupported,
+  addToolCallParts,
+  reasoningKeyOf,
   aiStreamEvents,
   getAiSettings,
   setAiSettings,

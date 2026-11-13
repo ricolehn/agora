@@ -680,6 +680,18 @@
                         <input type="text" id="super-admin-ai-model" class="form-input super-admin-input" placeholder="gpt-4o-mini">
                     </div>
 
+                    <div class="form-group">
+                        <label class="form-label" for="super-admin-ai-effort" style="color: var(--text-secondary);" data-i18n="ai_effort">Effort per question</label>
+                        <select id="super-admin-ai-effort" class="form-input super-admin-input" onchange="showAiEffortHint()">
+                            <option value="low" data-i18n="ai_effort_low">Low</option>
+                            <option value="medium" data-i18n="ai_effort_medium">Medium (recommended)</option>
+                            <option value="high" data-i18n="ai_effort_high">High</option>
+                        </select>
+                        <div class="help-text ai-effort-hint" data-effort="low" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem; display: none;" data-i18n="ai_effort_low_desc">Only the summary every question gets (the newest entries and the totals): one request per question, the cheapest. Questions about older single entries are answered from the totals.</div>
+                        <div class="help-text ai-effort-hint" data-effort="medium" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;" data-i18n="ai_effort_medium_desc">The AI looks up the full history when a question needs it: up to 4 lookups with small results. An ordinary question costs a little more than on Low (the lookups are described with it); a question with lookups about twice as much, because it goes to the AI again with the results – with several rounds up to 5 times.</div>
+                        <div class="help-text ai-effort-hint" data-effort="high" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem; display: none;" data-i18n="ai_effort_high_desc">Up to 10 lookups with larger results, and more thinking for models that support it. For detailed evaluations: a question with lookups costs about 2 to 5 times as much as on Low, at most about 11 times, plus the thinking of the model.</div>
+                    </div>
+
                     <button class="btn btn-block super-admin-btn" onclick="saveAiConfig()" data-i18n="btn_save_ai">Save AI Settings</button>
                 </div>
             </div>

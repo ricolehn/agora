@@ -1372,6 +1372,7 @@ module.exports = {
   setAuthCookie,
   clearAuthCookie,
   verifyToken,
+  resolveRequestUser,
   verifyAdmin,
   verifyAiAccess,
   verifyMentoringParticipate,

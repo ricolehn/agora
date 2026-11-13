@@ -112,4 +112,4 @@ async function buildEventContext(appConfig, user) {
   return result;
 }
 
-module.exports = { buildEventContext };
+module.exports = { buildEventContext, plainText };
