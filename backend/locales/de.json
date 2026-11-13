@@ -371,5 +371,7 @@
   "That is too much for one download (at most 4 GB). Please select less.": "Das ist zu viel für einen Download (höchstens 4 GB). Bitte wähle weniger aus.",
   "There is nothing to download here.": "Hier gibt es nichts zum Herunterladen.",
   "The download could not be prepared": "Der Download konnte nicht vorbereitet werden",
-  "This download is no longer available. Please start it again.": "Dieser Download ist nicht mehr verfügbar. Bitte starte ihn noch einmal."
+  "This download is no longer available. Please start it again.": "Dieser Download ist nicht mehr verfügbar. Bitte starte ihn noch einmal.",
+  "The number of participants must be a whole number.": "Die Teilnehmerzahl muss eine ganze Zahl sein.",
+  "The minimum of participants cannot be higher than the places.": "Die Mindestteilnehmerzahl darf nicht höher sein als die Zahl der Plätze."
 }

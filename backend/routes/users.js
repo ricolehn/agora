@@ -117,7 +117,8 @@ router.post('/api/reports', protectedActionRateLimit, verifyToken, async (req, r
     await storeReport(context.appConfig, report);
     adminUsers(context.appConfig).then((admins) => notifyUsers(context.appConfig, admins.filter((u) => u.id !== req.user?.uid), 'reports', {
       origin: originOf(req),
-      push: (tr) => ({ title: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'), body: report.reason || report.content.slice(0, 120), data: { url: '/#settings' } }),
+      // A private chat message never goes onto lock screens or through the push services: the reason, or nothing of it
+      push: (tr) => ({ title: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'), body: report.reason || (report.type === 'ai' ? report.content.slice(0, 120) : tr('Some content was reported and is waiting for your review.')), data: { url: '/#settings' } }),
       email: (tr) => ({
         subject: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
         heading: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),

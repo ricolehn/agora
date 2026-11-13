@@ -464,6 +464,8 @@ const eventOf = (event, counts, mine) => ({
   isPublic: event.isPublic === true,
   registeredCount: counts.registered,
   waitlistCount: counts.waitlist,
+  // null: no minimum
+  minimumReached: (event.minParticipants || 0) > 0 ? counts.registered >= event.minParticipants : null,
   myRegistration: mine ? { id: mine.id, status: mine.status } : null,
   createdAt: event.created || null
 });

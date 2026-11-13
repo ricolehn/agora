@@ -71,6 +71,19 @@ describe('after the upgrade', { skip: !POCKETBASE_BIN && 'set POCKETBASE_BIN to 
     assert.equal((await old.backups()).length, 1);
     assert.deepEqual(await old.sameAnswers(), []);
 
+    // The duty the old server gave a group as "confirmed" is "assigned" now - repaired once, on the first start
+    const repair = (await old.su.list('system_migrations')).find((record) => record.id === 'duty-statuses');
+    assert.equal(repair.status, 'done');
+    assert.ok(repair.report.repaired >= 1, `repaired ${repair.report.repaired}`);
+    assert.equal(repair.attempts, 1, 'once');
+    const duties = await old.su.list('event_duties');
+    assert.ok(duties.some((duty) => duty.assignedGroup), 'there are group duties');
+    for (const duty of duties) {
+      const expected = duty.assignedUser ? 'confirmed' : duty.assignedGroup ? 'assigned' : duty.requestedUser ? ['requested', 'declined'] : 'open';
+      if (Array.isArray(expected)) assert.ok(expected.includes(duty.status), `${duty.roleName}: ${duty.status}`);
+      else assert.equal(duty.status, expected, duty.roleName);
+    }
+
     const findings = done.report.areas.finance.findings;
     assert.ok(findings.amountsAsText.count >= 3, 'amounts written as text are listed');
     assert.ok(findings.amountsUnreadable.count >= 1);

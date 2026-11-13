@@ -150,7 +150,7 @@ async function initializeRuntime(config) {
   // An instance from before the new database structure is upgraded first (the app answers "updating" meanwhile)
   await ensurePocketBaseSchema(config, { onUpgrading: () => { context.phase = 'updating'; } });
   await upsertStateValue(config, 'settings', await getStateValue(config, 'settings', DEFAULT_SETTINGS));
-  await upsertStateValue(config, 'system', withSecureInviteCode(await getStateValue(config, 'system', DEFAULT_SYSTEM_STATE)));
+  await require('./pocketbase').updateSystemState(config, withSecureInviteCode);
 
   context.appConfig = config;
   context.setupMode = false;
@@ -808,8 +808,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
 
   if (root === 'system' && id === 'inviteCode' && !nested) {
     if (!user.canManageRegistrationCode) throw Object.assign(new Error('Registration code management rights required'), { status: 403 });
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    await upsertStateValue(context.appConfig, 'system', { ...system, inviteCode: value });
+    await require('./pocketbase').updateSystemState(context.appConfig, (system) => ({ ...system, inviteCode: value }));
     return;
   }
 

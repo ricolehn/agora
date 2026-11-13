@@ -632,6 +632,12 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal(me.owner, false);
     assert.equal(me.canViewFinances, false);
     assert.equal((await register('zweiter@test.local', String(code))).status, 403, 'the used code no longer works');
+
+    // Sent by three people at the same moment, the code still lets exactly one in
+    const next = String(await read('owner', 'system/inviteCode'));
+    const answers = await Promise.all(['gleich1', 'gleich2', 'gleich3'].map((name) => register(`${name}@test.local`, next)));
+    assert.deepEqual(answers.map((answer) => answer.status).sort(), [200, 403, 403]);
+    assert.notEqual(String(await read('owner', 'system/inviteCode')), next, 'and a new code is set');
   });
 
   test('deleting an account: only with the own password, never the owner', async () => {
@@ -1432,6 +1438,91 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const res = await fetch(`${base}/api/events/calendar.ics?user=nobody&token=wrong`, { headers: { 'X-Forwarded-For': '10.45.0.1' } });
     assert.equal(res.status, 401);
     assert.equal(res.headers.get('ratelimit-limit'), '240');
+  });
+
+  test('the least and the most participants fit together; the event says whether the minimum is reached', async () => {
+    const tooMany = await call('owner', 'POST', '/api/events', { title: 'Zu viele', date: inDays(27), requiresRegistration: true, minParticipants: 10, maxParticipants: 5 });
+    assert.equal(tooMany.status, 400);
+    assert.equal((await call('owner', 'POST', '/api/events', { title: 'Halbe', date: inDays(27), minParticipants: 2.5 })).status, 400);
+    const created = await ok(call('owner', 'POST', '/api/events', { title: 'Mindestens zwei', date: inDays(27), requiresRegistration: true, minParticipants: 2, maxParticipants: 4 }));
+    const eventId = created.event?.id || created.id;
+    // Fewer places than the minimum: refused; nothing changed
+    assert.equal((await call('owner', 'PATCH', `/api/events/${eventId}`, { maxParticipants: 1 })).status, 400);
+    assert.equal((await call('owner', 'PATCH', `/api/events/${eventId}`, { minParticipants: 5 })).status, 400);
+    const v2 = async () => (await ok(call('max', 'GET', '/api/v2/events?limit=500'))).items.find((event) => event.id === eventId);
+    assert.deepEqual([(await v2()).maxParticipants, (await v2()).minimumReached], [4, false]);
+    await ok(call('max', 'POST', `/api/events/${eventId}/register`, { action: 'register' }));
+    await ok(call('mia', 'POST', `/api/events/${eventId}/register`, { action: 'register' }));
+    assert.equal((await v2()).minimumReached, true);
+    // Without a minimum: no answer to the question
+    await ok(call('owner', 'PATCH', `/api/events/${eventId}`, { minParticipants: 0 }));
+    assert.equal((await v2()).minimumReached, null);
+    await ok(call('owner', 'DELETE', `/api/events/${eventId}`));
+  });
+
+  test('a reported chat message: the admins read it, the database keeps it encrypted like the conversation', async () => {
+    const { superuser } = require('./instance');
+    const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);
+    await ok(call('max', 'POST', '/api/reports', { type: 'chat', content: 'Eine sehr private Nachricht', threadId: 'thread-gemeldet' }));
+    const [stored] = await su.list('system_content_reports', `reportedBy = "${uids.max}" && type = "chat"`);
+    assert.match(stored.content, /^enc:v1:/, 'encrypted in the database');
+    assert.ok(!JSON.stringify(stored).includes('private'), 'nowhere in the record in plain text');
+    const listed = (await ok(call('owner', 'GET', '/api/admin/reports'))).reports.find((report) => report.threadId === 'thread-gemeldet');
+    assert.equal(listed.content, 'Eine sehr private Nachricht', 'the admins read it as before');
+    const resolved = await ok(call('owner', 'POST', `/api/admin/reports/${listed.id}/resolve`));
+    assert.equal((resolved.report || resolved).content, 'Eine sehr private Nachricht');
+  });
+
+  test('nobody can switch off another person\'s push notifications', async () => {
+    const { superuser } = require('./instance');
+    const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);
+    const endpoint = 'https://push.example/maxs-phone';
+    await ok(call('max', 'POST', '/api/push/subscribe', { subscription: { endpoint, keys: { p256dh: 'BKey', auth: 'secret' } }, installed: true }));
+    const devices = async () => su.list('system_push_devices', `endpoint = ${JSON.stringify(endpoint)}`);
+    assert.equal((await devices()).length, 1);
+    // Mia knows the address (or guesses it): the answer is the same, the subscription stays
+    assert.equal((await call('mia', 'POST', '/api/push/unsubscribe', { endpoint })).status, 200);
+    assert.equal((await devices()).length, 1, 'Max still gets his notifications');
+    await ok(call('max', 'POST', '/api/push/unsubscribe', { endpoint }));
+    assert.equal((await devices()).length, 0, 'his own unsubscribe works');
+  });
+
+  test('a duty\'s status follows who has it: a group "assigned", a person "confirmed", nobody "open"', async () => {
+    const groups = await ok(call('owner', 'GET', '/api/admin/groups'));
+    const groupId = (groups.groups || groups).find((group) => group.name === 'Kasse').id;
+    const created = await ok(call('owner', 'POST', '/api/events', {
+      title: 'Dienstplan-Test', date: inDays(25),
+      duties: [{ roleName: 'Gruppe', assignedGroup: groupId }, { roleName: 'Person', assignedUser: uids.max }, { roleName: 'Frei' }]
+    }));
+    const eventId = created.event?.id || created.id;
+    const duties = async () => (await ok(call('owner', 'GET', '/api/events'))).find((event) => event.id === eventId).duties;
+    const byName = async () => Object.fromEntries((await duties()).map((duty) => [duty.roleName, duty]));
+    let now = await byName();
+    // Made by the owner (whose Admin group manages events): official, it used to say otherwise for everyone
+    assert.equal((await ok(call('owner', 'GET', '/api/events'))).find((event) => event.id === eventId).createdByManager, true);
+    const byMember = await ok(call('max', 'POST', '/api/events', { title: 'Von einem Mitglied', date: inDays(26) }));
+    const memberEventId = byMember.event?.id || byMember.id;
+    assert.equal((await ok(call('owner', 'GET', '/api/events'))).find((event) => event.id === memberEventId).createdByManager, false);
+    await ok(call('max', 'DELETE', `/api/events/${memberEventId}`));
+    // The group's duty used to be stored as "confirmed": the app then showed "Person" and the group never saw it
+    assert.deepEqual([now.Gruppe.status, now.Person.status, now.Frei.status], ['assigned', 'confirmed', 'open']);
+
+    // Edited with the event: the person's duty goes to the group, the open one to a person
+    await ok(call('owner', 'PATCH', `/api/events/${eventId}`, { duties: [
+      { id: now.Gruppe.id, roleName: 'Gruppe', assignedGroup: groupId },
+      { id: now.Person.id, roleName: 'Person', assignedGroup: groupId },
+      { id: now.Frei.id, roleName: 'Frei', assignedUser: uids.mia }
+    ] }));
+    now = await byName();
+    assert.deepEqual([now.Gruppe.status, now.Person.status, now.Frei.status], ['assigned', 'assigned', 'confirmed']);
+
+    // Edited alone: an unknown status is refused, "open" frees the duty, a status never contradicts who has it
+    assert.equal((await call('owner', 'PATCH', `/api/events/duties/${now.Frei.id}`, { status: 'erledigt' })).status, 400);
+    await ok(call('owner', 'PATCH', `/api/events/duties/${now.Frei.id}`, { status: 'open' }));
+    await ok(call('owner', 'PATCH', `/api/events/duties/${now.Gruppe.id}`, { status: 'confirmed' }));
+    now = await byName();
+    assert.deepEqual([now.Frei.status, now.Frei.assignedUser, now.Gruppe.status], ['open', '', 'assigned']);
+    await ok(call('owner', 'DELETE', `/api/events/${eventId}`));
   });
 
   test('API v2: the books in cents with versions, the same data as v1, the same permissions', async () => {

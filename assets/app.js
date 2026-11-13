@@ -9846,7 +9846,8 @@ function renderCapacity(ev) {
     const meta = [
         max > 0 ? t('events_capacity_taken', '{count} of {max} places taken', { count, max }) : t('events_registered_count', '{count} registered', { count }),
         max > 0 ? (free > 0 ? t('events_capacity_free', '{count} free', { count: free }) : t('events_capacity_full', 'fully booked')) : '',
-        min > 0 ? t('events_capacity_min', 'min. {count}', { count: min }) : ''
+        // The minimum: how many are still needed, or that it is reached (members and guests count alike)
+        min > 0 ? (count >= min ? t('events_capacity_min_reached', 'minimum of {count} reached', { count: min }) : t('events_capacity_min_missing', '{missing} more needed (min. {count})', { missing: min - count, count: min })) : ''
     ].filter(Boolean).join(' · ');
     setText('detail-modal-reg-meta', meta);
     const capacity = $('detail-modal-capacity-info');

@@ -40,7 +40,10 @@ const {
   claimUserAccount,
   listPeopleRecords,
   updateOwnPassword,
-  resolveUserPermissions
+  resolveUserPermissions,
+  updateSystemState,
+  SYSTEM_STATE_LOCK,
+  queueRecordWrite
 } = require('../pocketbase');
 
 const router = express.Router();
@@ -106,8 +109,7 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
       console.warn('Could not create default Admin group in setup:', gErr.message);
     }
 
-    const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
-    await upsertStateValue(newConfig, 'system', { ...withSecureInviteCode(system), ownerUid: auth.user.id, superAdminUid: auth.user.id });
+    await updateSystemState(newConfig, (system) => ({ ...withSecureInviteCode(system), ownerUid: auth.user.id, superAdminUid: auth.user.id }));
     const ownerGroups = adminGroup ? [adminGroup.id] : [];
     await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: true, groups: ownerGroups });
 
@@ -195,62 +197,67 @@ router.post('/api/auth/register', authRateLimit, async (req, res) => {
   }
 
   try {
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    // No code set (or none sent): nobody registers; compared in constant time
-    const validInviteCode = String(system?.inviteCode || '');
-    const sent = Buffer.from(inviteCode);
-    const valid = Buffer.from(validInviteCode);
-    const matches = valid.length > 0 && sent.length === valid.length && crypto.timingSafeEqual(sent, valid);
-    if (!matches) {
-      return res.status(403).json({ error: 'Invalid registration code.' });
-    }
+    // The code is good for one registration: checking it, creating the account and making the next code run as one
+    // step - two people sending the same code at the same moment used to both get in
+    const result = await queueRecordWrite(SYSTEM_STATE_LOCK, async () => {
+      const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+      // No code set (or none sent): nobody registers; compared in constant time
+      const validInviteCode = String(system?.inviteCode || '');
+      const sent = Buffer.from(inviteCode);
+      const valid = Buffer.from(validInviteCode);
+      const matches = valid.length > 0 && sent.length === valid.length && crypto.timingSafeEqual(sent, valid);
+      if (!matches) return { status: 403, error: 'Invalid registration code.' };
 
-    const normFirst = firstName.toLowerCase();
-    const normLast = lastName.toLowerCase();
-    const fullName = `${firstName} ${lastName}`.trim();
+      const normFirst = firstName.toLowerCase();
+      const normLast = lastName.toLowerCase();
+      const fullName = `${firstName} ${lastName}`.trim();
 
-    const existingUsers = await listUserRecords(context.appConfig);
-    const matchingUnclaimedUser = existingUsers.find((u) => {
-      const uFirst = String(u.firstName || '').trim().toLowerCase();
-      const uLast = String(u.lastName || '').trim().toLowerCase();
-      const uName = String(u.name || '').trim().toLowerCase();
-      const isUnclaimed = u.isClaimed === false || isPlaceholderEmail(u.email);
-      if (!isUnclaimed) return false;
-      return (uFirst === normFirst && uLast === normLast) || (uName === `${normFirst} ${normLast}`.trim());
-    });
-
-    let auth;
-    if (matchingUnclaimedUser) {
-      await claimUserAccount(context.appConfig, matchingUnclaimedUser.id, email, password);
-      await updateUserRecord(context.appConfig, matchingUnclaimedUser.id, {
-        firstName,
-        lastName,
-        name: fullName
+      const existingUsers = await listUserRecords(context.appConfig);
+      const matchingUnclaimedUser = existingUsers.find((u) => {
+        const uFirst = String(u.firstName || '').trim().toLowerCase();
+        const uLast = String(u.lastName || '').trim().toLowerCase();
+        const uName = String(u.name || '').trim().toLowerCase();
+        const isUnclaimed = u.isClaimed === false || isPlaceholderEmail(u.email);
+        if (!isUnclaimed) return false;
+        return (uFirst === normFirst && uLast === normLast) || (uName === `${normFirst} ${normLast}`.trim());
       });
-      auth = await loginUser(email, password);
 
-      // The account keeps its own finance entry. Only an account without one gets the entry with its name that no
-      // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
-      const uid = matchingUnclaimedUser.id;
-      const people = await listPeopleRecords(context.appConfig);
-      const unusedEntry = !people.some(p => p.uid === uid || p.data?.uid === uid) && people.find(p => !p.uid && !p.data?.uid
-        && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === fullName.toLowerCase());
-      if (unusedEntry) {
-        await upsertPeopleRecord(context.appConfig, unusedEntry.personKey, { ...(unusedEntry.data || {}), uid, name: fullName });
+      let auth;
+      if (matchingUnclaimedUser) {
+        await claimUserAccount(context.appConfig, matchingUnclaimedUser.id, email, password);
+        await updateUserRecord(context.appConfig, matchingUnclaimedUser.id, {
+          firstName,
+          lastName,
+          name: fullName
+        });
+        auth = await loginUser(email, password);
+
+        // The account keeps its own finance entry. Only an account without one gets the entry with its name that no
+        // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
+        const uid = matchingUnclaimedUser.id;
+        const people = await listPeopleRecords(context.appConfig);
+        const unusedEntry = !people.some(p => p.uid === uid || p.data?.uid === uid) && people.find(p => !p.uid && !p.data?.uid
+          && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === fullName.toLowerCase());
+        if (unusedEntry) {
+          await upsertPeopleRecord(context.appConfig, unusedEntry.personKey, { ...(unusedEntry.data || {}), uid, name: fullName });
+        }
+      } else {
+        auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
+
+        const personKey = auth.user.id;
+        const today = new Date().toISOString().slice(0, 10);
+        await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(personKey, fullName, today));
       }
-    } else {
-      auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
 
-      const personKey = auth.user.id;
-      const today = new Date().toISOString().slice(0, 10);
-      await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(personKey, fullName, today));
-    }
-
-    const newCode = String(crypto.randomInt(100000, 1000000));
-    await upsertStateValue(context.appConfig, 'system', { ...system, inviteCode: newCode });
+      // The next code, into the settings as they are now (not as they were read at the start)
+      const newCode = String(crypto.randomInt(100000, 1000000));
+      await upsertStateValue(context.appConfig, 'system', { ...(await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE)), inviteCode: newCode });
+      return { auth };
+    });
+    if (result.error) return res.status(result.status).json({ error: result.error });
     broadcastDataUpdate();
-    setAuthCookie(req, res, auth.token);
-    res.json(auth);
+    setAuthCookie(req, res, result.auth.token);
+    res.json(result.auth);
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
   }

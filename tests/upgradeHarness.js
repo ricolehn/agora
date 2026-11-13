@@ -1,11 +1,14 @@
 // Shared by the upgrade tests: what an instance from before the upgrade answers (every read of the old API for every
 // role), and an old instance ready to be upgraded.
 const fs = require('fs');
+const path = require('path');
 const { isDeepStrictEqual } = require('util');
 const {
   LEGACY_SERVER, CURRENT_SERVER, makeRoot, startPocketBase, startBackend, httpClient, superuser, stop
 } = require('./instance');
 const { seedOldInstance } = require('./upgradeFixture');
+const { BACKEND_DIR } = require('./helpers');
+const { dutyStatusOf } = require(path.join(BACKEND_DIR, 'dutyStatus'));
 
 const ROLES = ['owner', 'treasurer', 'viewer', 'max', 'mia', 'mentor', 'mentee', null];
 
@@ -65,6 +68,16 @@ function normalize(url, res) {
   let body = walk(res.body);
   // The status names the API versions since v4 (an addition older apps do not read)
   if (url === '/api/status' && body && typeof body === 'object') body = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'apiVersions'));
+  // A duty's status follows who has it since v4 (a group's duty used to be stored "confirmed"; backend/dutyStatus.js
+  // repairs them once) - compared by that rule on both sides; the upgrade's own comparison checks them exactly
+  // createdByManager was always false before v4 (a bug): left out on both sides, tested on its own in api.test.js
+  if (url === '/api/events' && Array.isArray(body)) {
+    body = body.map((event) => {
+      if (!event || typeof event !== 'object') return event;
+      const { createdByManager, ...rest } = event;
+      return Array.isArray(rest.duties) ? { ...rest, duties: rest.duties.map((duty) => ({ ...duty, status: dutyStatusOf(duty) })) } : rest;
+    });
+  }
   // The version a raw read hands out is the record's "updated" time: every record is written anew by the upgrade
   if (/[?&]raw=1/.test(url) && body && typeof body === 'object' && 'version' in body) body = { ...body, version: body.version ? '<version>' : body.version };
   return { status: res.status, body };

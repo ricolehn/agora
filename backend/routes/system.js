@@ -27,6 +27,7 @@ const { wantsNotification } = require('../notificationPrefs');
 const {
   DEFAULT_SYSTEM_STATE,
   ownerClaim,
+  updateSystemState,
   getStateValue,
   upsertStateValue,
   updateUserRecord,
@@ -120,12 +121,14 @@ router.get('/api/stream', verifyToken, (req, res) => {
 
 router.post('/api/admin/bootstrap-super-admin', verifyToken, async (req, res) => {
   try {
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    // Without a recorded owner only an admin takes it over, never a member (pocketbase.js ownerClaim)
-    const { ownerUid, claim: createdNow } = ownerClaim(system, req.user);
-    if (createdNow) {
-      await upsertStateValue(context.appConfig, 'system', { ...system, ownerUid, superAdminUid: ownerUid });
-    }
+    // Without a recorded owner only an admin takes it over, never a member (pocketbase.js ownerClaim) - decided and
+    // written in one step: two admins at the same moment cannot both become the owner
+    let claimed = null;
+    await updateSystemState(context.appConfig, (system) => {
+      claimed = ownerClaim(system, req.user);
+      return claimed.claim ? { ...system, ownerUid: claimed.ownerUid, superAdminUid: claimed.ownerUid } : null;
+    });
+    const { ownerUid, claim: createdNow } = claimed;
 
     const isOwner = ownerUid !== null && ownerUid === req.user.uid;
     if (isOwner) {
@@ -723,7 +726,8 @@ router.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
     if (!endpoint) {
       return res.status(400).json({ error: 'Endpoint is required' });
     }
-    await deletePushSubscription(context.appConfig, endpoint);
+    // Only the own device: another person's subscription stays (the answer is the same, so it tells nothing)
+    await deletePushSubscription(context.appConfig, endpoint, req.user.uid || req.user.id);
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to delete push subscription:', error);

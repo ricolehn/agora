@@ -54,6 +54,7 @@ const { userLanguage, translate, requestLanguage, instanceLanguage } = require('
 const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
 const { createItemStore } = require('../itemStore');
 const { buildProgram } = require('../program');
+const { DUTY_STATES, dutyStatusOf } = require('../dutyStatus');
 const { eventImageName, linkedEventImageNames, deleteUnlinkedEventImages } = require('../eventImages');
 const { seatCounts, isBookedOut, withEventSeats, loadSeats, fillFreeSeats } = require('../eventSeats');
 const { newPublicToken, sendGuestEmail, tellPromotedGuests, localToday } = require('../eventGuests');
@@ -61,6 +62,19 @@ const { newPublicToken, sendGuestEmail, tellPromotedGuests, localToday } = requi
 const router = express.Router();
 // Order of service per event (key = event id), readable only by the server
 const programStore = createItemStore('event_programs');
+
+/**
+ * Why the least and the most participants do not work together (null: they do): whole numbers, and the minimum
+ * no higher than the places (0 = no limit, empty = none).
+ */
+function participantLimitsError(minParticipants, maxParticipants) {
+  const number = (value) => (value === undefined || value === null || value === '' ? 0 : Number(value));
+  const min = number(minParticipants);
+  const max = number(maxParticipants);
+  if (!Number.isInteger(min) || !Number.isInteger(max)) return 'The number of participants must be a whole number.';
+  if (max > 0 && min > max) return 'The minimum of participants cannot be higher than the places.';
+  return null;
+}
 
 // Event managers: members with the manage_events permission (directly or via a group)
 const hasEventPermission = (user) => user.canManageEvents === true || (Array.isArray(user.permissions) && user.permissions.includes('manage_events'));
@@ -81,7 +95,10 @@ router.get('/api/events', verifyToken, async (req, res) => {
       listGroupRecords(context.appConfig).catch(() => [])
     ]);
     const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
-    const managerUserIds = new Set(users.filter(hasEventPermission).map(u => u.id));
+    // The accounts' permissions come from their groups (an account record carries none itself: this set used to stay
+    // empty, so createdByManager was always false)
+    const groupKeys = (groups) => (Array.isArray(groups) ? groups : []).map(g => (g && typeof g === 'object' ? g.id || g.name : g));
+    const managerUserIds = new Set(users.filter(u => hasEventPermission(resolveUserPermissions(groupKeys(u.groups), allGroups))).map(u => u.id));
     const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
     const byEvent = (list) => {
       const map = new Map();
@@ -219,6 +236,8 @@ router.post('/api/events', verifyToken, async (req, res) => {
     }
 
     const canManageEvents = hasEventPermission(req.user);
+    const placesError = participantLimitsError(minParticipants, maxParticipants);
+    if (placesError) return res.status(400).json({ error: placesError });
 
     let finalEventType = 'event';
     let finalIsPinned = false;
@@ -269,16 +288,17 @@ router.post('/api/events', verifyToken, async (req, res) => {
       if (Array.isArray(duties)) {
         for (const d of duties) {
           if (d && d.roleName && String(d.roleName).trim()) {
-            const createdDuty = await createEventDuty(context.appConfig, {
+            const fields = {
               event: eventRecord.id,
               section: d.section ? String(d.section).trim() : 'Allgemein',
               roleName: String(d.roleName).trim(),
               assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
               assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
               requestedUser: d.requestedUser ? String(d.requestedUser).trim() : '',
-              notes: d.notes ? String(d.notes).trim() : '',
-              status: d.status || (d.assignedGroup || d.assignedUser ? 'confirmed' : (d.requestedUser ? 'requested' : 'open'))
-            });
+              notes: d.notes ? String(d.notes).trim() : ''
+            };
+            // Who has it decides the status (dutyStatus.js) - a group's duty used to become "confirmed"
+            const createdDuty = await createEventDuty(context.appConfig, { ...fields, status: dutyStatusOf(fields) });
             // A recurring series notifies once, for its first date
             if (createdDuty.assignedGroup && createdEvents.length === 0) {
               notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: createdDuty.assignedGroup, event: eventRecord, duty: createdDuty, assignedBy: currentUid, origin: originOf(req) });
@@ -409,6 +429,10 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
     if (description !== undefined) updates.description = String(description).trim();
     if (imageUrl !== undefined) updates.imageUrl = String(imageUrl).trim();
     if (requiresRegistration !== undefined) updates.requiresRegistration = requiresRegistration === true;
+    if (minParticipants !== undefined || maxParticipants !== undefined) {
+      const placesError = participantLimitsError(minParticipants !== undefined ? minParticipants : event.minParticipants, maxParticipants !== undefined ? maxParticipants : event.maxParticipants);
+      if (placesError) return res.status(400).json({ error: placesError });
+    }
     if (minParticipants !== undefined) updates.minParticipants = Number(minParticipants) > 0 ? Number(minParticipants) : 0;
     if (maxParticipants !== undefined) updates.maxParticipants = Number(maxParticipants) > 0 ? Number(maxParticipants) : 0;
     if (targetGroups !== undefined) updates.targetGroups = Array.isArray(targetGroups) ? targetGroups.filter(Boolean) : [];
@@ -445,27 +469,31 @@ router.patch('/api/events/:id', verifyToken, async (req, res) => {
         for (const d of req.body.duties) {
           if (d.id && existingIds.has(d.id)) {
             newDutyIds.add(d.id);
-            const previousGroup = existingDuties.find(x => x.id === d.id)?.assignedGroup || '';
-            const updatedDuty = await updateEventDuty(context.appConfig, d.id, {
+            const existingDuty = existingDuties.find(x => x.id === d.id) || {};
+            const previousGroup = existingDuty.assignedGroup || '';
+            const changes = {
               section: d.section ? String(d.section).trim() : 'Allgemein',
               roleName: d.roleName ? String(d.roleName).trim() : translate(instanceLanguage(), 'Duty'),
               assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
               assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
               notes: d.notes ? String(d.notes).trim() : ''
-            });
+            };
+            // A duty given to someone else here takes the status that goes with it (it used to keep the old one)
+            changes.status = dutyStatusOf({ ...existingDuty, ...changes });
+            const updatedDuty = await updateEventDuty(context.appConfig, d.id, changes);
             if (updatedDuty?.assignedGroup && updatedDuty.assignedGroup !== previousGroup) {
               notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: updatedDuty.assignedGroup, event: updated, duty: updatedDuty, assignedBy: currentUid, origin: originOf(req) });
             }
           } else if (d.roleName && String(d.roleName).trim()) {
-            const createdDuty = await createEventDuty(context.appConfig, {
+            const fields = {
               event: event.id,
               section: d.section ? String(d.section).trim() : 'Allgemein',
               roleName: String(d.roleName).trim(),
               assignedGroup: d.assignedGroup ? String(d.assignedGroup).trim() : '',
               assignedUser: d.assignedUser ? String(d.assignedUser).trim() : '',
-              notes: d.notes ? String(d.notes).trim() : '',
-              status: d.assignedGroup || d.assignedUser ? 'confirmed' : 'open'
-            });
+              notes: d.notes ? String(d.notes).trim() : ''
+            };
+            const createdDuty = await createEventDuty(context.appConfig, { ...fields, status: dutyStatusOf(fields) });
             newDutyIds.add(createdDuty.id);
             if (createdDuty.assignedGroup) {
               notifyGroupDutyAssigned({ appConfig: context.appConfig, groupId: createdDuty.assignedGroup, event: updated, duty: createdDuty, assignedBy: currentUid, origin: originOf(req) });
@@ -703,11 +731,20 @@ router.patch('/api/events/duties/:dutyId', verifyToken, async (req, res) => {
     const updates = {};
 
     if (notes !== undefined) updates.notes = String(notes).trim();
-    if (status !== undefined && canManage) updates.status = String(status).trim();
+    if (status !== undefined && canManage) {
+      const wanted = String(status).trim();
+      if (!DUTY_STATES.includes(wanted)) return res.status(400).json({ error: 'Unknown duty status' });
+      // "open" frees the duty; any other status follows who has it (below)
+      if (wanted === 'open') Object.assign(updates, { assignedGroup: '', assignedUser: '', requestedUser: '', requestedBy: '' });
+    }
     if (section !== undefined && canManage) updates.section = String(section).trim();
     if (roleName !== undefined && canManage) updates.roleName = String(roleName).trim();
     if (assignedGroup !== undefined && canManage) updates.assignedGroup = String(assignedGroup).trim();
     if (assignedUser !== undefined && canManage) updates.assignedUser = String(assignedUser).trim();
+    // The status always fits who has the duty (dutyStatus.js): a group "assigned", a person "confirmed"
+    if (canManage && (status !== undefined || assignedGroup !== undefined || assignedUser !== undefined)) {
+      updates.status = dutyStatusOf({ ...duty, ...updates });
+    }
 
     const updated = await updateEventDuty(context.appConfig, duty.id, updates);
     broadcastDataUpdate('events');

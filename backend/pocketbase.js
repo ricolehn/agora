@@ -274,6 +274,30 @@ async function ensurePocketBaseSchema(appConfig, { onUpgrading } = {}) {
   await grantNewPermission(appConfig, 'manage_songbook', 'songbookPermissionMigrated', 'manage the songbook');
   await grantNewPermission(appConfig, 'manage_prayers', 'prayersPermissionMigrated', 'moderate prayer requests');
   await grantNewPermission(appConfig, 'manage_media', 'mediaPermissionMigrated', 'manage media folders');
+  await runRepairOnce(appConfig, 'duty-statuses', async () => {
+    const repaired = await require('./dutyStatus').repairDutyStatuses(appConfig);
+    if (repaired) console.log(`[Migration] ${repaired} duty status(es) now fit who has the duty`);
+    return { repaired };
+  });
+}
+
+/**
+ * Runs [repair] once per database: it is recorded in system_migrations under [id] (with what it returned) and never
+ * runs again. A repair that fails is tried again at the next start.
+ */
+async function runRepairOnce(appConfig, id, repair) {
+  const client = require('./db/client');
+  const done = await client.getRecord('system_migrations', id, appConfig).catch(() => null);
+  if (done?.status === 'done') return;
+  const startedAt = new Date().toISOString();
+  try {
+    const report = await repair();
+    const record = { status: 'done', attempts: (done?.attempts || 0) + 1, startedAt, finishedAt: new Date().toISOString(), report: report || {}, error: '' };
+    if (done) await client.updateRecord('system_migrations', id, record, appConfig);
+    else await client.createRecord('system_migrations', { id, ...record }, appConfig);
+  } catch (err) {
+    console.warn(`[Migration] ${id} failed (tried again at the next start):`, err.message);
+  }
 }
 
 /**
@@ -297,7 +321,22 @@ async function grantNewPermission(appConfig, permission, flag, what) {
       console.log(`[Migration] Group "${group.name}" may now ${what}`);
     }
   }
-  await upsertStateValue(appConfig, 'system', { ...system, [flag]: true });
+  await updateSystemState(appConfig, (current) => ({ ...current, [flag]: true }));
+}
+
+const SYSTEM_STATE_LOCK = 'state:system';
+
+/**
+ * Changes the instance's own settings (the invite code, the owner, what was migrated) one change at a time: [change]
+ * gets the current value and returns the next one (null: nothing to write). Two changes at the same moment used to
+ * read the same value and the later write undid the earlier one.
+ */
+function updateSystemState(appConfig, change) {
+  return queueRecordWrite(SYSTEM_STATE_LOCK, async () => {
+    const next = await change(await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE));
+    if (next) await upsertStateValue(appConfig, 'system', next);
+    return next;
+  });
 }
 
 async function verifyUserToken(token) {
@@ -690,9 +729,10 @@ async function upsertPushSubscription(appConfig, userId, subscription, userAgent
   return systemStore.webPush.create(appConfig, payload);
 }
 
-async function deletePushSubscription(appConfig, endpoint) {
+/** Removes the web push subscription of [endpoint] - only [userId]'s own (anyone could send someone else's address). */
+async function deletePushSubscription(appConfig, endpoint, userId = null) {
   const existing = await getPushSubscriptionByEndpoint(appConfig, endpoint);
-  if (existing) {
+  if (existing && (!userId || existing.user === String(userId))) {
     return systemStore.webPush.remove(appConfig, existing.id);
   }
   return null;
@@ -734,6 +774,8 @@ const removeFcmToken = (appConfig, id) => systemStore.fcmTokens.remove(appConfig
 
 module.exports = {
   UpgradeNotDone,
+  SYSTEM_STATE_LOCK,
+  updateSystemState,
   noteFallback,
   financeStore,
   withSecureInviteCode,
