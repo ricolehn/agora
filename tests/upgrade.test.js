@@ -47,6 +47,10 @@ describe('the database upgrade', { skip: !POCKETBASE_BIN && 'set POCKETBASE_BIN 
   });
 
   test('every answer of the old API is the same after the upgrade', async () => {
+    // The answers come from the new tables: the previous version, serving when the upgrade does not get through, would
+    // give the same ones
+    const status = await (await fetch(`${backend.base}/api/status`)).json();
+    assert.equal(status.upgrade, undefined, `the upgrade got through: ${status.upgrade?.reason || ''}`);
     const after_ = await recordAll(http, reads);
     const differences = [];
     reads.forEach(([who, url], index) => {

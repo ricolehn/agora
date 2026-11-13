@@ -107,6 +107,13 @@ async function seedOldInstance({ http, su: getSu }) {
     payments: [...(p.payments || []), pay(600, '2025-01-02', 'Jahr 2025'), pay(-50, '2025-02-01', 'Korrektur')],
     standingOrders: [{ id: 'so-treasurer', amount: 50, startDate: '2026-01-01', note: 'Dauerauftrag', lastAutoPayment: null }]
   }));
+  // Ids as the web app makes them for standing orders (and other clients for entries): the time as text, "1771345242762".
+  // PocketBase reads such a string in a json field as a number - the new tables have to give back the text
+  await mutate(uids.mia, (p) => ({
+    ...p,
+    payments: [...(p.payments || []), { amount: 20, date: '2025-05-05', description: 'Beitrag', id: '1746403200000' }],
+    standingOrders: [{ id: '1771345242762', amount: 25, startDate: '2026-02-01', note: 'Dauerauftrag', lastAutoPayment: null }]
+  }));
   await mutate(uids.mentor, (p) => ({
     ...p,
     status: 'geringverdiener',
@@ -117,7 +124,8 @@ async function seedOldInstance({ http, su: getSu }) {
   // Donations and expenses as whole lists (the web app writes them like this)
   await ok(call('treasurer', 'PUT', '/api/db', { path: 'expenses', value: [
     { id: 1710000000001, amount: 89.9, description: 'Beamer-Lampe', issuer: 'Theo Kasse', date: '2024-03-04' },
-    { id: 1710000000002, amount: 12.5, description: 'Kerzen', issuer: 'Mia Muster', date: '2025-12-01', receipt: 'beleg-kerzen.png' }
+    { id: 1710000000002, amount: 12.5, description: 'Kerzen', issuer: 'Mia Muster', date: '2025-12-01', receipt: 'beleg-kerzen.png' },
+    { id: '1760090000000', amount: 7.2, description: 'Briefmarken', issuer: 'Theo Kasse', date: '2025-10-10' }
   ] }));
 
   // Requests from members, one decided each way
