@@ -113,7 +113,31 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     return call(who, 'POST', '/api/upload', form, { form: true });
   };
 
+  // Stand-ins for Anthropic's, OpenAI's and Google's own interfaces: the server is pointed at them (AGORA_AI_URL_*),
+  // each test says what they answer ([hubAnswer](request) with { path, headers, body }) and reads what they got
+  let hubAnswer = null;
+  const hubRequests = [];
+  let hub;
+  let hubBase;
+
   before(async () => {
+    hub = require('http').createServer((req, res) => {
+      let raw = '';
+      req.on('data', (part) => { raw += part; });
+      req.on('end', async () => {
+        const request = { path: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null };
+        hubRequests.push(request);
+        try {
+          if (!hubAnswer) throw new Error('no answer set');
+          await hubAnswer(request, res);
+        } catch (err) {
+          if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: `stand-in: ${err.message}` } }));
+        }
+      });
+    });
+    await new Promise((resolve) => hub.listen(0, '127.0.0.1', resolve));
+    hubBase = `http://127.0.0.1:${hub.address().port}`;
     const [port, pbPort] = await Promise.all([freePort(), freePort()]);
     dataRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agora-api-'));
     const pbDir = path.join(dataRoot, 'pb');
@@ -132,7 +156,10 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       FRONTEND_DIR: REPO_ROOT,
       NODE_ENV: 'test',
       // Polls are switched off by default; their API is tested here all the same
-      AGORA_FEATURE_POLLS: '1'
+      AGORA_FEATURE_POLLS: '1',
+      AGORA_AI_URL_ANTHROPIC: `${hubBase}/anthropic`,
+      AGORA_AI_URL_OPENAI: `${hubBase}/openai/v1`,
+      AGORA_AI_URL_GEMINI: `${hubBase}/gemini`
     }));
     await waitFor(`${base}/api/status`, 'backend', processes);
 
@@ -159,6 +186,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
   });
 
   after(() => {
+    hub?.close();
     for (const child of processes.reverse()) if (child.exitCode === null) child.kill();
     if (dataRoot) fs.rmSync(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   });
@@ -2010,7 +2038,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     return { requests, baseUrl: `http://127.0.0.1:${server.address().port}/v1`, close: () => server.close() };
   }
   // The AI settings with the stand-in provider (effort: as stored, unless named)
-  const useProvider = (provider, extra = {}) => ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, baseUrl: provider.baseUrl, apiKey: 'test-key', model: 'stand-in', ...extra }));
+  const useProvider = (provider, extra = {}) => ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, provider: 'custom', baseUrl: provider.baseUrl, apiKey: 'test-key', model: 'stand-in', ...extra }));
   // Asks the AI as [who]: what the server streams back (lookups, thoughts, text, '[DONE]')
   async function askAi(who, content) {
     const res = await call(who, 'POST', '/api/ai/chat', { messages: [{ role: 'user', content }] });
@@ -2054,18 +2082,23 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
   }
   const ALL_LOOKUPS = ['events', 'finance_changes', 'members', 'money', 'money_totals'];
 
-  test('AI settings: the effort level is medium until one is chosen, and only low, medium or high are taken', async () => {
+  test('AI settings: the effort level is medium until one is chosen, and only low, medium, high, xhigh or max are taken', async () => {
     const provider = await standInProvider(() => [{ content: 'OK' }]);
     try {
       await useProvider(provider);
       const settings = await ok(call('owner', 'GET', '/api/admin/ai-config'));
-      assert.deepEqual(settings, { enabled: true, baseUrl: provider.baseUrl, apiKey: '***', model: 'stand-in', effort: 'medium' });
+      assert.deepEqual(settings, { enabled: true, provider: 'custom', baseUrl: provider.baseUrl, apiKey: '***', model: 'stand-in', effort: 'medium' });
       await useProvider(provider, { effort: 'high' });
       assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, 'high');
       // A save without one (an older app) keeps it
       await useProvider(provider);
       assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, 'high');
-      for (const wrong of ['max', 5, 'HIGH', '__proto__']) {
+      for (const level of ['xhigh', 'max']) {
+        await useProvider(provider, { effort: level });
+        assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, level);
+      }
+      await useProvider(provider, { effort: 'high' });
+      for (const wrong of ['extreme', 5, 'HIGH', '__proto__']) {
         assert.equal((await call('owner', 'PUT', '/api/admin/ai-config', { effort: wrong })).status, 400, String(wrong));
       }
       assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).effort, 'high');
@@ -2437,7 +2470,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.equal(provider.requests.length, 3);
       assert.ok(!provider.requests[2].tools);
       // ... and not shown in the settings
-      assert.deepEqual(Object.keys(await ok(call('owner', 'GET', '/api/admin/ai-config'))).sort(), ['apiKey', 'baseUrl', 'effort', 'enabled', 'model']);
+      assert.deepEqual(Object.keys(await ok(call('owner', 'GET', '/api/admin/ai-config'))).sort(), ['apiKey', 'baseUrl', 'effort', 'enabled', 'model', 'provider']);
       // Saving the settings tries again
       await useProvider(provider);
       await askAi('kora', 'Hallo?');
@@ -2478,6 +2511,299 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       assert.ok(provider.requests[0].tools);
     } finally {
       provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  // --- AI services: Anthropic, Google and OpenAI through their own interfaces (backend/aiProviders) ------------------
+
+  // What Anthropic's Messages API streams for [blocks] (thinking, text, tool_use), ending with [stopReason]
+  function anthropicAnswer(res, blocks, stopReason) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+    send('message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } });
+    blocks.forEach((block, index) => {
+      if (block.type === 'thinking') {
+        send('content_block_start', { index, content_block: { type: 'thinking', thinking: '', signature: '' } });
+        send('content_block_delta', { index, delta: { type: 'thinking_delta', thinking: block.thinking } });
+        send('content_block_delta', { index, delta: { type: 'signature_delta', signature: block.signature } });
+      } else if (block.type === 'text') {
+        send('content_block_start', { index, content_block: { type: 'text', text: '' } });
+        send('content_block_delta', { index, delta: { type: 'text_delta', text: block.text } });
+      } else {
+        send('content_block_start', { index, content_block: { type: 'tool_use', id: block.id, name: block.name, input: {} } });
+        const json = JSON.stringify(block.input);
+        send('content_block_delta', { index, delta: { type: 'input_json_delta', partial_json: json.slice(0, 12) } });
+        send('content_block_delta', { index, delta: { type: 'input_json_delta', partial_json: json.slice(12) } });
+      }
+      send('content_block_stop', { index });
+    });
+    send('message_delta', { delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: 20 } });
+    send('message_stop', {});
+    res.end();
+  }
+  const anthropicError = (res, message) => {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message } }));
+  };
+  // What OpenAI's Responses API streams: a reasoning summary, text and function calls
+  function responsesAnswer(res, { reasoning, text, calls = [] }) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+    const output = [];
+    if (reasoning) {
+      send('response.reasoning_summary_part.added', { item_id: 'rs_1', output_index: 0, summary_index: 0, part: { type: 'summary_text', text: '' } });
+      send('response.reasoning_summary_text.delta', { item_id: 'rs_1', output_index: 0, summary_index: 0, delta: reasoning });
+      output.push({ id: 'rs_1', type: 'reasoning', summary: [{ type: 'summary_text', text: reasoning }], encrypted_content: 'enc-1' });
+    }
+    if (text) {
+      send('response.output_text.delta', { item_id: 'msg_1', output_index: output.length, content_index: 0, delta: text });
+      output.push({ id: 'msg_1', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text, annotations: [] }] });
+    }
+    for (const call of calls) output.push({ id: `fc_${call.id}`, type: 'function_call', status: 'completed', call_id: call.id, name: call.name, arguments: JSON.stringify(call.args) });
+    send('response.completed', { response: { id: 'resp_1', status: 'completed', output } });
+    res.end();
+  }
+  const jsonError = (res, status, message) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message } }));
+  };
+  // What the Gemini API streams: one chunk per list of parts
+  function geminiAnswer(res, chunks) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    for (const parts of chunks) res.write(`data: ${JSON.stringify({ candidates: [{ content: { role: 'model', parts }, index: 0 }] })}\r\n\r\n`);
+    res.end();
+  }
+  const usePreset = (provider, extra = {}) => ok(call('owner', 'PUT', '/api/admin/ai-config', { enabled: true, provider, apiKey: `${provider}-key`, model: '', ...extra }));
+  const MONEY_STEP = 'Suche die Kosten des Lichterfests';
+
+  test('AI services: chosen in the settings - the big three at their own address, and a new address needs the key again', async () => {
+    const provider = await standInProvider(() => [{ content: 'OK' }]);
+    try {
+      await useProvider(provider, { effort: 'medium' });
+      assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).provider, 'custom');
+      // Another service is another address: its key, please
+      const keyAgain = await call('owner', 'PUT', '/api/admin/ai-config', { provider: 'anthropic' });
+      assert.equal(keyAgain.status, 400);
+      assert.match(keyAgain.body.error, /API key again/);
+      assert.equal((await call('owner', 'PUT', '/api/admin/ai-config', { provider: 'mistral', apiKey: 'x' })).status, 400);
+      for (const name of ['anthropic', 'gemini', 'openai']) {
+        await usePreset(name);
+        const settings = await ok(call('owner', 'GET', '/api/admin/ai-config'));
+        // The address entered for the OpenAI-compatible service stays for when it is chosen again
+        assert.deepEqual(settings, { enabled: true, provider: name, baseUrl: provider.baseUrl, apiKey: '***', model: '', effort: 'medium' });
+      }
+      // The same service again keeps its key
+      await ok(call('owner', 'PUT', '/api/admin/ai-config', { provider: 'openai', model: 'gpt-5' }));
+      await useProvider(provider);
+      assert.equal((await ok(call('owner', 'GET', '/api/admin/ai-config'))).provider, 'custom');
+    } finally {
+      provider.close();
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI services: Claude through Anthropic\'s own interface - its thinking, effort up to max, caching and fallbacks; its turn goes back unchanged', async () => {
+    await aiAccount('klara', 'Klara', true);
+    await addToList('expenses', [
+      { id: 1799000000001, amount: 30, description: 'Lichterfest Blumen', issuer: 'Theo', date: '2015-12-20' },
+      { id: 1799000000002, amount: 12.5, description: 'Lichterfest Kerzen', issuer: 'Theo', date: '2015-12-22' }
+    ]);
+    const call1 = { step: MONEY_STEP, kind: 'expenses', search: ['lichterfest'] };
+    hubRequests.length = 0;
+    hubAnswer = ({ body }, res) => {
+      if (!body.messages.some((message) => Array.isArray(message.content) && message.content.some((block) => block.type === 'tool_result'))) {
+        return anthropicAnswer(res, [
+          { type: 'thinking', thinking: '**Lese die Frage**\n\nDie Zusammenfassung reicht nicht.', signature: 'sig-1' },
+          { type: 'text', text: 'Ich schaue nach.' },
+          { type: 'tool_use', id: 'toolu_1', name: 'money', input: call1 }
+        ], 'tool_use');
+      }
+      return anthropicAnswer(res, [{ type: 'thinking', thinking: 'Zwei Einträge.', signature: 'sig-2' }, { type: 'text', text: 'Zusammen 42,50 €.' }], 'end_turn');
+    };
+    try {
+      await usePreset('anthropic', { effort: 'max' });
+      const events = await askAi('klara', 'Was hat das Lichterfest gekostet?');
+      assert.deepEqual(events, [
+        { reasoning: '**Lese die Frage**\n\nDie Zusammenfassung reicht nicht.' },
+        { content: 'Ich schaue nach.' },
+        { lookup: { id: 1, tool: 'expenses', step: MONEY_STEP, about: 'lichterfest' } },
+        { lookupDone: { id: 1, count: 2, unit: 'entries', eur: 42.5 } },
+        { reasoning: '\n\n' }, { reasoning: 'Zwei Einträge.' },
+        { content: '\n\n' }, { content: 'Zusammen 42,50 €.' },
+        '[DONE]'
+      ]);
+      assert.equal(hubRequests.length, 2);
+      const [first, second] = hubRequests;
+      assert.equal(first.path, '/anthropic/v1/messages');
+      // Anthropic's SDK sends the key and its API version
+      assert.equal(first.headers.authorization, 'Bearer anthropic-key');
+      assert.ok(first.headers['anthropic-version']);
+      // Claude Opus 5.5 (no model entered): a declined question goes to Anthropic's fallback
+      assert.match(first.headers['anthropic-beta'], /server-side-fallback-2026-07-01/);
+      assert.equal(first.body.fallbacks, 'default');
+      assert.equal(first.body.model, 'claude-opus-5-5');
+      assert.equal(first.body.stream, true);
+      assert.deepEqual(first.body.thinking, { type: 'adaptive', display: 'summarized' });
+      assert.deepEqual(first.body.output_config, { effort: 'max' });
+      assert.deepEqual(first.body.cache_control, { type: 'ephemeral' });
+      assert.match(first.body.system, /Lookups: the context below is a summary/);
+      assert.deepEqual(first.body.messages, [{ role: 'user', content: 'Was hat das Lichterfest gekostet?' }]);
+      assert.deepEqual(first.body.tools.map((tool) => tool.name).sort(), ALL_LOOKUPS);
+      assert.ok(first.body.tools.every((tool) => tool.input_schema.type === 'object' && tool.eager_input_streaming === true));
+      assert.deepEqual(first.body.tool_choice, { type: 'auto' });
+      // The second turn: Claude's turn as it came (its thinking with the signature), then the result
+      const [, assistant, results] = second.body.messages;
+      assert.equal(assistant.role, 'assistant');
+      assert.deepEqual(assistant.content.map((block) => block.type), ['thinking', 'text', 'tool_use']);
+      assert.equal(assistant.content[0].signature, 'sig-1');
+      assert.equal(assistant.content[0].thinking, '**Lese die Frage**\n\nDie Zusammenfassung reicht nicht.');
+      assert.deepEqual([assistant.content[2].id, assistant.content[2].input], ['toolu_1', call1]);
+      assert.equal(results.role, 'user');
+      assert.equal(results.content[0].type, 'tool_result');
+      assert.equal(results.content[0].tool_use_id, 'toolu_1');
+      assert.deepEqual(JSON.parse(results.content[0].content).total, { entries: 2, eur: 42.5 });
+
+      // A model without "max" or "xhigh" gets the next level down (not remembered: the next model may have it); one
+      // without fallbacks gets none
+      hubRequests.length = 0;
+      hubAnswer = ({ body }, res) => (['max', 'xhigh'].includes(body.output_config?.effort)
+        ? anthropicError(res, `output_config.effort: "${body.output_config.effort}" is not supported by this model`)
+        : anthropicAnswer(res, [{ type: 'text', text: 'Antwort.' }], 'end_turn'));
+      await usePreset('anthropic', { model: 'claude-opus-4-6', effort: 'max' });
+      assert.deepEqual(await askAi('klara', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      assert.deepEqual(hubRequests.map((request) => request.body.output_config.effort), ['max', 'xhigh', 'high']);
+      assert.ok(hubRequests.every((request) => request.body.fallbacks === undefined && !request.headers['anthropic-beta']));
+
+      // A model that takes neither effort nor adaptive thinking: both left out, and remembered
+      hubRequests.length = 0;
+      hubAnswer = ({ body }, res) => {
+        if (body.output_config) return anthropicError(res, 'output_config.effort: Extra inputs are not permitted');
+        if (body.thinking) return anthropicError(res, 'thinking.type: adaptive thinking is not supported on this model');
+        return anthropicAnswer(res, [{ type: 'text', text: 'Antwort.' }], 'end_turn');
+      };
+      await usePreset('anthropic', { model: 'claude-haiku-4-5', effort: 'medium' });
+      assert.deepEqual(await askAi('klara', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      assert.equal(hubRequests.length, 3);
+      await askAi('klara', 'Hallo?');
+      assert.equal(hubRequests.length, 4);
+      assert.ok(!('output_config' in hubRequests[3].body) && !('thinking' in hubRequests[3].body));
+
+      // Declined, also by the fallback: an error, not the partial text
+      hubAnswer = (request, res) => anthropicAnswer(res, [{ type: 'text', text: 'Teil' }], 'refusal');
+      await usePreset('anthropic', { effort: 'medium' });
+      const declined = await askAi('klara', 'Hallo?');
+      assert.deepEqual(declined[declined.length - 1], { error: 'The AI declined to answer this question.' });
+    } finally {
+      hubAnswer = null;
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI services: ChatGPT through OpenAI\'s own interface - reasoning summaries and effort, the encrypted reasoning goes back', async () => {
+    await aiAccount('konrad', 'Konrad', true);
+    const call1 = { step: MONEY_STEP, kind: 'expenses', search: ['lichterfest'] };
+    hubRequests.length = 0;
+    hubAnswer = ({ body }, res) => (body.input.some((item) => item.type === 'function_call_output')
+      ? responsesAnswer(res, { text: 'Zusammen 42,50 €.' })
+      : responsesAnswer(res, { reasoning: '**Prüfe die Ausgaben**', calls: [{ id: 'call_a', name: 'money', args: call1 }] }));
+    try {
+      await usePreset('openai', { effort: 'xhigh' });
+      const events = await askAi('konrad', 'Was hat das Lichterfest gekostet?');
+      assert.deepEqual(events, [
+        { reasoning: '**Prüfe die Ausgaben**' },
+        { lookup: { id: 1, tool: 'expenses', step: MONEY_STEP, about: 'lichterfest' } },
+        { lookupDone: { id: 1, count: 2, unit: 'entries', eur: 42.5 } },
+        { content: 'Zusammen 42,50 €.' },
+        '[DONE]'
+      ]);
+      const [first, second] = hubRequests;
+      assert.equal(first.path, '/openai/v1/responses');
+      assert.equal(first.headers.authorization, 'Bearer openai-key');
+      assert.equal(first.body.model, 'gpt-5-mini');
+      assert.match(first.body.instructions, /Lookups: the context below is a summary/);
+      assert.deepEqual(first.body.input, [{ role: 'user', content: 'Was hat das Lichterfest gekostet?' }]);
+      assert.deepEqual(first.body.reasoning, { effort: 'xhigh', summary: 'auto' });
+      assert.deepEqual(first.body.include, ['reasoning.encrypted_content']);
+      assert.equal(first.body.store, false);
+      assert.equal(first.body.tool_choice, 'auto');
+      assert.ok(first.body.tools.every((tool) => tool.type === 'function' && tool.name && tool.parameters.type === 'object'));
+      // The reasoning (encrypted) and the call go back as they came, then the result
+      const [, reasoning, functionCall, output] = second.body.input;
+      assert.deepEqual([reasoning.type, reasoning.encrypted_content], ['reasoning', 'enc-1']);
+      assert.deepEqual([functionCall.type, functionCall.call_id, functionCall.name], ['function_call', 'call_a', 'money']);
+      assert.deepEqual([output.type, output.call_id], ['function_call_output', 'call_a']);
+      assert.deepEqual(JSON.parse(output.output).total, { entries: 2, eur: 42.5 });
+
+      // A model without "xhigh": one level lower, not remembered
+      hubRequests.length = 0;
+      hubAnswer = ({ body }, res) => (body.reasoning?.effort === 'xhigh'
+        ? jsonError(res, 400, 'Unsupported value: \'reasoning.effort\' does not support \'xhigh\' with this model. Supported values are: \'low\', \'medium\', and \'high\'.')
+        : responsesAnswer(res, { text: 'Antwort.' }));
+      assert.deepEqual(await askAi('konrad', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      assert.deepEqual(hubRequests.map((request) => request.body.reasoning.effort), ['xhigh', 'high']);
+
+      // A model without reasoning: the reasoning parts are left out, and remembered
+      hubRequests.length = 0;
+      hubAnswer = ({ body }, res) => (body.reasoning || body.include
+        ? jsonError(res, 400, 'Unsupported parameter: \'reasoning.effort\' is not supported with this model.')
+        : responsesAnswer(res, { text: 'Antwort.' }));
+      await usePreset('openai', { model: 'gpt-4.1', effort: 'medium' });
+      assert.deepEqual(await askAi('konrad', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      await askAi('konrad', 'Hallo?');
+      assert.equal(hubRequests.length, 3);
+      assert.ok(!('reasoning' in hubRequests[2].body) && !('include' in hubRequests[2].body));
+    } finally {
+      hubAnswer = null;
+      await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
+    }
+  });
+
+  test('AI services: Gemini through Google\'s own interface - its thoughts, and its turn with the thought signature goes back', async () => {
+    await aiAccount('kuno', 'Kuno', true);
+    const call1 = { step: MONEY_STEP, kind: 'expenses', search: ['lichterfest'] };
+    const signed = { functionCall: { name: 'money', args: call1 }, thoughtSignature: 'gsig-1' };
+    hubRequests.length = 0;
+    hubAnswer = ({ body }, res) => (body.contents.some((content) => content.parts.some((part) => part.functionResponse))
+      ? geminiAnswer(res, [[{ text: 'Zusammen ' }], [{ text: '42,50 €.' }]])
+      : geminiAnswer(res, [[{ text: '**Denke über die Kosten nach**', thought: true }], [signed]]));
+    try {
+      await usePreset('gemini', { effort: 'high' });
+      const events = await askAi('kuno', 'Was hat das Lichterfest gekostet?');
+      assert.deepEqual(events, [
+        { reasoning: '**Denke über die Kosten nach**' },
+        { lookup: { id: 1, tool: 'expenses', step: MONEY_STEP, about: 'lichterfest' } },
+        { lookupDone: { id: 1, count: 2, unit: 'entries', eur: 42.5 } },
+        { content: 'Zusammen ' }, { content: '42,50 €.' },
+        '[DONE]'
+      ]);
+      const [first, second] = hubRequests;
+      assert.equal(first.path, '/gemini/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse');
+      assert.equal(first.headers['x-goog-api-key'], 'gemini-key');
+      assert.match(first.body.systemInstruction.parts[0].text, /Lookups: the context below is a summary/);
+      assert.deepEqual(first.body.contents, [{ role: 'user', parts: [{ text: 'Was hat das Lichterfest gekostet?' }] }]);
+      assert.deepEqual(first.body.tools[0].functionDeclarations.map((tool) => tool.name).sort(), ALL_LOOKUPS);
+      assert.deepEqual(first.body.toolConfig, { functionCallingConfig: { mode: 'AUTO' } });
+      assert.deepEqual(first.body.generationConfig, { thinkingConfig: { includeThoughts: true } });
+      // Gemini's turn as it came (the thought signature included), then the result as a function response
+      const [, model, results] = second.body.contents;
+      assert.deepEqual(model, { role: 'model', parts: [{ text: '**Denke über die Kosten nach**', thought: true }, signed] });
+      assert.equal(results.role, 'user');
+      assert.equal(results.parts[0].functionResponse.name, 'money');
+      assert.deepEqual(results.parts[0].functionResponse.response.total, { entries: 2, eur: 42.5 });
+
+      // A model that does not think: its thoughts are not asked for again
+      hubRequests.length = 0;
+      hubAnswer = ({ body }, res) => (body.generationConfig
+        ? jsonError(res, 400, 'Thinking is not supported for this model.')
+        : geminiAnswer(res, [[{ text: 'Antwort.' }]]));
+      await usePreset('gemini', { model: 'gemini-2.0-flash' });
+      assert.deepEqual(await askAi('kuno', 'Hallo?'), [{ content: 'Antwort.' }, '[DONE]']);
+      await askAi('kuno', 'Hallo?');
+      assert.equal(hubRequests.length, 3);
+      assert.ok(!('generationConfig' in hubRequests[2].body));
+    } finally {
+      hubAnswer = null;
       await call('owner', 'PUT', '/api/admin/ai-config', { enabled: false });
     }
   });

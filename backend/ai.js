@@ -20,34 +20,68 @@ const AI_CONFIG_DEFAULTS = {
 // How much a question may cost, per effort level (Settings → AI; set by the admins, stored with the AI settings):
 //  - low: the compact context only, one request per question - as before there were lookups.
 //  - medium (the default): the model may look up the full history when a question needs it.
-//  - high: more and larger lookups, and more thinking for models that support it (reasoning_effort).
+//  - high, xhigh, max: more and larger lookups, and deeper thinking where the service lets the chat ask for it
+//    (Anthropic: effort up to max; OpenAI: reasoning effort up to xhigh; OpenAI-compatible: reasoning_effort "high").
 // lookups: how many lookups one question may make; rows / chars: the most one lookup's result may hold (rows, and
 // characters of its JSON); total: the characters all results of one question may hold together. A question without
-// lookups costs about the same on every level (medium and high add the short description of the lookups); each round
-// of lookups sends the question with its context once more.
+// lookups costs about the same on every level (from medium on the short description of the lookups goes along);
+// each round of lookups sends the question with its context once more.
 const AI_EFFORT_LEVELS = Object.freeze({
-  low: Object.freeze({ lookups: 0, rows: 0, chars: 0, total: 0, reasoningEffort: null }),
-  medium: Object.freeze({ lookups: 4, rows: 50, chars: 8000, total: 24000, reasoningEffort: null }),
-  high: Object.freeze({ lookups: 10, rows: 200, chars: 24000, total: 120000, reasoningEffort: 'high' })
+  low: Object.freeze({ lookups: 0, rows: 0, chars: 0, total: 0 }),
+  medium: Object.freeze({ lookups: 4, rows: 50, chars: 8000, total: 24000 }),
+  high: Object.freeze({ lookups: 10, rows: 200, chars: 24000, total: 120000 }),
+  xhigh: Object.freeze({ lookups: 15, rows: 300, chars: 32000, total: 180000 }),
+  max: Object.freeze({ lookups: 20, rows: 400, chars: 40000, total: 240000 })
 });
 const DEFAULT_AI_EFFORT = 'medium';
 
 /** The effort level of [settings] (missing or unknown: medium). */
 const aiEffortOf = (settings) => (typeof settings?.effort === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, settings.effort) ? settings.effort : DEFAULT_AI_EFFORT);
 
-/** The provider a question goes to: its address and model as the chat uses them, and both together as its key. */
-function aiProviderOf(settings) {
-  const baseUrl = (settings?.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
-  const model = settings?.model || 'gpt-4o-mini';
-  return { baseUrl, model, key: `${baseUrl}|${model}` };
+// The services the chat talks to. Anthropic, Google and OpenAI through their own interfaces at their own address
+// (AGORA_AI_URL_ANTHROPIC, AGORA_AI_URL_GEMINI or AGORA_AI_URL_OPENAI points a server elsewhere, e.g. to a gateway);
+// "custom": any OpenAI-compatible service at the address the admins enter - and what settings without a provider
+// mean (as before there was a choice). model: what a question goes to when no model is entered.
+const AI_PROVIDERS = Object.freeze({
+  anthropic: Object.freeze({ url: 'https://api.anthropic.com', env: 'AGORA_AI_URL_ANTHROPIC', model: 'claude-opus-5-5' }),
+  gemini: Object.freeze({ url: 'https://generativelanguage.googleapis.com', env: 'AGORA_AI_URL_GEMINI', model: 'gemini-2.5-flash' }),
+  openai: Object.freeze({ url: 'https://api.openai.com/v1', env: 'AGORA_AI_URL_OPENAI', model: 'gpt-5-mini' }),
+  custom: Object.freeze({ url: 'https://api.openai.com/v1', env: null, model: 'gpt-4o-mini' })
+});
+
+/** The service of [settings] (missing or unknown: custom). */
+const aiProviderIdOf = (settings) => (typeof settings?.provider === 'string' && Object.hasOwn(AI_PROVIDERS, settings.provider) ? settings.provider : 'custom');
+
+/** Where the API key of [settings] goes: the address entered (custom), or the service's own. */
+function aiAddressOf(settings) {
+  const id = aiProviderIdOf(settings);
+  if (id === 'custom') return settings?.baseUrl || '';
+  return process.env[AI_PROVIDERS[id].env] || AI_PROVIDERS[id].url;
 }
 
-// What the chat remembers when the provider refused a part of the request: until the settings are saved again,
-// questions to this address and model go without it
-const UNSUPPORTED_FIELDS = { tools: 'toolsUnsupportedFor', reasoningEffort: 'reasoningEffortUnsupportedFor' };
+/** The provider a question goes to: the service, its address and model as the chat uses them, and a key for them. */
+function aiProviderOf(settings) {
+  const id = aiProviderIdOf(settings);
+  const baseUrl = (aiAddressOf(settings) || AI_PROVIDERS.custom.url).replace(/\/$/, '');
+  const model = settings?.model || AI_PROVIDERS[id].model;
+  return { id, baseUrl, model, key: id === 'custom' ? `${baseUrl}|${model}` : `${id}|${baseUrl}|${model}` };
+}
 
-/** Does the provider of [settings] take [feature] ('tools' or 'reasoningEffort'), as far as the chat knows. */
-const aiProviderTakes = (settings, feature) => settings?.[UNSUPPORTED_FIELDS[feature]] !== aiProviderOf(settings).key;
+// What the chat remembers when a service refused a part of the request (tool calls, thinking, an effort setting,
+// ...): until the settings are saved again, questions to this service and model go without it
+const LEGACY_UNSUPPORTED = { tools: 'toolsUnsupportedFor', reasoningEffort: 'reasoningEffortUnsupportedFor' };
+
+/** The parts of a request the service of [settings] refused, as far as the chat knows. */
+function aiRefusedParts(settings) {
+  const key = aiProviderOf(settings).key;
+  const parts = settings?.unsupported?.for === key && Array.isArray(settings.unsupported.parts) ? settings.unsupported.parts.filter((part) => typeof part === 'string') : [];
+  // What an earlier version remembered
+  for (const [part, field] of Object.entries(LEGACY_UNSUPPORTED)) if (settings?.[field] === key && !parts.includes(part)) parts.push(part);
+  return parts;
+}
+
+/** Does the service of [settings] take [part] ('tools', 'reasoningEffort', 'thinking', ...), as far as the chat knows. */
+const aiProviderTakes = (settings, part) => !aiRefusedParts(settings).includes(part);
 
 async function getAiSettings(appConfig) {
   return getStateValue(appConfig, AI_STATE_KEY, AI_CONFIG_DEFAULTS);
@@ -69,8 +103,10 @@ async function setAiSettings(appConfig, patch) {
         : current.apiKey,
       model: typeof patch.model === 'string' ? patch.model.trim() : current.model
     };
-    // The effort level is stored once it was chosen (without one, a question costs "medium"). What the chat
-    // remembered about the provider is dropped: saving the settings tries everything again.
+    // The service and the effort level are stored once they were chosen (without them: the OpenAI-compatible
+    // service, "medium"). What the chat remembered about the service is dropped: saving tries everything again.
+    const provider = typeof patch.provider === 'string' && Object.hasOwn(AI_PROVIDERS, patch.provider) ? patch.provider : current.provider;
+    if (typeof provider === 'string' && Object.hasOwn(AI_PROVIDERS, provider)) next.provider = provider;
     const effort = typeof patch.effort === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, patch.effort) ? patch.effort : current.effort;
     if (typeof effort === 'string' && Object.hasOwn(AI_EFFORT_LEVELS, effort)) next.effort = effort;
     await upsertStateValue(appConfig, AI_STATE_KEY, next);
@@ -78,14 +114,15 @@ async function setAiSettings(appConfig, patch) {
   });
 }
 
-/** Remembers that the provider [providerKey] refused [feature] ('tools' or 'reasoningEffort'). */
-async function rememberAiUnsupported(appConfig, providerKey, feature) {
-  const field = UNSUPPORTED_FIELDS[feature];
+/** Remembers that the service [providerKey] refused [part] of a request. */
+async function rememberAiUnsupported(appConfig, providerKey, part) {
   return queueRecordWrite(AI_STATE_LOCK, async () => {
     const current = await getAiSettings(appConfig);
-    // The settings were changed meanwhile: the new provider gets its own chance
-    if (aiProviderOf(current).key !== providerKey || current[field] === providerKey) return;
-    await upsertStateValue(appConfig, AI_STATE_KEY, { ...current, [field]: providerKey });
+    // The settings were changed meanwhile: the new service gets its own chance
+    if (aiProviderOf(current).key !== providerKey) return;
+    const parts = aiRefusedParts(current);
+    if (parts.includes(part)) return;
+    await upsertStateValue(appConfig, AI_STATE_KEY, { ...current, unsupported: { for: providerKey, parts: [...parts, part] } });
   });
 }
 
@@ -512,8 +549,12 @@ function reasoningKeyOf(chunk) {
 module.exports = {
   AI_EFFORT_LEVELS,
   DEFAULT_AI_EFFORT,
+  AI_PROVIDERS,
   aiEffortOf,
+  aiProviderIdOf,
+  aiAddressOf,
   aiProviderOf,
+  aiRefusedParts,
   aiProviderTakes,
   rememberAiUnsupported,
   addToolCallParts,

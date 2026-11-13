@@ -68,8 +68,8 @@ function normalize(url, res) {
   let body = walk(res.body);
   // The status names the API versions since v4 (an addition older apps do not read)
   if (url === '/api/status' && body && typeof body === 'object') body = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'apiVersions'));
-  // The AI settings name their effort level since v4 (an addition older apps do not read)
-  if (url === '/api/admin/ai-config' && body && typeof body === 'object' && !Array.isArray(body)) body = Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'effort'));
+  // The AI settings name their service and effort level since v4 (additions older apps do not read)
+  if (url === '/api/admin/ai-config' && body && typeof body === 'object' && !Array.isArray(body)) body = Object.fromEntries(Object.entries(body).filter(([key]) => !['effort', 'provider'].includes(key)));
   // A duty's status follows who has it since v4 (a group's duty used to be stored "confirmed"; backend/dutyStatus.js
   // repairs them once) - compared by that rule on both sides; the upgrade's own comparison checks them exactly
   // createdByManager was always false before v4 (a bug): left out on both sides, tested on its own in api.test.js

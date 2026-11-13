@@ -649,7 +649,7 @@
             <div id="sys-panel-ai" class="sys-panel" style="display: none;">
                 <div class="super-admin-group">
                     <div class="super-admin-group-title" data-i18n="superadmin_ai_title">AI Support Settings</div>
-                    <div class="super-admin-group-desc" data-i18n="superadmin_ai_desc">Connects the application to an AI provider (OpenAI, Google Gemini via OpenAI interface, or a local Ollama model).</div>
+                    <div class="super-admin-group-desc" data-i18n="superadmin_ai_desc">Connects the application to an AI provider: Anthropic (Claude), Google (Gemini), OpenAI (ChatGPT) or any OpenAI-compatible service, a local model (Ollama) too.</div>
 
                     <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
                         <label class="switch" style="flex-shrink:0;">
@@ -660,6 +660,17 @@
                     </div>
 
                     <div class="form-group">
+                        <label class="form-label" for="super-admin-ai-provider" style="color: var(--text-secondary);" data-i18n="ai_provider">Provider</label>
+                        <select id="super-admin-ai-provider" class="form-input super-admin-input" onchange="changeAiProvider()">
+                            <option value="anthropic" data-i18n="ai_provider_anthropic">Anthropic (Claude)</option>
+                            <option value="gemini" data-i18n="ai_provider_gemini">Google (Gemini)</option>
+                            <option value="openai" data-i18n="ai_provider_openai">OpenAI (ChatGPT)</option>
+                            <option value="custom" data-i18n="ai_provider_custom">OpenAI-compatible (own address)</option>
+                        </select>
+                        <div class="help-text" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;" data-i18n="ai_provider_desc">Anthropic, Google and OpenAI are connected through their own interfaces, their address is already set: only the API key and the model are needed. The AI's thoughts show in the chat and the effort level takes full effect. "OpenAI-compatible" is for other services and local models (Ollama, LM Studio, OpenRouter …) at an address of your own.</div>
+                    </div>
+
+                    <div class="form-group" id="super-admin-ai-base-url-group">
                         <label class="form-label" for="super-admin-ai-base-url" style="color: var(--text-secondary);" data-i18n="ai_base_url">Base URL</label>
                         <input type="url" id="super-admin-ai-base-url" class="form-input super-admin-input" placeholder="https://api.openai.com/v1">
                         <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;" data-i18n="ai_base_url_desc">Leave blank for OpenAI default. For Ollama: http://localhost:11434/v1</div>
@@ -677,7 +688,9 @@
 
                     <div class="form-group">
                         <label class="form-label" for="super-admin-ai-model" style="color: var(--text-secondary);" data-i18n="ai_model">Model Name</label>
-                        <input type="text" id="super-admin-ai-model" class="form-input super-admin-input" placeholder="gpt-4o-mini">
+                        <input type="text" id="super-admin-ai-model" class="form-input super-admin-input" placeholder="gpt-4o-mini" list="super-admin-ai-models" autocomplete="off">
+                        <datalist id="super-admin-ai-models"></datalist>
+                        <div class="help-text" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;" data-i18n="ai_model_desc">Empty: the model shown in grey, which the provider recommends.</div>
                     </div>
 
                     <div class="form-group">
@@ -686,10 +699,14 @@
                             <option value="low" data-i18n="ai_effort_low">Low</option>
                             <option value="medium" data-i18n="ai_effort_medium">Medium (recommended)</option>
                             <option value="high" data-i18n="ai_effort_high">High</option>
+                            <option value="xhigh" data-i18n="ai_effort_xhigh">Very high</option>
+                            <option value="max" data-i18n="ai_effort_max">Maximum</option>
                         </select>
                         <div class="help-text ai-effort-hint" data-effort="low" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem; display: none;" data-i18n="ai_effort_low_desc">Only the summary every question gets (the newest entries and the totals): one request per question, the cheapest. Questions about older single entries are answered from the totals.</div>
                         <div class="help-text ai-effort-hint" data-effort="medium" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem;" data-i18n="ai_effort_medium_desc">The AI looks up the full history when a question needs it: up to 4 lookups with small results. An ordinary question costs a little more than on Low (the lookups are described with it); a question with lookups about twice as much, because it goes to the AI again with the results – with several rounds up to 5 times.</div>
                         <div class="help-text ai-effort-hint" data-effort="high" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem; display: none;" data-i18n="ai_effort_high_desc">Up to 10 lookups with larger results, and more thinking for models that support it. For detailed evaluations: a question with lookups costs about 2 to 5 times as much as on Low, at most about 11 times, plus the thinking of the model.</div>
+                        <div class="help-text ai-effort-hint" data-effort="xhigh" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem; display: none;" data-i18n="ai_effort_xhigh_desc">Up to 15 lookups with large results, and very deep thinking (Claude and OpenAI: xhigh). For extensive evaluations; considerably more expensive than High.</div>
+                        <div class="help-text ai-effort-hint" data-effort="max" style="color: var(--text-secondary); margin-top: 6px; font-size: 0.8rem; display: none;" data-i18n="ai_effort_max_desc">Up to 20 lookups with the largest results, and Claude's deepest thinking (OpenAI: xhigh). The most expensive level – for the hardest questions only.</div>
                     </div>
 
                     <button class="btn btn-block super-admin-btn" onclick="saveAiConfig()" data-i18n="btn_save_ai">Save AI Settings</button>

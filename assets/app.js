@@ -5248,6 +5248,35 @@ async function saveAdvancedSystemConfig() {
 }
 
 const AI_FIELDS = { baseUrl: 'super-admin-ai-base-url', apiKey: 'super-admin-ai-api-key', model: 'super-admin-ai-model' };
+// The AI services: the first model is the one a question goes to when none is entered (the server's default)
+const AI_PROVIDER_MODELS = {
+    anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2'],
+    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+    openai: ['gpt-5-mini', 'gpt-5', 'gpt-5-nano', 'gpt-4.1'],
+    custom: ['gpt-4o-mini']
+};
+// The service the stored key and model belong to, and that model
+let aiSavedProvider = 'custom';
+let aiSavedModel = '';
+
+// Another service: the address only for the OpenAI-compatible one, its models to choose from, and its own key
+function changeAiProvider(fromLoad = false) {
+    const provider = Object.hasOwn(AI_PROVIDER_MODELS, inputValue('super-admin-ai-provider')) ? inputValue('super-admin-ai-provider') : 'custom';
+    show('super-admin-ai-base-url-group', provider === 'custom');
+    const models = AI_PROVIDER_MODELS[provider];
+    const modelEl = $(AI_FIELDS.model);
+    if (modelEl) {
+        modelEl.placeholder = models[0];
+        // A model of one service does not fit another: empty means the service's recommended model
+        if (!fromLoad) modelEl.value = provider === aiSavedProvider ? aiSavedModel : '';
+    }
+    $('super-admin-ai-models')?.replaceChildren(...models.map(model => Object.assign(document.createElement('option'), { value: model })));
+    const keyEl = $(AI_FIELDS.apiKey);
+    if (keyEl && !fromLoad) {
+        if (provider !== aiSavedProvider && keyEl.value === '***') keyEl.value = '';
+        else if (provider === aiSavedProvider && !keyEl.value) keyEl.value = '***';
+    }
+}
 
 async function loadAiConfig() {
     if (!isSuperAdminUser()) return;
@@ -5259,7 +5288,11 @@ async function loadAiConfig() {
         const enabledEl = $('super-admin-ai-enabled');
         if (enabledEl) enabledEl.checked = data.enabled;
         for (const [key, id] of Object.entries(AI_FIELDS)) setValue(id, data[key] || '');
-        setValue('super-admin-ai-effort', ['low', 'medium', 'high'].includes(data.effort) ? data.effort : 'medium');
+        aiSavedProvider = Object.hasOwn(AI_PROVIDER_MODELS, data.provider) ? data.provider : 'custom';
+        aiSavedModel = data.model || '';
+        setValue('super-admin-ai-provider', aiSavedProvider);
+        changeAiProvider(true);
+        setValue('super-admin-ai-effort', ['low', 'medium', 'high', 'xhigh', 'max'].includes(data.effort) ? data.effort : 'medium');
         showAiEffortHint();
         updateAiNavVisibility();
     } catch (err) {
@@ -5278,12 +5311,17 @@ async function saveAiConfig() {
     await attempt(async () => {
         const payload = {
             enabled: $('super-admin-ai-enabled')?.checked ?? false,
+            provider: inputValue('super-admin-ai-provider') || 'custom',
             baseUrl: inputValue(AI_FIELDS.baseUrl).trim(),
             apiKey: inputValue(AI_FIELDS.apiKey),
             model: inputValue(AI_FIELDS.model).trim(),
             effort: inputValue('super-admin-ai-effort') || 'medium'
         };
+        // Another service needs its own key (an empty one would replace the stored key)
+        if (payload.provider !== aiSavedProvider && !payload.apiKey.trim()) throw new Error(t('ai_key_needed', 'Please enter the API key for the chosen provider.'));
         await apiJson('/admin/ai-config', 'PUT', payload);
+        aiSavedProvider = payload.provider;
+        aiSavedModel = payload.model;
         aiEnabled = payload.enabled;
         updateAiNavVisibility();
         showToast(t('toast_ai_saved', 'AI settings saved'));
@@ -5313,6 +5351,7 @@ Object.assign(window, {
     filterByGroup, submitQuickAddGroup, submitSaveGroup, deleteCurrentGroup, openAssignGroupModal, submitAssignGroups, switchSysSettingsTab,
     updateUserMemberSince, toggleUserSystemAdmin, toggleUserPays, openCreateUserModal, submitCreateUser, openResetPasswordModal, submitResetPassword,
     deleteUserAccount, saveAdvancedSystemConfig, saveAiConfig, showAiEffortHint, uploadChurchLogo,
+    changeAiProvider: () => changeAiProvider(),
     clearGroupFilter: () => filterByGroup(null),
     openManageGroupModal: groupId => {
         const group = systemGroups.find(g => g.id === groupId);
