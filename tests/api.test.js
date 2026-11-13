@@ -221,6 +221,24 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     }
   });
 
+  test('ids as the web app makes them ("1771345242762", the time as text) come back as text, not as numbers', async () => {
+    // PocketBase reads a string in a json field as JSON when it is JSON - such an id came back as a number
+    const key = await account('ines', 'Ines');
+    const current = await ok(call('treasurer', 'GET', `/api/db?path=people/${key}&raw=1`));
+    const standingOrder = { id: '1771345242762', amount: 25, startDate: '2099-01-01', note: 'Dauerauftrag', lastAutoPayment: null };
+    const payment = { amount: 10, date: '2026-03-05', description: 'Beitrag', id: '1771345242763' };
+    await ok(call('treasurer', 'POST', '/api/db/transaction', { path: `people/${key}`, currentVersion: current.version, value: { ...current.value, payments: [...(current.value.payments || []), payment], standingOrders: [standingOrder] } }));
+    const saved = await ok(call('treasurer', 'GET', `/api/db?path=people/${key}`));
+    assert.strictEqual(saved.standingOrders[0].id, standingOrder.id);
+    assert.ok(saved.payments.some((entry) => entry.id === payment.id), 'the payment keeps its id as text');
+
+    const expenses = await ok(call('treasurer', 'GET', '/api/db?path=expenses'));
+    const expense = { id: '1771345242764', amount: 3.5, description: 'Porto', issuer: 'Theo Test', date: '2026-03-06' };
+    await ok(call('treasurer', 'PUT', '/api/db', { path: 'expenses', value: [...(Array.isArray(expenses) ? expenses : Object.values(expenses || {})), expense] }));
+    const after = await ok(call('treasurer', 'GET', '/api/db?path=expenses'));
+    assert.ok((Array.isArray(after) ? after : Object.values(after || {})).some((entry) => entry.id === expense.id), 'the expense keeps its id as text');
+  });
+
   test('the finance change log: who changed which booking, before and after; a deleted member keeps no status details', async () => {
     const { superuser } = require('./instance');
     const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);

@@ -23,7 +23,8 @@ const MAX_ATTEMPTS = 3;
 // Raised with every correction of the upgrade itself: an instance where an earlier revision failed (three times, too)
 // tries the corrected one on its own, with three attempts of its own, instead of waiting for AGORA_UPGRADE_RETRY=1.
 // 2: the comparison read the mentoring texts with a wrong key in the Docker image (legacyModules)
-const UPGRADE_REVISION = 2;
+// 3: ids written as text that is JSON ("1771345242762", the web app's standing orders) came back as numbers (client.js)
+const UPGRADE_REVISION = 3;
 const BACKUP_PREFIX = 'pre-v4-';
 const KEEP_BACKUPS = 3;
 const MIGRATIONS = 'system_migrations';

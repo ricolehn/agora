@@ -253,12 +253,46 @@ async function getFirstRecord(collectionName, filter, appConfig, sort = '') {
   return result.items?.[0] || null;
 }
 
+// --- Values of json fields ---
+// PocketBase reads a string written to a json field as JSON when it is JSON: "1771345242762" comes back as the number
+// 1771345242762, "true" as true, "[1]" as a list. The web app gives standing orders ids like "1771345242762": they came
+// back from the new tables as numbers, and the upgrade's comparison failed on every member with a standing order. In
+// the tables of the new structure a string therefore goes to PocketBase as its JSON text, which PocketBase reads back
+// as exactly that string. (users keeps PocketBase's reading: it is the old table, shared with the previous backend.)
+let jsonFields = null;
+
+/** The json fields of the table stored as [collection] (also under the name an upgrade builds it under). */
+function jsonFieldsOf(collection) {
+  if (!jsonFields) {
+    const { allCollections } = require('./schema');
+    const { buildingName } = require('./schemaApply');
+    jsonFields = new Map();
+    for (const spec of allCollections()) {
+      const names = (spec.fields || []).filter((field) => field.type === 'json').map((field) => field.name);
+      if (names.length) for (const stored of [spec.name, buildingName(spec.name)]) jsonFields.set(stored, names);
+    }
+  }
+  return jsonFields.get(collection) || [];
+}
+
+/** [body] of a record of [collection] as PocketBase has to get it: a string in a json field as its JSON text. */
+function forPocketBase(collection, body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || body instanceof FormData) return body;
+  let sent = body;
+  for (const field of jsonFieldsOf(collection)) {
+    if (typeof body[field] !== 'string') continue;
+    if (sent === body) sent = { ...body };
+    sent[field] = JSON.stringify(body[field]);
+  }
+  return sent;
+}
+
 async function createRecord(collectionName, body, appConfig) {
   const token = await authenticateSuperuser(appConfig);
   return pocketBaseRequest(`/api/collections/${collectionName}/records`, {
     method: 'POST',
     token,
-    body
+    body: forPocketBase(collectionName, body)
   });
 }
 
@@ -267,7 +301,7 @@ async function updateRecord(collectionName, recordId, body, appConfig) {
   return pocketBaseRequest(`/api/collections/${collectionName}/records/${encodeURIComponent(recordId)}`, {
     method: 'PATCH',
     token,
-    body
+    body: forPocketBase(collectionName, body)
   });
 }
 
@@ -328,7 +362,7 @@ async function batchWrite(appConfig, requests) {
     requests: requests.map(({ method, collection, id, body: recordBody }) => ({
       method,
       url: `/api/collections/${collection}/records${id ? `/${encodeURIComponent(id)}` : ''}`,
-      ...(recordBody !== undefined ? { body: recordBody } : {})
+      ...(recordBody !== undefined ? { body: forPocketBase(collection, recordBody) } : {})
     }))
   };
   let results;
