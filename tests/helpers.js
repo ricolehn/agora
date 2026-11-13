@@ -105,7 +105,8 @@ function start(label, command, args, env) {
 
 /** Stops a process started with start() and waits until it is gone (its port is free again). */
 function stop(child) {
-  if (!child || child.exitCode !== null) return Promise.resolve();
+  // Stopped already: a process ended by a signal keeps exitCode null (its 'exit' does not come again)
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
   return new Promise((resolve) => {
     child.once('exit', resolve);
     child.kill();

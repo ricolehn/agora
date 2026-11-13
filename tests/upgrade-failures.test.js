@@ -61,14 +61,30 @@ describe('an upgrade that does not get through', { skip: !POCKETBASE_BIN && 'set
     await stop(backend.process);
   });
 
-  test('in the layout of the Docker image (no DATA_DIR): the previous version\'s side of the comparison reads the conversations with the instance\'s key', async (t) => {
+  test('in the layout of the Docker image (no DATA_DIR): every conversation reads as before - in the previous version while the upgrade waits, and after it', async (t) => {
     const old = await oldInstance();
     t.after(() => old.close());
 
     // The image keeps backend/ next to data/ and names no folder: each copy of the backend finds them relative to
     // itself - the one in backend/legacy, too, which used to look for the key of the mentoring texts in backend/data
     const entry = backendInLayout(old.root);
-    const backend = await startBackend(old.root, old.pocketbase.port, { entry, port: old.port, label: 'new backend', env: { DATA_DIR: undefined } });
+    // Stopped after the test also when it fails (a server left running keeps the test file from ending)
+    const started = [];
+    t.after(() => Promise.all(started.map(stop)));
+    const inImage = async (env = {}) => {
+      const backend = await startBackend(old.root, old.pocketbase.port, { entry, port: old.port, label: 'new backend', env: { DATA_DIR: undefined, ...env } });
+      started.push(backend.process);
+      return backend;
+    };
+
+    // An upgrade that does not get through: the previous version serves every conversation as before (it used to keep
+    // the wrong key of the comparison and showed every message as "decryption failed")
+    let backend = await inImage({ AGORA_TEST_UPGRADE_FAIL: 'compare' });
+    assert.equal((await (await fetch(`${backend.base}/api/status`)).json()).upgrade?.state, 'failed');
+    assert.deepEqual(await old.sameAnswers(), [], 'the previous version reads every conversation as before');
+    await stop(backend.process);
+
+    backend = await inImage();
     assert.equal((await (await fetch(`${backend.base}/api/status`)).json()).upgrade, undefined, 'the upgrade got through');
     assert.equal((await old.upgradeState()).status, 'done');
     assert.deepEqual(await old.sameAnswers(), [], 'every conversation reads as before');
