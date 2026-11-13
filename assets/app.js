@@ -963,6 +963,15 @@ Object.assign(window, {
 // --- Navigation & layout ---
 let sseConnection = null;
 let aiEnabled = false;
+// The admin's edits in the AI form: counted, and the count the form last showed the stored settings at. A reload in
+// the background (after signing in, with the system configuration, after a change of the books) used to fill the form
+// again and so threw away what the admin had just chosen - and saving then stored the old settings again.
+let aiFormEdits = 0;
+let aiFormCleanAt = 0;
+const aiFormDirty = () => aiFormEdits !== aiFormCleanAt;
+['input', 'change'].forEach(type => document.addEventListener(type, event => {
+    if (event.target?.closest?.('#sys-panel-ai')) aiFormEdits += 1;
+}, true));
 
 // The server names the area that changed ('mentoring', 'events', otherwise 'all'). Events arriving in a burst are
 // collected for a moment and answered with a single reload of just those areas.
@@ -4159,6 +4168,8 @@ onAuthStateChanged(auth, async user => {
         isAuthenticated = false;
         routeReady = false;
         advancedConfigLoaded = false;
+        // Edits of the AI form are not taken over by the next person who signs in
+        aiFormCleanAt = aiFormEdits;
         advancedConfigAppName = null;
         currentUser = null;
         show('loading-overlay', false);
@@ -4989,7 +5000,7 @@ const SYS_TAB_LOADERS = {
         renderAccountsTab();
     },
     config: () => { if (!advancedConfigLoaded) loadAdvancedSystemConfig(); },
-    ai: () => loadAiConfig(),
+    ai: () => loadAiConfig({ fresh: true }),
     media: () => loadMediaConfig()
 };
 
@@ -5278,13 +5289,19 @@ function changeAiProvider(fromLoad = false) {
     }
 }
 
-async function loadAiConfig() {
+// fresh: the AI page was opened - it shows the stored settings (edits made while they load are kept). Otherwise
+// (a reload in the background) unsaved edits stay as they are.
+async function loadAiConfig({ fresh = false } = {}) {
     if (!isSuperAdminUser()) return;
     try {
+        const editsBefore = aiFormEdits;
         const res = await api('/admin/ai-config');
         if (!res.ok) return;
         const data = await res.json();
         aiEnabled = !!data.enabled;
+        updateAiNavVisibility();
+        if (aiFormDirty() && !(fresh && aiFormEdits === editsBefore)) return;
+        aiFormCleanAt = aiFormEdits;
         const enabledEl = $('super-admin-ai-enabled');
         if (enabledEl) enabledEl.checked = data.enabled;
         for (const [key, id] of Object.entries(AI_FIELDS)) setValue(id, data[key] || '');
@@ -5294,7 +5311,6 @@ async function loadAiConfig() {
         changeAiProvider(true);
         setValue('super-admin-ai-effort', ['low', 'medium', 'high', 'xhigh', 'max'].includes(data.effort) ? data.effort : 'medium');
         showAiEffortHint();
-        updateAiNavVisibility();
     } catch (err) {
         console.error('KI-Konfiguration konnte nicht geladen werden:', err);
     }
@@ -5309,6 +5325,7 @@ function showAiEffortHint() {
 async function saveAiConfig() {
     if (!isSuperAdminUser()) return;
     await attempt(async () => {
+        const editsSaved = aiFormEdits;
         const payload = {
             enabled: $('super-admin-ai-enabled')?.checked ?? false,
             provider: inputValue('super-admin-ai-provider') || 'custom',
@@ -5320,6 +5337,8 @@ async function saveAiConfig() {
         // Another service needs its own key (an empty one would replace the stored key)
         if (payload.provider !== aiSavedProvider && !payload.apiKey.trim()) throw new Error(t('ai_key_needed', 'Please enter the API key for the chosen provider.'));
         await apiJson('/admin/ai-config', 'PUT', payload);
+        // Saved: the form shows the stored settings (unless the admin changed something while it was saving)
+        if (aiFormEdits === editsSaved) aiFormCleanAt = editsSaved;
         aiSavedProvider = payload.provider;
         aiSavedModel = payload.model;
         aiEnabled = payload.enabled;
