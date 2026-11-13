@@ -1,5 +1,5 @@
 const webpush = require('web-push');
-const { getStateValue, upsertStateValue, listAllRecords, deleteRecord, pbFilterEquals } = require('./pocketbase');
+const { getStateValue, upsertStateValue, listPushSubscriptionsOf, removePushSubscription } = require('./pocketbase');
 const { sendFcmToUser } = require('./fcmNotifications');
 
 let vapidConfigured = false;
@@ -126,7 +126,7 @@ async function sendPushToSubscription(subscriptionRecord, payload, appConfig) {
     if (err.statusCode === 404 || err.statusCode === 410) {
       console.log(`[WebPush] Subscription expired (${err.statusCode}), deleting:`, subscriptionRecord.id);
       try {
-        await deleteRecord('push_subscriptions', subscriptionRecord.id, appConfig);
+        await removePushSubscription(appConfig, subscriptionRecord.id);
       } catch (delErr) {
         console.warn('[WebPush] Failed to delete expired subscription:', delErr.message);
       }
@@ -143,7 +143,7 @@ async function sendPushToSubscription(subscriptionRecord, payload, appConfig) {
 async function sendWebPushToUser(appConfig, userId, fullPayload) {
   try {
     await getOrInitVapidKeys(appConfig);
-    const subs = await listAllRecords('push_subscriptions', pbFilterEquals('user', userId), appConfig);
+    const subs = await listPushSubscriptionsOf(appConfig, userId);
     // Only the installed app (PWA); subscriptions from before v3.0.1 count again once the app re-syncs them on start
     const installed = (subs || []).filter(sub => sub.installed === true);
     if (!installed.length) return;

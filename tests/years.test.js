@@ -575,7 +575,7 @@ describe('years of a community against a second set of books', () => {
 // planned must have come into effect, the standing orders must have been booked, and every number it serves - to
 // the treasury, to the member, on the fees page, to an older app - must be that of the second books.
 const fs = require('fs');
-const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop, SERVER_ENTRY } = require('./helpers');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
 const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
@@ -613,13 +613,13 @@ describe('years with the real server and database', { skip: !hasPocketBase && 's
   /** The server is stopped and wakes up at noon on [day]. */
   async function visit(day) {
     await stop(backend);
-    backend = start('backend', process.execPath, ['--require', path.join(__dirname, 'clock.js'), path.join(BACKEND_DIR, 'server.js')], { ...backendEnv, AGORA_TEST_NOW: `${day}T12:00:00` });
+    backend = start('backend', process.execPath, ['--require', path.join(__dirname, 'clock.js'), SERVER_ENTRY], { ...backendEnv, AGORA_TEST_NOW: `${day}T12:00:00` });
     processes.push(backend);
     await waitFor(`${base}/api/status`, `the server on ${day}`, [processes[0], backend], 50);
-    // An instance that is set up first reads its configuration when it starts: until then it answers as if it were not
+    // An instance that is set up starts its runtime first (status: ready); until then it asks the apps to try again
     for (let i = 0; isSetUp; i += 1) {
       const status = await fetch(`${base}/api/status`).then((res) => res.json()).catch(() => null);
-      if (status?.setupMode === false) break;
+      if (status?.ready === true) break;
       assert.ok(i < 600 && backend.exitCode === null, `the server on ${day} did not get ready\n${backend.log.join('')}`);
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
@@ -639,7 +639,7 @@ describe('years with the real server and database', { skip: !hasPocketBase && 's
     const pbDir = path.join(dataRoot, 'pb');
     base = `http://127.0.0.1:${port}`;
     backendEnv = { PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: REPO_ROOT, NODE_ENV: 'test' };
-    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--http', `127.0.0.1:${pbPort}`], {}));
+    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
     await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
 
     // The first day: the instance is set up, with a treasurer (a group with manage_finances)

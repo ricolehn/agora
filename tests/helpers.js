@@ -7,6 +7,9 @@ const { spawn } = require('child_process');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const BACKEND_DIR = path.join(REPO_ROOT, 'backend');
+// The server the HTTP tests start. AGORA_TEST_SERVER=backend/legacy/server.js runs them against the frozen backend
+// that an instance falls back to while its database upgrade waits (backend/legacy/README.md)
+const SERVER_ENTRY = process.env.AGORA_TEST_SERVER ? path.resolve(REPO_ROOT, process.env.AGORA_TEST_SERVER) : path.join(BACKEND_DIR, 'server.js');
 
 /** Loads a package from backend/node_modules (the tests live outside the backend package). */
 const backendRequire = (name) => require(require.resolve(name, { paths: [BACKEND_DIR] }));
@@ -109,4 +112,4 @@ function stop(child) {
   });
 }
 
-module.exports = { REPO_ROOT, BACKEND_DIR, backendRequire, tempDir, withEnv, freezeTime, assertHas, freePort, waitFor, start, stop };
+module.exports = { REPO_ROOT, BACKEND_DIR, SERVER_ENTRY, backendRequire, tempDir, withEnv, freezeTime, assertHas, freePort, waitFor, start, stop };

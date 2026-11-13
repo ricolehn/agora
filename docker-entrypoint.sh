@@ -105,7 +105,10 @@ start_pocketbase() {
         echo "PocketBase binary not found at $pocketbase_bin. Skipping embedded PocketBase startup."
         return 1
     fi
-    run_shell_as_runtime_user 'exec "$1" serve --dir "$2" --http "$3" >/tmp/pocketbase.log 2>&1 &' "$pocketbase_bin" "$pocketbase_dir" "$pocketbase_http"
+    # --automigrate=false: the backend manages the schema (and its upgrades) itself. With the default, PocketBase writes
+    # every collection change as a migration file next to the data folder and replays the files it does not know on
+    # the next start - into a database restored from a backup, too.
+    run_shell_as_runtime_user 'exec "$1" serve --dir "$2" --automigrate=false --http "$3" >/tmp/pocketbase.log 2>&1 &' "$pocketbase_bin" "$pocketbase_dir" "$pocketbase_http"
     return 0
 }
 

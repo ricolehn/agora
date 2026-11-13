@@ -110,6 +110,43 @@ docker run -d \
 - The service worker in the browser uses a network-first strategy, so users see the updated frontend as soon as the new container is running.
 - All user data (configuration, uploads, database) is stored on the mounted volumes and remains untouched.
 
+### The database upgrade (structure version 4)
+
+Version 4 gives the database a new structure: every booking, member, event, song and setting is a record with real
+columns, money in whole cents, real links between tables, and a help text for every field
+([docs/DATABASE.md](docs/DATABASE.md)). An existing instance is upgraded by itself at the first start of the new
+image. While it runs (seconds; about a minute for 30 years of 300 members), the app shows that it is updating.
+
+1. **Check** – every old record is read and turned into its new records; whatever is odd (an amount typed as
+   "50,00", a link to an account deleted long ago) is noted.
+2. **Backup** – a full backup is made first (`pre-v4-<time>.zip` in the `backups` folder of the database). No backup,
+   no upgrade. The newest three of these are kept.
+3. **Copy** – the new tables are built next to the old ones; nothing old is touched.
+4. **Compare** – the new tables must answer every question exactly like the old ones: every member with balance,
+   paid until and what is overdue, the statistics, every booking, every event, conversation and setting.
+5. **Switch** – one write makes the new tables the database.
+6. **Cleanup** – the old tables go (the backup keeps them).
+
+If anything in steps 1–4 fails or differs, nothing is switched: the new tables are removed and the previous version of
+the server (kept in the image, `backend/legacy`) serves the instance exactly as before. The app's status then says
+that the upgrade did not get through, and the next start tries again – three times; then it waits until the server is
+started with `AGORA_UPGRADE_RETRY=1`. Older apps keep working against the new structure through the old API, which
+answers exactly as before.
+
+**Try it first (recommended):** the dry run does the whole upgrade on a copy of a backup and never touches the original.
+Make a backup on PocketBase's admin page (Settings → Backups), then:
+
+```bash
+docker exec agora-app node backend/db/dryRun.js /app/db/backups/<backup>.zip --data /app/data --out /app/data
+```
+
+It ends with "The upgrade would go through" or names what would differ. `upgrade-dry-run-report.json` contains no
+personal data and can be shared when asking for help; `upgrade-dry-run-details.json` contains the values – keep it to
+yourself.
+
+**Going back:** stop the container, restore the `pre-v4-…` backup (PocketBase admin page → Settings → Backups, or
+unpack it into the database folder) and start the previous image.
+
 <details>
 <summary><b>Setup Wizard</b></summary>
 
@@ -273,17 +310,40 @@ The Owner and other System Admins can:
 - update `assets/church-logo.svg`,
 - configure the application name and SMTP mail settings directly from the system configuration tab.
 
-<details>
-<summary><b>PocketBase access model</b></summary>
+## 🗄 The database
 
-## 🔐 PocketBase access model
+The map of every table and field: [docs/DATABASE.md](docs/DATABASE.md) (generated from `backend/db/schema/`; the same
+texts appear next to each field on PocketBase's admin page).
 
-Agora provisions PocketBase automatically and configures the collections, indexes, and default records on startup:
+**Browsing it (port 8090).** PocketBase's admin page runs on port 8090 inside the container. To use it, publish the port
+(`-p 8090:8090`) – but only where nobody else can reach it (your own network, a VPN, or `-p 127.0.0.1:8090:8090` and an
+SSH tunnel), never on the open internet. Create your own superuser for it:
 
-- **Admins** can read and write all people, requests, donations, expenses, settings, and user records.
-- **Regular users** can authenticate with PocketBase, read/update their own profile, read shared settings, read the public invite code, view only their linked person/request records, and submit their own requests.
-- **The Owner** and **System Admins** can manage user roles and system-wide configuration.
-</details>
+```bash
+docker exec agora-app /app/pocketbase superuser upsert you@example.org 'a-long-password' --dir /app/db
+```
+
+Every table is the server's alone: the apps' and members' tokens cannot read them; the server checks every permission.
+Reading is safe. Changing records on the admin page bypasses those checks – the server does not expect it; prefer the app.
+
+**Backups.** Back up both folders: `/app/db` (the database; PocketBase can also make backups itself) and `/app/data`. The
+data folder holds the configuration and the keys the database alone cannot replace: `.mentoring_key` (the mentoring
+conversations are encrypted with it), `polls-secret`, `prayers-secret` and `media-secret`. A database without them is
+complete, but encrypted conversations cannot be read, and votes and anonymous prayer requests are no longer recognized
+as someone's own.
+
+**The finance change log.** Every change of a booking, member, donation, expense, standing order, status or request is
+recorded with who made it and when, with the values before and after (`finance_changes`, written in the same step as
+the change itself). It is kept 10 years (the usual bookkeeping period; `AGORA_CHANGE_LOG_YEARS` changes it) and then
+removed automatically; the history of the fees and fresh starts is kept for good. When a member is deleted, the log
+keeps that their income status changed, not to what.
+
+**For app developers.** [API v2](docs/API_V2.md) (`/api/v2/…`) hands out the data in the new shapes: record ids, money in
+whole cents, ISO times, pages with a cursor, and changes that name the version they are based on (409 instead of an
+unseen overwrite); finance writes go through the same code as the web app. The old API (`/api/db?path=…`) answers
+exactly as before, for every app version. A list saved as
+a whole (donations, expenses) can send the version it read (`POST /api/db/transaction` with `currentVersion`, or
+`version` with `PUT /api/db`): a list that changed meanwhile is then refused with 409 instead of overwritten.
 
 ## 🌍 Languages
 
@@ -313,12 +373,16 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
 | `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, the monthly fees over time, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses |
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
+| `codecs.test.js` | the exact round trip between what the apps write and the new tables: 5000 random records per kind, odd values included |
+| `database.test.js` | the rules of the database structure (names, help texts, money in cents) and that docs/DATABASE.md is up to date |
+| `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; the dry run |
 | `years.test.js` | the fee accounts over years: two communities lived through day by day for twelve years, with everything that can happen in an order nobody planned (payments early, late and corrected, statuses changed after the fact, fees set for months to come and months past, edited, moved and taken back, fresh starts, an older app saving a fee) - every number the apps show compared with a second set of books that shares no code with the server (`tests/feeBooks.js`). And five years with the real server and PocketBase, which is stopped and wakes up on a later day (`tests/clock.js`) |
 
 ```bash
 cd backend && npm ci
 POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests (api.test.js, the real server in years.test.js) are skipped
 YEARS_SEEDS=1-200 node --test ../tests/years.test.js   # a long look: 200 other communities (a few minutes)
+POCKETBASE_BIN=/path/to/pocketbase node ../tests/benchmark.js 300:30   # the books of 300 members over 30 years, before and after the upgrade
 ```
 
 Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).

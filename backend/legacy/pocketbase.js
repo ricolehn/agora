@@ -1,0 +1,2230 @@
+const { readNotificationSettings } = require('./notificationPrefs');
+const crypto = require('crypto');
+const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { resolvePocketBaseDirectory } = require('./pathConfig');
+const {
+  encryptMentoringText,
+  decryptMentoringText
+} = require('./mentoringCrypto');
+
+const execFileAsync = promisify(execFile);
+
+const DEFAULT_SETTINGS = {
+  vollverdiener: 50,
+  geringverdiener: 25,
+  keinverdiener: 10,
+  pausiert: 0,
+  reportStartDate: null
+};
+
+const DEFAULT_SYSTEM_STATE = {
+  inviteCode: '',
+  ownerUid: null,
+  superAdminUid: null
+};
+
+// Older versions stored this fixed code until someone made a new one: anyone could register with it
+const LEGACY_DEFAULT_INVITE_CODE = '123456';
+const randomInviteCode = () => String(crypto.randomInt(100000, 1000000));
+
+/** The system state with a registration code of its own (a random one instead of none or the old fixed one). */
+const withSecureInviteCode = (system) => {
+  const code = String(system?.inviteCode || '');
+  return !code || code === LEGACY_DEFAULT_INVITE_CODE ? { ...system, inviteCode: randomInviteCode() } : system;
+};
+
+/**
+ * The owner recorded in [system] ({ ownerUid, claim: false }). Setup records one; only an installation from before
+ * that has none, and then an admin of it ([user]) becomes the owner ({ ownerUid: their uid, claim: true }) - a member
+ * never does: the app asks on every sign-in, so the first member to open it would have taken over the instance.
+ */
+function ownerClaim(system, user) {
+  const recorded = system?.ownerUid || system?.superAdminUid || null;
+  if (recorded) return { ownerUid: recorded, claim: false };
+  return user?.admin === true && user.uid ? { ownerUid: user.uid, claim: true } : { ownerUid: null, claim: false };
+}
+
+const SUPERUSER_TOKEN_TTL_MS = 300_000; // 5 minutes
+let cachedSuperuserToken = null;
+let cachedSuperuserTokenExpiry = 0;
+
+// Every collection is the server's alone: it reads and writes as superuser, and the apps only reach the data through it.
+// A member's own PocketBase token (the session token) could otherwise read and change records directly wherever
+// PocketBase's port is reachable - from another container on the same Docker network, or where port 8090 is published
+// for the admin page. Only the users collection lets a token read its own record (the server's sign-in check).
+const SERVER_ONLY_RULES = { listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null };
+
+const DEFAULT_COLLECTION_SPECS = [
+  {
+    name: 'people',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_people_person_key ON people (personKey)',
+      'CREATE INDEX idx_people_uid ON people (uid)',
+      'CREATE INDEX idx_people_name ON people (name)',
+      'CREATE INDEX idx_people_status ON people (status)'
+    ],
+    fields: [
+      { name: 'personKey', type: 'text', required: true },
+      { name: 'uid', type: 'text' },
+      { name: 'name', type: 'text', required: true },
+      { name: 'status', type: 'text' },
+      { name: 'memberSince', type: 'text' },
+      { name: 'originalMemberSince', type: 'text' },
+      { name: 'totalPaid', type: 'number' },
+      { name: 'data', type: 'json', required: true },
+      // The version that bookings compare (/api/db/transaction, standing orders). PocketBase 0.23+ no longer adds
+      // these fields on its own: without them every version was null and a booking could overwrite another one.
+      { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
+      { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true }
+    ]
+  },
+  {
+    name: 'payments',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_payments_payment_key ON payments (paymentKey)',
+      'CREATE INDEX idx_payments_person_key ON payments (personKey)',
+      'CREATE INDEX idx_payments_date ON payments (date)'
+    ],
+    fields: [
+      { name: 'paymentKey', type: 'text', required: true },
+      { name: 'personKey', type: 'text', required: true },
+      { name: 'amount', type: 'number' },
+      { name: 'date', type: 'text' },
+      { name: 'description', type: 'text' },
+      { name: 'data', type: 'json', required: true }
+    ]
+  },
+  {
+    name: 'status_history',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_status_history_key ON status_history (historyKey)',
+      'CREATE INDEX idx_status_history_person_key ON status_history (personKey)',
+      'CREATE INDEX idx_status_history_start_date ON status_history (startDate)'
+    ],
+    fields: [
+      { name: 'historyKey', type: 'text', required: true },
+      { name: 'personKey', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'startDate', type: 'text', required: true },
+      { name: 'endDate', type: 'text' },
+      { name: 'data', type: 'json', required: true }
+    ]
+  },
+  {
+    name: 'expenses',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_expenses_expense_key ON expenses (expenseKey)',
+      'CREATE INDEX idx_expenses_date ON expenses (date)'
+    ],
+    fields: [
+      { name: 'expenseKey', type: 'text', required: true },
+      { name: 'amount', type: 'number' },
+      { name: 'date', type: 'text' },
+      { name: 'issuer', type: 'text' },
+      { name: 'description', type: 'text' },
+      { name: 'receipt', type: 'text' },
+      { name: 'data', type: 'json', required: true }
+    ]
+  },
+  {
+    name: 'requests',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_requests_request_key ON requests (requestKey)',
+      'CREATE INDEX idx_requests_user_id ON requests (userId)',
+      'CREATE INDEX idx_requests_status ON requests (status)'
+    ],
+    fields: [
+      { name: 'requestKey', type: 'text', required: true },
+      { name: 'userId', type: 'text', required: true },
+      { name: 'personId', type: 'text' },
+      { name: 'personName', type: 'text' },
+      { name: 'type', type: 'text' },
+      { name: 'status', type: 'text' },
+      { name: 'timestamp', type: 'number' },
+      { name: 'data', type: 'json', required: true }
+    ]
+  },
+  {
+    name: 'app_state',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_app_state_key ON app_state (key)'
+    ],
+    fields: [
+      { name: 'key', type: 'text', required: true },
+      { name: 'value', type: 'json' }
+    ]
+  },
+  {
+    name: 'groups',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_groups_name ON groups (name)'
+    ],
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'permissions', type: 'json' }
+    ]
+  },
+  {
+    name: 'mentors',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_mentors_user ON mentors (user)',
+      'CREATE INDEX idx_mentors_status ON mentors (status)'
+    ],
+    fields: [
+      { name: 'user', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'bio', type: 'text' },
+      { name: 'max_mentees', type: 'number' },
+      { name: 'is_accepting', type: 'bool' },
+      { name: 'created', type: 'text' }
+    ]
+  },
+  {
+    name: 'mentoring_threads',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_mentoring_threads_mentor ON mentoring_threads (mentor)',
+      'CREATE INDEX idx_mentoring_threads_mentee ON mentoring_threads (mentee)'
+    ],
+    fields: [
+      { name: 'mentor', type: 'text', required: true },
+      { name: 'mentee', type: 'text', required: true },
+      { name: 'mentee_alias', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'last_message', type: 'text' },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  {
+    name: 'mentoring_messages',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_mentoring_messages_thread ON mentoring_messages (thread)',
+      // The unread count of a conversation is asked on every chat list load
+      'CREATE INDEX idx_mentoring_messages_unread ON mentoring_messages (thread, read)'
+    ],
+    fields: [
+      { name: 'thread', type: 'text', required: true },
+      { name: 'sender_role', type: 'text', required: true },
+      { name: 'text', type: 'text', required: true },
+      { name: 'read', type: 'bool' },
+      { name: 'created', type: 'text' }
+    ]
+  },
+  {
+    name: 'events',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_events_date ON events (date)',
+      'CREATE INDEX idx_events_status ON events (status)',
+      'CREATE INDEX idx_events_series ON events (seriesId)',
+      'CREATE INDEX idx_events_public_token ON events (publicToken)'
+    ],
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'date', type: 'text', required: true },
+      { name: 'startTime', type: 'text' },
+      { name: 'endTime', type: 'text' },
+      { name: 'location', type: 'text' },
+      { name: 'description', type: 'text' },
+      { name: 'isRecurring', type: 'bool' },
+      { name: 'recurringRule', type: 'text' },
+      { name: 'seriesId', type: 'text' },
+      { name: 'status', type: 'text', required: true },
+      { name: 'requiresRegistration', type: 'bool' },
+      { name: 'minParticipants', type: 'number' },
+      { name: 'maxParticipants', type: 'number' },
+      { name: 'targetGroups', type: 'json' },
+      { name: 'isPinned', type: 'bool' },
+      { name: 'endDate', type: 'text' },
+      { name: 'eventType', type: 'text' },
+      { name: 'imageUrl', type: 'text' },
+      { name: 'createdBy', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' },
+      // Share switch: people without an account see the event (and sign up) through the link with publicToken
+      { name: 'isPublic', type: 'bool' },
+      { name: 'publicToken', type: 'text' }
+    ]
+  },
+  // Guests who signed up for a public event without an account. Readable only by the server (no rules =
+  // superuser only): their e-mail address and age never reach a member's PocketBase token
+  {
+    name: 'event_guests',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_event_guests_event ON event_guests (event)',
+      'CREATE UNIQUE INDEX idx_event_guests_key ON event_guests (key)'
+    ],
+    fields: [
+      { name: 'event', type: 'text', required: true },
+      { name: 'name', type: 'text', required: true },
+      { name: 'email', type: 'text', required: true },
+      { name: 'age', type: 'number' },
+      { name: 'status', type: 'text', required: true },
+      // The guest's own random key (their browser and e-mails): see the place, cancel it
+      { name: 'key', type: 'text', required: true },
+      { name: 'language', type: 'text' },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  {
+    name: 'event_registrations',
+    type: 'base',
+    indexes: [
+      'CREATE UNIQUE INDEX idx_event_user_reg ON event_registrations (event, user)',
+      'CREATE INDEX idx_event_reg_event ON event_registrations (event)'
+    ],
+    fields: [
+      { name: 'event', type: 'text', required: true },
+      { name: 'user', type: 'text', required: true },
+      { name: 'status', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  {
+    name: 'event_duties',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_event_duties_event ON event_duties (event)',
+      // A person's duties and requests (account deletion, duty requests)
+      'CREATE INDEX idx_event_duties_assigned ON event_duties (assignedUser)',
+      'CREATE INDEX idx_event_duties_requested ON event_duties (requestedUser)'
+    ],
+    fields: [
+      { name: 'event', type: 'text', required: true },
+      { name: 'section', type: 'text' },
+      { name: 'roleName', type: 'text', required: true },
+      { name: 'assignedGroup', type: 'text' },
+      { name: 'assignedUser', type: 'text' },
+      { name: 'requestedUser', type: 'text' },
+      { name: 'requestedBy', type: 'text' },
+      { name: 'notes', type: 'text' },
+      { name: 'status', type: 'text', required: true },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' },
+      // per person the event start that was reminded (dutyReminders.js)
+      { name: 'reminded', type: 'json' }
+    ]
+  },
+  {
+    name: 'push_subscriptions',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_push_sub_user ON push_subscriptions (user)',
+      'CREATE UNIQUE INDEX idx_push_sub_endpoint ON push_subscriptions (endpoint)'
+    ],
+    fields: [
+      { name: 'user', type: 'text', required: true },
+      { name: 'endpoint', type: 'text', required: true },
+      { name: 'p256dh', type: 'text', required: true },
+      { name: 'auth', type: 'text', required: true },
+      { name: 'userAgent', type: 'text' },
+      { name: 'created', type: 'text' },
+      // only subscriptions of the installed app (PWA) get pushes
+      { name: 'installed', type: 'bool' }
+    ]
+  },
+  {
+    name: 'fcm_tokens',
+    type: 'base',
+    indexes: [
+      'CREATE INDEX idx_fcm_tokens_user ON fcm_tokens (user)',
+      'CREATE UNIQUE INDEX idx_fcm_tokens_token ON fcm_tokens (token)'
+    ],
+    fields: [
+      { name: 'user', type: 'text', required: true },
+      { name: 'token', type: 'text', required: true },
+      { name: 'platform', type: 'text' },
+      { name: 'created', type: 'text' },
+      { name: 'updated', type: 'text' }
+    ]
+  },
+  // One record per poll / song ({ key, data }), readable only by the server (no rules = superuser only): poll
+  // tallies and participation hashes must never be reachable with a member's or admin's PocketBase token
+  ...['polls', 'songs', 'prayers', 'event_programs'].map((name) => ({
+    name,
+    type: 'base',
+    indexes: [`CREATE UNIQUE INDEX idx_${name}_key ON ${name} (key)`],
+    fields: [
+      { name: 'key', type: 'text', required: true },
+      // A poll with a few thousand participants or a long song stays far below this
+      { name: 'data', type: 'json', maxSize: 5000000 }
+    ]
+  }))
+].map((spec) => ({ ...spec, ...SERVER_ONLY_RULES }));
+
+function getPocketBaseBaseUrl() {
+  return process.env.POCKETBASE_BASE_URL || `http://127.0.0.1:${process.env.POCKETBASE_PORT || '8090'}`;
+}
+
+function getPocketBaseBinaryPath() {
+  return process.env.POCKETBASE_BIN || path.join(__dirname, '..', 'pocketbase');
+}
+
+function getPocketBaseDataDir() {
+  return resolvePocketBaseDirectory();
+}
+
+function generatePocketBaseCredentials() {
+  return {
+    url: getPocketBaseBaseUrl(),
+    // Internal-only superuser used by the bundled backend to provision PocketBase.
+    adminEmail: `agora-${crypto.randomUUID()}@local.invalid`,
+    // base64url may start with "-", which the PocketBase CLI would read as an option: always start with a letter
+    adminPassword: `p${crypto.randomBytes(24).toString('base64url')}`
+  };
+}
+
+function normalizeDataPath(input = '') {
+  return String(input || '')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/{2,}/g, '/');
+}
+
+function decodeTokenPayload(token) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Missing token');
+  }
+
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    throw new Error('Invalid token');
+  }
+
+  const payload = parts[1];
+  const padded = payload + '='.repeat((4 - (payload.length % 4 || 4)) % 4);
+  try {
+    return JSON.parse(Buffer.from(padded, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('Invalid token payload');
+  }
+}
+
+function isPlaceholderEmail(email) {
+  if (!email) return true;
+  const str = String(email).toLowerCase().trim();
+  return str.endsWith('@agora.local') || str.endsWith('@nova.local') || str.endsWith('@local.invalid') || str.startsWith('unclaimed_');
+}
+
+function toPublicUser(record) {
+  if (!record) return null;
+  const isOwner = record.owner === true || record.superAdmin === true;
+  const isPlaceholder = isPlaceholderEmail(record.email);
+  const isClaimed = !isPlaceholder;
+  return {
+    uid: record.id,
+    id: record.id,
+    email: isPlaceholder ? '' : (record.email || ''),
+    rawEmail: record.email || '',
+    firstName: record.firstName || '',
+    lastName: record.lastName || '',
+    name: record.name || `${record.firstName || ''} ${record.lastName || ''}`.trim(),
+    admin: record.admin === true || isOwner,
+    owner: isOwner,
+    superAdmin: isOwner,
+    pays: record.pays !== false,
+    groups: Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []),
+    emailNotifications: record.emailNotifications !== false,
+    // Channels and kinds per channel; the flat keys repeat the push choice for older app versions
+    notificationSettings: (() => {
+      const settings = readNotificationSettings(record);
+      return { ...settings.push, ...settings };
+    })(),
+    isClaimed,
+    calendarToken: record.calendarToken || '',
+    // the language the user's app resolved to (push / e-mail); '' = the instance default
+    language: record.language || '',
+    // time zone of the user's app (finds the community's zone for duty reminders when the server has no TZ)
+    timeZone: record.timeZone || ''
+  };
+}
+
+// Kinds of messages plus the two channel switches (notificationPrefs.js)
+const NOTIFICATION_SETTING_KEYS = ['duties', 'events', 'messages', 'requests', 'finances', 'reports', 'push', 'email'];
+
+function sanitizeSelfUserWrite(input = {}) {
+  const output = {};
+  // No first / last name: the name links an account to its finance record, so only admins change it
+  if (typeof input.emailNotifications === 'boolean') output.emailNotifications = input.emailNotifications;
+  if (typeof input.language === 'string') {
+    const language = require('./i18n').normalizeLanguage(input.language);
+    if (language) output.language = language;
+  }
+  if (typeof input.timeZone === 'string') {
+    const timeZone = require('./dutyReminders').validTimeZone(input.timeZone);
+    if (timeZone) output.timeZone = timeZone;
+  }
+  if (input.notificationSettings && typeof input.notificationSettings === 'object') {
+    const pickBooleans = (source) => Object.fromEntries(Object.entries(source && typeof source === 'object' ? source : {})
+      .filter(([key, value]) => NOTIFICATION_SETTING_KEYS.includes(key) && typeof value === 'boolean'));
+    const settings = input.notificationSettings;
+    output.notificationSettings = {
+      ...pickBooleans(settings),
+      ...(settings.channels && typeof settings.channels === 'object' ? { channels: pickBooleans(settings.channels) } : {}),
+      ...(settings.push && typeof settings.push === 'object' ? { push: pickBooleans(settings.push) } : {}),
+      ...(settings.email && typeof settings.email === 'object' ? { email: pickBooleans(settings.email) } : {})
+    };
+  }
+  return output;
+}
+
+function buildPocketBaseError(response, fallback) {
+  const details = response?.data && typeof response.data === 'object'
+    ? Object.values(response.data)
+        .map((entry) => entry?.message)
+        .find((message) => typeof message === 'string' && message.trim())
+    : null;
+  const error = new Error(details || response?.message || fallback || 'PocketBase request failed');
+  error.status = response?.status || 500;
+  error.response = response || null;
+  return error;
+}
+
+// --- Read cache ---
+// The apps only reach PocketBase through this server, and every request goes through pocketBaseRequest: record
+// reads (as superuser) are kept in memory per collection and dropped the moment anything in that collection is
+// written. Each collection has a generation: a read that started before a write is not kept. READ_CACHE_TTL_MS
+// covers changes made outside the app (PocketBase's admin page). The answer is kept as PocketBase's JSON text and
+// parsed for every caller: each gets its own objects (three times faster than copying them).
+const READ_CACHE_TTL_MS = 30 * 1000;
+const READ_CACHE_MAX_ENTRIES = 400;
+const readCache = new Map();
+const readGenerations = new Map();
+const recordsPath = /^\/api\/collections\/([^/?]+)\/records(?:[/?]|$)/;
+
+function collectionOf(path) {
+  return recordsPath.exec(path)?.[1] || null;
+}
+
+/** Forgets the cached reads of [collection] (all collections without one). */
+function invalidateReadCache(collection) {
+  if (!collection) {
+    readCache.clear();
+    for (const key of readGenerations.keys()) readGenerations.set(key, (readGenerations.get(key) || 0) + 1);
+    return;
+  }
+  readCache.delete(collection);
+  readGenerations.set(collection, (readGenerations.get(collection) || 0) + 1);
+}
+
+const parseCached = (text) => (text === null ? null : JSON.parse(text));
+
+async function cachedRead(collection, key, load) {
+  let entries = readCache.get(collection);
+  const hit = entries?.get(key);
+  if (hit && Date.now() - hit.at < READ_CACHE_TTL_MS) return parseCached(await hit.value);
+  const generation = readGenerations.get(collection) || 0;
+  const value = load();
+  if (!entries) readCache.set(collection, (entries = new Map()));
+  if (entries.size >= READ_CACHE_MAX_ENTRIES) entries.clear();
+  const entry = { at: Date.now(), value };
+  entries.set(key, entry);
+  try {
+    const result = await value;
+    // Written meanwhile (or failed): not kept
+    if ((readGenerations.get(collection) || 0) !== generation && readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
+    return parseCached(result);
+  } catch (err) {
+    if (readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
+    throw err;
+  }
+}
+
+async function pocketBaseRequest(path, options = {}) {
+  const method = options.method || 'GET';
+  const collection = collectionOf(path);
+  if (method === 'GET' && collection && options.token && options.token === cachedSuperuserToken) {
+    return cachedRead(collection, `${path}|${options.allow404 ? 1 : 0}`, () => sendPocketBaseRequest(path, { ...options, rawText: true }));
+  }
+  if (method !== 'GET') {
+    // Records of one collection (also its auth actions: a login only touches "users"); schema changes and batches
+    // touch everything. Before and after: a read running alongside the write is not kept either way
+    const own = /^\/api\/collections\/([^/?]+)\/[^/?]/.exec(path)?.[1];
+    const touched = collection || own || (path.startsWith('/api/collections') || path.startsWith('/api/batch') ? undefined : null);
+    if (touched !== null) invalidateReadCache(touched);
+    try {
+      return await sendPocketBaseRequest(path, options);
+    } finally {
+      if (touched !== null) invalidateReadCache(touched);
+    }
+  }
+  return sendPocketBaseRequest(path, options);
+}
+
+async function sendPocketBaseRequest(path, options = {}) {
+  const {
+    method = 'GET',
+    token,
+    body,
+    allow404 = false,
+    headers = {}
+  } = options;
+
+  const requestHeaders = { ...headers };
+  if (token) requestHeaders.Authorization = `Bearer ${token}`;
+  if (body !== undefined && !requestHeaders['Content-Type']) {
+    requestHeaders['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(`${getPocketBaseBaseUrl()}${path}`, {
+    method,
+    headers: requestHeaders,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  const text = await response.text();
+  // The read cache keeps the text itself (see cachedRead)
+  if (options.rawText && response.ok) return text || 'null';
+  if (options.rawText && allow404 && response.status === 404) return null;
+  const payload = text ? (() => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text, status: response.status };
+    }
+  })() : null;
+
+  if (!response.ok) {
+    if (allow404 && response.status === 404) return null;
+    throw buildPocketBaseError(payload, `PocketBase ${method} ${path} failed`);
+  }
+
+  return payload;
+}
+
+async function authenticateSuperuser(appConfig) {
+  if (!appConfig?.pocketbase?.adminEmail || !appConfig?.pocketbase?.adminPassword) {
+    throw new Error('PocketBase superuser credentials are missing.');
+  }
+
+  const now = Date.now();
+  if (cachedSuperuserToken && now < cachedSuperuserTokenExpiry) {
+    return cachedSuperuserToken;
+  }
+
+  const auth = await pocketBaseRequest('/api/collections/_superusers/auth-with-password', {
+    method: 'POST',
+    body: {
+      identity: appConfig.pocketbase.adminEmail,
+      password: appConfig.pocketbase.adminPassword
+    }
+  });
+
+  cachedSuperuserToken = auth.token;
+  cachedSuperuserTokenExpiry = now + SUPERUSER_TOKEN_TTL_MS;
+  return auth.token;
+}
+
+function clearSuperuserTokenCache() {
+  cachedSuperuserToken = null;
+  cachedSuperuserTokenExpiry = 0;
+}
+
+async function ensurePocketBaseSuperuser(appConfig) {
+  if (!appConfig?.pocketbase?.adminEmail || !appConfig?.pocketbase?.adminPassword) {
+    throw new Error('PocketBase superuser credentials are missing.');
+  }
+
+  const binary = getPocketBaseBinaryPath();
+  const dir = getPocketBaseDataDir();
+  const args = [
+    '--dir',
+    dir,
+    'superuser',
+    'upsert',
+    '--', // e-mail and password are values even when they start with "-"
+    appConfig.pocketbase.adminEmail,
+    appConfig.pocketbase.adminPassword
+  ];
+
+  console.log(`[PocketBase] Running superuser upsert with binary: ${binary}, dir: ${dir}, email: ${appConfig.pocketbase.adminEmail}`);
+  try {
+    const { stdout, stderr } = await execFileAsync(binary, args);
+    console.log(`[PocketBase] Superuser upsert stdout: ${stdout.trim()}`);
+    if (stderr.trim()) {
+      console.warn(`[PocketBase] Superuser upsert stderr: ${stderr.trim()}`);
+    }
+  } catch (error) {
+    console.error(`[PocketBase] Superuser upsert failed! Error:`, error);
+    throw error;
+  }
+}
+
+async function ensureUsersCollection(appConfig) {
+  const token = await authenticateSuperuser(appConfig);
+  const existing = await pocketBaseRequest('/api/collections/users', { token });
+  
+  // Set password min length to 6 for PocketBase 0.23+ where password is in fields
+  const fields = (existing.fields || []).map((f) => {
+    if (f.name === 'password') {
+      return { ...f, min: 6 };
+    }
+    return f;
+  });
+
+  const wantedFields = [
+    { name: 'firstName', type: 'text' },
+    { name: 'lastName', type: 'text' },
+    { name: 'admin', type: 'bool' },
+    { name: 'owner', type: 'bool' },
+    { name: 'superAdmin', type: 'bool' },
+    { name: 'pays', type: 'bool' },
+    { name: 'groups', type: 'json' },
+    { name: 'emailNotifications', type: 'bool' },
+    { name: 'notificationSettings', type: 'json' },
+    { name: 'language', type: 'text' },
+    { name: 'timeZone', type: 'text' },
+    { name: 'isClaimed', type: 'bool' },
+    { name: 'calendarToken', type: 'text' }
+  ];
+
+  for (const field of wantedFields) {
+    if (!fields.some((existingField) => existingField.name === field.name)) {
+      fields.push(field);
+    }
+  }
+
+  await pocketBaseRequest('/api/collections/users', {
+    method: 'PATCH',
+    token,
+    body: {
+      ...existing,
+      // A token may read its own record (the server's sign-in check, verifyUserToken) and nothing else: no listing,
+      // no sign-up past the server, no change of one's own admin flag or groups (see SERVER_ONLY_RULES)
+      ...SERVER_ONLY_RULES,
+      viewRule: 'id = @request.auth.id',
+      authToken: { duration: 94670856 },
+      fields,
+      indexes: existing.indexes || [],
+      options: {
+        ...existing.options,
+        minPasswordLength: 6
+      }
+    }
+  });
+}
+
+function mergeCollectionSpec(existing, spec) {
+  const mergedFields = [...(existing.fields || [])];
+  for (const field of spec.fields || []) {
+    if (!mergedFields.some((existingField) => existingField.name === field.name)) {
+      mergedFields.push(field);
+    }
+  }
+
+  return {
+    ...existing,
+    ...spec,
+    fields: mergedFields,
+    indexes: spec.indexes || existing.indexes || []
+  };
+}
+
+async function ensureCollection(appConfig, spec) {
+  const token = await authenticateSuperuser(appConfig);
+  const existing = await pocketBaseRequest(`/api/collections/${spec.name}`, {
+    token,
+    allow404: true
+  });
+
+  if (!existing) {
+    await pocketBaseRequest('/api/collections', {
+      method: 'POST',
+      token,
+      body: spec
+    });
+    return;
+  }
+
+  await pocketBaseRequest(`/api/collections/${spec.name}`, {
+    method: 'PATCH',
+    token,
+    body: mergeCollectionSpec(existing, spec)
+  });
+}
+
+async function listAllRecords(collectionName, filter, appConfig, sort = '') {
+  const token = await authenticateSuperuser(appConfig);
+  // PocketBase's largest page. The first page counts the records (one COUNT), the others come in parallel
+  // without counting - they used to be 200 at a time, one after another, each with its own COUNT
+  const perPage = 1000;
+  const pageUrl = (page, count) => {
+    const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+    if (!count) params.set('skipTotal', '1');
+    if (filter) params.set('filter', filter);
+    // Pages fetched side by side need a fixed order: without a sort it is PocketBase's own (insertion) order, named
+    params.set('sort', sort || '@rowid');
+    return `/api/collections/${collectionName}/records?${params.toString()}`;
+  };
+  const first = await pocketBaseRequest(pageUrl(1, true), { token });
+  const items = [...(first.items || [])];
+  const pages = Number(first.totalPages) || 1;
+  if (pages > 1) {
+    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => pocketBaseRequest(pageUrl(i + 2, false), { token })));
+    for (const result of rest) items.push(...(result.items || []));
+  }
+  return items;
+}
+
+function pbFilterEquals(field, value) {
+  return `${field} = ${JSON.stringify(String(value))}`;
+}
+
+async function getFirstRecord(collectionName, filter, appConfig) {
+  const token = await authenticateSuperuser(appConfig);
+  const params = new URLSearchParams({ page: '1', perPage: '1', skipTotal: '1', filter });
+  const result = await pocketBaseRequest(`/api/collections/${collectionName}/records?${params.toString()}`, { token });
+  return result.items?.[0] || null;
+}
+
+async function createRecord(collectionName, body, appConfig) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/${collectionName}/records`, {
+    method: 'POST',
+    token,
+    body
+  });
+}
+
+async function updateRecord(collectionName, recordId, body, appConfig) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/${collectionName}/records/${encodeURIComponent(recordId)}`, {
+    method: 'PATCH',
+    token,
+    body
+  });
+}
+
+async function deleteRecord(collectionName, recordId, appConfig) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/${collectionName}/records/${encodeURIComponent(recordId)}`, {
+    method: 'DELETE',
+    token
+  });
+}
+
+async function upsertStateValue(appConfig, key, value) {
+  const existing = await getFirstRecord('app_state', pbFilterEquals('key', key), appConfig);
+  if (existing) {
+    return updateRecord('app_state', existing.id, { key, value }, appConfig);
+  }
+  return createRecord('app_state', { key, value }, appConfig);
+}
+
+async function getStateRecord(appConfig, key) {
+  return getFirstRecord('app_state', pbFilterEquals('key', key), appConfig);
+}
+
+async function getStateValue(appConfig, key, fallback = null) {
+  const record = await getStateRecord(appConfig, key);
+  return record ? record.value : fallback;
+}
+
+async function ensureStateDefaults(appConfig) {
+  const defaults = new Map([
+    ['settings', DEFAULT_SETTINGS],
+    ['donations', {}],
+    ['expenses', {}],
+    ['system', DEFAULT_SYSTEM_STATE]
+  ]);
+
+  for (const [key, value] of defaults.entries()) {
+    const existing = await getStateRecord(appConfig, key);
+    if (!existing) {
+      await createRecord('app_state', { key, value }, appConfig);
+    }
+  }
+}
+
+function normalizeRecordListInput(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'object') return Object.values(value).filter(Boolean);
+  return [];
+}
+
+function toOptionalText(value) {
+  if (value === undefined || value === null || value === '') return '';
+  return String(value);
+}
+
+function toFiniteNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// ⚡ Bolt: Replaced Array.reduce with a for loop to eliminate callback execution overhead and reduce CPU time
+function calculateTotalPaid(payments) {
+  const list = normalizeRecordListInput(payments);
+  let sum = 0;
+  for (let i = 0; i < list.length; i++) {
+    const amount = Number(String(list[i]?.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    if (Number.isFinite(amount)) sum += amount;
+  }
+  return sum;
+}
+
+function stableSerialize(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerialize(entry)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function buildStableChildKey(prefix, ownerKey, itemKey, index, value) {
+  const stableSource = itemKey !== undefined && itemKey !== null && itemKey !== ''
+    ? String(itemKey)
+    : stableSerialize([ownerKey, index, value]);
+  return crypto.createHash('sha256').update(`${prefix}:${ownerKey}:${stableSource}`).digest('hex').slice(0, 32);
+}
+
+function stripNormalizedPersonData(value) {
+  if (!value || typeof value !== 'object') return null;
+  const data = { ...value };
+  delete data.payments;
+  delete data.statusHistory;
+  data.totalPaid = calculateTotalPaid(value.payments);
+  return data;
+}
+
+const { preprocessPersonServerSide } = require('./derivedData');
+const { readFeeState, changeFeeSchedule, changeFeeResets, saveFeeSettings } = require('./feeState');
+const { toDateStr } = require('./utils/date');
+
+function buildPaymentRecordPayload(personKey, payment, index = 0) {
+  const normalized = payment && typeof payment === 'object' ? { ...payment } : {};
+  return {
+    paymentKey: buildStableChildKey('payment', personKey, normalized.id, index, normalized),
+    personKey: String(personKey),
+    amount: toFiniteNumber(normalized.amount),
+    date: toOptionalText(normalized.date),
+    description: toOptionalText(normalized.description),
+    data: normalized
+  };
+}
+
+function buildStatusHistoryRecordPayload(personKey, entry, index = 0) {
+  const normalized = entry && typeof entry === 'object' ? { ...entry } : {};
+  return {
+    historyKey: buildStableChildKey('status', personKey, normalized.id, index, normalized),
+    personKey: String(personKey),
+    status: toOptionalText(normalized.status),
+    startDate: toOptionalText(normalized.startDate),
+    endDate: toOptionalText(normalized.endDate),
+    data: normalized
+  };
+}
+
+function buildExpenseRecordPayload(expense, index = 0) {
+  const normalized = expense && typeof expense === 'object' ? { ...expense } : {};
+  return {
+    expenseKey: buildStableChildKey('expense', 'global', normalized.id, index, normalized),
+    amount: toFiniteNumber(normalized.amount),
+    date: toOptionalText(normalized.date),
+    issuer: toOptionalText(normalized.issuer),
+    description: toOptionalText(normalized.description),
+    receipt: toOptionalText(normalized.receipt),
+    data: normalized
+  };
+}
+
+function groupRecordsBy(records, keyField) {
+  const acc = {};
+  for (let i = 0, len = records.length; i < len; i++) {
+    const record = records[i];
+    const key = record?.[keyField];
+    if (key) {
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(record);
+    }
+  }
+  return acc;
+}
+
+function getChildRecordIdentity(record) {
+  return toOptionalText(
+    record?.data?.id
+    || record?.paymentKey
+    || record?.historyKey
+    || record?.expenseKey
+    || stableSerialize(record?.data || record || {})
+  );
+}
+
+function toSortedChildValues(records, sortField) {
+  return [...records]
+    .sort((left, right) => {
+      const leftValue = toOptionalText(left?.[sortField]);
+      const rightValue = toOptionalText(right?.[sortField]);
+      if (leftValue === rightValue) {
+        return getChildRecordIdentity(left).localeCompare(getChildRecordIdentity(right));
+      }
+      return leftValue.localeCompare(rightValue);
+    })
+    .map((record) => record.data)
+    .filter(Boolean);
+}
+
+// What is stored about the fees - the fees over time, the fresh starts and the fee settings - is read as one and
+// changed by the rules in feeState.js. One change at a time, whichever of the three it is: two admins at the same
+// moment cannot both pass a check and overwrite each other, and a fresh start never meets a half-written history.
+const FEE_STATE_LOCK = 'app_state:fees';
+const feeStore = (appConfig) => ({
+  get: (key) => getStateValue(appConfig, key, key === 'settings' ? DEFAULT_SETTINGS : null),
+  set: (key, value) => upsertStateValue(appConfig, key, value)
+});
+const todayStr = () => toDateStr(new Date());
+
+/** { settings, resets, resetLog, schedule, log, stored }: see feeState.js. */
+function getFeeState(appConfig) {
+  return readFeeState(feeStore(appConfig));
+}
+
+/**
+ * The days the fee accounts were started afresh, with the log of who set or took back which (feeReset.js). Kept
+ * apart from the fee settings; only the confirmed admin calls in routes/finance.js write it.
+ */
+async function getFeeResetState(appConfig) {
+  const state = await getFeeState(appConfig);
+  return { resets: state.resets, log: state.resetLog };
+}
+
+async function getFeeResets(appConfig) {
+  return (await getFeeState(appConfig)).resets;
+}
+
+/**
+ * Changes the fresh starts: [change] gets the stored { resets, log } and the fees over time and returns the next
+ * { resets, log } (or throws to refuse).
+ */
+function updateFeeResetState(appConfig, change) {
+  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeResets(feeStore(appConfig), change, todayStr()));
+}
+
+/**
+ * Changes the fees over time (feeSchedule.js): [change] gets the fee state and returns the next { schedule, log }
+ * (or throws to refuse). Only the admin calls in routes/finance.js write it.
+ */
+function updateFeeSchedule(appConfig, change) {
+  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeSchedule(feeStore(appConfig), change, todayStr()));
+}
+
+/**
+ * An app saves the fee settings as a whole, by [actor] ({ by, byName }). Apps without the fees over time write their
+ * fees here: other fees than those of this month count from this month on.
+ */
+function saveSettings(appConfig, value, actor) {
+  return queueRecordWrite(FEE_STATE_LOCK, () => saveFeeSettings(feeStore(appConfig), value, actor, todayStr(), Date.now()));
+}
+
+function hydratePersonRecord(record, payments = [], statusHistory = [], appSettings = {}, feeResets = [], feeSchedule = null) {
+  if (!record) return null;
+  const data = record.data && typeof record.data === 'object' ? { ...record.data } : {};
+  const normalizedPayments = toSortedChildValues(payments, 'date');
+  const normalizedStatusHistory = toSortedChildValues(statusHistory, 'startDate');
+  data.id = data.id || record.personKey;
+  data.uid = data.uid || record.uid || '';
+  data.name = data.name || record.name || '';
+  data.status = data.status || record.status || '';
+  data.memberSince = data.memberSince || record.memberSince || '';
+  data.originalMemberSince = data.originalMemberSince || record.originalMemberSince || data.memberSince || '';
+  data.payments = normalizedPayments;
+  data.statusHistory = normalizedStatusHistory;
+  data.standingOrders = Array.isArray(data.standingOrders) ? data.standingOrders : [];
+  data.totalPaid = calculateTotalPaid(normalizedPayments);
+  if (record.data?.isDeleted || record.isDeleted) {
+    data.isDeleted = true;
+  }
+  return preprocessPersonServerSide(data, appSettings, feeResets, feeSchedule);
+}
+
+async function syncCollectionRecords(collectionName, keyField, existingRecords, nextPayloads, appConfig) {
+  const existingByKey = new Map(existingRecords.map((record) => [record[keyField], record]));
+  const nextKeys = new Set();
+
+  const upsertOps = [];
+  for (const payload of nextPayloads) {
+    const key = payload[keyField];
+    nextKeys.add(key);
+    const existing = existingByKey.get(key);
+    if (existing) {
+      upsertOps.push(updateRecord(collectionName, existing.id, payload, appConfig));
+    } else {
+      upsertOps.push(createRecord(collectionName, payload, appConfig));
+    }
+  }
+
+  const deleteOps = [];
+  for (const record of existingRecords) {
+    if (!nextKeys.has(record[keyField])) {
+      deleteOps.push(deleteRecord(collectionName, record.id, appConfig));
+    }
+  }
+
+  await Promise.all(upsertOps);
+  await Promise.all(deleteOps);
+}
+
+async function listChildRecordsForPeople(collectionName, personKeys, appConfig) {
+  if (!personKeys.length) return [];
+  if (personKeys.length === 1) {
+    return listAllRecords(collectionName, pbFilterEquals('personKey', personKeys[0]), appConfig);
+  }
+  const allowedKeys = new Set(personKeys.map(String));
+  const records = await listAllRecords(collectionName, '', appConfig);
+  return records.filter((record) => allowedKeys.has(String(record.personKey)));
+}
+
+async function syncPeopleChildRecords(appConfig, personKey, value, existingChildren) {
+  const normalizedPayments = normalizeRecordListInput(value?.payments);
+  const normalizedStatusHistory = normalizeRecordListInput(value?.statusHistory);
+  let existingPayments;
+  let existingStatusHistory;
+  if (existingChildren) {
+    existingPayments = existingChildren.payments;
+    existingStatusHistory = existingChildren.statusHistory;
+  } else {
+    [existingPayments, existingStatusHistory] = await Promise.all([
+      listAllRecords('payments', pbFilterEquals('personKey', personKey), appConfig),
+      listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig)
+    ]);
+  }
+
+  await Promise.all([
+    syncCollectionRecords(
+      'payments',
+      'paymentKey',
+      existingPayments,
+      normalizedPayments.map((payment, index) => buildPaymentRecordPayload(personKey, payment, index)),
+      appConfig
+    ),
+    syncCollectionRecords(
+      'status_history',
+      'historyKey',
+      existingStatusHistory,
+      normalizedStatusHistory.map((entry, index) => buildStatusHistoryRecordPayload(personKey, entry, index)),
+      appConfig
+    )
+  ]);
+}
+
+async function ensurePocketBaseSchema(appConfig) {
+  await ensureUsersCollection(appConfig);
+  for (const spec of DEFAULT_COLLECTION_SPECS) {
+    await ensureCollection(appConfig, spec);
+  }
+  await ensureStateDefaults(appConfig);
+  await migrateStateToCollections(appConfig);
+  await grantNewPermission(appConfig, 'manage_songbook', 'songbookPermissionMigrated', 'manage the songbook');
+  await grantNewPermission(appConfig, 'manage_prayers', 'prayersPermissionMigrated', 'moderate prayer requests');
+  await grantNewPermission(appConfig, 'manage_media', 'mediaPermissionMigrated', 'manage media folders');
+}
+
+/**
+ * Installations from before a permission existed have nobody with it (new setups give it to the owner's Admin
+ * group). Once: if no group has it, the owner's groups with manage_events (else all of them) get it.
+ */
+async function grantNewPermission(appConfig, permission, flag, what) {
+  const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  if (system?.[flag]) return;
+  const groups = await listGroupRecords(appConfig);
+  if (!groups.some((g) => g.permissions.includes(permission))) {
+    const ownerUid = system?.ownerUid || system?.superAdminUid;
+    const owner = ownerUid ? await getUserRecord(appConfig, ownerUid).catch(() => null) : null;
+    const ownerGroupIds = new Set((Array.isArray(owner?.groups) ? owner.groups : []).map((g) => (typeof g === 'object' && g ? g.id || g.name : String(g))));
+    const ownerGroups = groups.filter((g) => ownerGroupIds.has(g.id) || ownerGroupIds.has(g.name));
+    const targets = ownerGroups.some((g) => g.permissions.includes('manage_events'))
+      ? ownerGroups.filter((g) => g.permissions.includes('manage_events'))
+      : ownerGroups;
+    for (const group of targets) {
+      await updateGroupRecord(appConfig, group.id, { permissions: [...group.permissions, permission] });
+      console.log(`[Migration] Group "${group.name}" may now ${what}`);
+    }
+  }
+  await upsertStateValue(appConfig, 'system', { ...system, [flag]: true });
+}
+
+/**
+ * v3.1 beta kept all polls / songs in one app_state value (limited in size); they now live one record per item in
+ * their own collections. Copies what is still in app_state (skipping keys already there), then removes the value.
+ */
+async function migrateStateToCollections(appConfig) {
+  for (const name of ['polls', 'songs']) {
+    const state = await getStateRecord(appConfig, name).catch(() => null);
+    if (!state) continue;
+    const items = state.value && typeof state.value === 'object' && !Array.isArray(state.value) ? state.value : {};
+    let copied = 0;
+    for (const [key, data] of Object.entries(items)) {
+      if (!data || typeof data !== 'object' || !/^[A-Za-z0-9_-]{1,64}$/.test(key)) continue;
+      const exists = await getFirstRecord(name, pbFilterEquals('key', key), appConfig);
+      if (!exists) {
+        await createRecord(name, { key, data }, appConfig);
+        copied += 1;
+      }
+    }
+    await deleteRecord('app_state', state.id, appConfig);
+    console.log(`[Migration] Moved ${copied} ${name} from app_state into their own collection`);
+  }
+}
+
+async function verifyUserToken(token) {
+  const payload = decodeTokenPayload(token);
+  if (!payload?.id) {
+    throw new Error('Invalid token payload');
+  }
+
+  const userRecord = await pocketBaseRequest(`/api/collections/users/records/${encodeURIComponent(payload.id)}`, {
+    token
+  });
+
+  return toPublicUser(userRecord);
+}
+
+async function registerUser({ email = '', password = '', firstName = '', lastName = '', admin = false, owner = false, pays = true, groups = [], isClaimed = null }, appConfig = null) {
+  const normalizedFirstName = String(firstName || '').trim();
+  const normalizedLastName = String(lastName || '').trim();
+  const name = `${normalizedFirstName} ${normalizedLastName}`.trim();
+
+  const isRealAccount = Boolean(email && password);
+  const finalIsClaimed = isClaimed !== null ? isClaimed : isRealAccount;
+  const randomSuffix = crypto.randomBytes(6).toString('hex');
+  const finalEmail = isRealAccount ? String(email).trim() : `unclaimed_${Date.now()}_${randomSuffix}@agora.local`;
+  const finalPassword = isRealAccount ? String(password) : crypto.randomBytes(16).toString('hex');
+
+  // When appConfig is provided (e.g. during initial setup), use the superuser token
+  // to create the record. This bypasses the collection's minPasswordLength constraint
+  // so that passwords shorter than PocketBase's default 8-character minimum are accepted.
+  const superuserToken = appConfig ? await authenticateSuperuser(appConfig) : null;
+
+  const isOwner = owner === true;
+  const isAdmin = admin === true || isOwner;
+
+  const created = await pocketBaseRequest('/api/collections/users/records', {
+    method: 'POST',
+    token: superuserToken || undefined,
+    body: {
+      email: finalEmail,
+      password: finalPassword,
+      passwordConfirm: finalPassword,
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
+      name,
+      emailVisibility: false,
+      admin: isAdmin,
+      owner: isOwner,
+      superAdmin: isOwner,
+      pays: pays !== false,
+      groups: Array.isArray(groups) ? groups : [],
+      emailNotifications: true,
+      isClaimed: finalIsClaimed
+    }
+  });
+
+  let token = null;
+  let publicUser = toPublicUser(created);
+
+  if (isRealAccount) {
+    try {
+      const auth = await pocketBaseRequest('/api/collections/users/auth-with-password', {
+        method: 'POST',
+        body: {
+          identity: finalEmail,
+          password: finalPassword
+        }
+      });
+      token = auth.token;
+      publicUser = toPublicUser(auth.record);
+    } catch {
+      // Superuser-created account without direct auth
+    }
+  }
+
+  return {
+    created,
+    token,
+    user: publicUser
+  };
+}
+
+async function claimUserAccount(appConfig, uid, newEmail, newPassword) {
+  const token = await authenticateSuperuser(appConfig);
+  const normalizedEmail = String(newEmail || '').trim();
+  const normalizedPassword = String(newPassword || '');
+
+  const patched = await pocketBaseRequest(`/api/collections/users/records/${encodeURIComponent(uid)}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      email: normalizedEmail,
+      password: normalizedPassword,
+      passwordConfirm: normalizedPassword,
+      isClaimed: true
+    }
+  });
+
+  return toPublicUser(patched);
+}
+
+async function loginUser(email, password) {
+  const auth = await pocketBaseRequest('/api/collections/users/auth-with-password', {
+    method: 'POST',
+    body: {
+      identity: email,
+      password
+    }
+  });
+
+  return {
+    token: auth.token,
+    user: toPublicUser(auth.record)
+  };
+}
+
+/**
+ * A member changes their own password: the old one is checked by signing in with it, the change is made by the server
+ * (a member's token may not change their account record, see ensureUsersCollection).
+ */
+async function updateOwnPassword(appConfig, email, userId, oldPassword, password) {
+  try {
+    await loginUser(email, oldPassword);
+  } catch (error) {
+    // Only a sign-in that is turned down means a wrong password; a database that does not answer is an error
+    if (error?.status >= 400 && error.status < 500) throw Object.assign(new Error('The password is not correct.'), { status: 400 });
+    throw error;
+  }
+  await adminResetUserPassword(appConfig, userId, password);
+}
+
+async function adminResetUserPassword(appConfig, uid, newPassword) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/users/records/${encodeURIComponent(uid)}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      password: newPassword,
+      passwordConfirm: newPassword
+    }
+  });
+}
+
+async function getUserRecord(appConfig, uid) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/users/records/${encodeURIComponent(uid)}`, {
+    token,
+    allow404: true
+  });
+}
+
+async function listUserRecords(appConfig) {
+  return listAllRecords('users', '', appConfig);
+}
+
+async function updateUserRecord(appConfig, uid, body) {
+  return updateRecord('users', uid, body, appConfig);
+}
+
+async function deleteUserRecord(appConfig, uid) {
+  return deleteRecord('users', uid, appConfig);
+}
+
+async function getOrCreateUserCalendarToken(appConfig, uid) {
+  const user = await getUserRecord(appConfig, uid);
+  if (!user) throw new Error('User not found');
+  if (user.calendarToken && typeof user.calendarToken === 'string' && user.calendarToken.trim()) {
+    return user.calendarToken.trim();
+  }
+  const newToken = crypto.randomBytes(24).toString('hex');
+  await updateUserRecord(appConfig, uid, { calendarToken: newToken });
+  return newToken;
+}
+
+async function regenerateUserCalendarToken(appConfig, uid) {
+  const user = await getUserRecord(appConfig, uid);
+  if (!user) throw new Error('User not found');
+  const newToken = crypto.randomBytes(24).toString('hex');
+  await updateUserRecord(appConfig, uid, { calendarToken: newToken });
+  return newToken;
+}
+
+async function findUserByCalendarToken(appConfig, token) {
+  if (!token || typeof token !== 'string') return null;
+  const clean = token.trim();
+  if (!clean) return null;
+  const users = await listAllRecords('users', pbFilterEquals('calendarToken', clean), appConfig);
+  return users && users.length > 0 ? users[0] : null;
+}
+
+function buildPersonRecordPayload(personKey, value) {
+  return {
+    personKey: String(personKey),
+    uid: toOptionalText(value?.uid),
+    name: toOptionalText(value?.name),
+    status: toOptionalText(value?.status),
+    memberSince: toOptionalText(value?.memberSince),
+    originalMemberSince: toOptionalText(value?.originalMemberSince || value?.memberSince),
+    totalPaid: calculateTotalPaid(value?.payments),
+    data: stripNormalizedPersonData(value)
+  };
+}
+
+function buildRequestRecordPayload(requestKey, value) {
+  return {
+    requestKey: String(requestKey),
+    userId: value?.userId ? String(value.userId) : '',
+    personId: value?.personId ? String(value.personId) : '',
+    personName: value?.personName ? String(value.personName) : '',
+    type: value?.type ? String(value.type) : '',
+    status: value?.status ? String(value.status) : '',
+    timestamp: typeof value?.timestamp === 'number' ? value.timestamp : null,
+    data: value || null
+  };
+}
+
+async function getPeopleRecord(appConfig, personKey) {
+  const record = await getFirstRecord('people', pbFilterEquals('personKey', personKey), appConfig);
+  if (!record) return null;
+  const [payments, statusHistory, fees] = await Promise.all([
+    listAllRecords('payments', pbFilterEquals('personKey', personKey), appConfig),
+    listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig),
+    getFeeState(appConfig)
+  ]);
+  return {
+    ...record,
+    _childPayments: payments,
+    _childStatusHistory: statusHistory,
+    data: hydratePersonRecord(record, payments, statusHistory, fees.settings, fees.resets, fees.schedule)
+  };
+}
+
+async function listPeopleRecords(appConfig, query = {}) {
+  let filter = '';
+  if (query.orderByChild === 'uid' && query.equalTo !== undefined) {
+    filter = pbFilterEquals('uid', query.equalTo);
+  } else if (query.orderByChild === 'name' && query.equalTo !== undefined) {
+    filter = pbFilterEquals('name', query.equalTo);
+  }
+  const people = await listAllRecords('people', filter, appConfig);
+  const personKeys = people.map((record) => record.personKey);
+  const [payments, statusHistory, fees] = await Promise.all([
+    listChildRecordsForPeople('payments', personKeys, appConfig),
+    listChildRecordsForPeople('status_history', personKeys, appConfig),
+    getFeeState(appConfig)
+  ]);
+  const paymentsByPersonKey = groupRecordsBy(payments, 'personKey');
+  const historyByPersonKey = groupRecordsBy(statusHistory, 'personKey');
+
+  return people.map((record) => ({
+    ...record,
+    isDeleted: Boolean(record.isDeleted || record.data?.isDeleted),
+    data: hydratePersonRecord(record, paymentsByPersonKey[record.personKey] || [], historyByPersonKey[record.personKey] || [], fees.settings, fees.resets, fees.schedule)
+  }));
+}
+
+// Writes of one record run one after the other (the app is a single process): a check and the write that depends on
+// it must not interleave with another write of the same record (two bookings both passed the version check and the
+// later one removed the other's payment; an approval and a rejection both passed the decision check)
+const recordWrites = new Map();
+function queueRecordWrite(key, write) {
+  const run = (recordWrites.get(key) || Promise.resolve()).then(write);
+  const settled = run.catch(() => {});
+  recordWrites.set(key, settled);
+  settled.then(() => { if (recordWrites.get(key) === settled) recordWrites.delete(key); });
+  return run;
+}
+
+/**
+ * True when a write based on version [expected] would overwrite a newer state. null / undefined: no check. Records
+ * from before the version field have an empty one until their next write: '' is a version too.
+ */
+function isOutdatedVersion(current, expected) {
+  return expected !== null && expected !== undefined && (current || '') !== expected;
+}
+
+function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null) {
+  return queueRecordWrite(`people:${personKey}`, async () => {
+    const payload = buildPersonRecordPayload(personKey, value);
+    // Checked before the payments change: a record PocketBase refuses must not leave them half written
+    if (!payload.name || !payload.data) throw Object.assign(new Error('A person record needs a name.'), { status: 400 });
+    const existing = await getPeopleRecord(appConfig, personKey);
+    if (existing) {
+      if (isOutdatedVersion(existing.updated, expectedUpdated)) {
+        const error = new Error('Conflict');
+        error.status = 409;
+        throw error;
+      }
+      const existingChildren = {
+        payments: existing._childPayments || [],
+        statusHistory: existing._childStatusHistory || []
+      };
+      // Payments first, the record (and with it the version) last: whoever reads the new version reads its payments
+      await syncPeopleChildRecords(appConfig, personKey, value, existingChildren);
+      await updateRecord('people', existing.id, payload, appConfig);
+      return getPeopleRecord(appConfig, personKey);
+    }
+    if (expectedUpdated) {
+      const error = new Error('Conflict');
+      error.status = 409;
+      throw error;
+    }
+    await createRecord('people', payload, appConfig);
+    await syncPeopleChildRecords(appConfig, personKey, value, { payments: [], statusHistory: [] });
+    return getPeopleRecord(appConfig, personKey);
+  });
+}
+
+async function removePeopleRecord(appConfig, personKey) {
+  const existing = await getPeopleRecord(appConfig, personKey);
+  if (existing) {
+    // 1. Delete the linked account, unless another active entry still uses it (a duplicate entry of the same
+    //    member) or it is the owner's: deleting the duplicate must not take the member's account with it
+    const uid = existing.uid || (existing.data && existing.data.uid);
+    const sharedWith = uid ? (await listAllRecords('people', pbFilterEquals('uid', uid), appConfig))
+      .filter((p) => p.personKey !== String(personKey) && !isDeletedPerson(p)) : [];
+    const linkedUser = uid && !sharedWith.length ? await getUserRecord(appConfig, uid).catch(() => null) : null;
+    if (linkedUser && linkedUser.owner !== true && linkedUser.superAdmin !== true) {
+      try {
+        await deleteRecord('users', uid, appConfig);
+      } catch (err) {
+        console.warn(`[PocketBase] Failed to delete auth user ${uid}:`, err.message);
+      }
+    }
+
+    // 2. Delete status history records associated with this personKey
+    const statusHistory = await listAllRecords('status_history', pbFilterEquals('personKey', personKey), appConfig);
+    await Promise.all(
+      statusHistory.map((entry) => deleteRecord('status_history', entry.id, appConfig))
+    );
+
+    // 3. Only the bookkeeping record stays: the payments (own records) under the name. Everything else about the
+    //    person goes, so nothing lists them as a member any more or works out what they still owe
+    await updateRecord('people', existing.id, deletedPersonPayload(existing), appConfig);
+  }
+}
+
+function isDeletedPerson(record) {
+  return Boolean(record && (record.isDeleted || record.data?.isDeleted));
+}
+
+// What is left of a deleted person: key, name and the total of the kept payments
+function deletedPersonPayload(record) {
+  const personKey = String(record.personKey);
+  const name = toOptionalText(record.name || record.data?.name);
+  return {
+    personKey,
+    uid: '',
+    name,
+    status: '',
+    memberSince: '',
+    originalMemberSince: '',
+    totalPaid: toFiniteNumber(record.totalPaid) || 0,
+    data: { id: record.data?.id || personKey, name, isDeleted: true }
+  };
+}
+
+/**
+ * Earlier deletions kept the whole entry (member since, status history, notes) next to the payments, so the
+ * deleted person still showed up as an overdue member (AI chat). Cuts those entries down to the bookkeeping record.
+ */
+async function pruneDeletedPeopleRecords(appConfig) {
+  if (!appConfig) return { pruned: 0 };
+  let pruned = 0;
+  try {
+    const people = (await listAllRecords('people', '', appConfig)).filter(isDeletedPerson);
+    for (const record of people) {
+      const payload = deletedPersonPayload(record);
+      const history = await listAllRecords('status_history', pbFilterEquals('personKey', payload.personKey), appConfig);
+      const dataKeys = Object.keys(record.data || {}).sort().join(',');
+      const clean = !history.length && !record.uid && !record.status && !record.memberSince && !record.originalMemberSince
+        && dataKeys === 'id,isDeleted,name';
+      if (clean) continue;
+      await Promise.all(history.map((entry) => deleteRecord('status_history', entry.id, appConfig)));
+      await queueRecordWrite(`people:${payload.personKey}`, () => updateRecord('people', record.id, payload, appConfig));
+      pruned += 1;
+    }
+    if (pruned) console.log(`[People] Cut ${pruned} deleted entr${pruned === 1 ? 'y' : 'ies'} down to their payments`);
+  } catch (error) {
+    console.error('[People] Pruning deleted entries failed:', error.message);
+  }
+  return { pruned };
+}
+
+async function listExpenseRecords(appConfig) {
+  return listAllRecords('expenses', '', appConfig);
+}
+
+async function syncExpenseRecords(appConfig, value) {
+  const normalizedExpenses = normalizeRecordListInput(value);
+  const existingExpenses = await listAllRecords('expenses', '', appConfig);
+  await syncCollectionRecords(
+    'expenses',
+    'expenseKey',
+    existingExpenses,
+    normalizedExpenses.map((expense, index) => buildExpenseRecordPayload(expense, index)),
+    appConfig
+  );
+}
+
+async function getRequestRecord(appConfig, requestKey) {
+  return getFirstRecord('requests', pbFilterEquals('requestKey', requestKey), appConfig);
+}
+
+async function listRequestRecords(appConfig, query = {}) {
+  let filter = '';
+  if (query.orderByChild === 'userId' && query.equalTo !== undefined) {
+    filter = pbFilterEquals('userId', query.equalTo);
+  }
+  return listAllRecords('requests', filter, appConfig);
+}
+
+async function upsertRequestRecord(appConfig, requestKey, value) {
+  const existing = await getRequestRecord(appConfig, requestKey);
+  if (existing) {
+    return updateRecord('requests', existing.id, buildRequestRecordPayload(requestKey, value), appConfig);
+  }
+  return createRecord('requests', buildRequestRecordPayload(requestKey, value), appConfig);
+}
+
+function resolveUserPermissions(userGroups = [], allGroups = []) {
+  const groupIds = Array.isArray(userGroups) ? userGroups : (userGroups ? [String(userGroups)] : []);
+  const matchingGroups = (Array.isArray(allGroups) ? allGroups : []).filter((g) => groupIds.includes(g.id) || groupIds.includes(g.name));
+  const permSet = new Set();
+  for (const g of matchingGroups) {
+    const perms = Array.isArray(g.permissions) ? g.permissions : [];
+    for (const p of perms) {
+      if (typeof p === 'string' && p.trim()) {
+        permSet.add(p.trim());
+      }
+    }
+  }
+  const permissions = Array.from(permSet);
+  const canManageFinances = permissions.includes('manage_finances');
+  const canViewFinances = canManageFinances || permissions.includes('view_finances');
+  const canManageRegistrationCode = permissions.includes('manage_registration_code');
+  const canAccessAi = permissions.includes('access_ai');
+  const canParticipateMentoring = true;
+  const canManageMentoring = permissions.includes('manage_mentoring');
+  const canManageEvents = permissions.includes('manage_events');
+  return {
+    // Accounts keep their groups by id, events their target groups by name (eventAccess.js)
+    groupIds: matchingGroups.map((g) => g.id).filter(Boolean),
+    groupNames: matchingGroups.map((g) => g.name).filter(Boolean),
+    permissions,
+    canManageFinances,
+    canViewFinances,
+    canManageRegistrationCode,
+    canAccessAi,
+    canParticipateMentoring,
+    canManageMentoring,
+    canManageEvents
+  };
+}
+
+async function listGroupRecords(appConfig = null) {
+  try {
+    const records = await listAllRecords('groups', '', appConfig, '+name');
+    return records.map((r) => ({
+      id: r.id,
+      name: r.name || '',
+      permissions: Array.isArray(r.permissions) ? r.permissions : []
+    })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } catch (err) {
+    console.error('Failed to list group records:', err);
+    return [];
+  }
+}
+
+async function createGroupRecord(appConfig, { name, permissions = [] }) {
+  const token = await authenticateSuperuser(appConfig);
+  const record = await pocketBaseRequest('/api/collections/groups/records', {
+    method: 'POST',
+    token,
+    body: {
+      name: String(name || '').trim(),
+      permissions: Array.isArray(permissions) ? permissions : []
+    }
+  });
+  return {
+    id: record.id,
+    name: record.name || '',
+    permissions: Array.isArray(record.permissions) ? record.permissions : []
+  };
+}
+
+async function updateGroupRecord(appConfig, id, { name, permissions }) {
+  const token = await authenticateSuperuser(appConfig);
+  const body = {};
+  if (name !== undefined) body.name = String(name).trim();
+  if (permissions !== undefined) body.permissions = Array.isArray(permissions) ? permissions : [];
+  const record = await pocketBaseRequest(`/api/collections/groups/records/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    token,
+    body
+  });
+  return {
+    id: record.id,
+    name: record.name || '',
+    permissions: Array.isArray(record.permissions) ? record.permissions : []
+  };
+}
+
+const SYSTEM_PERMISSIONS = [
+  { id: 'view_finances', name: 'Finance management (read only)', description: 'Allows viewing balances, history, transactions and reports without editing rights' },
+  { id: 'manage_finances', name: 'Finance management (full access)', description: 'Allows recording, editing, booking and deleting payments, donations, expenses and standing orders' },
+  { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
+  { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
+  { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
+  { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
+  { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
+  { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' },
+  { id: 'manage_media', name: 'Extended media rights', description: 'Allows deciding which groups may read, write or not see a media folder; sees every folder, its files only where the rights allow' }
+];
+
+async function deleteGroupRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  let groupName = '';
+  try {
+    const existing = await pocketBaseRequest(`/api/collections/groups/records/${encodeURIComponent(id)}`, { token, allow404: true });
+    if (existing) groupName = existing.name || '';
+  } catch {}
+
+  await pocketBaseRequest(`/api/collections/groups/records/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    token
+  });
+
+  try {
+    const users = await listAllRecords('users', '', appConfig);
+    for (const u of users) {
+      if (Array.isArray(u.groups) && (u.groups.includes(id) || (groupName && u.groups.includes(groupName)))) {
+        const nextGroups = u.groups.filter((g) => g !== id && g !== groupName);
+        await updateUserRecord(appConfig, u.id, { groups: nextGroups });
+      }
+    }
+  } catch (err) {
+    console.warn('[PocketBase] Failed to clean up user groups after group deletion:', err.message);
+  }
+
+  return true;
+}
+
+// Mentors
+async function listMentorRecords(appConfig, filter = '', sort = '') {
+  const records = await listAllRecords('mentors', filter, appConfig, sort);
+  return records.sort((a, b) => (b.created || b.id || '').localeCompare(a.created || a.id || ''));
+}
+
+async function getMentorRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return pocketBaseRequest(`/api/collections/mentors/records/${encodeURIComponent(id)}`, { token, allow404: true });
+}
+
+async function getMentorByUserId(appConfig, userId) {
+  return getFirstRecord('mentors', pbFilterEquals('user', userId), appConfig);
+}
+
+async function createMentorRecord(appConfig, data) {
+  const payload = {
+    created: new Date().toISOString(),
+    ...data
+  };
+  return createRecord('mentors', payload, appConfig);
+}
+
+async function updateMentorRecord(appConfig, id, data) {
+  return updateRecord('mentors', id, data, appConfig);
+}
+
+async function deleteMentorRecord(appConfig, id) {
+  return deleteRecord('mentors', id, appConfig);
+}
+
+// Mentoring Threads
+async function listAllMentoringThreads(appConfig, filter = '') {
+  const records = await listAllRecords('mentoring_threads', filter, appConfig, '');
+  return records
+    .map(r => ({
+      ...r,
+      last_message: r.last_message ? decryptMentoringText(r.last_message, r.id) : ''
+    }))
+    .sort((a, b) => (b.updated || b.created || b.id || '').localeCompare(a.updated || a.created || a.id || ''));
+}
+
+async function listMentoringThreadsForUser(appConfig, userIds) {
+  if (!userIds || userIds === '') {
+    return listAllMentoringThreads(appConfig);
+  }
+  const ids = Array.isArray(userIds) ? userIds : [userIds].filter(Boolean);
+  if (ids.length === 0) return [];
+  const parts = [];
+  ids.forEach(id => {
+    parts.push(pbFilterEquals('mentor', id));
+    parts.push(pbFilterEquals('mentee', id));
+  });
+  const filter = parts.join(' || ');
+  return listAllMentoringThreads(appConfig, filter);
+}
+
+async function getMentoringThread(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  const record = await pocketBaseRequest(`/api/collections/mentoring_threads/records/${encodeURIComponent(id)}`, { token, allow404: true });
+  if (record && record.last_message) {
+    record.last_message = decryptMentoringText(record.last_message, record.id);
+  }
+  return record;
+}
+
+async function createMentoringThread(appConfig, data) {
+  const now = new Date().toISOString();
+  const rawLastMessage = data.last_message ? String(data.last_message).trim() : '';
+  const payload = {
+    created: now,
+    updated: now,
+    ...data,
+    last_message: ''
+  };
+  let record;
+  try {
+    record = await createRecord('mentoring_threads', payload, appConfig);
+  } catch (err) {
+    if (payload.last_message !== undefined) {
+      delete payload.last_message;
+      record = await createRecord('mentoring_threads', payload, appConfig);
+    } else {
+      throw err;
+    }
+  }
+
+  if (rawLastMessage && record && record.id) {
+    const encryptedLastMessage = encryptMentoringText(rawLastMessage, record.id);
+    await updateRecord('mentoring_threads', record.id, { last_message: encryptedLastMessage }, appConfig).catch(() => {});
+    record.last_message = rawLastMessage;
+  } else if (record) {
+    record.last_message = rawLastMessage;
+  }
+  return record;
+}
+
+async function updateMentoringThread(appConfig, id, data) {
+  const rawLastMessage = data.last_message;
+  const payload = {
+    updated: new Date().toISOString(),
+    ...data
+  };
+  if (rawLastMessage !== undefined) {
+    payload.last_message = rawLastMessage ? encryptMentoringText(rawLastMessage, id) : '';
+  }
+  try {
+    const updated = await updateRecord('mentoring_threads', id, payload, appConfig);
+    if (updated && rawLastMessage !== undefined) {
+      updated.last_message = rawLastMessage;
+    }
+    return updated;
+  } catch (err) {
+    if (payload.last_message !== undefined) {
+      delete payload.last_message;
+      return await updateRecord('mentoring_threads', id, payload, appConfig).catch(() => null);
+    }
+    throw err;
+  }
+}
+
+// Mentoring Messages
+async function listMentoringMessages(appConfig, threadId) {
+  const filter = pbFilterEquals('thread', threadId);
+  const records = await listAllRecords('mentoring_messages', filter, appConfig, '');
+  return records
+    .map(r => ({
+      ...r,
+      text: decryptMentoringText(r.text, threadId)
+    }))
+    .sort((a, b) => (a.created || a.id || '').localeCompare(b.created || b.id || ''));
+}
+
+// Unread count and newest message of a thread for the thread list: two single-record queries instead of
+// loading and decrypting the whole conversation (the list is requested on every data update).
+async function getMentoringThreadSummary(appConfig, threadId, otherRole) {
+  const token = await authenticateSuperuser(appConfig);
+  const query = params => pocketBaseRequest(`/api/collections/mentoring_messages/records?${new URLSearchParams(params).toString()}`, { token });
+  const thread = pbFilterEquals('thread', threadId);
+  const [unread, latest] = await Promise.all([
+    query({ page: '1', perPage: '1', fields: 'id', filter: `${thread} && ${pbFilterEquals('sender_role', otherRole)} && read = false` }),
+    query({ page: '1', perPage: '1', skipTotal: '1', sort: '-created', filter: thread })
+  ]);
+  const last = latest.items?.[0] || null;
+  return {
+    unreadCount: Number(unread.totalItems) || 0,
+    lastMessage: last ? { ...last, text: decryptMentoringText(last.text, threadId) } : null
+  };
+}
+
+async function createMentoringMessage(appConfig, data) {
+  const rawText = data.text ? String(data.text) : '';
+  const threadId = data.thread || '';
+  const encryptedText = encryptMentoringText(rawText, threadId);
+  const payload = {
+    created: new Date().toISOString(),
+    ...data,
+    text: encryptedText
+  };
+  const record = await createRecord('mentoring_messages', payload, appConfig);
+  return {
+    ...record,
+    text: rawText
+  };
+}
+
+async function markMentoringMessagesRead(appConfig, threadId, currentRole) {
+  const otherRole = currentRole === 'mentor' ? 'mentee' : 'mentor';
+  const filter = `${pbFilterEquals('thread', threadId)} && ${pbFilterEquals('sender_role', otherRole)} && read = false`;
+  const unreadMessages = await listAllRecords('mentoring_messages', filter, appConfig, '');
+  // Side by side (one after another took a round trip per message when a long conversation is opened)
+  await Promise.all(unreadMessages.map((msg) => updateRecord('mentoring_messages', msg.id, { read: true }, appConfig).catch(() => {})));
+}
+
+// Events
+async function listEvents(appConfig, filter = '', sort = '+date,+startTime') {
+  return await listAllRecords('events', filter, appConfig, sort);
+}
+
+async function getEventRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/events/records/${encodeURIComponent(id)}`, { token, allow404: true });
+}
+
+async function createEventRecord(appConfig, data) {
+  const now = new Date().toISOString();
+  const payload = {
+    created: now,
+    updated: now,
+    status: 'scheduled',
+    eventType: 'event',
+    isPinned: false,
+    endDate: '',
+    imageUrl: '',
+    isRecurring: false,
+    requiresRegistration: false,
+    minParticipants: 0,
+    maxParticipants: 0,
+    targetGroups: [],
+    ...data
+  };
+  return await createRecord('events', payload, appConfig);
+}
+
+async function updateEventRecord(appConfig, id, data) {
+  const payload = {
+    updated: new Date().toISOString(),
+    ...data
+  };
+  return await updateRecord('events', id, payload, appConfig);
+}
+
+async function deleteEventRecord(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  try {
+    const regs = await listAllRecords('event_registrations', pbFilterEquals('event', id), appConfig);
+    for (const r of regs) {
+      await pocketBaseRequest(`/api/collections/event_registrations/records/${encodeURIComponent(r.id)}`, { method: 'DELETE', token }).catch(() => {});
+    }
+    const duties = await listAllRecords('event_duties', pbFilterEquals('event', id), appConfig);
+    for (const d of duties) {
+      await pocketBaseRequest(`/api/collections/event_duties/records/${encodeURIComponent(d.id)}`, { method: 'DELETE', token }).catch(() => {});
+    }
+    // Guests' details are only kept for their event
+    const guests = await listAllRecords('event_guests', pbFilterEquals('event', id), appConfig);
+    for (const g of guests) {
+      await pocketBaseRequest(`/api/collections/event_guests/records/${encodeURIComponent(g.id)}`, { method: 'DELETE', token }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[PocketBase] Failed to clean up event children:', err.message);
+  }
+  return await pocketBaseRequest(`/api/collections/events/records/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+}
+
+// Event Registrations
+async function listEventRegistrations(appConfig, filter = '') {
+  return await listAllRecords('event_registrations', filter, appConfig, '+created');
+}
+
+async function getEventRegistration(appConfig, eventId, userId) {
+  const filter = `${pbFilterEquals('event', eventId)} && ${pbFilterEquals('user', userId)}`;
+  const records = await listAllRecords('event_registrations', filter, appConfig);
+  return records[0] || null;
+}
+
+async function upsertEventRegistration(appConfig, eventId, userId, status) {
+  const existing = await getEventRegistration(appConfig, eventId, userId);
+  const now = new Date().toISOString();
+  if (existing) {
+    // Signing up again after cancelling starts at the end of the waiting list: "created" is the place in the queue
+    const rejoins = !['registered', 'waitlist'].includes(existing.status) && ['registered', 'waitlist'].includes(status);
+    return await updateRecord('event_registrations', existing.id, { status, updated: now, ...(rejoins ? { created: now } : {}) }, appConfig);
+  }
+  return await createRecord('event_registrations', {
+    event: eventId,
+    user: userId,
+    status,
+    created: now,
+    updated: now
+  }, appConfig);
+}
+
+// The event a share link names (only token-shaped values get here, see eventGuests.isPublicToken)
+async function findEventByPublicToken(appConfig, publicToken) {
+  return await getFirstRecord('events', pbFilterEquals('publicToken', publicToken), appConfig);
+}
+
+// Event guests (people without an account, signed up through a public event's link)
+async function listEventGuests(appConfig, filter = '') {
+  return await listAllRecords('event_guests', filter, appConfig, '+created');
+}
+
+async function getEventGuest(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/event_guests/records/${encodeURIComponent(id)}`, { token, allow404: true });
+}
+
+async function findEventGuestByKey(appConfig, key) {
+  return await getFirstRecord('event_guests', pbFilterEquals('key', key), appConfig);
+}
+
+async function createEventGuest(appConfig, data) {
+  const now = new Date().toISOString();
+  return await createRecord('event_guests', { created: now, updated: now, ...data }, appConfig);
+}
+
+async function updateEventGuest(appConfig, id, data) {
+  return await updateRecord('event_guests', id, { updated: new Date().toISOString(), ...data }, appConfig);
+}
+
+async function deleteEventGuest(appConfig, id) {
+  return await deleteRecord('event_guests', id, appConfig);
+}
+
+// Event Duties
+async function listEventDuties(appConfig, filter = '') {
+  return await listAllRecords('event_duties', filter, appConfig, '+created');
+}
+
+async function getEventDuty(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/event_duties/records/${encodeURIComponent(id)}`, { token, allow404: true });
+}
+
+async function createEventDuty(appConfig, data) {
+  const now = new Date().toISOString();
+  const payload = {
+    created: now,
+    updated: now,
+    status: 'open',
+    notes: '',
+    ...data
+  };
+  return await createRecord('event_duties', payload, appConfig);
+}
+
+async function updateEventDuty(appConfig, id, data) {
+  const payload = {
+    updated: new Date().toISOString(),
+    ...data
+  };
+  return await updateRecord('event_duties', id, payload, appConfig);
+}
+
+async function deleteEventDuty(appConfig, id) {
+  const token = await authenticateSuperuser(appConfig);
+  return await pocketBaseRequest(`/api/collections/event_duties/records/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+}
+
+async function getPushSubscriptionByEndpoint(appConfig, endpoint) {
+  return getFirstRecord('push_subscriptions', pbFilterEquals('endpoint', endpoint), appConfig);
+}
+
+async function upsertPushSubscription(appConfig, userId, subscription, userAgent = '', installed = false) {
+  const existing = await getPushSubscriptionByEndpoint(appConfig, subscription.endpoint);
+  const payload = {
+    user: String(userId),
+    endpoint: String(subscription.endpoint),
+    p256dh: String(subscription.keys?.p256dh || ''),
+    auth: String(subscription.keys?.auth || ''),
+    userAgent: String(userAgent || ''),
+    installed: installed === true,
+    created: new Date().toISOString()
+  };
+  if (existing) {
+    return updateRecord('push_subscriptions', existing.id, payload, appConfig);
+  }
+  return createRecord('push_subscriptions', payload, appConfig);
+}
+
+async function deletePushSubscription(appConfig, endpoint) {
+  const existing = await getPushSubscriptionByEndpoint(appConfig, endpoint);
+  if (existing) {
+    return deleteRecord('push_subscriptions', existing.id, appConfig);
+  }
+  return null;
+}
+
+async function getFcmTokenRecord(appConfig, token) {
+  return getFirstRecord('fcm_tokens', pbFilterEquals('token', token), appConfig);
+}
+
+async function upsertFcmToken(appConfig, userId, token, platform = 'android') {
+  const existing = await getFcmTokenRecord(appConfig, token);
+  const now = new Date().toISOString();
+  // A token identifies one app installation, so re-registering moves it to the current user
+  const payload = {
+    user: String(userId),
+    token: String(token),
+    platform: String(platform || 'android'),
+    updated: now
+  };
+  if (existing) {
+    return updateRecord('fcm_tokens', existing.id, payload, appConfig);
+  }
+  return createRecord('fcm_tokens', { ...payload, created: now }, appConfig);
+}
+
+async function deleteFcmToken(appConfig, token, userId = null) {
+  const existing = await getFcmTokenRecord(appConfig, token);
+  if (existing && (!userId || existing.user === String(userId))) {
+    return deleteRecord('fcm_tokens', existing.id, appConfig);
+  }
+  return null;
+}
+
+module.exports = {
+  withSecureInviteCode,
+  ownerClaim,
+  invalidateReadCache,
+  getPushSubscriptionByEndpoint,
+  upsertPushSubscription,
+  deletePushSubscription,
+  getFcmTokenRecord,
+  upsertFcmToken,
+  deleteFcmToken,
+  listAllRecords,
+  getFirstRecord,
+  createRecord,
+  updateRecord,
+  deleteRecord,
+  DEFAULT_SETTINGS,
+  DEFAULT_SYSTEM_STATE,
+  generatePocketBaseCredentials,
+  normalizeDataPath,
+  decodeTokenPayload,
+  toPublicUser,
+  buildPocketBaseError,
+  sanitizeSelfUserWrite,
+  normalizeRecordListInput,
+  stripNormalizedPersonData,
+  buildPersonRecordPayload,
+  buildPaymentRecordPayload,
+  buildStatusHistoryRecordPayload,
+  buildExpenseRecordPayload,
+  hydratePersonRecord,
+  clearSuperuserTokenCache,
+  getPocketBaseBaseUrl,
+  getPocketBaseBinaryPath,
+  getPocketBaseDataDir,
+  ensurePocketBaseSuperuser,
+  ensurePocketBaseSchema,
+  verifyUserToken,
+  registerUser,
+  loginUser,
+  updateOwnPassword,
+  getStateValue,
+  upsertStateValue,
+  getStateRecord,
+  getUserRecord,
+  listUserRecords,
+  updateUserRecord,
+  deleteUserRecord,
+  adminResetUserPassword,
+  claimUserAccount,
+  isPlaceholderEmail,
+  listGroupRecords,
+  createGroupRecord,
+  updateGroupRecord,
+  deleteGroupRecord,
+  resolveUserPermissions,
+  listPeopleRecords,
+  getPeopleRecord,
+  upsertPeopleRecord,
+  getFeeState,
+  getFeeResetState,
+  getFeeResets,
+  updateFeeResetState,
+  updateFeeSchedule,
+  saveSettings,
+  queueRecordWrite,
+  isOutdatedVersion,
+  removePeopleRecord,
+  isDeletedPerson,
+  pruneDeletedPeopleRecords,
+  listExpenseRecords,
+  syncExpenseRecords,
+  listRequestRecords,
+  getRequestRecord,
+  upsertRequestRecord,
+  SYSTEM_PERMISSIONS,
+  listMentorRecords,
+  getMentorRecord,
+  getMentorByUserId,
+  createMentorRecord,
+  updateMentorRecord,
+  deleteMentorRecord,
+  listAllMentoringThreads,
+  listMentoringThreadsForUser,
+  getMentoringThread,
+  createMentoringThread,
+  updateMentoringThread,
+  listMentoringMessages,
+  getMentoringThreadSummary,
+  createMentoringMessage,
+  markMentoringMessagesRead,
+  encryptMentoringText,
+  decryptMentoringText,
+  listEvents,
+  getEventRecord,
+  createEventRecord,
+  updateEventRecord,
+  deleteEventRecord,
+  listEventRegistrations,
+  getEventRegistration,
+  upsertEventRegistration,
+  findEventByPublicToken,
+  listEventGuests,
+  getEventGuest,
+  findEventGuestByKey,
+  createEventGuest,
+  updateEventGuest,
+  deleteEventGuest,
+  listEventDuties,
+  getEventDuty,
+  createEventDuty,
+  updateEventDuty,
+  deleteEventDuty,
+  pbFilterEquals,
+  getOrCreateUserCalendarToken,
+  regenerateUserCalendarToken,
+  findUserByCalendarToken
+};

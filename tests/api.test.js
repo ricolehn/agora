@@ -5,7 +5,7 @@ const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { REPO_ROOT, BACKEND_DIR, assertHas, freePort, waitFor, start } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, assertHas, freePort, waitFor, start, SERVER_ENTRY } = require('./helpers');
 const { startFakeNextcloud } = require('./fakeNextcloud');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
@@ -45,6 +45,7 @@ function unzip(buffer) {
 describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP tests' }, () => {
   const processes = [];
   let base;
+  let pocketbaseUrl;
   let dataRoot;
   let preSetupLogin;
   const tokens = {};
@@ -117,11 +118,12 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     dataRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agora-api-'));
     const pbDir = path.join(dataRoot, 'pb');
     base = `http://127.0.0.1:${port}`;
+    pocketbaseUrl = `http://127.0.0.1:${pbPort}`;
 
-    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--http', `127.0.0.1:${pbPort}`], {}));
+    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
     await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
 
-    processes.push(start('backend', process.execPath, [path.join(BACKEND_DIR, 'server.js')], {
+    processes.push(start('backend', process.execPath, [SERVER_ENTRY], {
       PORT: String(port),
       POCKETBASE_PORT: String(pbPort),
       POCKETBASE_BIN,
@@ -166,6 +168,128 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await call(null, 'GET', '/api/status')).body.setupMode, false);
     const again = await call(null, 'POST', '/api/setup', { appName: 'X', adminUser: { firstName: 'A', lastName: 'B', email: 'x@test.local', password: PASSWORD } });
     assert.equal(again.status, 403);
+  });
+
+  test('a session token can do nothing in PocketBase directly: it reads its own account and that is all', async () => {
+    // The session token is a PocketBase token: wherever PocketBase's port is reachable (another container, the admin
+    // page on 8090) it must not open anything the server would not
+    const pb = async (token, method, url, body) => (await fetch(`${pocketbaseUrl}${url}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: token } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    })).status;
+
+    assert.equal(await pb(tokens.max, 'GET', `/api/collections/users/records/${uids.max}`), 200, 'the sign-in check reads the own record');
+    assert.ok(await pb(tokens.max, 'PATCH', `/api/collections/users/records/${uids.max}`, { admin: true, owner: true, groups: ['x'] }) >= 400);
+    assert.equal((await ok(call('max', 'GET', '/api/auth/me'))).user.admin, false);
+    assert.ok(await pb(tokens.max, 'GET', `/api/collections/users/records/${uids.owner}`) >= 400);
+    assert.ok(await pb(tokens.max, 'GET', '/api/collections/users/records') >= 400);
+    assert.ok(await pb(null, 'POST', '/api/collections/users/records', { email: 'sneak@test.local', password: PASSWORD, passwordConfirm: PASSWORD }) >= 400);
+    const { allCollections } = require(path.join(BACKEND_DIR, 'db', 'schema'));
+    for (const collection of [...allCollections().map((spec) => spec.name), 'finance_ledger', 'finance_monthly_totals']) {
+      // Not even the owner's token: the secrets in app_state and every member's data are the server's alone
+      assert.ok(await pb(tokens.owner, 'GET', `/api/collections/${collection}/records`) >= 400, collection);
+      assert.ok(await pb(tokens.owner, 'POST', `/api/collections/${collection}/records`, {}) >= 400, collection);
+    }
+  });
+
+  test('the finance change log: who changed which booking, before and after; a deleted member keeps no status details', async () => {
+    const { superuser } = require('./instance');
+    const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);
+    const changes = async (filter) => su.list('finance_changes', filter);
+    const key = uids.mia;
+    const write = async (change) => {
+      const current = await ok(call('treasurer', 'GET', `/api/db?path=people/${key}&raw=1`));
+      await ok(call('treasurer', 'POST', '/api/db/transaction', { path: `people/${key}`, currentVersion: current.version, value: change(current.value) }));
+    };
+    const before = (await changes('')).length;
+    await write((p) => ({ ...p, payments: [...(p.payments || []), { id: 1790000000001, amount: 25.5, date: '2026-03-03', description: 'Beitrag März' }] }));
+    await write((p) => ({ ...p, payments: p.payments.map((payment) => (payment.id === 1790000000001 ? { ...payment, amount: 30 } : payment)) }));
+    await write((p) => ({ ...p, payments: p.payments.filter((payment) => payment.id !== 1790000000001), status: 'geringverdiener', statusHistory: [{ status: 'geringverdiener', startDate: '2026-01-01' }] }));
+    const rows = (await changes('')).slice(before);
+    const payments = rows.filter((row) => row.area === 'payment');
+    assert.deepEqual(payments.map((row) => row.action), ['create', 'update', 'delete']);
+    assert.ok(payments.every((row) => row.by === uids.treasurer && row.byName === 'Theo Test' && row.at), 'who and when');
+    assert.equal(payments[0].details.after.amount, 25.5);
+    assert.deepEqual([payments[1].details.before.amount, payments[1].details.after.amount], [25.5, 30]);
+    assert.equal(payments[2].details.before.amount, 30);
+    assert.ok(rows.some((row) => row.area === 'member' && row.action === 'update' && row.details.after.status === 'geringverdiener'));
+    assert.ok(rows.some((row) => row.area === 'statusPeriod' && row.details.after?.status === 'geringverdiener'));
+
+    // Donations and expenses saved as a whole: only what changed is logged
+    const donations = await ok(call('treasurer', 'GET', '/api/db?path=donations'));
+    const list = Array.isArray(donations) ? donations : Object.values(donations || {});
+    await ok(call('treasurer', 'PUT', '/api/db', { path: 'donations', value: [...list, { id: 1790000000002, amount: 40, name: 'Anonym', date: '2026-03-04' }] }));
+    const donationRows = (await changes('area = "donation"')).filter((row) => row.details.after?.id === 1790000000002);
+    assert.equal(donationRows.length, 1);
+    assert.equal(donationRows[0].action, 'create');
+
+    // A member is deleted: the log keeps that the status changed, not to what
+    await account('logged', 'Lotte');
+    const lotte = uids.logged;
+    const current = await ok(call('owner', 'GET', `/api/db?path=people/${lotte}&raw=1`));
+    await ok(call('owner', 'POST', '/api/db/transaction', { path: `people/${lotte}`, currentVersion: current.version, value: { ...current.value, statusHistory: [{ status: 'keinverdiener', startDate: '2026-02-01' }] } }));
+    const memberId = (await su.list('finance_members', `user = "${lotte}"`))[0].id;
+    assert.ok((await changes(`member = "${memberId}" && area = "statusPeriod"`)).some((row) => row.details.after?.status === 'keinverdiener'));
+    await ok(call('owner', 'DELETE', '/api/db', { path: `people/${lotte}` }));
+    const statusRows = await changes(`member = "${memberId}" && area = "statusPeriod"`);
+    assert.ok(statusRows.length >= 2);
+    assert.ok(statusRows.every((row) => !JSON.stringify(row.details).includes('keinverdiener')), 'no status left in the log');
+    assert.ok((await changes(`member = "${memberId}" && area = "member" && action = "delete"`)).length === 1);
+
+    // Kept for the bookkeeping years; the fee history stays
+    const store = require(path.join(BACKEND_DIR, 'db', 'stores', 'finance'));
+    const all = (await changes('')).length;
+    const appConfig = { pocketbase: { adminEmail: su.config.pocketbase.adminEmail, adminPassword: su.config.pocketbase.adminPassword } };
+    process.env.POCKETBASE_PORT = new URL(pocketbaseUrl).port;
+    assert.equal(await store.pruneChangeLog(appConfig, { years: 10 }), 0, 'nothing is ten years old');
+    const removed = await store.pruneChangeLog(appConfig, { years: 1, now: Date.now() + 2 * 365 * 86400000 });
+    assert.ok(removed > 0);
+    const left = await changes('');
+    assert.equal(left.length, all - removed);
+    assert.ok(left.every((row) => ['fees', 'freshStart'].includes(row.area)), 'only the fee history is left');
+  });
+
+  test('donations and expenses: a save with the version it read is refused when the list changed meanwhile', async () => {
+    for (const root of ['donations', 'expenses']) {
+      const read = async () => ok(call('treasurer', 'GET', `/api/db?path=${root}&raw=1`));
+      const first = await read();
+      assert.ok(typeof first.version === 'string' && first.version, `${root} has a version`);
+      const list = (value) => (Array.isArray(value) ? value : Object.values(value || {}));
+      const entry = (n) => (root === 'donations'
+        ? { id: 1795000000000 + n, amount: 10 + n, name: 'Versioniert', date: '2026-04-01', description: '' }
+        : { id: 1795000000000 + n, amount: 10 + n, description: 'Versioniert', issuer: 'Theo', date: '2026-04-01' });
+      // Saved with the version read: the answer carries the new list and its version
+      const saved = await ok(call('treasurer', 'POST', '/api/db/transaction', { path: root, currentVersion: first.version, value: [...list(first.value), entry(1)] }));
+      assert.notEqual(saved.version, first.version);
+      assert.ok(list(saved.value).some((item) => item.id === 1795000000001));
+      // A second app still holding the old version: refused, nothing lost
+      const stale = await call('treasurer', 'POST', '/api/db/transaction', { path: root, currentVersion: first.version, value: [...list(first.value), entry(2)] });
+      assert.equal(stale.status, 409);
+      const stalePut = await call('treasurer', 'PUT', '/api/db', { path: root, value: [...list(first.value), entry(2)], version: first.version });
+      assert.equal(stalePut.status, 409);
+      const now = await read();
+      assert.equal(now.version, saved.version);
+      assert.ok(list(now.value).some((item) => item.id === 1795000000001) && !list(now.value).some((item) => item.id === 1795000000002));
+      // Older apps send no version: their save goes through as before (and keeps what they could not have seen)
+      await ok(call('treasurer', 'PUT', '/api/db', { path: root, value: [...list(first.value), entry(3)] }));
+      const after = list((await read()).value);
+      assert.ok(after.some((item) => item.id === 1795000000001) && after.some((item) => item.id === 1795000000003));
+      // Only who manages the finances saves
+      assert.equal((await call('max', 'POST', '/api/db/transaction', { path: root, currentVersion: now.version, value: [] })).status, 403);
+    }
+  });
+
+  test('a password change checks the old password and goes through the server', async () => {
+    await account('pwchange', 'Paula');
+    const email = 'pwchange@test.local';
+    const wrong = await call('pwchange', 'POST', '/api/auth/password', { oldPassword: 'not-the-password', password: 'neues-Passwort-2' });
+    assert.equal(wrong.status, 400);
+    assert.equal((await call(null, 'POST', '/api/auth/login', { email, password: PASSWORD })).status, 200, 'unchanged after a wrong old password');
+
+    assert.deepEqual(await ok(call('pwchange', 'POST', '/api/auth/password', { oldPassword: PASSWORD, password: 'neues-Passwort-2' })), { success: true, loggedOut: true });
+    assert.equal((await call(null, 'POST', '/api/auth/login', { email, password: PASSWORD })).status, 401);
+    assert.equal((await call(null, 'POST', '/api/auth/login', { email, password: 'neues-Passwort-2' })).status, 200);
   });
 
   test('login and session: wrong password, missing token, own account', async () => {
@@ -1308,6 +1432,85 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const res = await fetch(`${base}/api/events/calendar.ics?user=nobody&token=wrong`, { headers: { 'X-Forwarded-For': '10.45.0.1' } });
     assert.equal(res.status, 401);
     assert.equal(res.headers.get('ratelimit-limit'), '240');
+  });
+
+  test('API v2: the books in cents with versions, the same data as v1, the same permissions', async () => {
+    const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
+    // Who am I; nothing but errors in the shape of v2
+    const me = await ok(v2('treasurer', 'GET', '/me'));
+    assert.equal(me.id, uids.treasurer);
+    assert.ok(me.permissions.includes('manage_finances'));
+    assert.deepEqual((await v2('max', 'GET', '/nothing-here')).body, { error: { code: 'not_found', message: 'There is no such resource in API v2.' } });
+    assert.equal((await v2(null, 'GET', '/members')).status, 401);
+
+    // Members: the treasurer sees all, a member only their own
+    const all = await ok(v2('treasurer', 'GET', '/members?limit=500'));
+    const mia = all.items.find((member) => member.userId === uids.mia);
+    assert.ok(mia && Number.isInteger(mia.totalPaidCents) && Number.isInteger(mia.balanceCents) && mia.version);
+    const own = await ok(v2('max', 'GET', '/members'));
+    assert.deepEqual(own.items.map((member) => member.userId), [uids.max]);
+    assert.equal((await v2('max', 'GET', `/members/${mia.id}`)).status, 403);
+
+    // A payment written through v2 is the same payment for v1 (amount, date) and is in the change log
+    const created = await ok(v2('treasurer', 'POST', '/payments', { memberId: mia.id, memberVersion: mia.version, amountCents: 2550, date: '2026-05-05', description: 'Über v2' }));
+    assert.equal(created.amountCents, 2550);
+    const v1 = await ok(call('treasurer', 'GET', `/api/db?path=people/${uids.mia}`));
+    assert.ok(v1.payments.some((payment) => payment.amount === 25.5 && payment.date === '2026-05-05' && payment.description === 'Über v2'));
+    // A change based on an old version is refused; with the current one it goes through
+    const stale = await v2('treasurer', 'PATCH', `/payments/${created.id}`, { memberVersion: mia.version, amountCents: 3000 });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.error.code, 'conflict');
+    const changed = await ok(v2('treasurer', 'PATCH', `/payments/${created.id}`, { memberVersion: created.memberVersion, amountCents: 3000 }));
+    assert.equal(changed.amountCents, 3000);
+    assert.equal(changed.id, created.id, 'the payment keeps its id');
+    assert.ok((await ok(call('treasurer', 'GET', `/api/db?path=people/${uids.mia}`))).payments.some((payment) => payment.amount === 30 && payment.description === 'Über v2'));
+    // Booked for a request: once, however often it is sent
+    const forRequest = { memberId: mia.id, memberVersion: changed.memberVersion, amountCents: 1000, date: '2026-05-06', description: 'Antrag', requestId: 'v2-test-request' };
+    const booked = await ok(v2('treasurer', 'POST', '/payments', forRequest));
+    assert.equal((await v2('treasurer', 'POST', '/payments', { ...forRequest, memberVersion: booked.memberVersion })).status, 409);
+    // Pages: the next one starts after the last item of the one before
+    const page1 = await ok(v2('treasurer', 'GET', `/payments?member=${mia.id}&limit=1`));
+    assert.equal(page1.items.length, 1);
+    assert.ok(page1.nextCursor);
+    const page2 = await ok(v2('treasurer', 'GET', `/payments?member=${mia.id}&limit=500&cursor=${page1.nextCursor}`));
+    assert.equal(page2.items.length, 1);
+    assert.notEqual(page2.items[0].id, page1.items[0].id);
+    assert.equal(page2.nextCursor, null);
+    const removed = await v2('treasurer', 'DELETE', `/payments/${booked.id}?memberVersion=${encodeURIComponent(booked.memberVersion)}`);
+    assert.equal(removed.status, 204);
+    assert.equal((await v2('max', 'POST', '/payments', { memberId: mia.id, memberVersion: changed.memberVersion, amountCents: 1, date: '2026-05-07' })).status, 403);
+    const logged = await ok(v2('treasurer', 'GET', `/finance/changes?area=payment&member=${mia.id}&limit=500`));
+    assert.ok(logged.items.some((change) => change.action === 'update' && change.by === uids.treasurer && change.details.after.amount === 30));
+
+    // Donations: the list's version
+    const donations = await ok(v2('treasurer', 'GET', '/donations'));
+    const donation = await ok(v2('treasurer', 'POST', '/donations', { listVersion: donations.listVersion, amountCents: 4200, date: '2026-05-08', donorName: 'Über v2' }));
+    assert.equal(donation.amountCents, 4200);
+    assert.equal((await v2('treasurer', 'PATCH', `/donations/${donation.id}`, { listVersion: donations.listVersion, amountCents: 1 })).status, 409);
+    const donationNow = await ok(v2('treasurer', 'PATCH', `/donations/${donation.id}`, { listVersion: donation.listVersion, amountCents: 4300 }));
+    assert.equal(donationNow.amountCents, 4300);
+    const v1Donations = await ok(call('treasurer', 'GET', '/api/db?path=donations'));
+    assert.ok((Array.isArray(v1Donations) ? v1Donations : Object.values(v1Donations)).some((entry) => entry.amount === 43 && entry.name === 'Über v2'));
+    assert.equal((await v2('treasurer', 'DELETE', `/donations/${donation.id}?listVersion=${encodeURIComponent(donationNow.listVersion)}`)).status, 204);
+    assert.equal((await v2('max', 'GET', '/donations')).status, 403);
+
+    // Requests: a member asks, the treasurer decides once
+    const asked = await ok(v2('max', 'POST', '/requests', { type: 'payment', details: { amount: '12.5', date: '2026-05-09', note: 'v2' } }));
+    assert.equal(asked.status, 'pending');
+    assert.equal(asked.amountCents, 1250);
+    assert.ok((await ok(v2('max', 'GET', '/requests'))).items.every((request) => request.userId === uids.max));
+    const decided = await ok(v2('treasurer', 'POST', `/requests/${asked.id}/decision`, { status: 'rejected', rejectionReason: 'Doppelt' }));
+    assert.deepEqual([decided.status, decided.rejectionReason], ['rejected', 'Doppelt']);
+    assert.equal((await v2('treasurer', 'POST', `/requests/${asked.id}/decision`, { status: 'approved' })).status, 409);
+
+    // The summary sums the cents per month; an event as everyone who may see it sees it
+    const summary = await ok(v2('treasurer', 'GET', '/finance/summary'));
+    assert.ok(Number.isInteger(summary.totalsCents.memberPayments) && summary.months.length > 0);
+    const eventId = await eventBy('owner', { title: 'v2-Abend', date: inDays(20), startTime: '19:00', requiresRegistration: true });
+    await ok(call('max', 'POST', `/api/events/${eventId}/register`, { action: 'register' }));
+    const event = (await ok(v2('max', 'GET', '/events?limit=500'))).items.find((item) => item.id === eventId);
+    assert.deepEqual([event.title, event.startTime, event.registeredCount, event.myRegistration.status], ['v2-Abend', '19:00', 1, 'registered']);
+    assert.equal((await ok(v2('max', 'GET', `/events/${eventId}`))).id, eventId);
   });
 
   test('malformed input gets a client error, never a crash', async () => {

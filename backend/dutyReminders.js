@@ -137,7 +137,7 @@ async function sendDueDutyReminders(appConfig, now = Date.now(), deps = {}) {
     listUsers: () => pb.listUserRecords(appConfig),
     listGroups: () => pb.listGroupRecords(appConfig).catch(() => []),
     // Not via updateEventDuty: the reminder is no change of the duty for the others
-    saveReminded: (duty, reminded) => pb.updateRecord('event_duties', duty.id, { reminded }, appConfig),
+    saveReminded: (duty, reminded) => pb.saveDutyReminded(appConfig, duty.id, reminded),
     notify: (users, content) => require('./notify').notifyUsers(appConfig, users, 'duties', content),
     ...deps
   };

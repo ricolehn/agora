@@ -1,4 +1,4 @@
-const { listAllRecords, updateRecord, deleteRecord } = require('./pocketbase');
+const { listPeopleRecords, financeStore } = require('./pocketbase');
 
 // Approved or rejected finance requests stay visible for this long, then they are deleted
 const DECIDED_REQUEST_RETENTION_DAYS = 30;
@@ -37,14 +37,14 @@ async function purgeExpiredRequests(appConfig, now = Date.now()) {
   let deleted = 0;
   let stamped = 0;
   try {
-    const records = await listAllRecords('requests', '', appConfig);
+    const records = await financeStore.listRequestRecords(appConfig);
     for (const record of records) {
       if (!isDecided(requestStatus(record))) continue;
       if (!record.data?.decidedAt) {
-        await updateRecord('requests', record.id, { data: { ...(record.data || {}), decidedAt: now } }, appConfig);
+        await financeStore.updateRequestData(appConfig, record.requestKey, { ...(record.data || {}), decidedAt: now });
         stamped += 1;
       } else if (isExpiredRequest(record, now)) {
-        await deleteRecord('requests', record.id, appConfig);
+        await financeStore.deleteRequestRecord(appConfig, record.requestKey);
         deleted += 1;
       }
     }
@@ -64,7 +64,7 @@ async function repairRequestAuthors(appConfig) {
   if (!appConfig) return { repaired: 0 };
   let repaired = 0;
   try {
-    const [requests, people] = await Promise.all([listAllRecords('requests', '', appConfig), listAllRecords('people', '', appConfig)]);
+    const [requests, people] = await Promise.all([financeStore.listRequestRecords(appConfig), listPeopleRecords(appConfig)]);
     const uidByPerson = new Map();
     for (const person of people) {
       const uid = person.uid || person.data?.uid;
@@ -76,7 +76,7 @@ async function repairRequestAuthors(appConfig) {
       const author = uidByPerson.get(personId);
       const current = String(record.data?.userId || record.userId || '');
       if (!author || author === current) continue;
-      await updateRecord('requests', record.id, { userId: author, data: { ...(record.data || {}), userId: author } }, appConfig);
+      await financeStore.updateRequestData(appConfig, record.requestKey, { ...(record.data || {}), userId: author }, { setColumns: ['userId'] });
       repaired += 1;
     }
     if (repaired) console.log(`[Requests] Gave ${repaired} request(s) their author back`);

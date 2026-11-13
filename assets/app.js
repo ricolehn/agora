@@ -5852,10 +5852,10 @@ async function mutatePerson(personId, mutator) {
     return updated;
 }
 
-// Donations & expenses are stored as whole lists: read the latest server copy, apply `change`, write it back.
+// Donations & expenses are stored as whole lists: read the latest server copy with its version, apply `change`, write
+// it back - refused if someone else saved the list meanwhile, then read and applied again (runTransaction).
 async function mutateCollection(name, change) {
-    const next = change(safeList(await apiGet(name)));
-    if (next) await set(ref(db, name), next);
+    await runTransaction(ref(db, name), current => change(safeList(current)) || undefined);
 }
 
 function replaceById(list, id, fields) {

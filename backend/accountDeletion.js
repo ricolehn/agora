@@ -4,9 +4,6 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  listAllRecords,
-  deleteRecord,
-  updateRecord,
   pbFilterEquals,
   listPeopleRecords,
   removePeopleRecord,
@@ -14,6 +11,7 @@ const {
 } = require('./pocketbase');
 const { loadSecret } = require('./polls');
 const { isMine } = require('./prayers');
+const { createItemStore } = require('./itemStore');
 
 // Which person record belongs to the account (same matching as the admin deletion)
 function linkedPeople(people, uid) {
@@ -32,10 +30,10 @@ function freedDutyUpdate(duty, uid) {
   return update;
 }
 
-async function deleteWhere(appConfig, collection, field, value) {
-  const records = await listAllRecords(collection, pbFilterEquals(field, value), appConfig).catch(() => []);
-  for (const r of records) await deleteRecord(collection, r.id, appConfig).catch(() => {});
-  return records;
+/** Deletes [records] one by one (a failure leaves the others); returns how many there were. */
+async function removeAll(records, remove) {
+  for (const record of records) await remove(record).catch(() => {});
+  return records.length;
 }
 
 // Each sign-up goes in its event's write queue; a freed place moves the next one up and tells guests who moved up
@@ -44,12 +42,13 @@ async function deleteRegistrations(appConfig, uid) {
   const { getEventRecord } = require('./pocketbase');
   const { tellPromotedGuests } = require('./eventGuests');
   const { normalizePublicUrl } = require('./notify');
-  const records = await listAllRecords('event_registrations', pbFilterEquals('user', uid), appConfig).catch(() => []);
+  const { stores, deleteEventRegistration } = require('./db/stores/events');
+  const records = await stores.registrations.list(appConfig, pbFilterEquals('user', uid)).catch(() => []);
   for (const record of records) {
     try {
       const event = await getEventRecord(appConfig, record.event).catch(() => null);
       const promoted = await withEventSeats(record.event, async () => {
-        await deleteRecord('event_registrations', record.id, appConfig).catch(() => {});
+        await deleteEventRegistration(appConfig, record.id).catch(() => {});
         return event && record.status === 'registered' ? fillFreeSeats(appConfig, event) : [];
       });
       if (event) tellPromotedGuests(promoted, event, normalizePublicUrl(appConfig.publicUrl) || '');
@@ -69,10 +68,8 @@ async function deleteOwnPrayers(appConfig, uid, dataDir) {
   } catch (err) {
     console.warn('[Account] Anonymous prayer requests cannot be matched:', err.message);
   }
-  const own = (await listAllRecords('prayers', '', appConfig).catch(() => []))
-    .filter((record) => record.data && (record.data.authorUid === uid || (secret && isMine(record.data, uid, secret))));
-  for (const record of own) await deleteRecord('prayers', record.id, appConfig).catch(() => {});
-  return own.length;
+  return createItemStore('prayers').removeWhere(appConfig, (prayer) => prayer.authorUid === uid || Boolean(secret && isMine(prayer, uid, secret)))
+    .catch(() => 0);
 }
 
 /** Deletes the account of [uid] and its personal data. Returns a summary for logging. */
@@ -80,13 +77,16 @@ async function deleteAccountData(appConfig, uid, { profilesDir, dataDir } = {}) 
   const summary = {};
 
   // Mentoring: mentor profile, own chats and their messages (private conversations)
-  summary.mentorProfiles = (await deleteWhere(appConfig, 'mentors', 'user', uid)).length;
+  const mentoring = require('./db/stores/mentoring');
+  const profiles = await mentoring.mentors.list(appConfig, pbFilterEquals('user', uid)).catch(() => []);
+  for (const profile of profiles) await mentoring.mentors.remove(appConfig, profile.id).catch(() => {});
+  summary.mentorProfiles = profiles.length;
   let threads = 0;
   for (const field of ['mentor', 'mentee']) {
-    const list = await listAllRecords('mentoring_threads', pbFilterEquals(field, uid), appConfig).catch(() => []);
+    const list = await mentoring.threads.list(appConfig, pbFilterEquals(field, uid)).catch(() => []);
     for (const t of list) {
-      await deleteWhere(appConfig, 'mentoring_messages', 'thread', t.id);
-      await deleteRecord('mentoring_threads', t.id, appConfig).catch(() => {});
+      // Its messages go with it
+      await mentoring.deleteThread(appConfig, t.id).catch(() => {});
       threads++;
     }
   }
@@ -95,12 +95,14 @@ async function deleteAccountData(appConfig, uid, { profilesDir, dataDir } = {}) 
   // Events: registrations go (a freed place goes to the waiting list, like a cancellation), duty slots are freed
   summary.registrations = await deleteRegistrations(appConfig, uid);
   let duties = 0;
+  const dutyStore = require('./db/stores/events').stores.duties;
   for (const field of ['assignedUser', 'requestedUser', 'requestedBy']) {
-    const list = await listAllRecords('event_duties', pbFilterEquals(field, uid), appConfig).catch(() => []);
+    const list = await dutyStore.list(appConfig, pbFilterEquals(field, uid)).catch(() => []);
     for (const d of list) {
       const update = freedDutyUpdate(d, uid);
       if (update) {
-        await updateRecord('event_duties', d.id, update, appConfig).catch(() => {});
+        // Not via updateEventDuty: the duty's "updated" stays as it was
+        await dutyStore.update(appConfig, d.id, update).catch(() => {});
         duties++;
       }
     }
@@ -108,9 +110,10 @@ async function deleteAccountData(appConfig, uid, { profilesDir, dataDir } = {}) 
   summary.duties = duties;
 
   // Notifications and own finance requests
-  summary.pushSubscriptions = (await deleteWhere(appConfig, 'push_subscriptions', 'user', uid)).length;
-  summary.fcmTokens = (await deleteWhere(appConfig, 'fcm_tokens', 'user', uid)).length;
-  summary.requests = (await deleteWhere(appConfig, 'requests', 'userId', uid)).length;
+  const { listPushSubscriptionsOf, removePushSubscription, listFcmTokensOf, removeFcmToken } = require('./pocketbase');
+  summary.pushSubscriptions = await removeAll(await listPushSubscriptionsOf(appConfig, uid).catch(() => []), (record) => removePushSubscription(appConfig, record.id));
+  summary.fcmTokens = await removeAll(await listFcmTokensOf(appConfig, uid).catch(() => []), (record) => removeFcmToken(appConfig, record.id));
+  summary.requests = await require('./pocketbase').financeStore.deleteRequestsOfUser(appConfig, uid);
   summary.prayers = await deleteOwnPrayers(appConfig, uid, dataDir);
 
   // Profile picture

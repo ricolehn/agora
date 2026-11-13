@@ -220,6 +220,8 @@ export async function runTransaction(reference, updater) {
   for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
     const current = await readRaw(reference);
     const nextValue = updater(clone(current?.value));
+    // As in Firebase: an updater that returns undefined leaves everything as it is
+    if (nextValue === undefined) return { committed: false, snapshot: makeSnapshot(current?.value) };
     try {
       const result = await apiFetch('/api/db/transaction', {
         method: 'POST',

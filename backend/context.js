@@ -1,3 +1,4 @@
+const { runAs } = require('./actor');
 const multer = require('multer');
 const crypto = require('crypto');
 const path = require('path');
@@ -94,10 +95,19 @@ if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir);
 
 const context = {
   appConfig: null,
+  // setupMode: there is no configuration yet, so the first setup is open (and nothing else). An instance that has a
+  // configuration is never in setup mode again - also not while it starts or after a start that failed: setup would
+  // write a new configuration over it and make whoever sends it the owner of the existing data.
   setupMode: true,
+  // 'setup' (see above), 'starting' (configured, the runtime is coming up or waits to try again), 'updating' (the
+  // database is being upgraded), 'ready'
+  phase: 'setup',
   transporter: null,
   runtimeReady: Promise.resolve()
 };
+
+/** True while the runtime of a configured instance is not ready yet (starting, updating or waiting to retry). */
+const isStarting = () => !context.setupMode && context.phase !== 'ready';
 
 const authCookieName = 'agora_auth';
 const legacyAuthCookieName = 'nova_auth';
@@ -120,13 +130,13 @@ function userWantsNotification(user, type, channel = 'push') {
   return wantsNotification(user, type, channel);
 }
 
+/** A configuration that can start the runtime (what the setup writes). */
+const isCompleteConfig = (config) => Boolean(config?.appName && config?.pocketbase?.adminEmail && config?.pocketbase?.adminPassword);
+
 async function initializeRuntime(config) {
-  if (!config?.appName || !config?.pocketbase?.adminEmail || !config?.pocketbase?.adminPassword) {
-    context.appConfig = null;
-    context.setupMode = true;
-    context.transporter = null;
-    console.log('No valid config found. Starting in setup mode.');
-    return;
+  if (!isCompleteConfig(config)) {
+    // Not setup mode: the file exists, and a setup would replace it. Whoever runs the server restores or removes it.
+    throw Object.assign(new Error(`${configFile} is incomplete. Restore it from a backup, or remove it to run the setup again.`), { permanent: true });
   }
 
   // Installations from before the language setting (3.0.1) spoke German: keep that as their default language
@@ -137,13 +147,15 @@ async function initializeRuntime(config) {
   }
 
   await ensurePocketBaseSuperuser(config);
-  await ensurePocketBaseSchema(config);
+  // An instance from before the new database structure is upgraded first (the app answers "updating" meanwhile)
+  await ensurePocketBaseSchema(config, { onUpgrading: () => { context.phase = 'updating'; } });
   await upsertStateValue(config, 'settings', await getStateValue(config, 'settings', DEFAULT_SETTINGS));
   await upsertStateValue(config, 'system', withSecureInviteCode(await getStateValue(config, 'system', DEFAULT_SYSTEM_STATE)));
 
   context.appConfig = config;
   context.setupMode = false;
   context.transporter = buildSmtpTransport(config.smtp || null);
+  context.phase = 'ready';
   console.log('Configuration loaded successfully. Setup mode: false');
 
   runAutomatedStandingOrders(context.appConfig);
@@ -152,29 +164,65 @@ async function initializeRuntime(config) {
   pruneDeletedPeopleRecords(context.appConfig);
 }
 
-function setRuntimeConfig(config) {
+// A start that failed (PocketBase not answering yet, a full disk) is tried again by itself: the instance must not stay
+// down until someone restarts it - and it must not fall back into setup mode either (see context.setupMode).
+const RESTART_DELAYS_MS = [10_000, 30_000, 60_000, 300_000];
+let restartTimer = null;
+
+/**
+ * Starts the runtime with [config]. Until it is ready, requests that need it wait (context.runtimeReady) or are told
+ * to try again (503). [retry]: try again after a failure (the setup turns that off: its own failure is answered).
+ */
+function setRuntimeConfig(config, { retry = true, attempt = 0 } = {}) {
+  clearTimeout(restartTimer);
+  context.setupMode = false;
+  context.phase = 'starting';
   context.runtimeReady = initializeRuntime(config).catch((error) => {
     console.error('Runtime initialization failed:', error);
     context.appConfig = null;
-    context.setupMode = true;
     context.transporter = null;
-    throw error;
+    if (error.name === 'UpgradeNotDone' && typeof context.onUpgradeNotDone === 'function') {
+      context.phase = 'failed';
+      context.onUpgradeNotDone(error.outcome, config);
+    } else if (error.permanent) {
+      context.phase = 'failed';
+    } else if (retry) {
+      const delay = RESTART_DELAYS_MS[Math.min(attempt, RESTART_DELAYS_MS.length - 1)];
+      console.log(`[Startup] Trying again in ${Math.round(delay / 1000)} s`);
+      restartTimer = setTimeout(() => setRuntimeConfig(config, { retry, attempt: attempt + 1 }).catch(() => {}), delay);
+      restartTimer.unref?.();
+    }
+    if (!retry) throw error;
+    throw Object.assign(new Error('The server is starting. Please try again in a moment.'), { status: 503, cause: error });
   });
   return context.runtimeReady;
 }
 
+/** Back to a fresh instance after a first setup that did not get through (its configuration file is removed). */
+function resetToSetupMode() {
+  clearTimeout(restartTimer);
+  context.appConfig = null;
+  context.transporter = null;
+  context.setupMode = true;
+  context.phase = 'setup';
+  context.runtimeReady = Promise.resolve();
+}
+
 function loadConfig() {
   if (!fs.existsSync(configFile)) {
+    resetToSetupMode();
     console.log('No config file found. Starting in setup mode.');
     return;
   }
 
+  let parsed = null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-    setRuntimeConfig(parsed).catch(() => {});
+    parsed = JSON.parse(fs.readFileSync(configFile, 'utf8'));
   } catch (error) {
+    // An unreadable file is not "no configuration": initializeRuntime refuses it, and the setup stays closed
     console.error('Error reading config file:', error);
   }
+  setRuntimeConfig(parsed).catch(() => {});
 }
 
 const logoAssetRateLimit = rateLimit({
@@ -413,7 +461,8 @@ async function verifyToken(req, res, next) {
     const user = isRead ? await cachedRequestUser(token) : await resolveRequestUser(token);
     req.user = user;
     req.authToken = token;
-    next();
+    // Everything this request does is done by this person (the finance change log records it)
+    return runAs(user, () => next());
   } catch (error) {
     res.status(401).send('Invalid token');
   }
@@ -571,15 +620,17 @@ async function readLogicalPath(targetPath, query, user) {
       error.status = 403;
       throw error;
     }
+    // The version of the whole list: a save that sends it back is refused if the list changed meanwhile (409)
+    const { financeStore } = require('./pocketbase');
     if (root === 'expenses') {
       const records = await listExpenseRecords(context.appConfig);
       return {
         value: objectFromRecords(records, 'expenseKey', (record) => record.data),
-        version: null
+        version: await financeStore.expensesVersion(context.appConfig)
       };
     }
     const record = await getStateRecord(context.appConfig, root);
-    return { value: record?.value || {}, version: record?.updated || null };
+    return { value: record?.value || {}, version: await financeStore.donationsVersion(context.appConfig) };
   }
 
   if (root === 'users') {
@@ -764,11 +815,13 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
 
   if ((root === 'donations' || root === 'expenses') && !id) {
     if (!user.canManageFinances) throw Object.assign(new Error('Finance management rights required'), { status: 403 });
+    // With the version it was read with, a list that changed meanwhile is refused (409) instead of overwritten
+    const expectedVersion = typeof options.version === 'string' && options.version ? options.version : undefined;
     if (root === 'expenses') {
-      await syncExpenseRecords(context.appConfig, value || {});
+      await syncExpenseRecords(context.appConfig, value || {}, { expectedVersion });
       return;
     }
-    await upsertStateValue(context.appConfig, root, value || {});
+    await upsertStateValue(context.appConfig, root, value || {}, { expectedVersion });
     return;
   }
 
@@ -1285,6 +1338,8 @@ module.exports = {
   formatEventShort,
   pushLine,
   context,
+  isStarting,
+  resetToSetupMode,
   sseClients,
   broadcastDataUpdate,
   dataDir,

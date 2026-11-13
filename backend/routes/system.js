@@ -69,7 +69,15 @@ const features = require('../features');
 const router = express.Router();
 
 router.get('/api/status', (req, res) => {
-  res.json({ setupMode: context.setupMode });
+  // setupMode: no configuration yet (the setup page is open). ready: the server answers everything; until then a
+  // configured instance is starting or upgrading its database (updating)
+  res.json({
+    setupMode: context.setupMode,
+    ready: !context.setupMode && context.phase === 'ready',
+    updating: context.phase === 'updating',
+    // The versions of the API this server answers (docs/API_V2.md); v1 (/api/...) stays for every app version
+    apiVersions: [1, 2]
+  });
 });
 
 router.get('/assets/config.js', async (req, res) => {

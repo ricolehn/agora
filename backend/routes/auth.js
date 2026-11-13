@@ -9,6 +9,7 @@ const {
   validateSetupPayload,
   saveOptionalLogo,
   setRuntimeConfig,
+  resetToSetupMode,
   setAuthCookie,
   clearAuthCookie,
   verifyToken,
@@ -45,10 +46,15 @@ const {
 const router = express.Router();
 
 router.post('/api/setup', setupRateLimit, async (req, res) => {
-  if (!context.setupMode) {
+  // Only an instance without a configuration can be set up. One that has one - also while it starts, upgrades its
+  // database or after a start that failed - would get a new superuser and a new owner: whoever sent the setup would
+  // own the existing data.
+  if (!context.setupMode || fs.existsSync(configFile)) {
     return res.status(403).json({ error: 'Setup already complete.' });
   }
 
+  let configWritten = false;
+  let ownerCreated = false;
   try {
     const { appName, smtp, logoSvg, adminUser } = validateSetupPayload(req.body || {});
     const newConfig = {
@@ -59,9 +65,11 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
       pocketbase: generatePocketBaseCredentials()
     };
 
-    await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), 'utf8');
+    // 'wx': of two setups sent at the same moment only one writes the configuration (the other is refused below)
+    await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), { encoding: 'utf8', flag: 'wx' });
+    configWritten = true;
     await saveOptionalLogo(logoSvg);
-    await setRuntimeConfig(newConfig);
+    await setRuntimeConfig(newConfig, { retry: false });
 
     const auth = await registerUser({
       email: adminUser.email,
@@ -72,6 +80,7 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
       owner: true,
       pays: true
     }, newConfig);
+    ownerCreated = true;
 
     let adminGroup = null;
     const allManagementPermissions = [
@@ -116,6 +125,13 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
       user: auth.user
     });
   } catch (error) {
+    if (error.code === 'EEXIST') return res.status(403).json({ error: 'Setup already complete.' });
+    // A setup that did not get as far as the owner's account leaves nobody who could sign in: it is undone, so it can
+    // be sent again (the database keeps only its empty tables)
+    if (configWritten && !ownerCreated) {
+      await fs.promises.rm(configFile, { force: true }).catch(() => {});
+      resetToSetupMode();
+    }
     console.error('Error saving configuration:', error);
     res.status(400).json({ error: error.message || 'Failed to save configuration.' });
   }
@@ -264,7 +280,7 @@ router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) =
   }
 
   try {
-    await updateOwnPassword(req.authToken, req.user.uid, oldPassword, password);
+    await updateOwnPassword(context.appConfig, req.user.rawEmail || req.user.email, req.user.uid, oldPassword, password);
     clearAuthCookie(req, res);
     res.json({ success: true, loggedOut: true });
   } catch (error) {

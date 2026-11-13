@@ -92,7 +92,7 @@ router.get('/api/db', dbRateLimit, async (req, res) => {
 
 router.put('/api/db', dbRateLimit, verifyToken, async (req, res) => {
   try {
-    await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'set', { origin: originOf(req) });
+    await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'set', { origin: originOf(req), version: req.body?.version });
     broadcastDataUpdate();
     res.json({ success: true });
   } catch (error) {
@@ -151,8 +151,18 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) =>
   try {
     const targetPath = normalizeDataPath(req.body?.path);
     const [root, id] = targetPath.split('/');
+    // Donations and expenses: the whole list, saved only if it is still the version the app read
+    if ((root === 'donations' || root === 'expenses') && !id) {
+      if (!req.user.canManageFinances) return res.status(403).json({ error: 'Finance management rights required' });
+      const read = await readLogicalPath(root, {}, req.user);
+      if ((req.body?.currentVersion || null) !== read.version) return res.status(409).json({ error: 'Conflict' });
+      await writeLogicalPath(root, req.body?.value, req.user, 'set', { origin: originOf(req), version: read.version });
+      broadcastDataUpdate();
+      const saved = await readLogicalPath(root, {}, req.user);
+      return res.json({ value: saved.value, version: saved.version });
+    }
     if (root !== 'people' || !id) {
-      return res.status(400).json({ error: 'Only people transactions are supported.' });
+      return res.status(400).json({ error: 'Only people, donations and expenses transactions are supported.' });
     }
 
     const existing = await getPeopleRecord(context.appConfig, id);

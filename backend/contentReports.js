@@ -1,10 +1,9 @@
 // Reports of objectionable content (Google Play AI-generated content and user-generated content policies):
 // users flag an AI reply or a chat message; admins get a push and can list the reports.
 const crypto = require('crypto');
-const { getStateValue, upsertStateValue, queueRecordWrite } = require('./pocketbase');
+const systemStore = require('./db/stores/system');
 
 const REPORT_TYPES = ['ai', 'chat'];
-const MAX_STORED_REPORTS = 500;
 const MAX_TEXT = 4000;
 
 function clip(value, max) {
@@ -33,31 +32,19 @@ function buildReport(body, user, now = Date.now()) {
   };
 }
 
-// The reports are one list: storing and resolving read and write it one after another, so a report filed while
-// another one is resolved (or two at once) is not lost
-const withReports = (change) => queueRecordWrite('state:content_reports', change);
-
+// The reports are kept newest first, at most 500 (db/stores/system.js): storing and resolving run one after another,
+// so a report filed while another one is resolved (or two at once) is not lost
 async function storeReport(appConfig, report) {
-  return withReports(async () => {
-    const list = await getStateValue(appConfig, 'content_reports', []);
-    const next = [report, ...(Array.isArray(list) ? list : [])].slice(0, MAX_STORED_REPORTS);
-    await upsertStateValue(appConfig, 'content_reports', next);
-    return report;
-  });
+  return systemStore.addReport(appConfig, report);
 }
 
 async function listReports(appConfig) {
-  const list = await getStateValue(appConfig, 'content_reports', []);
+  const list = await systemStore.listReports(appConfig);
   return Array.isArray(list) ? list : [];
 }
 
 async function resolveReport(appConfig, id) {
-  return withReports(async () => {
-    const list = await listReports(appConfig);
-    const next = list.map(r => (r.id === id ? { ...r, status: 'resolved', resolved: Date.now() } : r));
-    await upsertStateValue(appConfig, 'content_reports', next);
-    return next.find(r => r.id === id) || null;
-  });
+  return systemStore.resolveReports(appConfig, id);
 }
 
 module.exports = { REPORT_TYPES, buildReport, storeReport, listReports, resolveReport };

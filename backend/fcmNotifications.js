@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { resolveDataDirectory } = require('./pathConfig');
-const { listAllRecords, deleteRecord, pbFilterEquals } = require('./pocketbase');
+const { listFcmTokensOf, removeFcmToken } = require('./pocketbase');
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -262,7 +262,7 @@ async function sendFcmToToken(tokenRecord, payload, appConfig) {
     if (isStaleTokenError(response.status, error)) {
       console.log(`[FCM] Token no longer valid (${response.status} ${error.status || ''}), deleting:`, tokenRecord.id);
       try {
-        await deleteRecord('fcm_tokens', tokenRecord.id, appConfig);
+        await removeFcmToken(appConfig, tokenRecord.id);
       } catch (delErr) {
         console.warn('[FCM] Failed to delete invalid token:', delErr.message);
       }
@@ -282,7 +282,7 @@ async function sendFcmToToken(tokenRecord, payload, appConfig) {
 async function sendFcmToUser(appConfig, userId, payload) {
   if (!appConfig || !userId || !isFcmEnabled()) return;
   try {
-    const tokens = await listAllRecords('fcm_tokens', pbFilterEquals('user', userId), appConfig);
+    const tokens = await listFcmTokensOf(appConfig, userId);
     if (!tokens || !tokens.length) return;
     await Promise.all(tokens.map(record => sendFcmToToken(record, payload, appConfig)));
   } catch (err) {

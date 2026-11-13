@@ -1,0 +1,321 @@
+const express = require('express');
+const { normalizeLanguage, languageFromHeader, BASE_LANGUAGE } = require('../i18n');
+const crypto = require('crypto');
+const {
+  context,
+  setupRateLimit,
+  authRateLimit,
+  pageRateLimit,
+  validateSetupPayload,
+  saveOptionalLogo,
+  setRuntimeConfig,
+  resetToSetupMode,
+  setAuthCookie,
+  clearAuthCookie,
+  verifyToken,
+  applyGroupPermissions,
+  broadcastDataUpdate,
+  configFile,
+  profilesDir,
+  dataDir,
+  newPersonRecord
+} = require('../context');
+const fs = require('fs');
+const { deleteAccountData } = require('../accountDeletion');
+
+const {
+  DEFAULT_SYSTEM_STATE,
+  withSecureInviteCode,
+  generatePocketBaseCredentials,
+  registerUser,
+  createGroupRecord,
+  listGroupRecords,
+  getStateValue,
+  upsertStateValue,
+  updateUserRecord,
+  upsertPeopleRecord,
+  loginUser,
+  isPlaceholderEmail,
+  listUserRecords,
+  claimUserAccount,
+  listPeopleRecords,
+  updateOwnPassword,
+  resolveUserPermissions
+} = require('../pocketbase');
+
+const router = express.Router();
+
+router.post('/api/setup', setupRateLimit, async (req, res) => {
+  // Only an instance without a configuration can be set up. One that has one - also while it starts, upgrades its
+  // database or after a start that failed - would get a new superuser and a new owner: whoever sent the setup would
+  // own the existing data.
+  if (!context.setupMode || fs.existsSync(configFile)) {
+    return res.status(403).json({ error: 'Setup already complete.' });
+  }
+
+  let configWritten = false;
+  let ownerCreated = false;
+  try {
+    const { appName, smtp, logoSvg, adminUser } = validateSetupPayload(req.body || {});
+    const newConfig = {
+      appName,
+      smtp,
+      // the language the setup was done in becomes the instance's default language
+      defaultLanguage: normalizeLanguage(req.body?.defaultLanguage) || languageFromHeader(req.headers['accept-language']) || BASE_LANGUAGE,
+      pocketbase: generatePocketBaseCredentials()
+    };
+
+    // 'wx': of two setups sent at the same moment only one writes the configuration (the other is refused below)
+    await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), { encoding: 'utf8', flag: 'wx' });
+    configWritten = true;
+    await saveOptionalLogo(logoSvg);
+    await setRuntimeConfig(newConfig, { retry: false });
+
+    const auth = await registerUser({
+      email: adminUser.email,
+      password: adminUser.password,
+      firstName: adminUser.firstName,
+      lastName: adminUser.lastName,
+      admin: true,
+      owner: true,
+      pays: true
+    }, newConfig);
+    ownerCreated = true;
+
+    let adminGroup = null;
+    const allManagementPermissions = [
+      'manage_finances',
+      'manage_registration_code',
+      'access_ai',
+      'manage_mentoring',
+      'manage_events',
+      'manage_songbook',
+      'manage_prayers',
+      'manage_media'
+    ];
+    try {
+      const existingGroups = await listGroupRecords(newConfig);
+      adminGroup = existingGroups.find(g => g.name === 'Admin');
+      if (!adminGroup) {
+        adminGroup = await createGroupRecord(newConfig, {
+          name: 'Admin',
+          permissions: allManagementPermissions
+        });
+      }
+    } catch (gErr) {
+      console.warn('Could not create default Admin group in setup:', gErr.message);
+    }
+
+    const system = await getStateValue(newConfig, 'system', DEFAULT_SYSTEM_STATE);
+    await upsertStateValue(newConfig, 'system', { ...withSecureInviteCode(system), ownerUid: auth.user.id, superAdminUid: auth.user.id });
+    const ownerGroups = adminGroup ? [adminGroup.id] : [];
+    await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: true, groups: ownerGroups });
+
+    const personKey = auth.user.id;
+    const memberSinceDate = adminUser.memberSince || new Date().toISOString().slice(0, 10);
+    const fullName = `${adminUser.firstName} ${adminUser.lastName}`.trim();
+    await upsertPeopleRecord(newConfig, personKey, newPersonRecord(personKey, fullName, memberSinceDate));
+
+    setAuthCookie(req, res, auth.token);
+
+    res.json({
+      success: true,
+      message: 'Setup completed successfully.',
+      token: auth.token,
+      user: auth.user
+    });
+  } catch (error) {
+    if (error.code === 'EEXIST') return res.status(403).json({ error: 'Setup already complete.' });
+    // A setup that did not get as far as the owner's account leaves nobody who could sign in: it is undone, so it can
+    // be sent again (the database keeps only its empty tables)
+    if (configWritten && !ownerCreated) {
+      await fs.promises.rm(configFile, { force: true }).catch(() => {});
+      resetToSetupMode();
+    }
+    console.error('Error saving configuration:', error);
+    res.status(400).json({ error: error.message || 'Failed to save configuration.' });
+  }
+});
+
+router.post('/api/auth/login', authRateLimit, async (req, res) => {
+  if (context.setupMode) {
+    return res.status(503).json({ error: 'App is in setup mode. Please complete setup first.' });
+  }
+
+  try {
+    await context.runtimeReady;
+  } catch {
+    return res.status(503).json({ error: 'PocketBase is still starting. Please try again.' });
+  }
+
+  const email = String(req.body?.email || '').trim();
+  const password = String(req.body?.password || '');
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing email or password.' });
+  }
+
+  try {
+    const auth = await loginUser(email, password);
+    let allGroups = [];
+    try {
+      allGroups = await listGroupRecords(context.appConfig);
+    } catch { /* ignore */ }
+    const groupPerms = resolveUserPermissions(auth.user?.groups, allGroups);
+    if (auth.user) {
+      applyGroupPermissions(auth.user, groupPerms);
+    }
+    setAuthCookie(req, res, auth.token);
+    res.json(auth);
+  } catch (error) {
+    res.status(401).json({ error: error.message || 'Login failed.' });
+  }
+});
+
+router.post('/api/auth/register', authRateLimit, async (req, res) => {
+  if (context.setupMode) {
+    return res.status(503).json({ error: 'App is in setup mode. Please complete setup first.' });
+  }
+
+  try {
+    await context.runtimeReady;
+  } catch {
+    return res.status(503).json({ error: 'PocketBase is still starting. Please try again.' });
+  }
+
+  const email = String(req.body?.email || '').trim();
+  const password = String(req.body?.password || '');
+  const inviteCode = String(req.body?.inviteCode || '').trim();
+  const firstName = String(req.body?.firstName || '').trim();
+  const lastName = String(req.body?.lastName || '').trim();
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing email or password.' });
+  }
+  if (!firstName || !lastName) {
+    return res.status(400).json({ error: 'First and last name are required.' });
+  }
+
+  try {
+    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    // No code set (or none sent): nobody registers; compared in constant time
+    const validInviteCode = String(system?.inviteCode || '');
+    const sent = Buffer.from(inviteCode);
+    const valid = Buffer.from(validInviteCode);
+    const matches = valid.length > 0 && sent.length === valid.length && crypto.timingSafeEqual(sent, valid);
+    if (!matches) {
+      return res.status(403).json({ error: 'Invalid registration code.' });
+    }
+
+    const normFirst = firstName.toLowerCase();
+    const normLast = lastName.toLowerCase();
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    const existingUsers = await listUserRecords(context.appConfig);
+    const matchingUnclaimedUser = existingUsers.find((u) => {
+      const uFirst = String(u.firstName || '').trim().toLowerCase();
+      const uLast = String(u.lastName || '').trim().toLowerCase();
+      const uName = String(u.name || '').trim().toLowerCase();
+      const isUnclaimed = u.isClaimed === false || isPlaceholderEmail(u.email);
+      if (!isUnclaimed) return false;
+      return (uFirst === normFirst && uLast === normLast) || (uName === `${normFirst} ${normLast}`.trim());
+    });
+
+    let auth;
+    if (matchingUnclaimedUser) {
+      await claimUserAccount(context.appConfig, matchingUnclaimedUser.id, email, password);
+      await updateUserRecord(context.appConfig, matchingUnclaimedUser.id, {
+        firstName,
+        lastName,
+        name: fullName
+      });
+      auth = await loginUser(email, password);
+
+      // The account keeps its own finance entry. Only an account without one gets the entry with its name that no
+      // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
+      const uid = matchingUnclaimedUser.id;
+      const people = await listPeopleRecords(context.appConfig);
+      const unusedEntry = !people.some(p => p.uid === uid || p.data?.uid === uid) && people.find(p => !p.uid && !p.data?.uid
+        && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === fullName.toLowerCase());
+      if (unusedEntry) {
+        await upsertPeopleRecord(context.appConfig, unusedEntry.personKey, { ...(unusedEntry.data || {}), uid, name: fullName });
+      }
+    } else {
+      auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
+
+      const personKey = auth.user.id;
+      const today = new Date().toISOString().slice(0, 10);
+      await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(personKey, fullName, today));
+    }
+
+    const newCode = String(crypto.randomInt(100000, 1000000));
+    await upsertStateValue(context.appConfig, 'system', { ...system, inviteCode: newCode });
+    broadcastDataUpdate();
+    setAuthCookie(req, res, auth.token);
+    res.json(auth);
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
+  }
+});
+
+// Runs on every page load: the page limiter, not the strict login one (members behind one NAT got locked out)
+router.get('/api/auth/me', pageRateLimit, verifyToken, (req, res) => {
+  setAuthCookie(req, res, req.authToken);
+  res.json({ user: req.user, token: req.authToken });
+});
+
+router.post('/api/auth/logout', pageRateLimit, (req, res) => {
+  clearAuthCookie(req, res);
+  res.json({ success: true });
+});
+
+router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) => {
+  const oldPassword = String(req.body?.oldPassword || '');
+  const password = String(req.body?.password || '');
+
+  if (!oldPassword) {
+    return res.status(400).json({ error: 'Old password required.' });
+  }
+
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  try {
+    await updateOwnPassword(context.appConfig, req.user.rawEmail || req.user.email, req.user.uid, oldPassword, password);
+    clearAuthCookie(req, res);
+    res.json({ success: true, loggedOut: true });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || 'Failed to update password.' });
+  }
+});
+
+// Users delete their own account (web UI + app settings, Google Play account deletion policy).
+// The password confirms it; the owner account has to stay (like in the admin deletion).
+router.post('/api/auth/delete-account', authRateLimit, verifyToken, async (req, res) => {
+  const password = String(req.body?.password || '');
+  const uid = req.user.uid || req.user.id;
+  if (!password) {
+    return res.status(400).json({ error: 'Please confirm the deletion with your password.' });
+  }
+  try {
+    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+    if (uid === ownerUid || req.user.owner === true || req.user.superAdmin === true) {
+      return res.status(400).json({ error: 'The owner account manages this instance and cannot be deleted.' });
+    }
+    try {
+      await loginUser(req.user.rawEmail || req.user.email, password);
+    } catch {
+      return res.status(403).json({ error: 'The password is not correct.' });
+    }
+    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
+    console.log(`[Account] User ${uid} deleted their account`, summary);
+    clearAuthCookie(req, res);
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete own account:', error);
+    res.status(500).json({ error: 'The account could not be deleted.' });
+  }
+});
+
+module.exports = router;

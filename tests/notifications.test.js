@@ -112,13 +112,17 @@ describe('fcmNotifications', () => {
       if (href.includes('/api/collections/_superusers/auth-with-password')) {
         return jsonResponse(200, { token: 'pb-superuser' });
       }
-      if (href.includes('/api/collections/fcm_tokens/records/') && method === 'DELETE') {
+      // Push devices: web push subscriptions and Android tokens share system_push_devices (kind webPush / fcm)
+      if (href.includes('/api/collections/system_push_devices/records/') && method === 'DELETE') {
         calls.deleted.push(href.split('/').pop());
         return new Response(null, { status: 204 });
       }
-      if (href.includes('/api/collections/fcm_tokens/records?')) {
+      if (href.includes('/api/collections/system_push_devices/records?')) {
         const filter = new URL(href).searchParams.get('filter') || '';
-        const items = fcmTokens.filter(rec => filter.includes(JSON.stringify(rec.user)));
+        const items = filter.includes('kind = "fcm"')
+          ? fcmTokens.filter(rec => filter.includes(JSON.stringify(rec.user)))
+            .map(rec => ({ collectionId: 'pbc_devices', kind: 'fcm', platform: 'android', created: '', updated: '', original: null, ...rec }))
+          : [];
         return jsonResponse(200, { items, totalPages: 1 });
       }
       if (href.includes('/api/collections/users/records?')) {
@@ -303,7 +307,9 @@ describe('fcmNotifications', () => {
       users: [
         { id: 'admin-on', admin: true, notificationSettings: { finances: true } },
         { id: 'admin-off', admin: true, notificationSettings: { finances: false } },
-        { id: 'owner-muted', owner: true, emailNotifications: false },
+        // An account of an older app version that switched everything off (no settings, emailNotifications false):
+        // the new structure keeps that switch in `original`, as the upgrade writes it
+        { id: 'owner-muted', owner: true, notificationSettings: null, original: { values: { emailNotifications: false } } },
         { id: 'member', admin: false }
       ],
       fcmTokens: [
