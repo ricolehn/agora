@@ -14,6 +14,9 @@ Rules:
   upgrade has run on every installation.
 - The only differences to the original are marked `LEGACY HOOK`: `/api/status` reports the waiting upgrade.
 - The launcher sets `DATA_DIR`, `POCKETBASE_DIR`, `FRONTEND_DIR` and `POCKETBASE_BIN` before it starts this copy, because
-  the copy resolves its default folders relative to its own location.
+  the copy resolves its default folders relative to its own location. The upgrade sets `DATA_DIR` and `POCKETBASE_DIR`
+  too, before it compares with this copy's functions (`legacyModules` in `backend/db/upgrade/index.js`): without them
+  the copy read the mentoring texts with a key of its own in the Docker image, and every comparison of a conversation
+  failed.
 - Remove the folder in a later release, once every installation has been upgraded (an instance that skips the release
   with this fallback must update to it first).

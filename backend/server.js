@@ -233,6 +233,9 @@ function handOverToPreviousBackend(outcome, config) {
   const previous = require('./legacy/pocketbase');
   previous.clearSuperuserTokenCache();
   previous.invalidateReadCache();
+  // The key of the mentoring texts is read again, from the data folder named above (a key read from anywhere else would
+  // show every conversation as "decryption failed" and encrypt new messages so that nobody can read them later)
+  require('./legacy/mentoringCrypto').clearMasterKeyCache();
   noteFallback(config).catch(() => {}).finally(() => {
     httpServer.close(() => require('./legacy/server.js'));
     httpServer.closeAllConnections?.();

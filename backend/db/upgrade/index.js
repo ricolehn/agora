@@ -20,6 +20,10 @@ const AREAS = [require('./accounts'), require('./finance'), require('./community
 const tables = require('../tables');
 const UPGRADE_ID = 'v4-structure';
 const MAX_ATTEMPTS = 3;
+// Raised with every correction of the upgrade itself: an instance where an earlier revision failed (three times, too)
+// tries the corrected one on its own, with three attempts of its own, instead of waiting for AGORA_UPGRADE_RETRY=1.
+// 2: the comparison read the mentoring texts with a wrong key in the Docker image (legacyModules)
+const UPGRADE_REVISION = 2;
 const BACKUP_PREFIX = 'pre-v4-';
 const KEEP_BACKUPS = 3;
 const MIGRATIONS = 'system_migrations';
@@ -98,8 +102,17 @@ async function ensureBackup(appConfig, state) {
   return { name, size: made.size, at: now(), reused: false };
 }
 
-/** The frozen previous backend's own functions (they read the old tables): the other side of the comparison. */
+/**
+ * The frozen previous backend's own functions (they read the old tables): the other side of the comparison. The copy
+ * finds its folders relative to itself (backend/legacy/../data) unless DATA_DIR and POCKETBASE_DIR name them, so they
+ * are set to this server's folders first - as the hand-over to the copy does (server.js). The Docker image sets
+ * neither: the copy looked for the key of the mentoring texts in /app/backend/data, made a new one there and read
+ * every conversation as "decryption failed" - the comparison failed on every instance with conversations.
+ */
 function legacyModules() {
+  const { resolveDataDirectory, resolvePocketBaseDirectory } = require('../../pathConfig');
+  process.env.DATA_DIR = resolveDataDirectory();
+  process.env.POCKETBASE_DIR = resolvePocketBaseDirectory();
   return {
     store: require('../../legacy/pocketbase'),
     stats: require('../../legacy/stats'),
@@ -156,15 +169,17 @@ async function upgradeDatabase(appConfig, { dryRun = false, onUpgrading = () => 
   if (state?.status === 'running' && !dryRun) {
     state = await setState(appConfig, { status: 'failed', error: 'The previous attempt was interrupted (the server stopped during it).' });
   }
-  const attempts = retry ? 0 : (state?.attempts || 0);
+  // A corrected upgrade starts its own attempts (every attempt notes the revision that made it)
+  const corrected = (state?.report?.revision || 1) < UPGRADE_REVISION;
+  const attempts = retry || corrected ? 0 : (state?.attempts || 0);
   if (attempts >= MAX_ATTEMPTS && !dryRun) {
     return { status: 'waiting', report: { reason: `The upgrade failed ${attempts} times; it is tried again when the server starts with AGORA_UPGRADE_RETRY=1.`, lastError: state?.error || '' } };
   }
 
   onUpgrading();
   const startedAt = now();
-  if (!dryRun) await setState(appConfig, { status: 'running', attempts: attempts + 1, startedAt, finishedAt: '', error: '', appVersion });
-  const report = { startedAt, appVersion, areas: {} };
+  if (!dryRun) state = await setState(appConfig, { status: 'running', attempts: attempts + 1, startedAt, finishedAt: '', error: '', appVersion, report: { ...(state?.report || {}), revision: UPGRADE_REVISION } });
+  const report = { startedAt, appVersion, revision: UPGRADE_REVISION, areas: {} };
   let details = [];
   try {
     // Leftovers of an earlier attempt: first the fields it added (they link to its new tables), then the tables

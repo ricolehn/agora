@@ -2,7 +2,10 @@
 // next start begins again (see backend/db/upgrade).
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { POCKETBASE_BIN, stop } = require('./instance');
+const fs = require('fs');
+const path = require('path');
+const { BACKEND_DIR } = require('./helpers');
+const { POCKETBASE_BIN, startBackend, stop } = require('./instance');
 const { oldInstance, exited, OLD_TABLES } = require('./upgradeHarness');
 
 describe('an upgrade that does not get through', { skip: !POCKETBASE_BIN && 'set POCKETBASE_BIN to run the upgrade tests' }, () => {
@@ -58,4 +61,26 @@ describe('an upgrade that does not get through', { skip: !POCKETBASE_BIN && 'set
     await stop(backend.process);
   });
 
+  test('in the layout of the Docker image (no DATA_DIR): the previous version\'s side of the comparison reads the conversations with the instance\'s key', async (t) => {
+    const old = await oldInstance();
+    t.after(() => old.close());
+
+    // The image keeps backend/ next to data/ and names no folder: each copy of the backend finds them relative to
+    // itself - the one in backend/legacy, too, which used to look for the key of the mentoring texts in backend/data
+    const entry = backendInLayout(old.root);
+    const backend = await startBackend(old.root, old.pocketbase.port, { entry, port: old.port, label: 'new backend', env: { DATA_DIR: undefined } });
+    assert.equal((await (await fetch(`${backend.base}/api/status`)).json()).upgrade, undefined, 'the upgrade got through');
+    assert.equal((await old.upgradeState()).status, 'done');
+    assert.deepEqual(await old.sameAnswers(), [], 'every conversation reads as before');
+    assert.equal(fs.existsSync(path.join(old.root, 'backend', 'data')), false, 'no second key next to the code');
+    await stop(backend.process);
+  });
 });
+
+/** A copy of the backend in [root]/backend, next to the instance's data/ as in the image (with the installed packages). */
+function backendInLayout(root) {
+  const target = path.join(root, 'backend');
+  fs.cpSync(BACKEND_DIR, target, { recursive: true, filter: (source) => path.basename(source) !== 'node_modules' });
+  fs.symlinkSync(path.join(BACKEND_DIR, 'node_modules'), path.join(target, 'node_modules'), 'dir');
+  return path.join(target, 'server.js');
+}
