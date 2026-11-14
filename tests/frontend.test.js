@@ -209,13 +209,44 @@ describe('AI reply steps (assets/aiReply.js)', () => {
     assert.equal(liveTitle('**Checking the expenses**\n\nI look at December.\n\n**Calculating monthly expenses**\n\nThe totals per'), 'Calculating monthly expenses');
     assert.equal(liveTitle('## Finding Nick in the members\nHe joined'), 'Finding Nick in the members');
     assert.equal(liveTitle('Okay, the user asks about Christmas. Let me check the December expenses.'), 'Let me check the December expenses');
-    // The sentence being written counts once it says something; before, the last finished one
-    assert.equal(liveTitle('I need the yearly totals. Then I'), 'I need the yearly totals');
-    assert.equal(liveTitle('I need the yearly totals. Then I compare them with the budget'), 'Then I compare them with the budget');
     assert.equal(liveTitle('Gut, jetzt rechne ich die Monatsausgaben zusammen.'), 'Jetzt rechne ich die Monatsausgaben zusammen');
+    assert.equal(liveTitle('- Check the expenses of December\n- Check the totals of every year'), 'Check the totals of every year');
     assert.equal(liveTitle('   \n '), '');
+    // A sentence that says nothing gives no title: the one before it stays
+    assert.equal(liveTitle('I check the books first. Hmm. Yes.'), 'I check the books first');
     const long = liveTitle(`Now I compare ${'every single payment of every member '.repeat(4)}since 2019.`);
     assert.ok(long.length <= 72 && long.endsWith('…'), long);
+    assert.ok(liveTitle('Now I compare every single payment of every member since 2019.', { max: 30 }).length <= 30);
+  });
+
+  test('while the thoughts come in, only what is finished gives a title - it never writes itself letter by letter', async () => {
+    const { liveTitle } = await load();
+    const live = (text) => liveTitle(text, { settled: false });
+    // A heading counts when its line is over
+    assert.equal(live('**Und'), '');
+    assert.equal(live('**Understanding the question**'), '');
+    assert.equal(live('**Understanding the question**\n'), 'Understanding the question');
+    assert.equal(live('**Understanding the question**\n\nThe person wants to know what the services cost. I should'), 'Understanding the question');
+    assert.equal(live('**Checking the expenses**\n\nI look at December.\n\n**Calculating monthly'), 'Checking the expenses');
+    assert.equal(live('## Finding Nick in the mem'), '');
+    // Bold words at the start of a line are no heading
+    assert.equal(live('I look at the members first.\n**Important** is the'), 'I look at the members first');
+    // A sentence counts when the next one has begun
+    assert.equal(live('I need the yearly'), '');
+    assert.equal(live('I need the yearly totals.'), '');
+    assert.equal(live('I need the yearly totals. Then I'), 'I need the yearly totals');
+    assert.equal(live('I need the yearly totals. Then I compare them with the budget'), 'I need the yearly totals');
+    assert.equal(live('I need the yearly totals. Then I compare them with the budget. Af'), 'Then I compare them with the budget');
+    assert.equal(live('I need the yearly totals.\n'), 'I need the yearly totals');
+    // A full stop inside a number or an abbreviation ends nothing
+    assert.equal(live('The candles cost 3.'), '');
+    assert.equal(live('The candles cost 3.50 euros, e.g. the red ones. Next'), 'The candles cost 3.50 euros, e.g. the red ones');
+    // The same text as it grows: the title only changes from one finished title to the next
+    const thought = 'Okay, the user asks about Christmas. Let me check the December expenses. Then I add them up per year.';
+    const titles = new Set();
+    for (let length = 1; length <= thought.length; length += 1) titles.add(live(thought.slice(0, length)));
+    assert.deepEqual([...titles], ['', 'The user asks about Christmas', 'Let me check the December expenses']);
+    assert.equal(liveTitle(thought), 'Then I add them up per year', 'complete, the last sentence counts as well');
   });
 
   test('the steps: thoughts per round, text before a lookup becomes a note, lookups get what they found', async () => {
@@ -258,17 +289,126 @@ describe('AI reply steps (assets/aiReply.js)', () => {
     assert.equal(lookupFound({ error: 'something' }), 'failed');
     assert.equal(lookupFound(null), '');
 
-    // The live line: the lookup it is on (also while it reads the result), then the newest thought
+    // The live line: the lookup it is on (also while it reads the result), then the newest thought - once it has a
+    // finished title (the thoughts that are still coming in may be in the middle of one)
     const work = createReplyWork();
     assert.equal(liveLabel(work), '');
     work.add({ reasoning: '**Reading the question**' });
+    assert.equal(liveLabel(work), '', 'the heading may still grow');
+    work.add({ reasoning: '\n\nThe person asks' });
     assert.equal(liveLabel(work), 'Reading the question');
     work.add({ lookup: { ...lookup, step: 'Suche die Weihnachtskosten' } });
     assert.equal(liveLabel(work), 'Suche die Weihnachtskosten');
     work.add({ lookupDone: { id: 2, count: 3, unit: 'entries' } });
     assert.equal(liveLabel(work), 'Suche die Weihnachtskosten');
     work.add({ reasoning: 'Jetzt rechne ich die Summe pro Jahr aus.' });
+    assert.equal(liveLabel(work), 'Suche die Weihnachtskosten', 'the lookup stays until the new thought has a title');
+    work.add({ reasoning: ' Dann vergleiche' });
     assert.equal(liveLabel(work), 'Jetzt rechne ich die Summe pro Jahr aus');
-    assert.equal(liveLabel(work, 'Prüfe die Mitglieder.'), 'Prüfe die Mitglieder');
+    assert.equal(liveLabel(work, 'Prüfe die Mitglieder. Dann'), 'Prüfe die Mitglieder');
+    assert.equal(liveLabel(work, 'Prüfe die Mitgl'), 'Jetzt rechne ich die Summe pro Jahr aus', 'a <think> block without a finished sentence yet');
+
+    // Thoughts that are over count in full: a lookup or the text of the round follows them
+    const over = createReplyWork();
+    over.add({ reasoning: '**Reading the question**' });
+    over.add({ content: 'Moment.' });
+    assert.equal(liveLabel(over), 'Reading the question');
+    over.add({ lookup: { id: 1, tool: 'members' } });
+    over.add({ reasoning: 'Nick ist seit 2019 dabei.' });
+    over.add({ content: 'Nick' });
+    assert.equal(liveLabel(over), 'Nick ist seit 2019 dabei');
+  });
+
+  test('the titles of the live line are paced: each stays long enough to be read, of those in between only the newest shows', async () => {
+    const { createTitlePacer, readingTime } = await load();
+    // A short title stays about a second and a half, a long sentence longer - but none for ever
+    assert.equal(readingTime('Adding up each year'), 1400);
+    assert.ok(readingTime('I will look up the expenses from 2021 to 2025 with those words') > 2000);
+    assert.equal(readingTime('x'.repeat(500)), 2600);
+    // A clock of its own: [advance] lets the time pass and runs what is due
+    let time = 0;
+    let timers = [];
+    const advance = (ms) => {
+      const until = time + ms;
+      for (;;) {
+        const due = timers.filter((timer) => timer.at <= until).sort((a, b) => a.at - b.at)[0];
+        if (!due) break;
+        timers = timers.filter((timer) => timer !== due);
+        time = due.at;
+        due.run();
+      }
+      time = until;
+    };
+    const clock = { now: () => time, later: (run, ms) => { const timer = { at: time + ms, run }; timers.push(timer); return timer; }, cancel: (timer) => { timers = timers.filter((entry) => entry !== timer); } };
+    const shown = [];
+    const pacer = createTitlePacer((title, tag) => shown.push([time, title, tag]), { minShown: 1000, ...clock });
+
+    assert.equal(pacer.title, null);
+    pacer.want('Thinking', { tag: true });
+    assert.deepEqual(shown, [[0, 'Thinking', true]], 'the first title shows at once');
+    assert.equal(pacer.title, 'Thinking');
+    assert.equal(pacer.tag, true);
+
+    // Titles that come faster than they can be read: the first waits its turn, the ones in between are left out
+    advance(300);
+    pacer.want('Reading the question', { tag: true });
+    advance(300);
+    pacer.want('Checking the expenses', { tag: true });
+    pacer.want('Checking the expenses', { tag: true });
+    advance(300);
+    pacer.want('Adding up each year', { tag: true });
+    assert.equal(shown.length, 1);
+    advance(100);
+    assert.deepEqual(shown[1], [1000, 'Adding up each year', true]);
+    assert.equal(timers.length, 0);
+
+    // After its time a title is replaced at once; asking for the one that shows changes nothing
+    advance(2500);
+    pacer.want('Adding up each year', { tag: true });
+    pacer.want('Writing the answer', { tag: true });
+    assert.deepEqual(shown[2], [3500, 'Writing the answer', true]);
+    assert.equal(shown.length, 3);
+
+    // [hold]: how long the title before stays for this one
+    advance(100);
+    pacer.want('Finding Nick', { tag: true, hold: 400 });
+    advance(299);
+    assert.equal(shown.length, 3);
+    advance(1);
+    assert.deepEqual(shown[3], [3900, 'Finding Nick', true]);
+
+    // [delay]: "Thought" has to be wanted for a while - text before a lookup is no answer, and then it never shows
+    advance(2000);
+    pacer.want('Thought', { tag: false, delay: 700 });
+    advance(500);
+    pacer.want('Thought', { tag: false, delay: 700 });
+    pacer.want('Looking up the members', { tag: true });
+    advance(1000);
+    assert.deepEqual(shown[4], [6400, 'Looking up the members', true]);
+    assert.equal(shown.length, 5);
+    advance(1000);
+    pacer.want('Thought', { tag: false, delay: 700 });
+    advance(699);
+    pacer.want('Thought', { tag: false, delay: 700 });
+    assert.equal(shown.length, 5, 'asked again, the wait does not start anew');
+    advance(1);
+    assert.deepEqual(shown[5], [9100, 'Thought', false]);
+    assert.equal(pacer.tag, false);
+
+    // The same words with another tag are another title; without a hold it shows at once (the reply is complete)
+    pacer.want('Thought', { tag: true, hold: 0 });
+    assert.deepEqual(shown[6], [9100, 'Thought', true]);
+
+    // A title that waits is forgotten when the one that shows is wanted again, or when the pacer stops
+    pacer.want('Something else', { tag: true });
+    pacer.want('Thought', { tag: true });
+    advance(5000);
+    pacer.want('Too late', { tag: true });
+    assert.equal(shown.length, 8);
+    pacer.want('Never', { tag: true });
+    pacer.stop();
+    advance(5000);
+    assert.equal(shown.length, 8);
+    assert.equal(timers.length, 0);
   });
 });

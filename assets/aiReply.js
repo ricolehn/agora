@@ -1,7 +1,8 @@
 // The AI's work on one reply, as the chat shows it (app.js, createAiReply): while it works, one line says what it is
 // doing right now - the lookup it runs (in the model's own words when it gave some) or what it is thinking about -
 // and afterwards the "Thought" field holds its steps in order: thoughts, the notes it wrote between lookups, and the
-// lookups with what they found. Pure functions, tested in tests/frontend.test.js.
+// lookups with what they found. The line only ever shows finished titles, each long enough to be read (the pacer at
+// the end). Pure functions, tested in tests/frontend.test.js.
 
 /** Splits a reply into the answer and the thought process: reasoning sent apart, or <think>/<thought> blocks in the
  *  text (an unclosed block means the model is still thinking). */
@@ -32,25 +33,50 @@ export function shorten(text, max = 72) {
     return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, '')}…`;
 }
 
+// A list sign before a line ("- ", "• ", "2. ")
+const LIST_SIGN = /^(?:[-•–]|\d+[.)])\s+/;
+// A title says something from this many characters on ("Hmm." and "Yes." do not)
+const MIN_TITLE = 8;
+
+const titleOf = (text) => plain(text).replace(LIST_SIGN, '').replace(FILLER, '').replace(/[\s.:;,!?…。-]+$/, '');
+
 /**
- * What the model is thinking about right now, as a short title from its thoughts so far: the newest heading
- * (summarized thoughts put one above every step, "**Calculating the monthly expenses**"), else its newest sentence -
- * the one it is writing once it says something, else the last one it finished. '' when there is nothing to say yet.
+ * The finished sentences of [text]: a sentence ends with its line, or with . ! ? … before the next one (which begins
+ * with something else than a small letter: "e.g. the" and "3.50" end nothing). [settled]: nothing more comes, so what
+ * stands at the end is finished too - otherwise it may still be growing and is left out.
  */
-export function liveTitle(thinking, max = 72) {
+function finishedSentences(text, settled) {
+    const sentences = [];
+    let start = 0;
+    for (const end of text.matchAll(/[.!?…]+["”“’')\]]*(?=\s+[^a-zäöüßàâçéèêëîïôûùÿñæœ\s])|[。！？]+|\n+/g)) {
+        sentences.push(text.slice(start, end.index + end[0].length));
+        start = end.index + end[0].length;
+    }
+    if (settled) sentences.push(text.slice(start));
+    return sentences;
+}
+
+/**
+ * What the model is thinking about, as a short title from its thoughts so far: the newest heading (summarized
+ * thoughts put one above every step, "**Calculating the monthly expenses**"), else its newest sentence. Only what is
+ * finished counts - a heading whose line is over, a sentence that has ended - so the title never writes itself letter
+ * by letter in front of the reader. [settled]: the thoughts are complete, their last line counts as well (false while
+ * they are still coming in). '' when there is nothing to say yet.
+ */
+export function liveTitle(thinking, { max = 72, settled = true } = {}) {
     const text = String(thinking || '').slice(-3000);
     if (!text.trim()) return '';
     let title = '';
-    for (const match of text.matchAll(/(?:^|\n)[ \t]*(?:#{1,6}[ \t]+([^\n]+)|\*\*([^*\n]{3,120})\*\*[ \t]*(?=\n|$))/g)) {
-        title = match[1] || match[2];
-    }
+    const lineEnd = settled ? '(?=\\n|$)' : '(?=\\n)';
+    const headings = new RegExp(`(?:^|\\n)[ \\t]*(?:#{1,6}[ \\t]+([^\\n]+)|\\*\\*([^*\\n]{3,120})\\*\\*[ \\t]*)${lineEnd}`, 'g');
+    for (const match of text.matchAll(headings)) title = titleOf(match[1] || match[2]);
     if (!title) {
-        const sentences = text.replace(/\s+/g, ' ').match(/[^.!?…]+(?:[.!?…]+|$)/g) || [];
-        const last = (sentences[sentences.length - 1] || '').trim();
-        const finished = /[.!?…]$/.test(last);
-        title = !finished && last.length < 24 && sentences.length > 1 ? sentences[sentences.length - 2] : last;
+        const sentences = finishedSentences(text, settled);
+        for (let index = sentences.length - 1; index >= 0 && !title; index -= 1) {
+            const candidate = titleOf(sentences[index]);
+            if (candidate.length >= MIN_TITLE) title = candidate;
+        }
     }
-    title = plain(title).replace(FILLER, '').replace(/[\s.:;,!?…-]+$/, '');
     if (!title) return '';
     return shorten(title.charAt(0).toUpperCase() + title.slice(1), max);
 }
@@ -152,16 +178,61 @@ export function createReplyWork() {
  * [inlineThinking]: a <think> block of the current text that is still being written.
  */
 export function liveLabel(work, inlineThinking = '', t) {
-    const inline = liveTitle(inlineThinking);
+    const inline = liveTitle(inlineThinking, { settled: false });
     if (inline) return inline;
+    // Only the newest thoughts can still be growing - and not even they once the text of this round has begun
+    const growing = work.content ? -1 : work.steps.length - 1;
     for (let index = work.steps.length - 1; index >= 0; index -= 1) {
         const step = work.steps[index];
         if (step.kind === 'lookup') return lookupTitle(step.lookup, t);
-        if (step.kind === 'thought') {
-            const title = liveTitle(step.text);
-            if (title) return title;
-        }
-        if (step.kind === 'note') return liveTitle(step.text);
+        const title = liveTitle(step.text, { settled: step.kind !== 'thought' || index !== growing });
+        if (title) return title;
     }
     return '';
+}
+
+/** How long a title stays at least before the next one may take its place (ms): the longer it is, the longer it takes to read. */
+export const readingTime = (title) => Math.min(2600, Math.max(1400, 700 + String(title || '').length * 26));
+
+/**
+ * Paces what the top line says: a title stays for at least [minShown] ms before the next one takes its place, and of
+ * the titles that come in meanwhile only the newest is shown - a line that changes several times a second cannot be
+ * read and makes the page restless. [show](title, tag) puts a title on the line; [now], [later] and [cancel] are the
+ * clock (the tests bring their own).
+ */
+export function createTitlePacer(show, { minShown = 1400, now = () => Date.now(), later = (run, ms) => setTimeout(run, ms), cancel = (id) => clearTimeout(id) } = {}) {
+    let shown = null;
+    let next = null;
+    const drop = () => {
+        if (next) cancel(next.timer);
+        next = null;
+    };
+    const put = (title, tag) => {
+        drop();
+        shown = { title, tag, at: now() };
+        show(title, tag);
+    };
+    return {
+        /** The title on the line (null: none yet) and its tag. */
+        get title() { return shown ? shown.title : null; },
+        get tag() { return shown?.tag; },
+        /**
+         * The line should say [title] ([tag]: anything the line needs to know with it, e.g. whether the AI still
+         * works). [hold]: how long the title before it stays at least; [delay]: how long this one has to be wanted
+         * before it shows - a title that is replaced within that time never appears.
+         */
+        want(title, { tag, hold = minShown, delay = 0 } = {}) {
+            if (shown && shown.title === title && shown.tag === tag) return drop();
+            const same = next && next.title === title && next.tag === tag;
+            const since = same ? next.since : now();
+            const due = Math.max(shown ? shown.at + hold : 0, since + delay);
+            if (due <= now()) return put(title, tag);
+            if (same && next.due === due) return undefined;
+            drop();
+            next = { title, tag, since, due, timer: later(() => put(title, tag), due - now()) };
+            return undefined;
+        },
+        /** Nothing more is shown (the reply was cancelled). */
+        stop: drop
+    };
 }

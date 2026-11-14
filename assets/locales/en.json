@@ -843,6 +843,8 @@
   "ai_lookup_until": "until {to}",
   "ai_lookup_about": "“{about}”",
   "ai_thought_lookups": "Thought · looked up {n}×",
+  "ai_steps_more": "Show more",
+  "ai_steps_less": "Show less",
   "ai_found_entries_one": "{n} entry",
   "ai_found_entries": "{n} entries",
   "ai_found_events_one": "{n} event",
