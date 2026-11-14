@@ -37,7 +37,10 @@ const OLD_FIELDS = {
 const OWN_CREATED = { event_registrations: true, event_guests: true };
 
 const events = recordStore({ kind: 'events', codec: codecs.event, fields: OLD_FIELDS.events, links: { createdBy: 'users' }, groupLinks: true, keep: ['program'] });
-const registrations = recordStore({ kind: 'event_registrations', codec: codecs.registration, fields: OLD_FIELDS.event_registrations, links: { event: 'events', user: 'users' }, columns: { created: 'queuedAt' }, ownCreated: true });
+// exact: a sign-up of an account that is gone keeps its id in `original` (../links.js) and is still found by it - the
+// organiser takes such an attendee off the list by that id; not found, the place stayed taken, the waiting list did
+// not move up and every try added another record
+const registrations = recordStore({ kind: 'event_registrations', codec: codecs.registration, fields: OLD_FIELDS.event_registrations, links: { event: 'events', user: 'users' }, columns: { created: 'queuedAt' }, exact: ['user'], ownCreated: true });
 const guests = recordStore({ kind: 'event_guests', codec: codecs.guest, fields: OLD_FIELDS.event_guests, links: { event: 'events' }, columns: { created: 'queuedAt' }, ownCreated: true });
 const duties = recordStore({ kind: 'event_duties', codec: codecs.duty, fields: OLD_FIELDS.event_duties, links: { event: 'events', assignedUser: 'users', requestedUser: 'users', requestedBy: 'users' }, groupLinks: true });
 

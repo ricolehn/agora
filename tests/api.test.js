@@ -317,10 +317,19 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       const now = await read();
       assert.equal(now.version, saved.version);
       assert.ok(list(now.value).some((item) => item.id === 1795000000001) && !list(now.value).some((item) => item.id === 1795000000002));
-      // Older apps send no version: their save goes through as before (and keeps what they could not have seen)
+      // Older apps send no version: their save goes through as before - the list as they sent it, also what it
+      // takes out (a list never says what its sender had seen: keeping what "it could not have seen" kept the entry
+      // a treasurer had just deleted). What a stale list takes along is in the change log, with its values
       await ok(call('treasurer', 'PUT', '/api/db', { path: root, value: [...list(first.value), entry(3)] }));
       const after = list((await read()).value);
-      assert.ok(after.some((item) => item.id === 1795000000001) && after.some((item) => item.id === 1795000000003));
+      assert.ok(after.some((item) => item.id === 1795000000003) && !after.some((item) => item.id === 1795000000001));
+      const area = root === 'donations' ? 'donation' : 'expense';
+      const log = await ok(call('treasurer', 'GET', `/api/v2/finance/changes?area=${area}`));
+      const logged = (log.items || log).filter((row) => row.action === 'delete').map((row) => JSON.stringify(row.details?.before));
+      assert.ok(logged.some((before) => before && before.includes('1795000000001')), `the change log keeps what went from the ${root}`);
+      // Taking out the newest entry works without a version, too
+      await ok(call('treasurer', 'PUT', '/api/db', { path: root, value: after.filter((item) => item.id !== 1795000000003) }));
+      assert.ok(!list((await read()).value).some((item) => item.id === 1795000000003));
       // Only who manages the finances saves
       assert.equal((await call('max', 'POST', '/api/db/transaction', { path: root, currentVersion: now.version, value: [] })).status, 403);
     }

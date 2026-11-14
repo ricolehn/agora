@@ -240,7 +240,11 @@ async function seedOldInstance({ http, su: getSu }) {
     { amount: '70', date: '2020-06-03T00:00:00.000Z', description: 'Zeitstempel' },
     { amount: 25, date: '07/15/2020', description: 'andere Schreibweise', id: 1594771200000 },
     { amount: 10, description: 'ohne Datum', id: 'pay-ohne-datum' },
-    { amount: 5, date: '2020-08-01', isAuto: false, receipt: 'alt.pdf', id: 'pay-mit-beleg' }
+    { amount: 5, date: '2020-08-01', isAuto: false, receipt: 'alt.pdf', id: 'pay-mit-beleg' },
+    // Years typed with five and with three digits (a date field takes them): no day the new columns accept - the
+    // upgrade failed on a single payment like these
+    { amount: 8, date: '20255-03-01', description: 'Jahr mit fünf Stellen', id: 'pay-jahr-5' },
+    { amount: 9, date: '202-01-01', description: 'Jahr mit drei Stellen', id: 'pay-jahr-3' }
   ];
   const paulKey = (await su.list('people', 'name = "Paul Papier"'))[0]?.personKey;
   const existingPaul = paulKey ? await paymentsOf(paulKey) : [];
@@ -317,6 +321,10 @@ async function seedOldInstance({ http, su: getSu }) {
   facts.events.push(oldEvent.id);
   await su.create('event_duties', { event: oldEvent.id, roleName: 'Ordner', section: '', assignedGroup: 'Technik', status: 'assigned', created: '2025-01-01T10:00:00.000Z', updated: '2025-01-01T10:00:00.000Z', reminded: { [uids.max]: '2025-03-01 18:00' } });
   await su.create('event_registrations', { event: oldEvent.id, user: uids.mia, status: 'cancelled', created: '2025-01-05T09:00:00.000Z', updated: '2025-01-06T09:00:00.000Z' });
+  // A sign-up and a mentor profile of an account that is gone (a member deleted from the books takes the account
+  // along, not these): still found by the account's id, as before - the upgrade's comparison asks for them that way
+  await su.create('event_registrations', { event: oldEvent.id, user: 'deadbeefdeadbee', status: 'registered', created: '2025-01-04T09:00:00.000Z', updated: '2025-01-04T09:00:00.000Z' });
+  await su.create('mentors', { user: 'deadbeefdeadbee', status: 'approved', bio: 'Nicht mehr dabei', max_mentees: 3, is_accepting: true, created: '2024-01-01T10:00:00.000Z' });
   // A conversation from before conversations named the mentor's account: it names the mentor record
   if (mentorRecordId && threadId) {
     await su.create('mentoring_threads', { mentor: mentorRecordId, mentee: uids.max, mentee_alias: 'Suchender #7', status: 'closed', last_message: '', created: '2024-01-01T00:00:00.000Z', updated: '2024-02-01T00:00:00.000Z' });

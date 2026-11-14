@@ -17,7 +17,10 @@ const OLD_FIELDS = {
 // The old tables of mentors and messages had no "updated": the new tables' own is set when a record is written
 const mentors = recordStore({
   kind: 'mentors', tableName: 'mentoring_mentors', codec: codecs.mentor, fields: OLD_FIELDS.mentors, links: { user: 'users' },
-  columns: { max_mentees: 'maxMentees', is_accepting: 'isAccepting' }, ownUpdated: true
+  columns: { max_mentees: 'maxMentees', is_accepting: 'isAccepting' }, ownUpdated: true,
+  // The profile of a mentor whose account is gone (a member deleted from the books keeps it) is still found by the
+  // account's id, as before - not found, the upgrade's comparison differed and no such instance could upgrade
+  exact: ['user']
 });
 const threads = recordStore({
   kind: 'mentoring_threads', codec: codecs.thread, fields: OLD_FIELDS.mentoring_threads, links: { mentor: 'users', mentee: 'users' },
