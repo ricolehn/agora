@@ -204,6 +204,10 @@ async function ensurePocketBaseSuperuser(appConfig) {
   ];
 
   console.log(`[PocketBase] Running superuser upsert with binary: ${binary}, dir: ${dir}, email: ${appConfig.pocketbase.adminEmail}`);
+  // The upsert sets the password anew, and with it every token of the superuser ends: one kept from an earlier start
+  // of this server (a start that failed is tried again by the same process) would be refused for the rest of its
+  // five minutes - every try in that time failed with "The request requires valid record authorization token."
+  clearSuperuserTokenCache();
   try {
     const { stdout, stderr } = await execFileAsync(binary, args);
     console.log(`[PocketBase] Superuser upsert stdout: ${stdout.trim()}`);

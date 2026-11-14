@@ -36,6 +36,8 @@ describe('the dry run', { skip: !POCKETBASE_BIN && 'set POCKETBASE_BIN to run th
     const report = JSON.parse(fs.readFileSync(path.join(out, 'upgrade-dry-run-report.json'), 'utf8'));
     assert.equal(report.status, 'dry-run');
     assert.deepEqual(report.differences, []);
+    // On the copy the cleanup ran too (the old tables went, the new ones took their names): the step nothing can undo
+    assert.equal(report.cleanupRehearsed, true);
     assert.ok(report.areas.finance.counts.new.finance_payments > 0);
     assert.ok(report.areas.events.counts.new.events > 0);
     const text = JSON.stringify(report);
@@ -45,5 +47,14 @@ describe('the dry run', { skip: !POCKETBASE_BIN && 'set POCKETBASE_BIN to run th
     // The instance itself: the same tables (no upgrade was started on it)
     assert.deepEqual([...(await old.collections())].sort(), collectionsBefore);
     assert.ok(!collectionsBefore.includes('system_migrations'));
+
+    // Something of one's own that depends on an old table (a view made on PocketBase's admin page): the dry run says
+    // the upgrade would not go through and why - before the real one meets it
+    await old.su.request('POST', '/api/collections', { name: 'my_report', type: 'view', viewQuery: 'SELECT id, personKey, amount FROM payments' });
+    await old.su.request('POST', '/api/backups', { name: 'with-a-view.zip' });
+    const refused = await run([path.join(old.root, 'pb', 'backups', 'with-a-view.zip'), '--data', path.join(old.root, 'data'), '--out', out]);
+    assert.equal(refused.code, 1, `${refused.stdout}\n${refused.stderr}`);
+    assert.match(refused.stdout, /would NOT go through/);
+    assert.match(refused.stdout, /the view my_report reads the table payments/);
   });
 });

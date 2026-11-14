@@ -77,7 +77,9 @@ router.get('/api/status', (req, res) => {
     ready: !context.setupMode && context.phase === 'ready',
     updating: context.phase === 'updating',
     // The versions of the API this server answers (docs/API_V2.md); v1 (/api/...) stays for every app version
-    apiVersions: [1, 2]
+    apiVersions: [1, 2],
+    // Why the start is still being tried (the cleanup after the database upgrade did not get through yet)
+    ...(context.startProblem && context.phase !== 'ready' ? { problem: context.startProblem } : {})
   });
 });
 

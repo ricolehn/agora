@@ -5,7 +5,7 @@
 //
 // The backup (a zip from PocketBase's admin page or the backups folder) or a copy of the database folder is unpacked
 // into a temporary folder; a temporary PocketBase runs on it, the upgrade runs in its dry-run mode (check, copy,
-// compare - then the new tables are removed again) and the temporary folder is deleted. --data: the data folder of the
+// compare, and the cleanup that removes the old tables - on the copy only) and the temporary folder is deleted. --data: the data folder of the
 // instance (config.json, the key of the mentoring texts), so encrypted texts are compared as the apps see them; it is
 // copied too. Writes into --out (default: the current folder):
 //
@@ -139,7 +139,8 @@ async function main() {
     const appConfig = { pocketbase: { adminEmail: email, adminPassword: password } };
     const { upgradeDatabase } = require('./upgrade');
     console.log('[Dry run] Checking, copying and comparing ...');
-    const outcome = await upgradeDatabase(appConfig, { dryRun: true });
+    // The copy is thrown away afterwards, so the cleanup - the one step of the upgrade nothing can undo - is tried too
+    const outcome = await upgradeDatabase(appConfig, { dryRun: true, rehearseCleanup: true });
 
     const report = { at: new Date().toISOString(), source: path.basename(source), status: outcome.status, ...(outcome.report || {}) };
     const details = { ...report, details: outcome.details || [], findings: outcome.findings || {} };
@@ -149,7 +150,7 @@ async function main() {
     fs.writeFileSync(path.join(args.out, 'upgrade-dry-run-details.json'), JSON.stringify(details, null, 2));
 
     if (outcome.status === 'dry-run') {
-      console.log('[Dry run] The upgrade would go through: the new tables answered exactly like the old ones.');
+      console.log('[Dry run] The upgrade would go through: the new tables answered exactly like the old ones, and the old tables could be removed.');
       for (const [area, { counts }] of Object.entries(report.areas || {})) console.log(`  ${area}: ${JSON.stringify(counts.new)}`);
     } else if (outcome.status === 'current' || outcome.status === 'fresh') {
       console.log(`[Dry run] Nothing to upgrade (${outcome.status === 'current' ? 'the database already has the new structure' : 'an empty database'}).`);
