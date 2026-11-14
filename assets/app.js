@@ -2,7 +2,7 @@ import { initializeApp, getDatabase, ref, set, get, child, update, query, orderB
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
 import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
-import { splitAiThinking, createReplyWork, liveLabel, lookupTitle, lookupWhat, lookupFound } from "./aiReply.js";
+import { splitAiThinking, createReplyWork, createTitlePacer, readingTime, liveLabel, lookupTitle, lookupWhat, lookupFound } from "./aiReply.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches, feeResetIsNews } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -3663,8 +3663,7 @@ function switchTab(tabName, source) {
         if (tabName === 'ai-chat') {
             requestAnimationFrame(() => {
                 adjustAiInputHeight($('ai-chat-input'));
-                const messagesEl = $('ai-chat-messages');
-                if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+                aiChatToEnd();
             });
         }
     }
@@ -7906,6 +7905,24 @@ function dismissAiWelcome(messagesEl) {
     return true;
 }
 
+// The chat scrolls with its page: the list of the messages has no height of its own (the input is fixed below it).
+// Only while the chat is the open page - a reply that still comes in must not scroll another one.
+const aiChatScroller = () => {
+    if (!$('ai-chat')?.classList.contains('active')) return null;
+    const messagesEl = $('ai-chat-messages');
+    return messagesEl && messagesEl.scrollHeight > messagesEl.clientHeight + 1 ? messagesEl : document.querySelector('.container');
+};
+// Whoever reads the end of the chat keeps seeing it while a reply grows; whoever scrolled back stays there
+const aiChatAtEnd = () => {
+    const scroller = aiChatScroller();
+    return Boolean(scroller) && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
+};
+// Right away: the page scrolls softly by itself (scroll-behavior), which would trail behind a growing reply
+const aiChatToEnd = () => {
+    const scroller = aiChatScroller();
+    scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'instant' });
+};
+
 function appendAiMessage(role, content) {
     const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return null;
@@ -7923,7 +7940,7 @@ function appendAiMessage(role, content) {
     }
     if (afterWelcome) item.classList.add('is-after-welcome');
     messagesEl.appendChild(item);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    aiChatToEnd();
     return bubble;
 }
 
@@ -7954,39 +7971,136 @@ const AI_LOOKUP_ICONS = {
     events: 'calendar', money_totals: 'poll', finance_changes: 'history'
 };
 
+// How the thinking line moves: the app's easing (--ease), how long "Thinking" stays at least before the first real
+// title takes its place (later titles stay as long as they take to read, readingTime in aiReply.js), and how long text
+// has to be coming in before the line says "Thought" - text the AI writes right before a lookup is only a note on the
+// way, and the line should not say "Thought" for half a second in between
+const AI_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+const AI_FIRST_TITLE_MIN_MS = 400;
+const AI_ANSWER_GRACE_MS = 700;
+// A thought that is still growing is laid out anew this often at most (ms): fluent to read, and a long one does not
+// keep a phone busy with every word
+const AI_STEP_TEXT_MS = 90;
+
 // One assistant reply while it streams in (assets/aiReply.js keeps its steps). A small line on top says what the AI
 // is doing right now - "Thinking", the title of its newest thought, or the lookup it runs, in its own words - with
 // the seconds; then the answer comes. Afterwards the line says "Thought" and opens on a tap: the thoughts, the notes
-// it wrote on the way and the lookups with what they found, in order. Drawn at most once per frame, so long thoughts
-// stay smooth.
+// it wrote on the way and the lookups with what they found, in order.
+//
+// The line stays calm: it is one line high whatever it says, only shows finished titles, keeps each long enough to
+// be read and changes with a short fade (its width glides along). The steps open and close with a slide, first as a
+// window of a few lines that follows the newest step while the AI works; "Show more" opens them in full. They are
+// only drawn while they are open, at most once per frame, so long thoughts cost nothing while nobody looks.
 function createAiReply(bubble) {
     const row = bubble.closest('.ai-chat-row');
     const orb = row?.querySelector('.ai-orb');
     const details = createEl('details', 'ai-thinking is-live is-empty');
     const summary = createEl('summary', 'ai-thinking-summary');
-    const label = createEl('span', 'ai-thinking-label', t('ai_thinking', 'Thinking'));
+    const label = createEl('span', 'ai-thinking-label');
     const time = createEl('span', 'ai-thinking-time');
     summary.append(label, time);
+    const panel = createEl('div', 'ai-thinking-panel');
     const stepsEl = createEl('div', 'ai-thinking-content ai-steps');
-    details.append(summary, stepsEl);
+    const more = createEl('button', 'ai-thinking-more');
+    more.type = 'button';
+    more.hidden = true;
+    panel.append(stepsEl, more);
+    details.append(summary, panel);
     const answerEl = createEl('div', 'ai-answer');
     bubble.replaceChildren(details, answerEl);
+
+    const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+    const calm = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    const moves = (el) => typeof el.animate === 'function' && !calm() && el.getClientRects().length > 0;
+
+    // --- The line: what it says ---
+    const started = Date.now();
+    const titleText = (text) => {
+        const el = createEl('span', 'ai-thinking-text', text);
+        // While the AI works the title ends in "…" (unless it was cut and has one), and the shimmer runs on in step
+        el.dataset.dots = text.endsWith('…') ? '' : '…';
+        el.style.animationDelay = `${-((Date.now() - started) % 1800)}ms`;
+        return el;
+    };
+    // A reply without thoughts or lookups only needed the line while it waited: once the answer runs, the line folds
+    // away (and is back at once should a lookup follow after all)
+    let folded = false;
+    let folding = null;
+    let lineTitle = '';
+    const foldLine = (away) => {
+        if (away === folded) return;
+        folded = away;
+        folding?.cancel();
+        folding = null;
+        if (!away || !moves(details)) {
+            details.style.display = away ? 'none' : '';
+            // Back again: with what it says by now
+            if (!away && label.lastElementChild?.textContent !== lineTitle) label.replaceChildren(titleText(lineTitle));
+            return;
+        }
+        const box = details.getBoundingClientRect();
+        details.classList.add('is-folding');
+        folding = details.animate([{ height: `${box.height}px`, marginBottom: getComputedStyle(details).marginBottom, opacity: 1 }, { height: '0px', marginBottom: '0px', opacity: 0 }], { duration: 240, easing: AI_EASE });
+        const done = () => {
+            details.classList.remove('is-folding');
+            if (folded) details.style.display = 'none';
+        };
+        folding.finished.then(done, done);
+    };
+    const refold = () => foldLine(!details.classList.contains('is-live') && details.classList.contains('is-empty'));
+    const showTitle = (text, live) => {
+        lineTitle = text;
+        details.classList.toggle('is-live', live);
+        orb?.classList.toggle('is-thinking', live);
+        refold();
+        const current = label.lastElementChild;
+        // While it folds away the line keeps its words
+        if (folded || current?.textContent === text) return;
+        const next = titleText(text);
+        if (!current || !moves(label)) {
+            label.replaceChildren(next);
+            return;
+        }
+        // The old words leave upwards, the new ones come from below, and the line's width glides from one to the other
+        for (const old of label.querySelectorAll('.is-leaving')) old.remove();
+        const from = label.getBoundingClientRect().width;
+        current.classList.add('is-leaving');
+        label.appendChild(next);
+        const to = label.getBoundingClientRect().width;
+        const gone = () => current.remove();
+        current.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-60%)' }], { duration: 170, easing: 'ease-in', fill: 'forwards' }).finished.then(gone, gone);
+        next.animate([{ opacity: 0, transform: 'translateY(60%)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, delay: 70, easing: AI_EASE, fill: 'backwards' });
+        if (Math.abs(to - from) > 0.5) label.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 300, easing: AI_EASE });
+    };
+    const pacer = createTitlePacer(showTitle);
+    const thinkingTitle = t('ai_thinking', 'Thinking');
+    pacer.want(thinkingTitle, { tag: true });
     orb?.classList.add('is-thinking');
-    // A closed "Thinking" line is not a toggle until there is something to show
-    summary.addEventListener('click', event => { if (details.classList.contains('is-empty')) event.preventDefault(); });
 
     const work = createReplyWork();
-    const started = Date.now();
     // When the answer began (0: the AI is still working - a lookup after some text makes that text a note again)
     let answeringSince = 0;
     let shownAnswer = null;
-    const drawn = [];
     let frame = 0;
+    // Draws the reply with the next frame (set below, once there is something to draw with)
+    let schedule = () => {};
     const seconds = () => Math.max(1, Math.round(((answeringSince || Date.now()) - started) / 1000));
-    const tick = setInterval(() => { if (!answeringSince) time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() }); }, 1000);
+    const showSeconds = () => {
+        const first = !time.textContent;
+        setText(time, t('ai_thinking_seconds', '{n} s', { n: seconds() }));
+        // The seconds do not pop into the line after the first one: they glide in
+        if (first && moves(time)) time.animate([{ width: '0px', marginLeft: '-6px', opacity: 0 }, { width: `${time.getBoundingClientRect().width}px`, marginLeft: '0px', opacity: 1 }], { duration: 260, easing: AI_EASE });
+    };
+    const tick = setInterval(() => { if (!answeringSince) showSeconds(); }, 1000);
     const doneLabel = () => (work.lookups ? t('ai_thought_lookups', 'Thought · looked up {n}×', { n: work.lookups }) : t('ai_thought', 'Thought'));
-    const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
 
+    // --- The steps ---
+    const drawn = [];
+    const textDrawnAt = [];
+    let steps = work.steps;
+    // A text waits for its next drawing (it was drawn a moment ago)
+    let textWaits = false;
+    let allTexts = false;
     const drawStep = (step, index) => {
         let el = drawn[index];
         if (!el || el.dataset.kind !== step.kind) {
@@ -8013,10 +8127,132 @@ function createAiReply(bubble) {
             setText(el.querySelector('.ai-step-detail'), [title !== what ? what : '', lookupFound(step.done, t, euro)].filter(Boolean).join(' · '));
             el.classList.toggle('is-running', !step.done);
         } else if (el.dataset.text !== step.text) {
+            const now = Date.now();
+            if (!allTexts && now - (textDrawnAt[index] || 0) < AI_STEP_TEXT_MS) {
+                textWaits = true;
+                return;
+            }
+            textDrawnAt[index] = now;
             // Thoughts come as markdown too (summaries put a bold title above every step)
             el.dataset.text = step.text;
             el.firstChild.replaceChildren(renderMarkdown(step.text.trim()));
         }
+    };
+    // The window of the steps: what is hidden above and below fades out, and "Show more" is there while something is
+    const fitSteps = () => {
+        if (!details.open) return;
+        const expanded = details.classList.contains('is-expanded');
+        const above = stepsEl.scrollTop;
+        const below = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight;
+        stepsEl.classList.toggle('has-above', !expanded && above > 2);
+        stepsEl.classList.toggle('has-below', !expanded && below > 2);
+        more.hidden = !expanded && above + below <= 2;
+        more.setAttribute('aria-expanded', String(expanded));
+        setText(more, expanded ? t('ai_steps_less', 'Show less') : t('ai_steps_more', 'Show more'));
+    };
+    // [complete]: all of them as they are now, also while they are closed (when the reply is complete - the search of
+    // the browser finds them - and when they are opened)
+    const drawSteps = (complete = false) => {
+        if (!details.open && !complete) return;
+        // Whoever reads the newest step keeps seeing it; whoever scrolled back stays there
+        const follow = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 24;
+        textWaits = false;
+        allTexts = complete;
+        steps.forEach(drawStep);
+        while (drawn.length > steps.length) drawn.pop().remove();
+        if (follow && details.classList.contains('is-live')) stepsEl.scrollTop = stepsEl.scrollHeight;
+        fitSteps();
+        if (textWaits) schedule();
+    };
+    stepsEl.addEventListener('scroll', fitSteps, { passive: true });
+    // Opened by the browser (its search found something in the steps), or the screen was turned
+    details.addEventListener('toggle', fitSteps);
+    if (window.ResizeObserver) new ResizeObserver(fitSteps).observe(panel);
+
+    // Opening and closing slide. While the AI works and the chat is at its end, it stays there (the newest step is
+    // what one wants to see); afterwards the line stays where the finger is and the steps open below it.
+    let sliding = null;
+    const slide = (to, change, after) => {
+        const from = panel.getBoundingClientRect().height;
+        const pinned = details.classList.contains('is-live') && aiChatAtEnd();
+        sliding?.cancel();
+        change();
+        const height = to === null ? panel.getBoundingClientRect().height : to;
+        const finish = () => {
+            sliding = null;
+            if (pinned) aiChatToEnd();
+            after?.(pinned);
+        };
+        if (!moves(summary)) return finish();
+        sliding = panel.animate([{ height: `${from}px`, opacity: from ? 1 : 0 }, { height: `${height}px`, opacity: height ? 1 : 0 }], { duration: height > from ? 280 : 220, easing: AI_EASE });
+        sliding.onfinish = finish;
+        const keepAtEnd = () => {
+            if (!sliding || !pinned) return;
+            aiChatToEnd();
+            requestAnimationFrame(keepAtEnd);
+        };
+        requestAnimationFrame(keepAtEnd);
+        return undefined;
+    };
+    // Steps that opened below the edge of the screen (the input lies over it) come up far enough to be seen
+    const reveal = (pinned) => {
+        const scroller = aiChatScroller();
+        if (pinned || !scroller) return;
+        const input = document.querySelector('#ai-chat .ai-chat-input-styled');
+        const edge = input ? input.getBoundingClientRect().top : scroller.getBoundingClientRect().bottom;
+        const box = panel.getBoundingClientRect();
+        const hidden = Math.min(box.bottom, box.top + 150) - (edge - 12);
+        if (hidden > 0) scroller.scrollBy({ top: hidden, behavior: calm() ? 'instant' : 'smooth' });
+    };
+    const setOpen = (open) => {
+        details.classList.toggle('is-closing', !open);
+        if (open) {
+            slide(null, () => {
+                details.open = true;
+                drawSteps(true);
+                // While the AI works the newest step is the one to see, afterwards the steps start at their beginning
+                stepsEl.scrollTop = details.classList.contains('is-live') ? stepsEl.scrollHeight : 0;
+                fitSteps();
+            }, reveal);
+        } else {
+            slide(0, () => {}, () => {
+                details.open = false;
+                details.classList.remove('is-closing', 'is-expanded');
+            });
+        }
+    };
+    summary.addEventListener('click', event => {
+        event.preventDefault();
+        // A closed "Thinking" line is not a toggle until there is something to show
+        if (details.classList.contains('is-empty')) return;
+        setOpen(!details.open || details.classList.contains('is-closing'));
+    });
+    more.addEventListener('click', () => {
+        const expand = !details.classList.contains('is-expanded');
+        const change = () => {
+            details.classList.toggle('is-expanded', expand);
+            if (!expand) stepsEl.scrollTop = 0;
+            fitSteps();
+        };
+        // "Show less" far down in long steps, their beginning scrolled away: back to the line, without a slide
+        if (!expand && details.getBoundingClientRect().top < (aiChatScroller()?.getBoundingClientRect().top ?? 0) + 72) {
+            sliding?.cancel();
+            change();
+            details.scrollIntoView({ block: 'start', behavior: 'instant' });
+        } else {
+            slide(null, change);
+        }
+    });
+
+    // Text that turned out to be a note on the way (a lookup followed) leaves the answer: it folds away
+    const foldAway = () => {
+        if (!moves(answerEl)) return answerEl.replaceChildren();
+        const ghost = createEl('div', 'ai-answer ai-answer-leaving');
+        ghost.append(...answerEl.childNodes);
+        answerEl.before(ghost);
+        const gone = () => ghost.remove();
+        ghost.animate([{ height: `${ghost.getBoundingClientRect().height}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 220, easing: AI_EASE }).finished.then(gone, gone);
+        return undefined;
     };
 
     const draw = () => {
@@ -8024,27 +8260,30 @@ function createAiReply(bubble) {
         const { answer, thinking: inline, open } = splitAiThinking(work.content);
         const answering = Boolean(answer) && !open;
         // A <think> block in the current text is the newest thought
-        const steps = inline ? [...work.steps, { kind: 'thought', text: inline }] : work.steps;
-        const follow = details.open && stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 24;
-        steps.forEach(drawStep);
-        while (drawn.length > steps.length) drawn.pop().remove();
-        if (follow) stepsEl.scrollTop = stepsEl.scrollHeight;
+        steps = inline ? [...work.steps, { kind: 'thought', text: inline }] : work.steps;
         details.classList.toggle('is-empty', !steps.some(step => step.kind !== 'thought' || step.text.trim()));
+        refold();
+        drawSteps();
         if (answering && !answeringSince) {
             answeringSince = Date.now();
-            time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() });
+            showSeconds();
         } else if (!answering && answeringSince) {
             answeringSince = 0;
         }
-        details.classList.toggle('is-live', !answering);
-        orb?.classList.toggle('is-thinking', !answering);
-        setText(label, answering ? doneLabel() : liveLabel(work, inline, t) || t('ai_thinking', 'Thinking'));
+        if (answering) {
+            pacer.want(doneLabel(), { tag: false, delay: AI_ANSWER_GRACE_MS });
+        } else {
+            // "Thinking" makes room for the first real title soon, and a "Thought" that came too early right away
+            const hold = pacer.tag === false ? 0 : pacer.title === thinkingTitle ? AI_FIRST_TITLE_MIN_MS : readingTime(pacer.title);
+            pacer.want(liveLabel(work, inline, t) || thinkingTitle, { tag: true, hold });
+        }
         if (answer !== shownAnswer) {
+            if (!answer && shownAnswer) foldAway();
+            else answerEl.replaceChildren(renderMarkdown(answer));
             shownAnswer = answer;
-            answerEl.replaceChildren(renderMarkdown(answer));
         }
     };
-    const schedule = () => { if (!frame) frame = requestAnimationFrame(draw); };
+    schedule = () => { if (!frame) frame = requestAnimationFrame(draw); };
 
     return {
         add(part) {
@@ -8054,23 +8293,21 @@ function createAiReply(bubble) {
         // The text of the answer (what came after the last lookup) and all thoughts
         get content() { return work.content; },
         get reasoning() { return work.steps.filter(step => step.kind === 'thought').map(step => step.text).join(''); },
-        // The reply is complete: last drawing, no thinking line when there was nothing to show
+        // The reply is complete: last drawing; the line says how long it took (it is gone when there was nothing to show)
         finish() {
             clearInterval(tick);
-            if (frame) cancelAnimationFrame(frame);
             draw();
-            if (!answeringSince) {
-                answeringSince = Date.now();
-                time.textContent = t('ai_thinking_seconds', '{n} s', { n: seconds() });
-            }
-            setText(label, doneLabel());
-            details.classList.remove('is-live');
-            orb?.classList.remove('is-thinking');
-            if (details.classList.contains('is-empty')) details.remove();
+            drawSteps(true);
+            if (frame) cancelAnimationFrame(frame);
+            frame = 0;
+            if (!answeringSince) answeringSince = Date.now();
+            showSeconds();
+            pacer.want(doneLabel(), { tag: false, hold: 0 });
         },
         stop() {
             clearInterval(tick);
             if (frame) cancelAnimationFrame(frame);
+            pacer.stop();
             details.classList.remove('is-live');
             orb?.classList.remove('is-thinking');
         }
@@ -8328,9 +8565,6 @@ async function sendAiMessage() {
     aiStreaming = true;
     if (sendBtn) sendBtn.disabled = true;
 
-    const messagesEl = $('ai-chat-messages');
-    const nearEnd = () => !messagesEl || messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
-    const scrollToEnd = () => { if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight; };
     // The reply appears right away as "Thinking…" and fills in when the words come
     const bubble = appendAiMessage('assistant', '');
     const reply = createAiReply(bubble);
@@ -8383,9 +8617,9 @@ async function sendAiMessage() {
             let parsed;
             try { parsed = JSON.parse(data); } catch { return; }
             if (parsed.error) throw new Error(parsed.error);
-            const follow = nearEnd();
+            const follow = aiChatAtEnd();
             reply.add(parsed);
-            if (follow) requestAnimationFrame(scrollToEnd);
+            if (follow) requestAnimationFrame(aiChatToEnd);
         };
         while (!finished) {
             const chunk = await reader.read();
@@ -8403,7 +8637,7 @@ async function sendAiMessage() {
         // A model that only thought (or the connection ended early) gave no answer: say so instead of an empty row
         if (!clean) throw new Error(reply.reasoning ? t('ai_only_thought', 'The AI thought about it but sent no answer. Please try again.') : t('ai_no_answer', 'No answer came back. Please try again.'));
         addAiReportButton(bubble, clean, [...aiMessages].reverse().find(m => m.role === 'user')?.content || '');
-        if (nearEnd()) scrollToEnd();
+        if (aiChatAtEnd()) aiChatToEnd();
         aiMessages.push({ role: 'assistant', content: clean });
     } catch (err) {
         reply.stop();

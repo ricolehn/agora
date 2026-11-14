@@ -1823,13 +1823,20 @@ h1, h2, h3,
 .ai-answer > ul, .ai-answer > ol { margin: 4px 0 12px; }
 .ai-answer > :last-child { margin-bottom: 0; }
 
-/* --- Thinking: one quiet line; while it runs the word shimmers, afterwards it says how long it took --- */
-.ai-thinking { margin: 0 0 10px; border: 0; border-radius: 0; overflow: visible; }
+/* --- Thinking: one quiet line. While the AI works it says what it is doing (the words shimmer and change with a
+       short fade, see createAiReply in app.js), afterwards how long it took; a tap opens the steps below it --- */
+/* scroll-margin: scrolled back to, the line stays clear of the header that slides in from the top */
+.ai-thinking { margin: 0 0 10px; scroll-margin-top: 88px; }
 .ai-thinking:last-child { margin-bottom: 0; }
+.ai-thinking.is-folding { overflow: hidden; pointer-events: none; }
 .ai-thinking-summary {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-height: 30px;
     padding: 4px 10px 4px 11px;
     border-radius: 999px;
     border: 1px solid var(--hairline);
@@ -1837,27 +1844,46 @@ h1, h2, h3,
     color: var(--text-secondary);
     font-size: 0.8rem;
     font-weight: 600;
-    transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
+    line-height: 1.5;
+    /* One line whatever it says: a long title ends in "…", the seconds and the arrow never move to a second line */
+    white-space: nowrap;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background-color 0.2s var(--ease), color 0.2s var(--ease), transform 0.2s var(--ease);
 }
-.ai-thinking-summary::before { content: none; display: none; }
+.ai-thinking-summary::-webkit-details-marker { display: none; }
+/* A finger needs more room than the line is high */
+.ai-thinking-summary::before { content: ''; position: absolute; inset: -8px -6px -6px; }
 .ai-thinking-summary::after {
     content: '';
+    flex: none;
     width: 6px;
     height: 6px;
     margin: -2px 1px 0 2px;
     border-right: 1.6px solid currentColor;
     border-bottom: 1.6px solid currentColor;
     transform: rotate(45deg);
-    transition: transform 0.2s var(--ease);
+    transition: transform 0.25s var(--ease), margin 0.25s var(--ease), width 0.25s var(--ease), border-width 0.25s var(--ease), opacity 0.25s var(--ease);
     opacity: 0.7;
 }
-.ai-thinking[open] > .ai-thinking-summary::after { transform: rotate(-135deg); margin-top: 3px; }
+.ai-thinking[open]:not(.is-closing) > .ai-thinking-summary::after { transform: rotate(-135deg); margin-top: 3px; }
+/* Nothing to open yet: no arrow (it takes no room either, and glides in when the first step is there) */
 .ai-thinking.is-empty > .ai-thinking-summary { cursor: default; }
-.ai-thinking.is-empty > .ai-thinking-summary::after { display: none; }
+.ai-thinking.is-empty > .ai-thinking-summary::after { width: 0; margin-left: -6px; margin-right: 0; border-width: 0; opacity: 0; }
+.ai-thinking-summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 @media (hover: hover) { .ai-thinking:not(.is-empty) > .ai-thinking-summary:hover { background: var(--surface-alt); color: var(--text); } }
-.ai-thinking-time:not(:empty)::before { content: '·'; margin-right: 6px; opacity: 0.6; }
-.ai-thinking-time { font-variant-numeric: tabular-nums; font-weight: 500; }
-.ai-thinking.is-live .ai-thinking-label {
+.ai-thinking:not(.is-empty) > .ai-thinking-summary:active { background: var(--surface-alt); transform: scale(0.98); transition-duration: 0.1s; }
+
+/* What the line says. The words change inside the label: the old ones leave upwards (taken out of the flow, so the
+   label is as wide as the new ones), the new ones come from below */
+.ai-thinking-label { position: relative; display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.ai-thinking-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-thinking-text.is-leaving { position: absolute; top: 0; left: 0; overflow: visible; }
+.ai-thinking.is-live .ai-thinking-text {
     background: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #8f84e6 50%, var(--text-secondary) 65%, var(--text-secondary) 100%);
     background-size: 250% 100%;
     -webkit-background-clip: text;
@@ -1865,30 +1891,41 @@ h1, h2, h3,
     color: transparent;
     animation: aiShimmer 1.8s linear infinite;
 }
-.ai-thinking.is-live .ai-thinking-label::after { content: '…'; }
+.ai-thinking.is-live .ai-thinking-text::after { content: attr(data-dots); }
 @keyframes aiShimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.ai-thinking-time { flex: none; overflow: hidden; font-variant-numeric: tabular-nums; font-weight: 500; }
+.ai-thinking-time:empty { display: none; }
+.ai-thinking-time::before { content: '·'; margin-right: 6px; opacity: 0.6; }
+
+/* The steps below the line: thoughts, notes the AI wrote on the way, lookups with what they found. They open as a
+   window of a few lines (what is hidden above or below fades out, a finger scrolls it); "Show more" opens them in
+   full, as part of the page */
+.ai-thinking-panel { overflow: hidden; }
 .ai-thinking-content {
-    max-height: 260px;
-    overflow-y: auto;
     margin: 10px 0 0 6px;
     padding: 2px 0 2px 14px;
-    border: 0;
     border-left: 2px solid color-mix(in srgb, #7c6fd6 30%, var(--hairline));
-    background: none;
-    font-family: inherit;
     font-size: 0.84rem;
     line-height: 1.55;
     color: var(--text-secondary);
-    animation: aiWelcomeUp 0.3s var(--ease);
 }
-
-/* The live line names what the AI is doing (a lookup in its own words, the title of its newest thought): long
-   titles end in "…" instead of breaking the line */
-.ai-thinking-summary { max-width: 100%; }
-.ai-thinking-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* The steps inside the thinking field: thoughts, notes the AI wrote on the way, lookups with what they found */
-.ai-steps { display: flex; flex-direction: column; gap: 10px; white-space: normal; max-height: 340px; }
+.ai-steps {
+    --fade-above: 0px;
+    --fade-below: 0px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 232px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-above), #000 calc(100% - var(--fade-below)), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-above), #000 calc(100% - var(--fade-below)), transparent 100%);
+}
+.ai-steps.has-above { --fade-above: 26px; }
+.ai-steps.has-below { --fade-below: 26px; }
+.ai-thinking.is-expanded .ai-steps { max-height: none; overflow: visible; }
+@media (min-width: 768px) { .ai-steps { max-height: 320px; } }
+.ai-step { flex: none; min-width: 0; }
 .ai-step-text { overflow-wrap: anywhere; }
 .ai-step-text > br { display: none; }
 .ai-step-text > p { margin: 0 0 6px; }
@@ -1920,14 +1957,54 @@ h1, h2, h3,
     color: transparent;
     animation: aiShimmer 1.8s linear infinite;
 }
+.ai-thinking-more {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 8px 0 0 22px;
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.5;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: color 0.2s var(--ease);
+}
+.ai-thinking-more[hidden] { display: none; }
+.ai-thinking-more::before { content: ''; position: absolute; inset: -10px -12px; }
+.ai-thinking-more::after {
+    content: '';
+    width: 5px;
+    height: 5px;
+    margin-top: -3px;
+    border-right: 1.6px solid currentColor;
+    border-bottom: 1.6px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform 0.25s var(--ease), margin-top 0.25s var(--ease);
+    opacity: 0.7;
+}
+.ai-thinking.is-expanded .ai-thinking-more::after { transform: rotate(-135deg); margin-top: 3px; }
+.ai-thinking-more:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 6px; }
+.ai-thinking-more:active { color: var(--text); }
+@media (hover: hover) { .ai-thinking-more:hover { color: var(--text); } }
+
+/* Text that was only a note before a lookup folds away from the answer (it is among the steps now) */
+.ai-answer-leaving { overflow: hidden; pointer-events: none; }
 
 /* Dark: the same orb and cards, the headline a little lighter */
 [data-theme="dark"] .ai-step-icon { background: color-mix(in srgb, #7c6fd6 26%, var(--surface)); color: #b4aaf7; }
 [data-theme="dark"] .ai-chat-welcome-ask { background-image: linear-gradient(100deg, #a99cf5 0%, #9d90f2 35%, #6cc3d8 75%, #63c7b2 100%); }
 [data-theme="dark"] .ai-chat-idea-icon { background: color-mix(in srgb, var(--c) 22%, var(--surface)); color: color-mix(in srgb, var(--c) 70%, #ffffff); }
 [data-theme="dark"] .ai-orb-glow { opacity: 0.45; }
-[data-theme="dark"] .ai-thinking.is-live .ai-thinking-label { background-image: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #b4aaf7 50%, var(--text-secondary) 65%, var(--text-secondary) 100%); }
+[data-theme="dark"] .ai-thinking.is-live .ai-thinking-text { background-image: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #b4aaf7 50%, var(--text-secondary) 65%, var(--text-secondary) 100%); }
 
 @media (prefers-reduced-motion: reduce) {
-    .ai-orb-core, .ai-orb-glow, .ai-orb-glyph, .ai-thinking-label, .ai-step-title { animation: none !important; }
+    .ai-orb-core, .ai-orb-glow, .ai-orb-glyph, .ai-thinking-text, .ai-step-title { animation: none !important; }
+    .ai-thinking-summary, .ai-thinking-summary::after, .ai-thinking-more::after { transition: none !important; }
 }

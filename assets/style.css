@@ -2166,49 +2166,6 @@ input:checked + .slider:before { transform: translateX(22px); }
     }
 }
 
-/* Thinking / reasoning dropdown */
-.ai-thinking {
-    margin-bottom: 10px;
-    border: 1px solid var(--border-light);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.ai-thinking-summary {
-    padding: 6px 12px;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-    background: var(--surface);
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.ai-thinking-summary::-webkit-details-marker { display: none; }
-
-.ai-thinking-summary::before {
-    content: '▶';
-    font-size: 0.65rem;
-    transition: transform 0.15s;
-}
-
-details[open] .ai-thinking-summary::before { transform: rotate(90deg); }
-
-.ai-thinking-content {
-    margin: 0;
-    padding: 10px 12px;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-    background: var(--surface-alt);
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    border-top: 1px solid var(--border-light);
-}
-
 /* Markdown styles inside assistant bubbles */
 .ai-chat-bubble-assistant p { margin: 0 0 8px; }
 .ai-chat-bubble-assistant p:last-child { margin-bottom: 0; }
