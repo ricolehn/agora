@@ -58,6 +58,27 @@ async function createUserRecord(appConfig, body, { token } = {}) {
   return decode(record);
 }
 
+/**
+ * Takes the passwords out of `original` that the first releases of the new structure left there in plain text
+ * (see SECRET_KEYS in codecs/accounts.js): every account whose password was set after the upgrade. The login itself
+ * is not touched (PocketBase keeps its own hash). Returns how many accounts were cleaned.
+ */
+async function removePasswordsFromOriginal(appConfig) {
+  const rows = await client.listAllRecords(USERS, '', appConfig);
+  const holds = (value) => Boolean(value) && typeof value === 'object' && (Array.isArray(value)
+    ? value.some((entry) => codecs.SECRET_KEYS.includes(entry))
+    : codecs.SECRET_KEYS.some((key) => key in value));
+  const affected = rows.filter((row) => row.original && typeof row.original === 'object' && [row.original.extra, row.original.values, row.original.keys].some(holds));
+  if (!affected.length) return 0;
+  const ctx = await groupContext(appConfig);
+  for (const row of affected) {
+    // The record as the server reads it (without them), written again: `original` keeps everything else it held
+    const { original } = codecs.encodeUser(decode(row), ctx, usersGroupsField());
+    await client.updateRecord(USERS, row.id, { original }, appConfig);
+  }
+  return affected.length;
+}
+
 /** Deletes the account; what links to it keeps its id for the older apps (../links.js). */
 async function deleteUserRecord(appConfig, uid) {
   if (typeof uid === 'string' && uid && await client.getRecord(USERS, uid, appConfig)) await require('../links').keepLinksTo(appConfig, USERS, uid);
@@ -127,6 +148,7 @@ module.exports = {
   listUserRecords,
   updateUserRecord,
   createUserRecord,
+  removePasswordsFromOriginal,
   deleteUserRecord,
   listGroupRecords,
   createGroupRecord,

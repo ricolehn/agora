@@ -118,14 +118,22 @@ columns, money in whole cents, real links between tables, and a help text for ev
 image. While it runs (seconds; about a minute for 30 years of 300 members), the app shows that it is updating.
 
 1. **Check** – every old record is read and turned into its new records; whatever is odd (an amount typed as
-   "50,00", a link to an account deleted long ago) is noted.
+   "50,00", a link to an account deleted long ago) is noted. The check also looks for anything that is not part of
+   Agora and depends on a table the upgrade replaces – a collection made on PocketBase's admin page that links to
+   one, a view that reads one, an index of your own over a field of `users` that goes: PocketBase would refuse to
+   remove that table or field later, so the upgrade waits and names it.
 2. **Backup** – a full backup is made first (`pre-v4-<time>.zip` in the `backups` folder of the database). No backup,
    no upgrade. The newest three of these are kept.
 3. **Copy** – the new tables are built next to the old ones; nothing old is touched.
 4. **Compare** – the new tables must answer every question exactly like the old ones: every member with balance,
    paid until and what is overdue, the statistics, every booking, every event, conversation and setting.
 5. **Switch** – one write makes the new tables the database.
-6. **Cleanup** – the old tables go (the backup keeps them).
+6. **Cleanup** – the old tables go (the backup keeps them). From the switch on nothing is ever undone: if the cleanup
+   cannot finish (PocketBase did not answer, the server was stopped), everything stays as it is and the cleanup is
+   tried again – after a moment by the running server and at every start – until it is through. The app shows that
+   the server is starting meanwhile; `/api/status` → `problem` and the server log say why. (The first releases of
+   this upgrade removed the new tables when their cleanup failed. A database they left like that is recognised and
+   not touched again; the status then asks to restore the `pre-v4-…` backup, after which the upgrade runs anew.)
 
 If anything in steps 1–4 fails or differs, nothing is switched: the new tables are removed and the previous version of
 the server (kept in the image, `backend/legacy`) serves the instance exactly as before. The app's status then says
@@ -133,7 +141,8 @@ that the upgrade did not get through, and the next start tries again – three t
 started with `AGORA_UPGRADE_RETRY=1`. Older apps keep working against the new structure through the old API, which
 answers exactly as before.
 
-**Try it first (recommended):** the dry run does the whole upgrade on a copy of a backup and never touches the original.
+**Try it first (recommended):** the dry run does the whole upgrade on a copy of a backup – the cleanup included, the
+one step nothing can undo – and never touches the original.
 Make a backup on PocketBase's admin page (Settings → Backups), then:
 
 ```bash
@@ -146,6 +155,12 @@ yourself.
 
 **Going back:** stop the container, restore the `pre-v4-…` backup (PocketBase admin page → Settings → Backups, or
 unpack it into the database folder) and start the previous image.
+
+**If you ran one of the first releases of version 4:** they kept the password of every account that was created, or
+whose password was set, after the upgrade in plain text next to the account (in `users.original`), and so in every
+backup made since. The server removes them at its next start and says in its log for how many accounts. Delete the
+backups made between the upgrade and that start (the `pre-v4-…` backup is from before and clean); if such a backup
+left the server, let these people choose a new password.
 
 <details>
 <summary><b>Setup Wizard</b></summary>
@@ -389,7 +404,7 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
 | `codecs.test.js` | the exact round trip between what the apps write and the new tables: 5000 random records per kind, odd values included |
 | `database.test.js` | the rules of the database structure (names, help texts, money in cents) and that docs/DATABASE.md is up to date |
-| `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; the dry run |
+| `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; the dry run; after the switch nothing is undone - a cleanup that fails or is interrupted is tried again until it is through, and what would stop it for good (something of one's own in PocketBase that depends on an old table) is found before anything changes |
 | `years.test.js` | the fee accounts over years: two communities lived through day by day for twelve years, with everything that can happen in an order nobody planned (payments early, late and corrected, statuses changed after the fact, fees set for months to come and months past, edited, moved and taken back, fresh starts, an older app saving a fee) - every number the apps show compared with a second set of books that shares no code with the server (`tests/feeBooks.js`). And five years with the real server and PocketBase, which is stopped and wakes up on a later day (`tests/clock.js`) |
 
 ```bash

@@ -274,6 +274,13 @@ async function ensurePocketBaseSchema(appConfig, { onUpgrading } = {}) {
   await grantNewPermission(appConfig, 'manage_songbook', 'songbookPermissionMigrated', 'manage the songbook');
   await grantNewPermission(appConfig, 'manage_prayers', 'prayersPermissionMigrated', 'moderate prayer requests');
   await grantNewPermission(appConfig, 'manage_media', 'mediaPermissionMigrated', 'manage media folders');
+  // Before anything else reads or backs up the accounts: passwords the first releases of this structure kept in
+  // plain text next to the account (db/codecs/accounts.js) are removed
+  await runRepairOnce(appConfig, 'passwords-out-of-accounts', async () => {
+    const cleaned = await accountsStore.removePasswordsFromOriginal(appConfig);
+    if (cleaned) console.warn(`[Migration] Removed the password kept in plain text with ${cleaned} account(s) (set after the database upgrade). Backups made since then still hold them: delete those backups, and let these people choose a new password if a backup left the server.`);
+    return { cleaned };
+  });
   await runRepairOnce(appConfig, 'duty-statuses', async () => {
     const repaired = await require('./dutyStatus').repairDutyStatuses(appConfig);
     if (repaired) console.log(`[Migration] ${repaired} duty status(es) now fit who has the duty`);
