@@ -6,6 +6,7 @@ const client = require('./db/client');
 const finance = require('./db/stores/finance');
 const eventsStore = require('./db/stores/events');
 const { toCents, amountValue } = require('./db/codec');
+const { toDateStr } = require('./utils/date');
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -30,11 +31,16 @@ function memberOf(row, person) {
     originalMemberSince: row.originalMemberSince || null,
     pays: row.pays !== false,
     isDeleted: row.isDeleted === true,
-    totalPaidCents: cents(person?.totalPaid),
+    // What the member's payments add up to, as the old API shows it (data.totalPaid) - not the list column of the old
+    // record, which could be stale (a member whose old column said 0 was shown with nothing paid)
+    totalPaidCents: cents(data.totalPaid ?? person?.totalPaid),
     balanceCents: data._currentBalance === undefined ? null : cents(data._currentBalance),
     overdueCents: data._overdueAmount === undefined ? null : cents(data._overdueAmount),
     monthlyFeeCents: data._monthlyFee === undefined ? null : cents(data._monthlyFee),
-    paidUntil: data._paidUntil ? String(data._paidUntil).slice(0, 10) : null,
+    // _paidUntil is the last paid day at midnight of the server's time zone, written as a moment in UTC: its day is
+    // read in that time zone again (the first ten letters are the day before wherever the clock is ahead of UTC -
+    // "paid until the 30th" instead of the 31st)
+    paidUntil: data._paidUntil && !Number.isNaN(new Date(data._paidUntil).getTime()) ? toDateStr(new Date(data._paidUntil)) : null,
     isOverdue: data._statusMeta?.isOverdue === true,
     version: row.updated
   };

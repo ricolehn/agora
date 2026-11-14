@@ -40,6 +40,13 @@ function groupIdsOf(list, ctx) {
 /** The fields PocketBase keeps itself (they pass through unchanged). */
 const SYSTEM_KEYS = ['collectionId', 'collectionName', 'id', 'email', 'emailVisibility', 'verified', 'created', 'updated'];
 
+/**
+ * What a login is checked with. PocketBase gets these as they come (stores/accounts.js) and keeps a hash of the
+ * password; they are never part of a record. Left in what the codec sees, they were "fields the columns do not know"
+ * and went into `original` - every password set after the upgrade stood in the database in plain text.
+ */
+const SECRET_KEYS = ['password', 'passwordConfirm', 'oldPassword'];
+
 /** [groupsColumn]: the field that holds the links (during an upgrade it is built under another name). */
 function userCodec(groupsColumn = 'groups') {
   return createCodec({
@@ -69,12 +76,15 @@ function userCodec(groupsColumn = 'groups') {
 function decodeUser(row, groupsColumn = 'groups') {
   if (!row) return null;
   const system = Object.fromEntries(SYSTEM_KEYS.filter((key) => key in row).map((key) => [key, row[key]]));
-  return { ...system, ...userCodec(groupsColumn).decode(row) };
+  const record = { ...system, ...userCodec(groupsColumn).decode(row) };
+  // Never handed on, also not from a record written before they were kept out of `original`
+  for (const key of SECRET_KEYS) delete record[key];
+  return record;
 }
 
 /** The columns (and `original`) of an account written in the old shape ([record]: its old fields, also partial). */
 function encodeUser(record, ctx, groupsColumn = 'groups') {
-  const values = Object.fromEntries(Object.entries(record).filter(([key]) => !SYSTEM_KEYS.includes(key)));
+  const values = Object.fromEntries(Object.entries(record).filter(([key]) => !SYSTEM_KEYS.includes(key) && !SECRET_KEYS.includes(key)));
   return userCodec(groupsColumn).encode(values, ctx, { email: record.email });
 }
 
@@ -91,4 +101,4 @@ const group = createCodec({
   canonicalKeys: () => ['name', 'permissions']
 });
 
-module.exports = { userCodec, decodeUser, encodeUser, group, groupIdsOf, emailNotificationsOf, isPlaceholderEmail, SYSTEM_KEYS };
+module.exports = { userCodec, decodeUser, encodeUser, group, groupIdsOf, emailNotificationsOf, isPlaceholderEmail, SYSTEM_KEYS, SECRET_KEYS };

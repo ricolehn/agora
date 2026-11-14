@@ -115,21 +115,36 @@ const fromCents = (cents) => (Number(cents) || 0) / 100;
 
 // --- Field kinds ---------------------------------------------------------------------------------------------------
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const asText = (value) => (value === undefined || value === null ? '' : typeof value === 'string' ? value : typeof value === 'object' ? JSON.stringify(value) : String(value));
 
 const fieldKinds = {
   /** Text column ('' for nothing). */
   text: (column) => ({ column, toColumn: (value) => asText(value), fromColumn: (stored) => (stored === undefined || stored === null ? '' : String(stored)) }),
-  /** A calendar day 'YYYY-MM-DD' (read like the server always read days: utils/date.toDateStr). */
+  /**
+   * A calendar day 'YYYY-MM-DD' (read like the server always read days: utils/date.toDateStr). What does not come out
+   * as such a day (a year typed with three or five digits, a number of days from a spreadsheet) leaves the column
+   * empty and stays in `original` as it was written - the database refuses anything else in a day column, and one
+   * such date in one old payment stopped the whole upgrade.
+   */
   day: (column, { empty = '' } = {}) => ({
     column,
-    toColumn: (value) => (value === undefined || value === null || value === '' ? '' : toDateStr(value)),
+    toColumn: (value) => {
+      if (value === undefined || value === null || value === '') return '';
+      const day = toDateStr(value);
+      return DAY.test(day) ? day : '';
+    },
     fromColumn: (stored) => (stored ? String(stored) : empty)
   }),
   /** An amount in whole cents; it decodes to a number (or, with asString, to text like "12.5", as requests keep it). */
   money: (column, { asString = false } = {}) => ({
     column,
-    toColumn: (value) => (value === undefined || value === null || value === '' ? 0 : toCents(amountValue(value)).cents),
+    // An amount beyond what whole cents can hold exactly (1e21) leaves the column at 0 and stays in `original`
+    toColumn: (value) => {
+      if (value === undefined || value === null || value === '') return 0;
+      const { cents } = toCents(amountValue(value));
+      return Number.isSafeInteger(cents) ? cents : 0;
+    },
     fromColumn: (stored) => (asString ? String(fromCents(stored)) : fromCents(stored))
   }),
   bool: (column) => ({ column, toColumn: (value) => value === true, fromColumn: (stored) => stored === true }),

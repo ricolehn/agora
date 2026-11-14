@@ -138,20 +138,17 @@ function oldPeopleRecord(row, standingOrderRows = [], paymentRows = [], { decode
   };
 }
 
-// What the reads of the members need of their child records (the whole table is read for a list of all members:
-// leaving out PocketBase's own fields makes it a third smaller to send and to parse)
-const READ_FIELDS = {
-  [PAYMENTS]: 'id,member,clientId,amountCents,date,description,receipt,source,original',
-  [PERIODS]: 'id,member,clientId,status,startDate,endDate,original',
-  [STANDING_ORDERS]: 'id,member,clientId,amountCents,startDate,endDate,note,lastAutoPayment,position,original'
-};
-
-/** Records of [collection] belonging to the members [memberIds] (all members: one read of the whole table). */
+/**
+ * Records of [collection] belonging to the members [memberIds] (all members: one read of the whole table). The whole
+ * records: asking PocketBase for some of their fields only (fields=...) makes the answer a third smaller, but picking
+ * them costs PocketBase more than sending them - 108,000 payments took 2.2 s instead of 1.5 s, and the first read of
+ * all members after every booking was slower than before the new structure.
+ */
 async function rowsOfMembers(appConfig, collection, memberIds) {
   if (!memberIds.length) return [];
   if (memberIds.length === 1) return client.listAllRecords(collection, client.pbFilterEquals('member', memberIds[0]), appConfig);
   const wanted = new Set(memberIds);
-  return (await client.listAllRecords(collection, '', appConfig, '', { fields: READ_FIELDS[collection] || '' })).filter((row) => wanted.has(row.member));
+  return (await client.listAllRecords(collection, '', appConfig)).filter((row) => wanted.has(row.member));
 }
 
 const groupBy = (rows, key) => {
@@ -278,36 +275,32 @@ function childEntries(prefix, personKey, list, codec, stripKeys = null) {
 }
 
 /**
- * The operations that make the stored child records of one member ([existing], with their keys) match [wanted].
- * [keepUnseen]: a list sent without a version (older apps) may be stale - a record added after the newest record the
- * list knows is never deleted for missing from it.
+ * The operations that make the stored child records of one member ([existing], with their keys) match [wanted] -
+ * the whole list as it was sent, as the old server did: what the list no longer holds is deleted, also when the list
+ * came without a version. (For a while a record added after the newest record the list knows was kept in that case,
+ * to protect it from an app with a stale list. But a list never says what its sender had seen: the entry a treasurer
+ * had just deleted stayed in the books, and entries without an id - their key holds their place in the list - were
+ * left behind and written anew, twice in the books, whenever the list changed above them.)
+ * Entries with the same key (the same id twice in one list) pair up with the stored records one by one, in order.
  */
-function diffChildren(collection, memberId, existing, wanted, { keepUnseen, extraColumns = () => ({}) }) {
+function diffChildren(collection, memberId, existing, wanted, { extraColumns = () => ({}) } = {}) {
   const ops = [];
-  const existingByKey = new Map(existing.map((entry) => [entry.key, entry]));
-  const wantedKeys = new Set();
-  let newestSeen = '';
-  for (const entry of wanted) {
-    const current = existingByKey.get(entry.key);
-    if (current && current.row.created > newestSeen) newestSeen = current.row.created;
+  const free = new Map();
+  for (const entry of existing) {
+    const list = free.get(entry.key);
+    if (list) list.push(entry);
+    else free.set(entry.key, [entry]);
   }
   wanted.forEach((entry, index) => {
-    wantedKeys.add(entry.key);
-    const current = existingByKey.get(entry.key);
+    const current = free.get(entry.key)?.shift();
     const body = { member: memberId, ...entry.columns, ...extraColumns(entry, index), original: entry.original };
     if (!current) ops.push({ method: 'POST', collection, body: { id: entry.id || newRecordId(), ...body } });
     else if (!sameRow(current.row, body)) ops.push({ method: 'PATCH', collection, id: current.row.id, body });
   });
-  const kept = [];
   for (const entry of existing) {
-    if (wantedKeys.has(entry.key)) continue;
-    if (keepUnseen && !(entry.row.created <= newestSeen)) {
-      kept.push(entry.row.id);
-      continue;
-    }
-    ops.push({ method: 'DELETE', collection, id: entry.row.id });
+    if (free.get(entry.key)?.includes(entry)) ops.push({ method: 'DELETE', collection, id: entry.row.id });
   }
-  return { ops, kept };
+  return { ops };
 }
 
 const MOMENT = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/;
@@ -371,13 +364,19 @@ async function pruneChangeLog(appConfig, { years = CHANGE_LOG_YEARS(), now = Dat
 /**
  * Writes the member [personKey] as the apps send it ([value]: the whole member with payments, status history and
  * standing orders). [expectedUpdated]: the version the write is based on (conflict when the member changed since);
- * without it, records the sender cannot have seen are kept (see diffChildren).
+ * without it the member is written as sent, like the old server did.
  */
 function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null, { actor = null } = {}) {
   return queueRecordWrite(`people:${personKey}`, async () => {
     const payload = shapes.buildPersonRecordPayload(personKey, value);
     // Checked before anything is written: a record PocketBase refuses must not leave payments half written
     if (!payload.name || !payload.data) throw Object.assign(new Error('A person record needs a name.'), { status: 400 });
+    // The old table refused a status period without a status or a start (required fields): so does this one
+    for (const period of shapes.normalizeRecordListInput(value?.statusHistory)) {
+      if (shapes.toOptionalText(period?.status) === '' || shapes.toOptionalText(period?.startDate) === '') {
+        throw Object.assign(new Error('A status period needs a status and a start date.'), { status: 400 });
+      }
+    }
     const existingRow = await findMemberRow(appConfig, personKey);
     const existing = existingRow && !isOrphan(existingRow) ? existingRow : null;
     if (existing ? shapes.isOutdatedVersion(existing.updated, expectedUpdated) : expectedUpdated) {
@@ -395,9 +394,11 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
     const memberBody = { ...encoded.columns, original: Object.keys(memberOriginal).length ? memberOriginal : null };
     delete memberBody.id;
 
-    // The child records, with the keys the old server gave them
-    const rows = existingRow
-      ? await Promise.all([PAYMENTS, PERIODS, STANDING_ORDERS].map((collection) => client.listAllRecords(collection, client.pbFilterEquals('member', existingRow.id), appConfig)))
+    // The child records, with the keys the old server gave them. A member that is new has none to compare with - also
+    // when payments are kept under its key from a member whose record was gone: they stay, and are the new member's
+    // (the old server wrote a new member's entries next to whatever its key already held)
+    const rows = existing
+      ? await Promise.all([PAYMENTS, PERIODS, STANDING_ORDERS].map((collection) => client.listAllRecords(collection, client.pbFilterEquals('member', existing.id), appConfig)))
       : [[], [], []];
     const [paymentRows, periodRows, orderRows] = rows;
     const keyOf = (prefix, decode) => (row) => {
@@ -405,7 +406,6 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
       const stored = originalOf(row).key;
       return { key: typeof stored === 'string' ? stored : shapes.buildStableChildKey(prefix, String(personKey), data.id, 0, data), row };
     };
-    const keepUnseen = expectedUpdated === null || expectedUpdated === undefined;
     const wantedOrders = (Array.isArray(standingOrdersValue) ? standingOrdersValue : []).filter(Boolean).map((order, index) => {
       const { columns, original } = codecs.standingOrder.encode(order);
       const hasId = order && order.id !== undefined && order.id !== null && order.id !== '';
@@ -417,7 +417,7 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
       const hasId = data.id !== undefined && data.id !== null && data.id !== '';
       return { key: hasId ? `id:${JSON.stringify(data.id)}` : `pos:${row.position}:${shapes.stableSerialize(data)}`, row };
     };
-    const orders = diffChildren(STANDING_ORDERS, memberId, orderRows.map(orderKey), wantedOrders, { keepUnseen, extraColumns: (entry, index) => ({ position: index }) });
+    const orders = diffChildren(STANDING_ORDERS, memberId, orderRows.map(orderKey), wantedOrders, { extraColumns: (entry, index) => ({ position: index }) });
     // Standing orders of the member by the id the apps gave them: the payments they booked link to them
     const orderIdByClientId = new Map();
     for (const row of orderRows) orderIdByClientId.set(JSON.stringify(codecs.standingOrder.decode(row).id), row.id);
@@ -427,10 +427,9 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
       return (match && orderIdByClientId.get(JSON.stringify(match[1]))) || '';
     };
     const payments = diffChildren(PAYMENTS, memberId, paymentRows.map(keyOf('payment', codecs.payment.decode)), childEntries('payment', String(personKey), value?.payments, codecs.payment), {
-      keepUnseen,
       extraColumns: (entry) => ({ standingOrder: standingOrderOf(entry.columns) })
     });
-    const periods = diffChildren(PERIODS, memberId, periodRows.map(keyOf('status', codecs.statusPeriod.decode)), childEntries('status', String(personKey), value?.statusHistory, codecs.statusPeriod, codecs.COMPUTED_STATUS_KEYS), { keepUnseen });
+    const periods = diffChildren(PERIODS, memberId, periodRows.map(keyOf('status', codecs.statusPeriod.decode)), childEntries('status', String(personKey), value?.statusHistory, codecs.statusPeriod, codecs.COMPUTED_STATUS_KEYS));
 
     // A new member first (the payments link to it), the member's own record last: whoever reads its new version
     // reads its payments - all of it in one transaction, with its rows in the change log
@@ -446,9 +445,6 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
       ...changeOpsFor('standingOrder', orders.ops, orderRows, (row) => codecs.standingOrder.decode(row), memberId)
     );
     await runBatch(appConfig, ops);
-    if (payments.kept.length || periods.kept.length) {
-      console.warn(`[Finance] Kept ${payments.kept.length + periods.kept.length} entr(ies) of ${personKey} that an app without the current version did not know of`);
-    }
     return getPeopleRecord(appConfig, personKey);
   });
 }
@@ -536,7 +532,7 @@ async function getDonationsValue(appConfig) {
 
 /**
  * Saves the donations an app sends as a whole ([value]: list or map). With [expectedVersion] (the web app) a list that
- * changed meanwhile is refused (409); without (older apps) nothing the app cannot have seen is deleted.
+ * changed meanwhile is refused (409); without (older apps) the list is written as sent, like the old server did.
  */
 function saveDonations(appConfig, value, { expectedVersion } = {}) {
   return queueRecordWrite('finance:donations', async () => {
@@ -558,7 +554,7 @@ function saveDonations(appConfig, value, { expectedVersion } = {}) {
       const data = codecs.donation.decode(row);
       return { key: keyOfEntry(typeof originalOf(row).key === 'string' ? originalOf(row).key : null, data, index), row };
     });
-    const { ops } = diffChildren(DONATIONS, null, existing, wanted, { keepUnseen: expectedVersion === undefined || expectedVersion === null, extraColumns: (entry, index) => ({ position: index }) });
+    const { ops } = diffChildren(DONATIONS, null, existing, wanted, { extraColumns: (entry, index) => ({ position: index }) });
     for (const op of ops) if (op.body) delete op.body.member;
     // A donation that only moved in the list is no change of it
     const moved = (op) => op.method === 'PATCH' && Object.keys(op.body).every((key) => key === 'position' || sameValue(rows.find((row) => row.id === op.id)?.[key], op.body[key]));
@@ -593,7 +589,7 @@ function syncExpenseRecords(appConfig, value, { expectedVersion } = {}) {
       return { key: payload.expenseKey, columns, original: hasId ? original : { ...(original || {}), key: payload.expenseKey } };
     });
     const existing = rows.map((row) => ({ key: oldExpenseRecord(row).expenseKey, row }));
-    const { ops } = diffChildren(EXPENSES, null, existing, wanted, { keepUnseen: expectedVersion === undefined || expectedVersion === null });
+    const { ops } = diffChildren(EXPENSES, null, existing, wanted);
     for (const op of ops) if (op.body) delete op.body.member;
     await runBatch(appConfig, [...ops, ...changeOpsFor('expense', ops, rows, (row) => codecs.expense.decode(row))]);
   });

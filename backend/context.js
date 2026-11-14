@@ -103,6 +103,8 @@ const context = {
   // database is being upgraded), 'ready'
   phase: 'setup',
   transporter: null,
+  // Why a start keeps being tried again, where that may be told (/api/status): the cleanup after the database upgrade
+  startProblem: '',
   runtimeReady: Promise.resolve()
 };
 
@@ -155,6 +157,7 @@ async function initializeRuntime(config) {
   context.appConfig = config;
   context.setupMode = false;
   context.transporter = buildSmtpTransport(config.smtp || null);
+  context.startProblem = '';
   context.phase = 'ready';
   console.log('Configuration loaded successfully. Setup mode: false');
 
@@ -181,6 +184,7 @@ function setRuntimeConfig(config, { retry = true, attempt = 0 } = {}) {
     console.error('Runtime initialization failed:', error);
     context.appConfig = null;
     context.transporter = null;
+    context.startProblem = error.publicReason || '';
     if (error.name === 'UpgradeNotDone' && typeof context.onUpgradeNotDone === 'function') {
       context.phase = 'failed';
       context.onUpgradeNotDone(error.outcome, config);
@@ -205,6 +209,7 @@ function resetToSetupMode() {
   context.transporter = null;
   context.setupMode = true;
   context.phase = 'setup';
+  context.startProblem = '';
   context.runtimeReady = Promise.resolve();
 }
 

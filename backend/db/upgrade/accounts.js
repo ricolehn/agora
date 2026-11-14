@@ -128,14 +128,26 @@ async function ensureUsersSchema(appConfig) {
   const kept = fields.filter((field) => !['name', 'avatar'].includes(field.name) || field.system);
   const password = kept.find((field) => field.name === 'password');
   if (password) password.min = 6;
-  await client.updateCollection(appConfig, 'users', {
+  const otherIndexes = (users.indexes || []).filter((index) => !index.includes('idx_users_calendar_token'));
+  const body = {
     ...SERVER_ONLY_RULES,
     viewRule: 'id = @request.auth.id',
     authToken: { ...(users.authToken || {}), duration: 94670856 },
     fields: kept,
-    indexes: [...(users.indexes || []).filter((index) => !index.includes('idx_users_calendar_token')), "CREATE UNIQUE INDEX idx_users_calendar_token ON users (calendarToken) WHERE calendarToken != ''"]
-  });
+    indexes: [...otherIndexes, "CREATE UNIQUE INDEX idx_users_calendar_token ON users (calendarToken) WHERE calendarToken != ''"]
+  };
+  try {
+    await client.updateCollection(appConfig, 'users', body);
+  } catch (error) {
+    // Two accounts with the same calendar address (the app never makes that; a record edited by hand can have it) make
+    // the unique index impossible. It only guards against that: the structure is applied without it and the
+    // duplicates are reported, instead of a cleanup of the upgrade - or a start - that can never get through
+    const tokens = (await client.listAllRecords('users', 'calendarToken != ""', appConfig, '', { fields: 'id,calendarToken' })).map((row) => row.calendarToken);
+    if (new Set(tokens).size === tokens.length) throw error;
+    await client.updateCollection(appConfig, 'users', { ...body, indexes: otherIndexes });
+    problems.push('several accounts share one calendar address (users.calendarToken): the index that keeps them apart could not be made');
+  }
   return problems;
 }
 
-module.exports = { key: 'accounts', OLD_COLLECTIONS, NEW_COLLECTIONS, BUILDING_FIELDS, plan, apply, compare, cleanup, rollback, ensureUsersSchema };
+module.exports = { key: 'accounts', OLD_COLLECTIONS, NEW_COLLECTIONS, BUILDING_FIELDS, REMOVED_USER_FIELDS, plan, apply, compare, cleanup, rollback, ensureUsersSchema };

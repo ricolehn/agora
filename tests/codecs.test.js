@@ -142,6 +142,32 @@ describe('finance codecs', () => {
     assert.deepEqual(gone.original.values, { uid: 'deadbeefdeadbee' });
   });
 
+  test('what the database would refuse in a typed column stays out of it: a day that is none, an amount beyond whole cents', () => {
+    // A day column takes 'YYYY-MM-DD' only and a cents column whole numbers only; PocketBase refuses the whole write
+    // otherwise - and one such payment in years of data stopped the whole upgrade. The value stays in `original`.
+    for (const date of ['20255-03-01', '202-01-01', '44000', 44000]) {
+      const written = { amount: 8, date, description: 'ungewöhnliches Datum', id: 'pay-odd-date' };
+      const { columns, original } = finance.payment.encode(written);
+      assert.equal(columns.date, '', `${date}: no day in the column`);
+      assert.deepEqual(original.values, { date });
+      assert.deepEqual(finance.payment.decode({ ...columns, original }), written, `${date}: comes back as written`);
+    }
+    for (const [name, codec, key] of [['standing order', finance.standingOrder, 'startDate'], ['status period', finance.statusPeriod, 'endDate'], ['donation', finance.donation, 'date'], ['expense', finance.expense, 'date'], ['member', finance.member, 'memberSince']]) {
+      assert.equal(Object.values(codec.encode({ [key]: '20255-03-01' }).columns).includes('20255-03-01'), false, name);
+    }
+    // Days in every spelling the server reads still get their column
+    assert.equal(finance.payment.encode({ date: '07/15/2020' }).columns.date, '2020-07-15');
+    assert.equal(finance.payment.encode({ date: '2020-06-03T00:00:00.000Z' }).columns.date, '2020-06-03');
+    for (const amount of [1e21, 1e300, 93000000000000000]) {
+      const written = { amount, date: '2026-01-03', description: 'unvorstellbar viel', id: 'pay-huge' };
+      const { columns, original } = finance.payment.encode(written);
+      assert.equal(columns.amountCents, 0, `${amount}: not in the column`);
+      assert.ok(Number.isSafeInteger(columns.amountCents));
+      assert.deepEqual(finance.payment.decode({ ...columns, original }), written, `${amount}: comes back as written`);
+    }
+    assert.equal(finance.payment.encode({ amount: 1234567890.12 }).columns.amountCents, 123456789012, 'large amounts keep their cents');
+  });
+
   test('a key named __proto__ stays an ordinary key', () => {
     const codec = createCodec({ fields: { a: fieldKinds.text('a') }, canonicalKeys: () => ['a'] });
     const object = JSON.parse('{"a": "x", "__proto__": {"polluted": true}}');
