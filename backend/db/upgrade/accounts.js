@@ -55,13 +55,9 @@ async function addBuildingFields(appConfig) {
 }
 
 async function apply(appConfig, planned) {
-  await client.batchWrite(appConfig, planned.groupOps.slice(0, client.BATCH_MAX_REQUESTS));
-  for (let start = client.BATCH_MAX_REQUESTS; start < planned.groupOps.length; start += client.BATCH_MAX_REQUESTS) {
-    await client.batchWrite(appConfig, planned.groupOps.slice(start, start + client.BATCH_MAX_REQUESTS));
-  }
+  await client.writeInBatches(appConfig, planned.groupOps);
   await addBuildingFields(appConfig);
-  const ops = planned.userOps.map((op) => ({ method: 'PATCH', collection: 'users', id: op.user, body: op.body }));
-  for (let start = 0; start < ops.length; start += client.BATCH_MAX_REQUESTS) await client.batchWrite(appConfig, ops.slice(start, start + client.BATCH_MAX_REQUESTS));
+  await client.writeInBatches(appConfig, planned.userOps.map((op) => ({ method: 'PATCH', collection: 'users', id: op.user, body: op.body })));
 }
 
 async function compare(appConfig, { legacy }) {
@@ -90,7 +86,7 @@ async function cleanup(appConfig) {
     // owner as the old server read it (owner or superAdmin) - before superAdmin goes
     const rows = await client.listAllRecords('users', '', appConfig);
     const ops = rows.filter((row) => row.superAdmin === true && row.owner !== true).map((row) => ({ method: 'PATCH', collection: 'users', id: row.id, body: { owner: true } }));
-    for (let start = 0; start < ops.length; start += client.BATCH_MAX_REQUESTS) await client.batchWrite(appConfig, ops.slice(start, start + client.BATCH_MAX_REQUESTS));
+    await client.writeInBatches(appConfig, ops);
     await client.updateCollection(appConfig, 'users', { fields: users.fields.filter((field) => !REMOVED_USER_FIELDS.includes(field.name)) });
     const after = await client.getCollection(appConfig, 'users');
     await client.updateCollection(appConfig, 'users', { fields: after.fields.map((field) => (field.name === BUILDING_FIELDS.usersGroupsField ? { ...field, name: 'groups' } : field)) });

@@ -5,11 +5,21 @@ const {
 } = require('./pocketbase');
 const { toDateStr } = require('./utils/date');
 
-async function aggregateStats(appConfig) {
+// An amount as the books read it: a number, or text like "1.234,50"; one nobody can read ("fünfzig") counts 0, as in a
+// member's total (calculateTotalPaid) and the cents of the new structure. Counted as NaN, one such old amount made the
+// totals and every day of the chart empty (null). [asBefore]: as the previous version counted it - the upgrade
+// compares the new tables with that version's answers.
+const amountOf = (value, asBefore) => {
+  const amount = Number(String(value || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+  return asBefore || Number.isFinite(amount) ? amount : 0;
+};
+
+async function aggregateStats(appConfig, { asBefore = false } = {}) {
   // ⚡ Bolt: Fetch independent records concurrently to reduce endpoint latency.
   // Expected impact: ~50-60% reduction in total query time (e.g., from ~120ms sequentially to ~50ms).
+  // The members are only read here (shared: no copy of them all)
   const [people, expenses, settingsRecord, donationsRecord] = await Promise.all([
-    listPeopleRecords(appConfig),
+    listPeopleRecords(appConfig, {}, { shared: true }),
     listExpenseRecords(appConfig),
     getStateRecord(appConfig, 'settings'),
     getStateRecord(appConfig, 'donations')
@@ -59,7 +69,7 @@ async function aggregateStats(appConfig) {
       const payDateStr = toDateStr(pay.date);
       if (payDateStr > todayStr) return; // Exclude strictly future payments
 
-      const amount = Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+      const amount = amountOf(pay.amount, asBefore);
       totalInc += amount;
 
       if (!startStr || payDateStr >= startStr) {
@@ -73,7 +83,7 @@ async function aggregateStats(appConfig) {
     const dDateStr = toDateStr(d.date);
     if (dDateStr > todayStr) return; // Exclude future donations
 
-    const amount = Number(String(d.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    const amount = amountOf(d.amount, asBefore);
     totalInc += amount;
 
     if (!startStr || dDateStr >= startStr) {
@@ -87,7 +97,7 @@ async function aggregateStats(appConfig) {
     const eDateStr = toDateStr(e.date);
     if (eDateStr > todayStr) return; // Exclude future expenses
 
-    const amount = Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    const amount = amountOf(e.amount, asBefore);
     totalExp += amount;
 
     if (!startStr || eDateStr >= startStr) {

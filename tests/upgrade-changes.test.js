@@ -9,7 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { POCKETBASE_BIN, LEGACY_SERVER, CURRENT_SERVER, startPocketBase, startBackend, httpClient, stop } = require('./instance');
-const { oldInstance, recordAll, firstDifference } = require('./upgradeHarness');
+const { oldInstance, recordAll, answerDifference } = require('./upgradeHarness');
 const { BACKEND_DIR } = require('./helpers');
 
 /**
@@ -45,7 +45,7 @@ async function twins(t, prepare = async () => {}) {
   const compare = async () => {
     const reads = old.reads;
     const [answersBefore, answersAfter] = [await recordAll(before, reads), await recordAll(after, reads)];
-    return reads.map(([who, url], index) => [who, url, firstDifference(answersBefore[index], answersAfter[index])])
+    return reads.map(([who, url], index) => [who, url, answerDifference(url, answersBefore[index], answersAfter[index])])
       .filter(([, , difference]) => difference).map(([who, url, difference]) => `${who || 'nobody'} GET ${url}\n    ${difference}`);
   };
   return { old, before, after, sides: [['before', before], ['after', after]], compare, reads: old.reads };

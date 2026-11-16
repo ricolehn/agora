@@ -4,8 +4,9 @@
 //   POCKETBASE_BIN=/path/to/pocketbase node tests/benchmark.js [members:years ...]   (default 50:10 150:20 300:30)
 //
 // For each size an old instance is filled straight in PocketBase (members paying every month for that many years),
-// the reads the apps make most are timed on the frozen backend, the upgrade runs (timed), and the same reads are
-// timed on the current backend. Prints the medians of five runs per read.
+// the reads the apps make most are timed on the frozen backend - read again, and read first after a booking (as the
+// web app books) and after an unrelated change (a prayer request made and deleted) - the upgrade runs (timed), and
+// the same is timed on the current backend, with the matching reads of API v2. Prints the medians of five runs.
 const fs = require('fs');
 const path = require('path');
 const {
@@ -59,19 +60,63 @@ async function seed(su, members, years) {
   return { payments: payments.length, sampleKey: 'member-1' };
 }
 
-async function timeReads(http, sampleKey) {
+// The same reads on API v2 (after the upgrade); one member by its id
+const READS_V2 = [
+  ['v2: all members', '/api/v2/members?limit=500'],
+  ['v2: one member', (id) => `/api/v2/members/${id}`],
+  ['v2: payments, first page', '/api/v2/payments?limit=50'],
+  ['v2: money summary', '/api/v2/finance/summary']
+];
+
+const median = (times) => Math.round([...times].sort((a, b) => a - b)[Math.floor(times.length / 2)]);
+
+async function timed(http, url) {
+  const begin = process.hrtime.bigint();
+  const res = await http.call('owner', 'GET', url);
+  if (res.status !== 200) throw new Error(`${url}: ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
+  return Number(process.hrtime.bigint() - begin) / 1e6;
+}
+
+async function timeReads(http, reads, sample) {
   const results = {};
-  for (const [label, url] of READS) {
-    const target = typeof url === 'function' ? url(sampleKey) : url;
+  for (const [label, url] of reads) {
+    const target = typeof url === 'function' ? url(sample) : url;
     const times = [];
-    for (let run = 0; run < 5; run += 1) {
-      const begin = process.hrtime.bigint();
-      const res = await http.call('owner', 'GET', target);
-      if (res.status !== 200) throw new Error(`${target}: ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
-      times.push(Number(process.hrtime.bigint() - begin) / 1e6);
+    for (let run = 0; run < 5; run += 1) times.push(await timed(http, target));
+    results[label] = median(times);
+  }
+  return results;
+}
+
+/** A payment booked the way the web app books it: the member read with its version, then the transaction. */
+async function book(http, key, id) {
+  const raw = await http.call('owner', 'GET', `/api/db?path=people/${key}&raw=1`);
+  const value = { ...raw.body.value, payments: [...(raw.body.value.payments || []), { id, amount: 50, date: new Date().toISOString().slice(0, 10), description: 'Beitrag' }] };
+  const begin = process.hrtime.bigint();
+  const res = await http.call('owner', 'POST', '/api/db/transaction', { path: `people/${key}`, currentVersion: raw.body.version, value });
+  if (res.status !== 200) throw new Error(`booking: ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
+  return Number(process.hrtime.bigint() - begin) / 1e6;
+}
+
+/** What every app reads right after a change: [readUrls] ({ label: url }) first after a booking and after an unrelated change. */
+async function timeChanges(http, label, readUrls) {
+  const results = {};
+  const bookings = [];
+  const after = Object.fromEntries(Object.keys(readUrls).map((name) => [name, []]));
+  const unrelated = Object.fromEntries(Object.keys(readUrls).map((name) => [name, []]));
+  for (let run = 0; run < 5; run += 1) {
+    for (const [name, url] of Object.entries(readUrls)) {
+      bookings.push(await book(http, `member-${10 + run}`, `bench-${label}-${name}-${run}`));
+      after[name].push(await timed(http, url));
+      const prayer = await http.call('owner', 'POST', '/api/prayers', { text: 'Bitte', duration: 'week' });
+      await http.call('owner', 'DELETE', `/api/prayers/${prayer.body?.id || prayer.body?.prayer?.id}`);
+      unrelated[name].push(await timed(http, url));
     }
-    times.sort((a, b) => a - b);
-    results[label] = Math.round(times[2]);
+  }
+  results['saving a booking'] = median(bookings);
+  for (const name of Object.keys(readUrls)) {
+    results[`${name}, first after a booking`] = median(after[name]);
+    results[`${name}, after an unrelated change`] = median(unrelated[name]);
   }
   return results;
 }
@@ -93,7 +138,7 @@ async function measure(members, years) {
     await stop(backend.process);
     backend = await startBackend(root, pocketbase.port, { entry: LEGACY_SERVER, port: backend.port, label: 'old backend' });
     const oldStart = Date.now() - begin;
-    const before = await timeReads(http, seeded.sampleKey);
+    const before = { ...await timeReads(http, READS, seeded.sampleKey), ...await timeChanges(http, 'old', { 'all members': '/api/db?path=people', statistics: '/api/stats' }) };
 
     await stop(backend.process);
     begin = Date.now();
@@ -101,12 +146,18 @@ async function measure(members, years) {
     const upgrade = Date.now() - begin;
     const status = await (await fetch(`${backend.base}/api/status`)).json();
     if (status.upgrade) throw new Error(`The upgrade did not go through: ${JSON.stringify(status.upgrade)}`);
-    const after = await timeReads(http, seeded.sampleKey);
 
+    // As an instance runs after its one-time upgrade: a fresh start of the current backend
     await stop(backend.process);
     begin = Date.now();
     backend = await startBackend(root, pocketbase.port, { entry: CURRENT_SERVER, port: backend.port, label: 'new backend' });
     const newStart = Date.now() - begin;
+    const memberId = (await http.ok(http.call('owner', 'GET', '/api/v2/members?limit=500'))).items.find((member) => member.key === seeded.sampleKey).id;
+    const after = {
+      ...await timeReads(http, READS, seeded.sampleKey),
+      ...await timeChanges(http, 'new', { 'all members': '/api/db?path=people', statistics: '/api/stats', 'v2: all members': '/api/v2/members?limit=500', 'v2: money summary': '/api/v2/finance/summary' }),
+      ...await timeReads(http, READS_V2, memberId)
+    };
     return { members, years, payments: seeded.payments, oldStart, upgrade, newStart, before, after };
   } finally {
     await stop(backend.process);
@@ -125,8 +176,9 @@ async function main() {
   }
   for (const row of rows) {
     console.log(`\n${row.members} members, ${row.years} years (${row.payments} payments): old start ${row.oldStart} ms, upgrade ${row.upgrade} ms, new start ${row.newStart} ms`);
-    console.log(`  ${'read'.padEnd(24)} ${'before'.padStart(8)} ${'after'.padStart(8)}`);
-    for (const label of Object.keys(row.before)) console.log(`  ${label.padEnd(24)} ${`${row.before[label]} ms`.padStart(8)} ${`${row.after[label]} ms`.padStart(8)}`);
+    console.log(`  ${'read'.padEnd(44)} ${'before'.padStart(8)} ${'after'.padStart(8)}`);
+    const before = (label) => (label in row.before ? `${row.before[label]} ms` : '-');
+    for (const label of Object.keys(row.after)) console.log(`  ${label.padEnd(44)} ${before(label).padStart(8)} ${`${row.after[label]} ms`.padStart(8)}`);
   }
 }
 

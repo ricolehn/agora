@@ -33,15 +33,18 @@ const MISSING = undefined;
 
 const rowOf = (appConfig, collection, field, value) => client.getFirstRecord(table(collection), client.pbFilterEquals(field, value), appConfig);
 
+// A setting names its area (the members memo of the books only follows the area 'finance', stores/finance.js)
+const tagOf = (collection, field, value) => (collection === SETTINGS && field === 'area' ? { tag: { area: value } } : {});
+
 async function putRow(appConfig, collection, field, value, body) {
   const existing = await rowOf(appConfig, collection, field, value);
-  if (existing) return client.updateRecord(table(collection), existing.id, body, appConfig);
-  return client.createRecord(table(collection), { [field]: value, ...body }, appConfig);
+  if (existing) return client.updateRecord(table(collection), existing.id, body, appConfig, tagOf(collection, field, value));
+  return client.createRecord(table(collection), { [field]: value, ...body }, appConfig, tagOf(collection, field, value));
 }
 
 async function dropRow(appConfig, collection, field, value) {
   const existing = await rowOf(appConfig, collection, field, value);
-  if (existing) await client.deleteRecord(table(collection), existing.id, appConfig);
+  if (existing) await client.deleteRecord(table(collection), existing.id, appConfig, tagOf(collection, field, value));
 }
 
 /** [value] of an app_state key split into what is stored as the setting and the secret ({ setting, secret }). */

@@ -5963,8 +5963,23 @@ async function mutatePerson(personId, mutator) {
 
 // Donations & expenses are stored as whole lists: read the latest server copy with its version, apply `change`, write
 // it back - refused if someone else saved the list meanwhile, then read and applied again (runTransaction).
+// While the database upgrade waits, the previous version of the server serves the instance (/api/status names no API
+// versions, only the upgrade): it takes transactions of people only and refused every list with 400 - donations and
+// expenses could not be added, changed or deleted at all. There they are saved as that version always took them.
 async function mutateCollection(name, change) {
-    await runTransaction(ref(db, name), current => change(safeList(current)) || undefined);
+    try {
+        await runTransaction(ref(db, name), current => change(safeList(current)) || undefined);
+    } catch (error) {
+        if (error?.status !== 400 || !(await isPreviousServer())) throw error;
+        const next = change(safeList(await apiGet(name)));
+        if (next) await set(ref(db, name), next);
+    }
+}
+
+// The previous version of the server (see mutateCollection): its status names no API versions
+async function isPreviousServer() {
+    const status = await fetch(`${API}/status`).then(res => (res.ok ? res.json() : null)).catch(() => null);
+    return Boolean(status) && !Array.isArray(status.apiVersions);
 }
 
 function replaceById(list, id, fields) {

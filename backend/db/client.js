@@ -56,18 +56,111 @@ function collectionOf(path) {
 // Counts every write the server makes (and every forgetting of the cache): results worked out from the data are valid
 // as long as it has not changed
 let writes = 0;
+// Bumped when every collection is forgotten at once (a change of the schema, a write the server cannot place)
+let everything = 0;
 const writeGeneration = () => writes;
+const generationOf = (collection) => `${everything}:${readGenerations.get(collection) || 0}`;
 
-/** Forgets the cached reads of [collection] (all collections without one). */
-function invalidateReadCache(collection) {
+// The newest writes in order: { seq, collections (null: all of them), tag }. What was worked out from the data (the
+// members with their balances, stores/finance.js) is brought up to date by them instead of being worked out anew -
+// a save names the members it changed in its tag. Older entries are dropped: a reader that missed them starts over.
+const CHANGES_KEPT = 5000;
+const changes = [];
+
+/** The writes since [seq] ({ complete: false } when some of them are no longer known). */
+function changesSince(seq) {
+  const first = changes.length ? changes[0].seq : writes + 1;
+  return { complete: seq >= first - 1, list: changes.filter((change) => change.seq > seq) };
+}
+
+/** Forgets the cached reads of [collections] (a name or a list; all collections without one); [tag] says what changed. */
+function invalidateReadCache(collections, tag = null) {
   writes += 1;
-  if (!collection) {
+  const list = collections === undefined || collections === null ? null : [...new Set([].concat(collections))];
+  changes.push({ seq: writes, collections: list, tag });
+  if (changes.length > CHANGES_KEPT) changes.splice(0, changes.length - CHANGES_KEPT);
+  if (!list) {
+    everything += 1;
     readCache.clear();
-    for (const key of readGenerations.keys()) readGenerations.set(key, (readGenerations.get(key) || 0) + 1);
     return;
   }
-  readCache.delete(collection);
-  readGenerations.set(collection, (readGenerations.get(collection) || 0) + 1);
+  for (const collection of list) {
+    readCache.delete(collection);
+    readGenerations.set(collection, (readGenerations.get(collection) || 0) + 1);
+  }
+}
+
+// --- Which cached reads a write changes -----------------------------------------------------------------------
+// A write of a record changes its collection and the views that read it. A delete changes more: PocketBase deletes
+// the records that link to it with cascadeDelete and empties the links of the others - and so on, along the links.
+// Worked out once from the schema. Forgetting every collection on every delete and batch (as before) made the read
+// of all members after any delete - a prayer request, a push device - read 108,000 payments again: 2.4 s instead of 0.3 s.
+let dependency = null;
+
+function dependencies() {
+  if (dependency) return dependency;
+  const schema = require('./schema');
+  const linkedFrom = new Map();
+  const viewsOf = new Map();
+  const add = (map, key, value) => (map.get(key) || map.set(key, new Set()).get(key)).add(value);
+  const specs = [...schema.allCollections(), { name: 'users', fields: schema.USERS_FIELDS }];
+  for (const spec of specs) {
+    for (const field of spec.fields || []) if (field.type === 'relation' && field.target) add(linkedFrom, field.target, spec.name);
+  }
+  const known = new Set(specs.map((spec) => spec.name));
+  for (const view of schema.allViews()) {
+    known.add(view.name);
+    for (const [, name] of String(view.viewQuery).matchAll(/\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)/gi)) add(viewsOf, name, view.name);
+  }
+  dependency = { linkedFrom, viewsOf, known };
+  return dependency;
+}
+
+/** The collections whose cached reads a write to [collection] changes ([deleted]: a record of it was deleted); null: all. */
+function touchedBy(collection, deleted) {
+  const { linkedFrom, viewsOf, known } = dependencies();
+  // A table this server does not know the links of (an old table, one built during the upgrade): everything
+  if (!known.has(collection)) return deleted ? null : [collection];
+  const touched = new Set([collection]);
+  const queue = [collection];
+  while (queue.length) {
+    const name = queue.shift();
+    // Views, and the views that read those
+    for (const view of viewsOf.get(name) || []) {
+      if (touched.has(view)) continue;
+      touched.add(view);
+      queue.push(view);
+    }
+    if (!deleted) continue;
+    for (const linking of linkedFrom.get(name) || []) {
+      if (touched.has(linking)) continue;
+      touched.add(linking);
+      queue.push(linking);
+    }
+  }
+  return [...touched];
+}
+
+/** What a request with [method] to [path] (and [body]) changes: the collections (null: all of them), or false for nothing. */
+function touchedByRequest(method, path, body) {
+  if (path === '/api/batch') {
+    const requests = Array.isArray(body?.requests) ? body.requests : [];
+    const touched = new Set();
+    for (const request of requests) {
+      const name = collectionOf(String(request?.url || ''));
+      const own = name && touchedBy(name, String(request?.method || '').toUpperCase() === 'DELETE');
+      if (!own) return null;
+      for (const collection of own) touched.add(collection);
+    }
+    return [...touched];
+  }
+  const collection = collectionOf(path);
+  if (collection) return touchedBy(collection, method === 'DELETE');
+  // Auth actions of a collection (a login only touches "users")
+  const own = /^\/api\/collections\/([^/?]+)\/[^/?]/.exec(path)?.[1];
+  if (own) return [own];
+  // Schema changes: everything; anything else (settings, backups, health) changes no records
+  return path.startsWith('/api/collections') ? null : false;
 }
 
 const parseCached = (text) => (text === null ? null : JSON.parse(text));
@@ -76,7 +169,7 @@ async function cachedRead(collection, key, load) {
   let entries = readCache.get(collection);
   const hit = entries?.get(key);
   if (hit && Date.now() - hit.at < READ_CACHE_TTL_MS) return parseCached(await hit.value);
-  const generation = readGenerations.get(collection) || 0;
+  const generation = generationOf(collection);
   const value = load();
   if (!entries) readCache.set(collection, (entries = new Map()));
   if (entries.size >= READ_CACHE_MAX_ENTRIES) entries.clear();
@@ -85,7 +178,7 @@ async function cachedRead(collection, key, load) {
   try {
     const result = await value;
     // Written meanwhile (or failed): not kept
-    if ((readGenerations.get(collection) || 0) !== generation && readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
+    if (generationOf(collection) !== generation && readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
     return parseCached(result);
   } catch (err) {
     if (readCache.get(collection)?.get(key) === entry) readCache.get(collection).delete(key);
@@ -93,25 +186,24 @@ async function cachedRead(collection, key, load) {
   }
 }
 
+/**
+ * A request to PocketBase. Reads as superuser go through the read cache (options.cache === false: not kept - a read of a
+ * whole large table whose result is kept elsewhere); writes forget what they change (see touchedByRequest), before and
+ * after: a read running alongside the write is not kept either way. [options.tag] names what a write changed.
+ */
 async function pocketBaseRequest(path, options = {}) {
   const method = options.method || 'GET';
   const collection = collectionOf(path);
-  if (method === 'GET' && collection && options.token && options.token === cachedSuperuserToken) {
+  if (method === 'GET' && collection && options.token && options.token === cachedSuperuserToken && options.cache !== false) {
     return cachedRead(collection, `${path}|${options.allow404 ? 1 : 0}`, () => sendPocketBaseRequest(path, { ...options, rawText: true }));
   }
   if (method !== 'GET') {
-    // Records of one collection (also its auth actions: a login only touches "users"); schema changes and batches
-    // touch everything, and so does a delete: what links to the record is deleted with it or loses the link (an
-    // event takes its sign-ups, guests and duties along). Before and after: a read running alongside the write is
-    // not kept either way
-    const own = /^\/api\/collections\/([^/?]+)\/[^/?]/.exec(path)?.[1];
-    const touched = method === 'DELETE' ? undefined
-      : collection || own || (path.startsWith('/api/collections') || path.startsWith('/api/batch') ? undefined : null);
-    if (touched !== null) invalidateReadCache(touched);
+    const touched = touchedByRequest(method, path, options.body);
+    if (touched !== false) invalidateReadCache(touched, options.tag || null);
     try {
       return await sendPocketBaseRequest(path, options);
     } finally {
-      if (touched !== null) invalidateReadCache(touched);
+      if (touched !== false) invalidateReadCache(touched, options.tag || null);
     }
   }
   return sendPocketBaseRequest(path, options);
@@ -221,7 +313,14 @@ async function ensurePocketBaseSuperuser(appConfig) {
 }
 
 
-async function listAllRecords(collectionName, filter, appConfig, sort = '', { fields = '' } = {}) {
+/**
+ * Every record of [collectionName] that matches [filter], in [sort] order (else in the order they were made).
+ * [fields]: only these fields; [cache]: false for a read of a whole large table whose result is kept elsewhere - it is
+ * not kept in the read cache, and its pages come a few at a time (all of them at once held every page's text in memory
+ * together: 109 pages of payments at 300 members over 30 years).
+ */
+const SCAN_PAGES_AT_ONCE = 6;
+async function listAllRecords(collectionName, filter, appConfig, sort = '', { fields = '', cache = true } = {}) {
   const token = await authenticateSuperuser(appConfig);
   // PocketBase's largest page. The first page counts the records (one COUNT), the others come in parallel
   // without counting - they used to be 200 at a time, one after another, each with its own COUNT
@@ -235,12 +334,18 @@ async function listAllRecords(collectionName, filter, appConfig, sort = '', { fi
     params.set('sort', sort || '@rowid');
     return `/api/collections/${collectionName}/records?${params.toString()}`;
   };
-  const first = await pocketBaseRequest(pageUrl(1, true), { token });
+  const first = await pocketBaseRequest(pageUrl(1, true), { token, cache });
   const items = [...(first.items || [])];
   const pages = Number(first.totalPages) || 1;
-  if (pages > 1) {
-    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => pocketBaseRequest(pageUrl(i + 2, false), { token })));
+  if (pages > 1 && cache) {
+    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => pocketBaseRequest(pageUrl(i + 2, false), { token, cache })));
     for (const result of rest) items.push(...(result.items || []));
+  } else if (pages > 1) {
+    for (let start = 2; start <= pages; start += SCAN_PAGES_AT_ONCE) {
+      const pagesNow = Array.from({ length: Math.min(SCAN_PAGES_AT_ONCE, pages - start + 1) }, (_, i) => start + i);
+      const results = await Promise.all(pagesNow.map((page) => pocketBaseRequest(pageUrl(page, false), { token, cache })));
+      for (const result of results) for (const item of result.items || []) items.push(item);
+    }
   }
   return items;
 }
@@ -291,29 +396,33 @@ function forPocketBase(collection, body) {
   return sent;
 }
 
-async function createRecord(collectionName, body, appConfig) {
+// [tag] (optional) says what the write changed, for what was worked out from the data (see invalidateReadCache)
+async function createRecord(collectionName, body, appConfig, { tag = null } = {}) {
   const token = await authenticateSuperuser(appConfig);
   return pocketBaseRequest(`/api/collections/${collectionName}/records`, {
     method: 'POST',
     token,
+    tag,
     body: forPocketBase(collectionName, body)
   });
 }
 
-async function updateRecord(collectionName, recordId, body, appConfig) {
+async function updateRecord(collectionName, recordId, body, appConfig, { tag = null } = {}) {
   const token = await authenticateSuperuser(appConfig);
   return pocketBaseRequest(`/api/collections/${collectionName}/records/${encodeURIComponent(recordId)}`, {
     method: 'PATCH',
     token,
+    tag,
     body: forPocketBase(collectionName, body)
   });
 }
 
-async function deleteRecord(collectionName, recordId, appConfig) {
+async function deleteRecord(collectionName, recordId, appConfig, { tag = null } = {}) {
   const token = await authenticateSuperuser(appConfig);
   return pocketBaseRequest(`/api/collections/${collectionName}/records/${encodeURIComponent(recordId)}`, {
     method: 'DELETE',
-    token
+    token,
+    tag
   });
 }
 
@@ -358,7 +467,7 @@ async function ensureBatchSettings(appConfig) {
  * Runs [requests] ({ method, collection, id?, body? }) as one transaction and returns PocketBase's results (one per
  * request, in order). More than BATCH_MAX_REQUESTS are refused: a caller that writes that much splits it on purpose.
  */
-async function batchWrite(appConfig, requests) {
+async function batchWrite(appConfig, requests, { tag = null } = {}) {
   if (!requests.length) return [];
   if (requests.length > BATCH_MAX_REQUESTS) throw new Error(`A batch holds at most ${BATCH_MAX_REQUESTS} requests (${requests.length} given).`);
   const token = await authenticateSuperuser(appConfig);
@@ -371,7 +480,7 @@ async function batchWrite(appConfig, requests) {
   };
   let results;
   try {
-    results = await pocketBaseRequest('/api/batch', { method: 'POST', token, body });
+    results = await pocketBaseRequest('/api/batch', { method: 'POST', token, body, tag });
   } catch (error) {
     // PocketBase names the request that failed and why (by its place in the batch)
     const failed = error.response?.data?.requests || {};
@@ -384,6 +493,18 @@ async function batchWrite(appConfig, requests) {
     throw error;
   }
   return (Array.isArray(results) ? results : []).map((result) => result?.body ?? null);
+}
+
+// Writes that need not be one transaction (the upgrade's copy: it is checked as a whole afterwards) go in batches of
+// this size. 5000 inserts took up to 2.4 s on a fast server against PocketBase's batch timeout of 30 s - slow storage
+// and a large instance could reach it, and every attempt of the upgrade then failed the same way.
+const COPY_BATCH_REQUESTS = 1000;
+
+/** Writes [requests] in batches of COPY_BATCH_REQUESTS, one after the other (each batch is one transaction). */
+async function writeInBatches(appConfig, requests) {
+  for (let start = 0; start < requests.length; start += COPY_BATCH_REQUESTS) {
+    await batchWrite(appConfig, requests.slice(start, start + COPY_BATCH_REQUESTS));
+  }
 }
 
 // --- Collections, settings and backups (the schema and the upgrade) ---
@@ -451,6 +572,8 @@ module.exports = {
   buildPocketBaseError,
   invalidateReadCache,
   writeGeneration,
+  changesSince,
+  touchedBy,
   pocketBaseRequest,
   authenticateSuperuser,
   clearSuperuserTokenCache,
@@ -467,7 +590,9 @@ module.exports = {
   countRecords,
   ensureBatchSettings,
   batchWrite,
+  writeInBatches,
   BATCH_MAX_REQUESTS,
+  COPY_BATCH_REQUESTS,
   getCollection,
   listCollections,
   createCollection,

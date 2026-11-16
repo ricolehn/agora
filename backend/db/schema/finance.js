@@ -198,19 +198,19 @@ const collections = [
 const views = [
   {
     name: 'finance_ledger',
-    description: 'All money in one list (read-only view): member payments and donations come in, expenses go out.',
+    description: 'All money in one list (read-only view): member payments and donations come in, expenses go out - what the books show (not the payments of a member that never had a record, kept from before the upgrade).',
     viewQuery: `SELECT id, kind, date, amountCents, who, description, member, receipt FROM (
-SELECT ('p' || p.id) AS id, 'memberPayment' AS kind, p.date AS date, p.amountCents AS amountCents, m.name AS who, p.description AS description, p.member AS member, p.receipt AS receipt FROM finance_payments p LEFT JOIN finance_members m ON m.id = p.member
-UNION ALL SELECT ('d' || d.id) AS id, 'donation' AS kind, d.date AS date, d.amountCents AS amountCents, d.donorName AS who, d.description AS description, '' AS member, '' AS receipt FROM finance_donations d
+SELECT ('p' || p.id) AS id, 'memberPayment' AS kind, p.date AS date, p.amountCents AS amountCents, m.name AS who, p.description AS description, p.member AS member, p.receipt AS receipt FROM finance_payments p LEFT JOIN finance_members m ON m.id = p.member WHERE COALESCE(json_extract(m.original, '$.orphan'), 0) != 1
+UNION ALL SELECT ('d' || d.id) AS id, 'donation' AS kind, d.date AS date, d.amountCents AS amountCents, d.donorName AS who, d.description AS description, '' AS member, '' AS receipt FROM finance_donations d WHERE json_type(d.original, '$.entry') IS NULL
 UNION ALL SELECT ('e' || e.id) AS id, 'expense' AS kind, e.date AS date, e.amountCents AS amountCents, e.issuer AS who, e.description AS description, '' AS member, e.receipt AS receipt FROM finance_expenses e
 )`
   },
   {
     name: 'finance_monthly_totals',
-    description: 'Money per month and kind (read-only view): the sum and the number of entries.',
+    description: 'Money per month and kind (read-only view): the sum and the number of entries, of what the books show (as finance_ledger). Entries without a day are not in it.',
     viewQuery: `SELECT (substr(date, 1, 7) || '-' || kind) AS id, substr(date, 1, 7) AS month, kind, SUM(amountCents) AS totalCents, COUNT(*) AS entries FROM (
-SELECT date, 'memberPayment' AS kind, amountCents FROM finance_payments
-UNION ALL SELECT date, 'donation' AS kind, amountCents FROM finance_donations
+SELECT p.date AS date, 'memberPayment' AS kind, p.amountCents AS amountCents FROM finance_payments p LEFT JOIN finance_members m ON m.id = p.member WHERE COALESCE(json_extract(m.original, '$.orphan'), 0) != 1
+UNION ALL SELECT d.date AS date, 'donation' AS kind, d.amountCents AS amountCents FROM finance_donations d WHERE json_type(d.original, '$.entry') IS NULL
 UNION ALL SELECT date, 'expense' AS kind, amountCents FROM finance_expenses
 ) WHERE date != '' GROUP BY substr(date, 1, 7), kind`
   }

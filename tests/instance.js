@@ -2,6 +2,7 @@
 // backend/legacy) on top of it, an HTTP client that signs in as several people, and the superuser's direct access to
 // PocketBase (to write data the way older versions left it).
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop } = require('./helpers');
@@ -132,6 +133,32 @@ async function superuser(root, pbPort) {
   };
 }
 
+/**
+ * PocketBase at [port] behind a stand-in that passes every request on, but answers 503 itself (as a busy PocketBase
+ * does) where [refuse](request, body text) says so. A backend uses it with POCKETBASE_PORT set to its port.
+ */
+function faultyProxy(port, refuse) {
+  const server = http.createServer((req, res) => {
+    const parts = [];
+    req.on('data', (part) => parts.push(part));
+    req.on('end', () => {
+      const body = Buffer.concat(parts);
+      if (refuse(req, body.toString('utf8'))) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 503, message: 'Not available (test).', data: {} }));
+        return;
+      }
+      const upstream = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, (answer) => {
+        res.writeHead(answer.statusCode, answer.headers);
+        answer.pipe(res);
+      });
+      upstream.on('error', () => res.writeHead(502).end());
+      upstream.end(body);
+    });
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
+}
+
 module.exports = {
   POCKETBASE_BIN,
   PASSWORD,
@@ -143,5 +170,6 @@ module.exports = {
   waitUntilReady,
   httpClient,
   superuser,
+  faultyProxy,
   stop
 };

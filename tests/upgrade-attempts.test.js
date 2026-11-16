@@ -16,9 +16,12 @@ describe('an upgrade that keeps failing', { skip: !POCKETBASE_BIN && 'set POCKET
       await stop(backend.process);
     }
     let backend = await old.start();
+    t.after(() => stop(backend.process));
     const status = await (await fetch(`${backend.base}/api/status`)).json();
     assert.equal(status.upgrade?.state, 'waiting');
     assert.match(status.upgrade.reason, /AGORA_UPGRADE_RETRY=1/);
+    // ... and names the backup to restore when going back to the previous version for good
+    assert.ok((await old.backups()).includes(status.upgrade.backup), `the backup to restore: "${status.upgrade.backup}"`);
     assert.equal((await old.upgradeState()).attempts, 3, 'no fourth attempt');
     assert.deepEqual(await old.sameAnswers(), []);
     assert.ok((await old.backups()).length <= 3);
@@ -43,7 +46,8 @@ describe('an upgrade that keeps failing', { skip: !POCKETBASE_BIN && 'set POCKET
     assert.ok(revision >= 2, 'every attempt notes the revision that made it');
     await old.su.update('system_migrations', 'v4-structure', { attempts: 3, report: earlier });
 
-    // The corrected revision counts its own attempts - a crash among them, too
+    // The corrected revision counts its own attempts - an attempt the server did not finish (a crash) is no failed one
+    // and does not count once the next start finds it
     const crashing = await old.start({ AGORA_TEST_UPGRADE_FAIL: 'crash:apply' }, { waitReady: false });
     assert.equal(await exited(crashing.process), 70);
     const interrupted = await old.upgradeState();
@@ -53,7 +57,7 @@ describe('an upgrade that keeps failing', { skip: !POCKETBASE_BIN && 'set POCKET
     backend = await old.start();
     const done = await old.upgradeState();
     assert.equal(done.status, 'done');
-    assert.equal(done.attempts, 2);
+    assert.equal(done.attempts, 1);
     assert.deepEqual(await old.sameAnswers(), []);
     await stop(backend.process);
   });

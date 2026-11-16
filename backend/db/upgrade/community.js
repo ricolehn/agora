@@ -87,9 +87,7 @@ async function plan(appConfig) {
 
 /** Writes what plan() worked out. */
 async function apply(appConfig, planned) {
-  for (let start = 0; start < planned.ops.length; start += client.BATCH_MAX_REQUESTS) {
-    await client.batchWrite(appConfig, planned.ops.slice(start, start + client.BATCH_MAX_REQUESTS));
-  }
+  await client.writeInBatches(appConfig, planned.ops);
 }
 
 /**

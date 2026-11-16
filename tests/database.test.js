@@ -66,4 +66,25 @@ describe('the database structure', () => {
   test('docs/DATABASE.md matches the code', () => {
     assert.equal(fs.readFileSync(OUTPUT, 'utf8'), databaseMap(), 'docs/DATABASE.md is out of date: run node backend/db/docs.js');
   });
+
+  test('a write forgets the cached reads it changes: the views over its table and, for a delete, what links to it - nothing else', () => {
+    const { touchedBy } = require(path.join(BACKEND_DIR, 'db', 'client'));
+    const views = schema.allViews();
+    const all = [...collections, { name: 'users', fields: schema.USERS_FIELDS }];
+    for (const spec of all) {
+      const written = touchedBy(spec.name, false);
+      const deleted = touchedBy(spec.name, true);
+      for (const view of views.filter((candidate) => new RegExp(`\\b(FROM|JOIN)\\s+${spec.name}\\b`, 'i').test(candidate.viewQuery))) {
+        assert.ok(written.includes(view.name) && deleted.includes(view.name), `a write to ${spec.name} changes the view ${view.name}`);
+      }
+      // PocketBase deletes what links to a deleted record with cascadeDelete and empties the other links
+      for (const other of all.filter((candidate) => candidate.fields.some((field) => field.type === 'relation' && field.target === spec.name))) {
+        assert.ok(deleted.includes(other.name), `deleting from ${spec.name} changes ${other.name}`);
+      }
+    }
+    // Deleting a prayer request left nothing cached: the next read of all members read every payment again
+    assert.ok(!touchedBy('community_prayers', true).some((name) => name.startsWith('finance_')), 'the books stay cached');
+    // A table the structure does not know (an old one, one built during the upgrade): a delete there forgets everything
+    assert.equal(touchedBy('payments', true), null);
+  });
 });

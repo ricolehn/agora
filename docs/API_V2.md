@@ -36,7 +36,7 @@ Changes made through v2 are the same changes as through the web app: the balance
 | `GET /api/v2` | the resources | signed in |
 | `GET /me` | the signed-in person: id, name, e-mail, `isAdmin`, `isOwner`, `permissions`, `groups`, `language`, `timeZone` | signed in |
 | `GET /groups` | the groups with their permissions | signed in |
-| `GET /members` | the members with `totalPaidCents`, `balanceCents`, `overdueCents`, `monthlyFeeCents`, `paidUntil`, `isOverdue`, `version` (`?includeDeleted=1`) | view finances (others: their own) |
+| `GET /members` | the members with `totalPaidCents` (the sum of their payments as `/payments` lists them), `balanceCents`, `overdueCents`, `monthlyFeeCents`, `paidUntil`, `isOverdue`, `version` (`?includeDeleted=1`) | view finances (others: their own) |
 | `GET /members/:id` | one member with `payments`, `statusPeriods`, `standingOrders` | view finances, or the member |
 | `GET /payments` | payments, newest first (`?member=`, `?from=`, `?to=`) | view finances (others: their own) |
 | `POST /payments` | book a payment: `memberId`, `memberVersion`, `amountCents`, `date`, `description`, `receipt`; with `requestId` the booking of a request happens once, however often it is sent | manage finances |
@@ -50,7 +50,7 @@ Changes made through v2 are the same changes as through the web app: the balance
 | `POST /requests` | ask: `type` (`payment`, `expense`, `status`, `standing_order`), `details` | signed in |
 | `POST /requests/:id/decision` | `status`: `approved` or `rejected` (`rejectionReason`); once - a decided request answers 409. Approving does not book: book the payment or expense with `requestId` first, as the web app does | manage finances |
 | `GET /fees` | the monthly fees over time (`feeChanges`: `fromMonth`, `feesCents` per status) and the fresh starts | signed in |
-| `GET /finance/summary` | totals in cents (`memberPayments`, `donations`, `expenses`) and per month and kind | view finances |
+| `GET /finance/summary` | the money as the app's statistics count it, on `today`: `totalsCents` (`memberPayments`, `donations`, `expenses`, `balance`) of what is booked up to today, with what has no readable day (`undatedCents`, from older apps); `months`: per month and kind; `plannedCents` and `planned`: what is dated after today - in no total or balance yet | view finances |
 | `GET /finance/changes` | the change log: `area`, `action`, `at`, `by`, `byName`, `memberId`, `target`, `details` (`before` / `after`) (`?area=`, `?member=`) | view finances, admins |
 | `GET /events` | the events the person sees, in the order they take place (`?from=`, `?to=`), with `registeredCount`, `waitlistCount`, `myRegistration` | signed in |
 | `GET /events/:id` | one event; `duties` and `program` for those who see the duty roster | signed in, if they see it |

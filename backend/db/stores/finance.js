@@ -139,16 +139,18 @@ function oldPeopleRecord(row, standingOrderRows = [], paymentRows = [], { decode
 }
 
 /**
- * Records of [collection] belonging to the members [memberIds] (all members: one read of the whole table). The whole
+ * Records of [collection] belonging to the members [memberIds]: a few members by their ids, many with one read of the
+ * whole table ([all]: every member - not kept in the read cache, the members memo keeps what it needs). The whole
  * records: asking PocketBase for some of their fields only (fields=...) makes the answer a third smaller, but picking
- * them costs PocketBase more than sending them - 108,000 payments took 2.2 s instead of 1.5 s, and the first read of
- * all members after every booking was slower than before the new structure.
+ * them costs PocketBase more than sending them (108,000 payments: 2.2 s instead of 1.5 s).
  */
-async function rowsOfMembers(appConfig, collection, memberIds) {
+const FEW_MEMBERS = 40;
+async function rowsOfMembers(appConfig, collection, memberIds, { all = false } = {}) {
   if (!memberIds.length) return [];
   if (memberIds.length === 1) return client.listAllRecords(collection, client.pbFilterEquals('member', memberIds[0]), appConfig);
+  if (!all && memberIds.length <= FEW_MEMBERS) return client.listAllRecords(collection, client.pbFilterIn('member', memberIds), appConfig);
   const wanted = new Set(memberIds);
-  return (await client.listAllRecords(collection, '', appConfig)).filter((row) => wanted.has(row.member));
+  return (await client.listAllRecords(collection, '', appConfig, '', { cache: false })).filter((row) => wanted.has(row.member));
 }
 
 const groupBy = (rows, key) => {
@@ -162,31 +164,41 @@ const groupBy = (rows, key) => {
 };
 const byPosition = (rows) => [...rows].sort((a, b) => (a.position || 0) - (b.position || 0));
 
-async function hydrateMembers(appConfig, memberRows, fees) {
+/** A member worked out from its rows ({ member, payments, periods, orders }) with the fee state [fees]. */
+function hydrateRows(rows, fees) {
+  const personKey = keyOfMember(rows.member);
+  const oldPayments = rows.payments.map((payment) => oldPaymentRecord(payment, personKey));
+  const record = oldPeopleRecord(rows.member, byPosition(rows.orders), rows.payments, { decodedPayments: oldPayments.map((payment) => payment.data) });
+  const oldPeriods = rows.periods.map((period) => oldStatusRecord(period, record.personKey));
+  return { record, rows, oldPayments, oldPeriods, data: shapes.hydratePersonRecord(record, oldPayments, oldPeriods, fees.settings, fees.resets, fees.schedule) };
+}
+
+// What PocketBase adds to every record and nothing here reads (the payments kept for all members are many)
+const lean = (row) => {
+  const { collectionId, collectionName, created, updated, ...kept } = row;
+  return kept;
+};
+
+/**
+ * The rows of the members [memberRows] ([all]: every member - whole tables, read past the read cache; [kept]: for the
+ * members memo - the payments without what nothing here reads).
+ */
+async function rowsOf(appConfig, memberRows, { all = false, kept = false } = {}) {
   const ids = memberRows.map((row) => row.id);
-  const [payments, periods, orders] = await Promise.all([
-    rowsOfMembers(appConfig, PAYMENTS, ids),
-    rowsOfMembers(appConfig, PERIODS, ids),
-    rowsOfMembers(appConfig, STANDING_ORDERS, ids)
-  ]);
+  const [payments, periods, orders] = await Promise.all([PAYMENTS, PERIODS, STANDING_ORDERS].map((collection) => rowsOfMembers(appConfig, collection, ids, { all })));
+  if (kept) for (let index = 0; index < payments.length; index += 1) payments[index] = lean(payments[index]);
   const paymentsBy = groupBy(payments, 'member');
   const periodsBy = groupBy(periods, 'member');
   const ordersBy = groupBy(orders, 'member');
-  return memberRows.map((row) => {
-    const memberPayments = paymentsBy.get(row.id) || [];
-    const personKey = keyOfMember(row);
-    const oldPayments = memberPayments.map((payment) => oldPaymentRecord(payment, personKey));
-    const record = oldPeopleRecord(row, byPosition(ordersBy.get(row.id) || []), memberPayments, { decodedPayments: oldPayments.map((payment) => payment.data) });
-    const oldPeriods = (periodsBy.get(row.id) || []).map((period) => oldStatusRecord(period, record.personKey));
-    return {
-      record,
-      rows: { member: row, payments: memberPayments, periods: periodsBy.get(row.id) || [], orders: ordersBy.get(row.id) || [] },
-      oldPayments,
-      oldPeriods,
-      data: shapes.hydratePersonRecord(record, oldPayments, oldPeriods, fees.settings, fees.resets, fees.schedule)
-    };
-  });
+  return memberRows.map((row) => ({ member: row, payments: paymentsBy.get(row.id) || [], periods: periodsBy.get(row.id) || [], orders: ordersBy.get(row.id) || [] }));
 }
+
+async function hydrateMembers(appConfig, memberRows, fees) {
+  return (await rowsOf(appConfig, memberRows)).map((rows) => hydrateRows(rows, fees));
+}
+
+/** A member as the list of all members hands it out. */
+const listed = ({ record, data }) => ({ ...record, isDeleted: Boolean(record.isDeleted || record.data?.isDeleted), data });
 
 // --- Reading members (the old functions) ----------------------------------------------------------------------
 
@@ -213,38 +225,201 @@ async function getPeopleRecord(appConfig, personKey) {
   return record;
 }
 
-// All members with what the server works out for them (balance, paid until, overdue) are read by every app after
-// every change. They are worked out once and handed to each caller as its own copy, until anything is written, the
-// day changes (what is due depends on it) or MEMBERS_MEMO_MS pass (changes made on PocketBase's admin page).
+// --- All members, kept between reads (the memo) --------------------------------------------------------------
+// All members with what the server works out for them (balance, paid until, overdue) are read by every app after every
+// change. They are kept - each member's rows and what was worked out from them - and brought up to date by what was
+// written since (client.changesSince): a save names the members it changed, and only their rows are read again; a
+// change of the fees or a new day works every member out anew from the rows kept; anything else that touches the books
+// (a write the server cannot place) reads them all again. Working them all out anew after every booking read every
+// payment again: 2.3 s at 108,000 payments for the read every app makes after a change - no faster than before the new
+// structure, and after any delete anywhere (a prayer request, a push device) seven times slower.
+// Changes made outside the app (PocketBase's admin page) are seen after MEMBERS_MEMO_MS: then the members are read anew
+// in the background while the kept ones are handed out.
 const MEMBERS_MEMO_MS = 30 * 1000;
 const localDay = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-let membersMemo = null;
+const ROW_TABLES = new Set([MEMBERS, PAYMENTS, PERIODS, STANDING_ORDERS]);
+const FEE_TABLES = new Set([FEE_CHANGES, FRESH_STARTS]);
+// { seq: the last write it knows, at, day, fees, ids: member ids in their order, byId: id -> { rows, member }, list }
+let memo = null;
+let memoUpdate = null;
+let memoRefresh = null;
 
-async function allMembers(appConfig) {
-  const key = `${client.writeGeneration()}|${localDay()}`;
-  if (membersMemo && membersMemo.key === key && Date.now() - membersMemo.at < MEMBERS_MEMO_MS) return membersMemo.members;
-  const [rows, fees] = await Promise.all([client.listAllRecords(MEMBERS, '', appConfig), getFeeState(appConfig)]);
-  const hydrated = await hydrateMembers(appConfig, rows.filter((row) => !isOrphan(row)), fees);
-  const members = hydrated.map(({ record, data }) => ({ ...record, isDeleted: Boolean(record.isDeleted || record.data?.isDeleted), data }));
-  // Kept only when nothing was written while it was worked out
-  if (`${client.writeGeneration()}|${localDay()}` === key) membersMemo = { key, at: Date.now(), members };
-  return members;
+/** What the writes since [seq] mean for the memo: { full } or the members to read again and whether the fees changed. */
+function pendingChanges(seq) {
+  const { complete, list } = client.changesSince(seq);
+  const plan = { full: !complete, fees: false, members: new Set() };
+  for (const change of list) {
+    if (plan.full) break;
+    if (!change.collections) {
+      plan.full = true;
+      break;
+    }
+    for (const collection of change.collections) {
+      if (ROW_TABLES.has(collection)) {
+        const named = change.tag?.members;
+        if (Array.isArray(named) && named.length) for (const id of named) plan.members.add(id);
+        else plan.full = true;
+      } else if (FEE_TABLES.has(collection) || (collection === SETTINGS && (!change.tag?.area || change.tag.area === 'finance'))) {
+        plan.fees = true;
+      }
+    }
+  }
+  return plan;
 }
 
-async function listPeopleRecords(appConfig, query = {}) {
+/** Every member read and worked out ([seq]: the last write known when the reading started). */
+async function buildMemo(appConfig) {
+  const seq = client.writeGeneration();
+  const at = Date.now();
+  const day = localDay();
+  const [rows, fees] = await Promise.all([client.listAllRecords(MEMBERS, '', appConfig, '', { cache: false }), getFeeState(appConfig)]);
+  const kept = rows.filter((row) => !isOrphan(row));
+  const byId = new Map();
+  for (const memberRows of await rowsOf(appConfig, kept, { all: true, kept: true })) byId.set(memberRows.member.id, { rows: memberRows, member: listed(hydrateRows(memberRows, fees)) });
+  return { seq, at, day, fees, ids: kept.map((row) => row.id), byId, list: null };
+}
+
+/** [current] brought up to date by [plan] (see pendingChanges): the members it names read again, all worked out anew for new fees or a new day. */
+async function patchMemo(appConfig, current, plan) {
+  const seq = client.writeGeneration();
+  const day = localDay();
+  const fees = plan.fees ? await getFeeState(appConfig) : current.fees;
+  const next = { ...current, seq, day, fees, ids: [...current.ids], byId: new Map(current.byId), list: null, readOnly: null };
+  const changed = [...plan.members];
+  if (changed.length) {
+    const rows = changed.length === 1
+      ? [await client.getRecord(MEMBERS, changed[0], appConfig)].filter(Boolean)
+      : await client.listAllRecords(MEMBERS, client.pbFilterIn('id', changed), appConfig);
+    const found = new Map(rows.filter((row) => !isOrphan(row)).map((row) => [row.id, row]));
+    for (const memberRows of await rowsOf(appConfig, [...found.values()], { kept: true })) next.byId.set(memberRows.member.id, { rows: memberRows, member: listed(hydrateRows(memberRows, fees)) });
+    for (const id of changed) {
+      if (!found.has(id)) {
+        next.byId.delete(id);
+        next.ids = next.ids.filter((other) => other !== id);
+      } else if (!current.byId.has(id)) {
+        // A new member: last, as the table lists it (in the order the records were made)
+        next.ids.push(id);
+      }
+    }
+  }
+  if (plan.fees || day !== current.day) {
+    const untouched = next.ids.filter((id) => !plan.members.has(id));
+    for (const id of untouched) {
+      const entry = next.byId.get(id);
+      next.byId.set(id, { rows: entry.rows, member: listed(hydrateRows(entry.rows, fees)) });
+    }
+  }
+  return next;
+}
+
+/** Reads all members anew in the background (the kept ones are handed out meanwhile). */
+function refreshMemo(appConfig) {
+  if (memoRefresh) return;
+  memoRefresh = buildMemo(appConfig)
+    .then((fresh) => {
+      // A newer full read has come in meanwhile: it stays
+      if (!memo || memo.at <= fresh.at) memo = fresh;
+    })
+    .catch((err) => console.warn('[People] Reading the members anew failed:', err.message))
+    .finally(() => { memoRefresh = null; });
+}
+
+/**
+ * The memo, up to date with every write made through this server before this call. Writes that come in while it is
+ * brought up to date are newer than the call: after a few rounds it is handed out as it is (the next call takes them).
+ */
+async function currentMemo(appConfig) {
+  for (let round = 0; ; round += 1) {
+    while (memoUpdate) await memoUpdate.catch(() => {});
+    if (memo) {
+      const plan = pendingChanges(memo.seq);
+      const idle = !plan.full && !plan.fees && !plan.members.size && memo.day === localDay();
+      if (idle || round >= 3) {
+        if (idle && Date.now() - memo.at >= MEMBERS_MEMO_MS) refreshMemo(appConfig);
+        return memo;
+      }
+      // Many members at once (the standing orders of the month), or one the memo does not hold yet (a new member: it
+      // takes the place the table gives it): all read anew
+      const full = plan.full || plan.members.size > Math.max(FEW_MEMBERS, memo.ids.length / 4) || [...plan.members].some((id) => !memo.byId.has(id));
+      const base = memo;
+      memoUpdate = (full ? buildMemo(appConfig) : patchMemo(appConfig, base, plan)).then((next) => {
+        // A full read that finished in the background meanwhile is newer than a patch of what it replaced
+        if (memo === base || memo.at <= next.at) memo = next;
+      });
+    } else {
+      memoUpdate = buildMemo(appConfig).then((next) => { memo = next; });
+    }
+    try {
+      await memoUpdate;
+    } finally {
+      memoUpdate = null;
+    }
+  }
+}
+
+// A member of the memo as membersReadOnly and memberReadOnly hand it out
+const readOnlyEntry = (entry) => ({ row: entry.rows.member, payments: entry.rows.payments, periods: entry.rows.periods, orders: entry.rows.orders, person: entry.member });
+
+/** The members of the memo in their order (shared: callers must not change them). */
+function memoList(current) {
+  if (!current.list) current.list = current.ids.map((id) => current.byId.get(id).member);
+  return current.list;
+}
+
+/**
+ * Every member as the old API hands them out (query: one member's own by account or name, as before). [shared]: for a
+ * caller that only reads them and changes nothing (an answer of the server, a sum) - the kept members themselves. A
+ * copy of them all took longer than the rest of such a read: the bookings list and the read of all members were
+ * slower than before the new structure at 150 members x 20 years. Everyone else gets a copy of their own to change.
+ */
+async function listPeopleRecords(appConfig, query = {}, { shared = false } = {}) {
   const filtered = (query.orderByChild === 'uid' || query.orderByChild === 'name') && query.equalTo !== undefined;
-  // One member's own entries (by account or name): from the members worked out already, or worked out alone
-  if (filtered && !(membersMemo && membersMemo.key === `${client.writeGeneration()}|${localDay()}` && Date.now() - membersMemo.at < MEMBERS_MEMO_MS)) {
+  // One member's own entries (by account or name) before anything was kept: worked out alone
+  if (filtered && !memo) {
     const [rows, fees] = await Promise.all([client.listAllRecords(MEMBERS, '', appConfig), getFeeState(appConfig)]);
     // The old query compared the list column (record.uid / record.name); worked out on the rebuilt records
     const wanted = String(query.equalTo);
     const members = rows.filter((row) => !isOrphan(row) && oldPeopleRecord(row)[query.orderByChild] === wanted);
-    const hydrated = await hydrateMembers(appConfig, members, fees);
-    return hydrated.map(({ record, data }) => ({ ...record, isDeleted: Boolean(record.isDeleted || record.data?.isDeleted), data }));
+    return (await hydrateMembers(appConfig, members, fees)).map(listed);
   }
-  const members = await allMembers(appConfig);
+  const members = memoList(await currentMemo(appConfig));
   const picked = filtered ? members.filter((member) => member[query.orderByChild] === String(query.equalTo)) : members;
-  return structuredClone(picked);
+  return shared ? picked : structuredClone(picked);
+}
+
+/**
+ * Every member with its rows, from the memo - read only, never changed (API v2 and the AI read what they need from
+ * it): [{ row: the member's row, payments, periods, orders: its rows, person: the member as listPeopleRecords hands it
+ * out }].
+ */
+async function membersReadOnly(appConfig) {
+  const current = await currentMemo(appConfig);
+  // The same list as long as the memo is the same (what is worked out from it can be kept with it)
+  if (!current.readOnly) current.readOnly = current.ids.map((id) => readOnlyEntry(current.byId.get(id)));
+  return current.readOnly;
+}
+
+/**
+ * One member with its rows, as membersReadOnly hands them out (read only), or null when there is none. From the memo
+ * when it is up to date or a save of a few members away from it - after a booking of anyone else its own rows were
+ * read again; otherwise the member is read alone: the first read after a start, a new day or new fees must not work
+ * out every member for one of them.
+ */
+async function memberReadOnly(appConfig, id) {
+  const key = String(id || '');
+  if (!key) return null;
+  if (memo && !memoUpdate && memo.day === localDay()) {
+    const plan = pendingChanges(memo.seq);
+    const few = !plan.full && !plan.fees && plan.members.size <= FEW_MEMBERS && [...plan.members].every((member) => memo.byId.has(member));
+    if (few) {
+      const entry = (await currentMemo(appConfig)).byId.get(key);
+      return entry ? readOnlyEntry(entry) : null;
+    }
+  }
+  const row = await client.getRecord(MEMBERS, key, appConfig);
+  if (!row || isOrphan(row)) return null;
+  const [fees, [rows]] = await Promise.all([getFeeState(appConfig), rowsOf(appConfig, [row])]);
+  return { row, payments: rows.payments, periods: rows.periods, orders: rows.orders, person: listed(hydrateRows(rows, fees)) };
 }
 
 // --- Writing members ------------------------------------------------------------------------------------------
@@ -316,9 +491,10 @@ function sameRow(row, body) {
   return Object.entries(body).every(([key, value]) => sameValue(row[key], value));
 }
 
-async function runBatch(appConfig, ops) {
+// [tag]: what the writes changed - { members: [ids] } for the writes of members (the members memo reads only them again)
+async function runBatch(appConfig, ops, { tag = null } = {}) {
   for (let start = 0; start < ops.length; start += client.BATCH_MAX_REQUESTS) {
-    await client.batchWrite(appConfig, ops.slice(start, start + client.BATCH_MAX_REQUESTS));
+    await client.batchWrite(appConfig, ops.slice(start, start + client.BATCH_MAX_REQUESTS), { tag });
   }
 }
 
@@ -444,7 +620,7 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
       ...changeOpsFor('statusPeriod', periods.ops, periodRows, (row) => codecs.statusPeriod.decode(row), memberId),
       ...changeOpsFor('standingOrder', orders.ops, orderRows, (row) => codecs.standingOrder.decode(row), memberId)
     );
-    await runBatch(appConfig, ops);
+    await runBatch(appConfig, ops, { tag: { members: [memberId] } });
     return getPeopleRecord(appConfig, personKey);
   });
 }
@@ -480,7 +656,7 @@ async function writeDeletedMember(appConfig, row, record) {
     ...orders.map((order) => changeOp('standingOrder', 'delete', { member: row.id, target: order.id, before: codecs.standingOrder.decode(order) })),
     ...periods.map((period) => changeOp('statusPeriod', 'delete', { member: row.id, target: period.id })),
     changeOp('member', 'delete', { member: row.id, target: row.id, before: { name: record.name || record.data?.name || '' } })
-  ]));
+  ], { tag: { members: [row.id] } }));
 }
 
 /**
@@ -521,13 +697,47 @@ async function getDonationRows(appConfig) {
   return byPosition(await client.listAllRecords(DONATIONS, '', appConfig));
 }
 
+const isPlainEntry = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * The columns and `original` of one entry of the donations list ([objectKey]: its key in the map the first versions
+ * kept). An entry that is no donation - a hole in the list (null, as `delete list[i]` and lists from Firebase leave
+ * them) or a bare number or text - is kept exactly as written (original.entry): the old API hands it back where it
+ * was. Turned into an empty donation, it made the upgrade's comparison differ on every attempt.
+ */
+function donationBody(entry, objectKey = null) {
+  const isDonation = isPlainEntry(entry);
+  const { columns, original } = codecs.donation.encode(isDonation ? entry : {});
+  const kept = isDonation ? { ...(original || {}) } : { entry };
+  if (objectKey !== null) kept.key = objectKey;
+  return { columns, original: Object.keys(kept).length ? kept : null };
+}
+
+/** True for a row that holds no donation, only an entry kept as written (see donationBody). */
+const isKeptEntry = (row) => has(originalOf(row), 'entry');
+
+/** A donation (or a kept entry) as the apps wrote it. */
+const decodeDonation = (row) => (isKeptEntry(row) ? originalOf(row).entry : codecs.donation.decode(row));
+
 /** The donations as the old API hands them out: the list (or the map by id the first versions kept) as it was written. */
 async function getDonationsValue(appConfig) {
   const [rows, compat] = await Promise.all([getDonationRows(appConfig), readCompat(appConfig)]);
   // A fresh instance has the empty map {} (as always); the web app's first save makes it a list
   const asMap = compat.donations !== 'array';
-  if (!asMap) return rows.map((row) => codecs.donation.decode(row));
-  return Object.fromEntries(rows.map((row, index) => [typeof originalOf(row).key === 'string' ? originalOf(row).key : String(index), codecs.donation.decode(row)]));
+  if (!asMap) return rows.map(decodeDonation);
+  return Object.fromEntries(rows.map((row, index) => [typeof originalOf(row).key === 'string' ? originalOf(row).key : String(index), decodeDonation(row)]));
+}
+
+/**
+ * The holes (null) the donations list of an older instance kept: the statistics and the bookings of the old server
+ * failed on them (and the upgrade copies them exactly). Removed once after the upgrade; returns how many.
+ */
+async function removeDonationHoles(appConfig) {
+  return queueRecordWrite('finance:donations', async () => {
+    const holes = (await getDonationRows(appConfig)).filter((row) => isKeptEntry(row) && originalOf(row).entry === null);
+    await runBatch(appConfig, holes.map((row) => ({ method: 'DELETE', collection: DONATIONS, id: row.id })));
+    return holes.length;
+  });
 }
 
 /**
@@ -545,20 +755,20 @@ function saveDonations(appConfig, value, { expectedVersion } = {}) {
       const hasId = entry && entry.id !== undefined && entry.id !== null && entry.id !== '';
       return hasId ? `id:${JSON.stringify(entry.id)}` : `content:${index}:${shapes.stableSerialize(entry)}`;
     };
-    const wanted = entries.filter(([, entry]) => entry).map(([objectKey, entry], index) => {
-      const { columns, original } = codecs.donation.encode(entry);
-      const withKey = objectKey !== null ? { ...(original || {}), key: objectKey } : original;
-      return { key: keyOfEntry(objectKey, entry, index), columns, original: withKey && Object.keys(withKey).length ? withKey : null };
+    // A hole in the list (null) is no entry: the statistics and the bookings of the old server failed on it
+    const wanted = entries.filter(([, entry]) => entry !== null && entry !== undefined).map(([objectKey, entry], index) => {
+      const { columns, original } = donationBody(entry, objectKey);
+      return { key: keyOfEntry(objectKey, entry, index), columns, original };
     });
     const existing = rows.map((row, index) => {
-      const data = codecs.donation.decode(row);
+      const data = decodeDonation(row);
       return { key: keyOfEntry(typeof originalOf(row).key === 'string' ? originalOf(row).key : null, data, index), row };
     });
     const { ops } = diffChildren(DONATIONS, null, existing, wanted, { extraColumns: (entry, index) => ({ position: index }) });
     for (const op of ops) if (op.body) delete op.body.member;
     // A donation that only moved in the list is no change of it
     const moved = (op) => op.method === 'PATCH' && Object.keys(op.body).every((key) => key === 'position' || sameValue(rows.find((row) => row.id === op.id)?.[key], op.body[key]));
-    await runBatch(appConfig, [...ops, ...changeOpsFor('donation', ops.filter((op) => !moved(op)), rows, (row) => codecs.donation.decode(row))]);
+    await runBatch(appConfig, [...ops, ...changeOpsFor('donation', ops.filter((op) => !moved(op)), rows, decodeDonation)]);
     await setSetting(appConfig, 'compat', { ...(await readCompat(appConfig)), donations: isMap ? 'object' : 'array' });
   });
 }
@@ -713,8 +923,9 @@ async function getSetting(appConfig, area) {
 
 async function setSetting(appConfig, area, value) {
   const existing = await getSettingRecord(appConfig, area);
-  if (existing) return client.updateRecord(SETTINGS, existing.id, { value }, appConfig);
-  return client.createRecord(SETTINGS, { area, value }, appConfig);
+  // The area tells the members memo whether the fees may have changed (only 'finance' holds them)
+  if (existing) return client.updateRecord(SETTINGS, existing.id, { value }, appConfig, { tag: { area } });
+  return client.createRecord(SETTINGS, { area, value }, appConfig, { tag: { area } });
 }
 
 const feesToCents = (fees) => (fees && typeof fees === 'object' ? Object.fromEntries(Object.entries(fees).map(([status, amount]) => [status, toCents(amount).cents])) : null);
@@ -870,7 +1081,7 @@ require('../links').holdLinks('users', async (appConfig, uid) => {
       const original = originalOf(row);
       const values = { ...(original.values || {}) };
       if (!has(values, key)) values[key] = uid;
-      await client.updateRecord(collection, row.id, { user: '', original: { ...original, values } }, appConfig);
+      await client.updateRecord(collection, row.id, { user: '', original: { ...original, values } }, appConfig, { tag: collection === MEMBERS ? { members: [row.id] } : null });
     }
   }
 });
@@ -903,6 +1114,12 @@ module.exports = {
   syncExpenseRecords,
   getDonationsValue,
   saveDonations,
+  donationBody,
+  decodeDonation,
+  isKeptEntry,
+  removeDonationHoles,
+  membersReadOnly,
+  memberReadOnly,
   donationsVersion,
   expensesVersion,
   listRequestRecords,

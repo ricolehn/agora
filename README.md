@@ -138,23 +138,47 @@ image. While it runs (seconds; about a minute for 30 years of 300 members), the 
 If anything in steps 1–4 fails or differs, nothing is switched: the new tables are removed and the previous version of
 the server (kept in the image, `backend/legacy`) serves the instance exactly as before. The app's status then says
 that the upgrade did not get through, and the next start tries again – three times; then it waits until the server is
-started with `AGORA_UPGRADE_RETRY=1`. Older apps keep working against the new structure through the old API, which
-answers exactly as before.
+started with `AGORA_UPGRADE_RETRY=1`. Where the new tables answered differently, the server log names the places
+(`[Upgrade] Differs: member … at .payments.3.amount` – what and where, never the values; the dry run below shows
+those). An attempt the server did not finish (it was stopped or restarted during it, a power cut) does not count –
+only every third of those in a row, so that a server that dies in the upgrade every time still ends up served by the
+previous version. Older apps keep working against the new structure through the old API, which answers as before. A
+few answers change on purpose:
+
+- Events, sign-ups, guests and duties are listed by their times themselves: an older entry whose time was written
+  `9:00` comes before `10:00` (the old tables sorted the text), and an event whose day was written another way
+  (`14.11.2026`) gets its duty reminders.
+- Holes (`null`) in an older list of donations are removed after the upgrade – the statistics and the list of all
+  bookings failed on them before.
+- The statistics count an older amount nobody can read (`fünfzig`) as 0, like a member's total does – one such amount
+  left their totals and the whole chart empty.
+- A standing order the previous version could not book (a note longer than 5000 characters) books the months it
+  missed at the first start.
 
 **Try it first (recommended):** the dry run does the whole upgrade on a copy of a backup – the cleanup included, the
-one step nothing can undo – and never touches the original.
-Make a backup on PocketBase's admin page (Settings → Backups), then:
+one step nothing can undo – and never touches the original. It comes with the new image, so it runs in a container of
+its own next to the one that still runs the previous version (the new image upgrades the database as soon as it
+serves it). Make a backup on PocketBase's admin page (Settings → Backups), then:
 
 ```bash
-docker exec agora-app node backend/db/dryRun.js /app/db/backups/<backup>.zip --data /app/data --out /app/data
+docker pull ghcr.io/ricolehn/agora:latest
+docker run --rm --entrypoint node \
+  -v /path/to/your/cache:/app/db:ro \
+  -v /path/to/your/storage:/app/data:ro \
+  -v "$PWD":/out \
+  ghcr.io/ricolehn/agora:latest \
+  backend/db/dryRun.js /app/db/backups/<backup>.zip --data /app/data --out /out
 ```
 
-It ends with "The upgrade would go through" or names what would differ. `upgrade-dry-run-report.json` contains no
-personal data and can be shared when asking for help; `upgrade-dry-run-details.json` contains the values – keep it to
-yourself.
+It ends with "The upgrade would go through" or names what would differ, and writes into the current folder:
+`upgrade-dry-run-report.json` contains no personal data and can be shared when asking for help;
+`upgrade-dry-run-details.json` contains the values – keep it to yourself. (Instead of a backup, the dry run also takes
+the database folder itself, `/app/db` – with the container stopped, so that nothing writes to it meanwhile.)
 
 **Going back:** stop the container, restore the `pre-v4-…` backup (PocketBase admin page → Settings → Backups, or
-unpack it into the database folder) and start the previous image.
+unpack it into the database folder) and start the previous image. Everything entered since the upgrade is not in that
+backup. Never start the previous image on the upgraded database without restoring the backup first: it does not know
+the new tables, makes its old ones anew – empty – and the app shows no members, bookings or events.
 
 **If you ran one of the first releases of version 4:** they kept the password of every account that was created, or
 whose password was set, after the upgrade in plain text next to the account (in `users.original`), and so in every
@@ -399,19 +423,19 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `community.test.js` | events, guests and shared places, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
 | `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
-| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, the monthly fees over time, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses, API v2, the AI assistant and its lookups against stand-in AI providers (only when the model asks, the effort levels, permissions on every lookup, size caps, categories, providers without tool calls; Anthropic, OpenAI and Gemini through their own protocols, with what they refuse) |
+| `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, the monthly fees over time, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses, API v2 (its money as the app's statistics count it), the AI assistant and its lookups against stand-in AI providers (only when the model asks, the effort levels, permissions on every lookup, size caps, categories, providers without tool calls; Anthropic, OpenAI and Gemini through their own protocols, with what they refuse) |
 | `ai.test.js` | what the server passes on from the AI provider's stream, and how tool calls arrive in it |
-| `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files |
+| `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files; donations and expenses are saved on the previous version too, while the upgrade waits |
 | `codecs.test.js` | the exact round trip between what the apps write and the new tables: 5000 random records per kind, odd values included |
-| `database.test.js` | the rules of the database structure (names, help texts, money in cents) and that docs/DATABASE.md is up to date |
-| `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; the dry run; after the switch nothing is undone - a cleanup that fails or is interrupted is tried again until it is through, and what would stop it for good (something of one's own in PocketBase that depends on an old table) is found before anything changes |
+| `database.test.js` | the rules of the database structure (names, help texts, money in cents), what a write makes the server read again, and that docs/DATABASE.md is up to date |
+| `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; older data the previous version kept as it was (holes in the donations list, times written as text, a sign-up of a deleted event) upgrades; a server stopped during the upgrade is no failed attempt; the dry run; after the switch nothing is undone - a cleanup that fails or is interrupted, or a read of the upgrade's record that fails, is tried again until it is through, and what would stop it for good (something of one's own in PocketBase that depends on an old table) is found before anything changes |
 | `years.test.js` | the fee accounts over years: two communities lived through day by day for twelve years, with everything that can happen in an order nobody planned (payments early, late and corrected, statuses changed after the fact, fees set for months to come and months past, edited, moved and taken back, fresh starts, an older app saving a fee) - every number the apps show compared with a second set of books that shares no code with the server (`tests/feeBooks.js`). And five years with the real server and PocketBase, which is stopped and wakes up on a later day (`tests/clock.js`) |
 
 ```bash
 cd backend && npm ci
 POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests (api.test.js, the real server in years.test.js) are skipped
 YEARS_SEEDS=1-200 node --test ../tests/years.test.js   # a long look: 200 other communities (a few minutes)
-POCKETBASE_BIN=/path/to/pocketbase node ../tests/benchmark.js 300:30   # the books of 300 members over 30 years, before and after the upgrade
+POCKETBASE_BIN=/path/to/pocketbase node ../tests/benchmark.js 300:30   # the books of 300 members over 30 years, before and after the upgrade: read again, first after a change, and API v2
 ```
 
 Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).

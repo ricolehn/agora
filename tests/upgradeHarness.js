@@ -58,7 +58,9 @@ function normalize(url, res) {
       const out = {};
       for (const [key, inner] of Object.entries(value)) {
         if (key === 'collectionId') continue;
-        out[key] = walk(inner);
+        // An own key also when it is named "__proto__" (data of older apps can hold one): a plain assignment would set
+        // the prototype instead, and two equal answers compared as different
+        Object.defineProperty(out, key, { value: walk(inner), enumerable: true, writable: true, configurable: true });
       }
       return out;
     }
@@ -85,11 +87,28 @@ function normalize(url, res) {
   return { status: res.status, body };
 }
 
+// Since v4 an amount nobody can read counts 0 in the statistics: the old server's totals and chart were empty (null)
+// wherever one such amount counted (the fixture has one). Where the old answer has null and the new one a number, the
+// number is taken; every other value is compared as it is
+function withStatisticsFix(url, before, after) {
+  if (url !== '/api/stats' || before?.status !== 200 || after?.status !== 200) return before;
+  const fill = (a, b) => {
+    if (a === null && typeof b === 'number') return b;
+    if (Array.isArray(a) && Array.isArray(b)) return a.map((value, index) => fill(value, b[index]));
+    if (a && b && typeof a === 'object' && typeof b === 'object') return Object.fromEntries(Object.entries(a).map(([key, value]) => [key, fill(value, b[key])]));
+    return a;
+  };
+  return { ...before, body: fill(before.body, after.body) };
+}
+
 async function recordAll(http, reads) {
   const answers = [];
   for (const [who, url] of reads) answers.push(normalize(url, await http.call(who, 'GET', url)));
   return answers;
 }
+
+/** Where the answers to [url] before and after the upgrade first differ (null: the same, but for what changed on purpose). */
+const answerDifference = (url, before, after) => firstDifference(withStatisticsFix(url, before, after), after);
 
 /** The first place two answers differ, as a path. */
 function firstDifference(a, b, path = '') {
@@ -126,7 +145,7 @@ async function oldInstance() {
     backups: async () => (await su.request('GET', '/api/backups')).map((backup) => backup.key).filter((key) => key.startsWith('pre-v4-')).sort(),
     sameAnswers: async () => {
       const now = await recordAll(http, reads);
-      return reads.map(([who, url], index) => [who, url, firstDifference(answers[index], now[index])]).filter(([, , difference]) => difference)
+      return reads.map(([who, url], index) => [who, url, answerDifference(url, answers[index], now[index])]).filter(([, , difference]) => difference)
         .map(([who, url, difference]) => `${who || 'nobody'} GET ${url}: ${difference}`);
     },
     close: async () => {
@@ -147,4 +166,4 @@ async function exited(child, timeoutMs = 60000) {
 const OLD_TABLES = ['people', 'payments', 'status_history', 'expenses', 'requests'];
 
 
-module.exports = { ROLES, readsOf, normalize, recordAll, firstDifference, oldInstance, exited, OLD_TABLES };
+module.exports = { ROLES, readsOf, normalize, recordAll, firstDifference, answerDifference, oldInstance, exited, OLD_TABLES };

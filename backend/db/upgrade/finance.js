@@ -27,7 +27,8 @@ const isEmpty = (value) => value === undefined || value === null || value === ''
 function newFindings() {
   return {
     amountsAsText: [], amountsUnreadable: [], amountsWithFractionOfCent: [], datesInOtherSpelling: [], datesUnreadable: [],
-    linksToMissingAccounts: [], unknownValues: [], listColumnsDisagreeWithRecord: [], paymentsWithoutMember: [], keysThatAreNoIds: []
+    linksToMissingAccounts: [], unknownValues: [], listColumnsDisagreeWithRecord: [], paymentsWithoutMember: [], keysThatAreNoIds: [],
+    donationsThatAreNoDonations: []
   };
 }
 
@@ -197,12 +198,14 @@ async function plan(appConfig) {
   const donationsValue = old.stateRecord('donations')?.value;
   const donationsAsMap = !Array.isArray(donationsValue);
   const donationEntries = Array.isArray(donationsValue) ? donationsValue.map((entry) => [null, entry]) : Object.entries(donationsValue && typeof donationsValue === 'object' ? donationsValue : {});
-  const donations = donationEntries.filter(([, entry]) => entry).map(([objectKey, entry], position) => {
-    const encoded = codecs.donation.encode(entry);
-    const original = { ...(encoded.original || {}), ...(objectKey !== null ? { key: objectKey } : {}) };
+  // Every entry, also one that is no donation (a hole, a bare number): it is kept as written, where it was - the old
+  // API answers the same list. The holes are removed after the switch (pocketbase.js: donations-without-holes)
+  const donations = donationEntries.map(([objectKey, entry], position) => {
+    const { columns, original } = store.donationBody(entry, objectKey);
     const id = store.newRecordId();
-    noteOriginal(findings, `finance_donations/${id}`, encoded.original);
-    return { method: 'POST', collection: 'finance_donations', body: { id, position, ...encoded.columns, original: Object.keys(original).length ? original : null } };
+    if (original && Object.prototype.hasOwnProperty.call(original, 'entry')) findings.donationsThatAreNoDonations.push(`finance_donations/${id}`);
+    else noteOriginal(findings, `finance_donations/${id}`, original);
+    return { method: 'POST', collection: 'finance_donations', body: { id, position, ...columns, original } };
   });
 
   const ops = [...members, ...orders, ...payments, ...periods, ...expenses, ...requests, ...donations];
@@ -231,7 +234,7 @@ async function plan(appConfig) {
 
 /** Writes what plan() worked out. */
 async function apply(appConfig, planned) {
-  await store.runBatch(appConfig, planned.ops);
+  await client.writeInBatches(appConfig, planned.ops);
   if (planned.state.settings) await store.setSetting(appConfig, 'finance', planned.state.settings.value);
   await store.setSetting(appConfig, 'compat', { ...((await store.getSetting(appConfig, 'compat')) || {}), donations: planned.state.donationsAsMap ? 'object' : 'array' });
   if (planned.state.feeSchedule !== undefined) await store.setStateValue(appConfig, 'feeSchedule', planned.state.feeSchedule);
@@ -264,7 +267,8 @@ async function compare(appConfig, { legacy }) {
   const requestFields = ['requestKey', 'userId', 'personId', 'personName', 'type', 'status', 'timestamp', 'data'];
   differ('the requests', view(await legacy.store.listRequestRecords(appConfig), requestFields), view(await store.listRequestRecords(appConfig), requestFields));
   differ('the fee state', await legacy.store.getFeeState(appConfig), await store.getFeeState(appConfig));
-  differ('the statistics', await legacy.stats.aggregateStats(appConfig).catch((err) => `failed: ${err.message}`), await require('../../stats').aggregateStats(appConfig).catch((err) => `failed: ${err.message}`));
+  // As the previous version counted (an amount nobody can read made its totals empty; the new books count it 0)
+  differ('the statistics', await legacy.stats.aggregateStats(appConfig).catch((err) => `failed: ${err.message}`), await require('../../stats').aggregateStats(appConfig, { asBefore: true }).catch((err) => `failed: ${err.message}`));
   differ('all bookings', await legacy.transactions.getPaginatedTransactions(appConfig, 1, 1000000, '').catch((err) => `failed: ${err.message}`), await require('../../transactions').getPaginatedTransactions(appConfig, 1, 1000000, '').catch((err) => `failed: ${err.message}`));
   return differences;
 }

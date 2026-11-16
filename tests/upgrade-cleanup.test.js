@@ -3,7 +3,7 @@
 // (backend/db/upgrade/index.js). And what would stop the cleanup for good is found before anything is changed.
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { POCKETBASE_BIN, stop, waitUntilReady } = require('./instance');
+const { POCKETBASE_BIN, stop, waitUntilReady, faultyProxy } = require('./instance');
 const { oldInstance, exited } = require('./upgradeHarness');
 
 const OLD_FINANCE_TABLES = ['people', 'payments', 'status_history', 'expenses', 'requests'];
@@ -103,6 +103,35 @@ describe('the upgrade after its switch', { skip: !POCKETBASE_BIN && 'set POCKETB
 
     backend = await old.start();
     t.after(() => stop(backend.process));
+    await assertFinished(old, backend);
+  });
+
+  test('a read of the upgrade\'s record that fails after the switch is no "not upgraded": nothing is undone, the start is tried again and finishes', async (t) => {
+    const old = await oldInstance();
+    t.after(() => old.close());
+    const before = await countsBefore(old);
+    const crashing = await old.start({ AGORA_TEST_UPGRADE_FAIL: 'crash:cleanup' }, { waitReady: false });
+    assert.equal(await exited(crashing.process), 70);
+    await assertSwitchedAndComplete(old, before);
+
+    // PocketBase does not answer the first read of the record (busy, starting): it was taken for "no upgrade yet" -
+    // the start called the database undone after its switch and the previous version served empty books, or it made
+    // the new tables anew, empty, next to the copy
+    let refused = 0;
+    const proxy = await faultyProxy(old.pocketbase.port, (req) => {
+      const first = refused === 0 && req.method === 'GET' && req.url.startsWith('/api/collections/system_migrations/records/v4-structure');
+      if (first) refused += 1;
+      return first;
+    });
+    t.after(() => {
+      proxy.closeAllConnections();
+      proxy.close();
+    });
+    const backend = await old.start({ POCKETBASE_PORT: String(proxy.address().port) }, { waitReady: false });
+    t.after(() => stop(backend.process));
+    await waitUntilReady(backend.base, backend.process, 60000);
+    assert.equal(refused, 1);
+    assert.equal((await status(backend)).upgrade, undefined, 'the previous version did not take over');
     await assertFinished(old, backend);
   });
 

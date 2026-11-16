@@ -121,9 +121,7 @@ async function plan(appConfig) {
 
 /** Writes what plan() worked out (events first: everything else links to them). */
 async function apply(appConfig, planned) {
-  for (let start = 0; start < planned.ops.length; start += client.BATCH_MAX_REQUESTS) {
-    await client.batchWrite(appConfig, planned.ops.slice(start, start + client.BATCH_MAX_REQUESTS));
-  }
+  await client.writeInBatches(appConfig, planned.ops);
 }
 
 /**
@@ -141,19 +139,29 @@ async function compare(appConfig, { legacy }) {
   // PocketBase's internal id of the table differs (a new table); everything else must be the same
   const all = (value) => (Array.isArray(value) ? value.map(plain) : plain(value));
   const both = async (what, before, after) => differ(what, all(await before().catch((err) => `failed: ${err.message}`)), all(await after().catch((err) => `failed: ${err.message}`)));
+  // Lists by record id: their order follows the columns now. The old tables sorted the text as written, so a time
+  // written "9:00" came after "10:00", and a sign-up time in another spelling ("2026-11-01 10:00:00Z") sat elsewhere
+  // in the queue; the new ones sort the times themselves. One such old record made every attempt fail.
+  const byId = (list) => (Array.isArray(list) ? Object.fromEntries(list.map((record) => [record?.id, plain(record)])) : list);
+  const sameRecords = async (what, before, after) => differ(what, byId(await before().catch((err) => `failed: ${err.message}`)), byId(await after().catch((err) => `failed: ${err.message}`)));
   const inChunks = async (list, work) => {
     for (let start = 0; start < list.length; start += 20) await Promise.all(list.slice(start, start + 20).map(work));
   };
   const old = legacy.store;
 
-  await both('the events (in their order)', () => old.listEvents(appConfig), () => store.listEvents(appConfig));
-  await both('the sign-ups', () => old.listEventRegistrations(appConfig), () => store.listEventRegistrations(appConfig));
-  await both('the guests', () => old.listEventGuests(appConfig), () => store.listEventGuests(appConfig));
-  await both('the duties', () => old.listEventDuties(appConfig), () => store.listEventDuties(appConfig));
-  // The window of the duty reminders
+  await sameRecords('the events', () => old.listEvents(appConfig), () => store.listEvents(appConfig));
+  await sameRecords('the sign-ups', () => old.listEventRegistrations(appConfig), () => store.listEventRegistrations(appConfig));
+  await sameRecords('the guests', () => old.listEventGuests(appConfig), () => store.listEventGuests(appConfig));
+  await sameRecords('the duties', () => old.listEventDuties(appConfig), () => store.listEventDuties(appConfig));
+  // The window of the duty reminders: the events whose day lies in it. The old table compared the text, so an event
+  // whose day was written another way ("14.11.2026") never got its reminders; the new one compares the day itself
   const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
-  const window = `date >= ${JSON.stringify(day(-1))} && date <= ${JSON.stringify(day(2))}`;
-  await both('the events of the reminder window', () => old.listEvents(appConfig, window), () => store.listEvents(appConfig, window));
+  const [from, to] = [day(-1), day(2)];
+  const window = `date >= ${JSON.stringify(from)} && date <= ${JSON.stringify(to)}`;
+  const dayOf = fieldKinds.day('date').toColumn;
+  await sameRecords('the events of the reminder window',
+    async () => (await old.listEvents(appConfig)).filter((event) => { const d = dayOf(event.date); return d !== '' && d >= from && d <= to; }),
+    () => store.listEvents(appConfig, window));
 
   const [events, registrations, guests, duties] = await Promise.all(KINDS.map((name) => client.listAllRecords(name, '', appConfig)));
   await inChunks(events, async (event) => {
@@ -173,9 +181,9 @@ async function compare(appConfig, { legacy }) {
   const withChildren = [...new Set([...registrations, ...guests, ...duties].map((row) => row.event))].filter((id) => events.some((event) => event.id === id)).slice(-300);
   await inChunks(withChildren, async (eventId) => {
     const is = client.pbFilterEquals('event', eventId);
-    await both(`the sign-ups of event ${eventId}`, () => old.listEventRegistrations(appConfig, is), () => store.listEventRegistrations(appConfig, is));
-    await both(`the guests of event ${eventId}`, () => old.listEventGuests(appConfig, is), () => store.listEventGuests(appConfig, is));
-    await both(`the duties of event ${eventId}`, () => old.listEventDuties(appConfig, is), () => store.listEventDuties(appConfig, is));
+    await sameRecords(`the sign-ups of event ${eventId}`, () => old.listEventRegistrations(appConfig, is), () => store.listEventRegistrations(appConfig, is));
+    await sameRecords(`the guests of event ${eventId}`, () => old.listEventGuests(appConfig, is), () => store.listEventGuests(appConfig, is));
+    await sameRecords(`the duties of event ${eventId}`, () => old.listEventDuties(appConfig, is), () => store.listEventDuties(appConfig, is));
   });
   return differences;
 }

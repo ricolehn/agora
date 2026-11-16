@@ -1659,6 +1659,41 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await ok(v2('max', 'GET', `/events/${eventId}`))).id, eventId);
   });
 
+  test('API v2: the money as the statistics count it - up to today, what is dated later apart; a member\'s total is what its payments add up to', async () => {
+    const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
+    const stats = await ok(call('treasurer', 'GET', '/api/stats'));
+    const before = await ok(v2('treasurer', 'GET', '/finance/summary'));
+    // An expense dated later is planned: in no total and no balance yet. It was counted - the cash balance of API v2
+    // and the AI was another one than the app's (the AI's lookups below see it too)
+    const expenses = await ok(v2('treasurer', 'GET', '/expenses'));
+    await ok(v2('treasurer', 'POST', '/expenses', { listVersion: expenses.listVersion, amountCents: 3000, date: inDays(40), issuer: 'Theo Test', description: 'Miete im Voraus' }));
+    const after = await ok(v2('treasurer', 'GET', '/finance/summary'));
+    // The cash balance is the one the app's statistics show
+    assert.equal(before.totalsCents.balance, Math.round(stats.totalBalance * 100));
+    assert.deepEqual(after.totalsCents, before.totalsCents);
+    assert.equal(after.plannedCents.expenses - before.plannedCents.expenses, 3000);
+    assert.ok(after.months.every((row) => row.month <= after.today.slice(0, 7)), 'the months go up to today');
+    assert.equal(after.totalsCents.balance, Math.round((await ok(call('treasurer', 'GET', '/api/stats'))).totalBalance * 100));
+
+    // Three payments of 33.333 (as older apps could write them): API v2 lists each in whole cents, and the member's
+    // total is what they add up to - not the old total rounded once, a cent more than its payments
+    const uid = await account('drittel', 'Drittel');
+    const raw = await ok(call('treasurer', 'GET', `/api/db?path=people/${uid}&raw=1`));
+    const thirds = [1, 2, 3].map((n) => ({ id: `drittel-${n}`, amount: 33.333, date: `2026-04-0${n}`, description: 'Drittel' }));
+    await ok(call('treasurer', 'POST', '/api/db/transaction', { path: `people/${uid}`, currentVersion: raw.version, value: { ...raw.value, payments: thirds } }));
+    const member = (await ok(v2('treasurer', 'GET', '/members?limit=500'))).items.find((entry) => entry.userId === uid);
+    const listed = (await ok(v2('treasurer', 'GET', `/payments?member=${member.id}&limit=500`))).items;
+    assert.deepEqual(listed.map((payment) => payment.amountCents), [3333, 3333, 3333]);
+    assert.equal(member.totalPaidCents, 9999);
+    // One member answers as the list has it
+    const alone = await ok(v2('treasurer', 'GET', `/members/${member.id}`));
+    for (const [key, value] of Object.entries(member)) assert.deepEqual(alone[key], value, key);
+    // The odd amounts go again: the statistics add amounts as written (99.999), the books in whole cents - the tests
+    // below compare both to the cent
+    const now = await ok(call('treasurer', 'GET', `/api/db?path=people/${uid}&raw=1`));
+    await ok(call('treasurer', 'POST', '/api/db/transaction', { path: `people/${uid}`, currentVersion: now.version, value: { ...now.value, payments: [] } }));
+  });
+
   test('malformed input gets a client error, never a crash', async () => {
     const raw = (method, url, body, type = 'application/json') => fetch(base + url, {
       method, body, headers: { 'Content-Type': type, Authorization: `Bearer ${tokens.max}` }
@@ -2461,6 +2496,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       const balance = (summary.totalsCents.memberPayments + summary.totalsCents.donations - summary.totalsCents.expenses) / 100;
       assert.equal(totals.columns[5], 'cashBalanceAtEndEur');
       assert.equal(totals.rows[0][5], balance);
+      // ... and the one the app's statistics show: an expense dated later (see above) is in neither
+      assert.equal(totals.rows[0][5], (await ok(call('treasurer', 'GET', '/api/stats'))).totalBalance);
       // The change log: the donations the treasurer changed
       assert.deepEqual(changes.columns, ['by', 'changes']);
       assert.ok(changes.rows.some(([by, count]) => by === 'Theo Test' && count > 0));

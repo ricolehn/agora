@@ -15,6 +15,8 @@ const NEW_COLLECTIONS = ['system_secrets', 'system_push_devices', 'system_conten
 // Values of app_state the other areas take (they delete them in their cleanup)
 const TAKEN_ELSEWHERE = ['settings', 'donations', 'expenses', 'feeSchedule', 'feeResets', 'polls', 'songs'];
 const isoColumn = fieldKinds.isoTime('created').toColumn;
+const isEmptyValue = (value) => value === null || value === undefined || value === ''
+  || (Array.isArray(value) ? value.length === 0 : typeof value === 'object' && Object.keys(value).length === 0);
 const fieldsOf = (row) => {
   const { collectionId, collectionName, expand, ...fields } = row;
   return fields;
@@ -55,7 +57,10 @@ async function plan(appConfig) {
     if (secret && hidden !== undefined) ops.push({ method: 'POST', collection: table('system_secrets'), body: { name: secret[1], value: hidden } });
   }
   for (const record of old.state) {
-    if (store.STATE_AREAS[record.key] || TAKEN_ELSEWHERE.includes(record.key) || ['media_rules', 'content_reports'].includes(record.key)) continue;
+    // The expenses have their own table since long ago; the value app_state still holds was read by nothing (an empty
+    // {} on almost every instance). Anything else in it is kept with the values of older versions, not dropped silently
+    const leftOver = record.key === 'expenses' && !isEmptyValue(record.value);
+    if (!leftOver && (store.STATE_AREAS[record.key] || TAKEN_ELSEWHERE.includes(record.key) || ['media_rules', 'content_reports'].includes(record.key))) continue;
     legacy[record.key] = record.value;
     findings.valuesOfOlderVersions.push(`app_state/${record.id}`);
   }
@@ -121,9 +126,7 @@ async function plan(appConfig) {
 }
 
 async function apply(appConfig, planned) {
-  for (let start = 0; start < planned.ops.length; start += client.BATCH_MAX_REQUESTS) {
-    await client.batchWrite(appConfig, planned.ops.slice(start, start + client.BATCH_MAX_REQUESTS));
-  }
+  await client.writeInBatches(appConfig, planned.ops);
 }
 
 /**

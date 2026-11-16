@@ -24,6 +24,8 @@ const AREAS = [require('./accounts'), require('./finance'), require('./community
 const tables = require('../tables');
 const UPGRADE_ID = 'v4-structure';
 const MAX_ATTEMPTS = 3;
+// Interrupted attempts in a row: every third one counts as a failed attempt (see upgradeDatabase)
+const MAX_INTERRUPTIONS = 3;
 // Raised with every correction of the upgrade itself: an instance where an earlier revision failed (three times, too)
 // tries the corrected one on its own, with three attempts of its own, instead of waiting for AGORA_UPGRADE_RETRY=1.
 // 2: the comparison read the mentoring texts with a wrong key in the Docker image (legacyModules)
@@ -55,8 +57,26 @@ const isNewShape = (collection) => (collection.fields || []).some((field) => fie
 const newCollections = () => [...new Set(['system_settings', ...AREAS.flatMap((area) => area.NEW_COLLECTIONS)])];
 const oldCollections = () => AREAS.flatMap((area) => area.OLD_COLLECTIONS);
 
+// The places logged where the new tables answered differently
+const LOGGED_DIFFERENCES = 20;
+
+/**
+ * Where the new tables answered differently ([differences] of the report): what and where - never the values, a log is
+ * shown around when asking for help. Without them the log only said how many places blocked the upgrade, and only the
+ * dry run's details told an admin which records to look at.
+ */
+function logDifferences(differences) {
+  for (const { what, path: where } of differences.slice(0, LOGGED_DIFFERENCES)) console.error(`[Upgrade] Differs: ${what}${where && where !== '(whole)' ? ` at ${where}` : ''}`);
+  if (differences.length > LOGGED_DIFFERENCES) console.error(`[Upgrade] ... and ${differences.length - LOGGED_DIFFERENCES} more place(s): the dry run (README) lists them all, with their values.`);
+}
+
+/**
+ * The upgrade's record, or null when there is none (PocketBase answered 404). Any other failure is thrown: a state
+ * that could not be read is unknown, never "not upgraded" - after the switch that reading started a new attempt on a
+ * database whose old tables were already going (legacy then served empty books) or took it for a fresh instance.
+ */
 async function getState(appConfig) {
-  return client.getRecord(MIGRATIONS, UPGRADE_ID, appConfig).catch(() => null);
+  return client.getRecord(MIGRATIONS, UPGRADE_ID, appConfig);
 }
 
 async function setState(appConfig, patch) {
@@ -239,8 +259,9 @@ async function upgradeDatabase(appConfig, { dryRun = false, rehearseCleanup = fa
   await client.ensureBatchSettings(appConfig);
   await schemaApply.createCollections(appConfig, [MIGRATIONS]);
   let state = await getState(appConfig);
+  const collections = await client.listCollections(appConfig);
   // A table the new structure has under the same name (events, ...) is old only while it has the old shape
-  const hasOld = (await client.listCollections(appConfig)).some((collection) => oldCollections().includes(collection.name)
+  const hasOld = collections.some((collection) => oldCollections().includes(collection.name)
     && !(newCollections().includes(collection.name) && isNewShape(collection)));
 
   if (state?.status === 'done') {
@@ -249,6 +270,13 @@ async function upgradeDatabase(appConfig, { dryRun = false, rehearseCleanup = fa
     return { status: 'current' };
   }
   if (!hasOld) {
+    // No old tables, but the tables an upgrade builds, or the record of one that is not done: an upgrade that did not
+    // finish, never a new instance. Making the new tables here would put empty ones next to the copy (events, sign-ups,
+    // conversations...) - nothing is touched; the server says why and tries again
+    const building = collections.map((collection) => collection.name).filter((name) => newCollections().some((table) => schemaApply.buildingName(table) === name));
+    if (building.length || state) {
+      throw Object.assign(new Error(`The database holds an upgrade that did not finish (${building.length ? `tables ${building.join(', ')}` : `its record says "${state.status}"`}) but none of the old tables: it is not a new instance. Nothing was changed. Restore the backup ${state?.backup || `${BACKUP_PREFIX}….zip`} (PocketBase's admin page, Settings, Backups) and start the server again.`), { publicReason: 'The database holds an upgrade that did not finish: nothing was changed. The server log says which backup to restore.' });
+    }
     await schemaApply.createCollections(appConfig, newCollections());
     await require('./accounts').ensureUsersSchema(appConfig);
     await schemaApply.applyViews(appConfig);
@@ -257,13 +285,26 @@ async function upgradeDatabase(appConfig, { dryRun = false, rehearseCleanup = fa
   }
 
   if (state?.status === 'running' && !dryRun) {
-    state = await setState(appConfig, { status: 'failed', error: 'The previous attempt was interrupted (the server stopped during it).' });
+    // The previous attempt never ended: the server stopped during it (a restart, a power cut). That is no failed
+    // attempt and does not count - three restarts left instances waiting for AGORA_UPGRADE_RETRY=1 although nothing
+    // had failed. Only every MAX_INTERRUPTIONS-th interruption in a row counts: a server that dies in the upgrade every
+    // time (out of memory, say) must still end up with the previous version serving the instance
+    const interruptions = (state.report?.interruptions || 0) + 1;
+    const counts = interruptions % MAX_INTERRUPTIONS === 0;
+    state = await setState(appConfig, {
+      status: 'failed',
+      error: 'The previous attempt was interrupted (the server stopped during it).',
+      attempts: counts ? (state.attempts || 0) : Math.max(0, (state.attempts || 0) - 1),
+      report: { ...(state.report || {}), interruptions }
+    });
   }
   // A corrected upgrade starts its own attempts (every attempt notes the revision that made it)
   const corrected = (state?.report?.revision || 1) < UPGRADE_REVISION;
   const attempts = retry || corrected ? 0 : (state?.attempts || 0);
   if (attempts >= MAX_ATTEMPTS && !dryRun) {
-    return { status: 'waiting', report: { reason: `The upgrade failed ${attempts} times; it is tried again when the server starts with AGORA_UPGRADE_RETRY=1.`, lastError: state?.error || '' } };
+    logDifferences(state?.report?.differences || []);
+    // The backup the attempts made: what to restore when going back to the previous version for good
+    return { status: 'waiting', report: { reason: `The upgrade failed ${attempts} times; it is tried again when the server starts with AGORA_UPGRADE_RETRY=1.`, lastError: state?.error || '', ...(state?.backup ? { backup: { name: state.backup } } : {}) } };
   }
 
   onUpgrading();
@@ -311,7 +352,10 @@ async function upgradeDatabase(appConfig, { dryRun = false, rehearseCleanup = fa
     for (const area of AREAS) details.push(...(await area.compare(appConfig, { legacy })));
     report.differences = details.map(({ what, path: where }) => ({ what, path: where }));
     testHook('compare');
-    if (details.length) throw new Error(`The new tables answered differently from the old ones in ${details.length} place(s) - nothing was switched.`);
+    if (details.length) {
+      if (!dryRun) logDifferences(report.differences);
+      throw new Error(`The new tables answered differently from the old ones in ${details.length} place(s) - nothing was switched. The server log names them.`);
+    }
     report.finishedAt = now();
     if (dryRun) {
       const findings = Object.fromEntries(Object.entries(plans).map(([key, planned]) => [key, planned.findings]));
@@ -369,4 +413,4 @@ async function noteFallback(appConfig) {
   if (state) await setState(appConfig, { report: { ...(state.report || {}), fallbackAt: now() } }).catch(() => {});
 }
 
-module.exports = { UPGRADE_ID, AREAS, upgradeDatabase, noteFallback, newCollections, oldCollections, getState, foreignDependencies, CleanupNotDone };
+module.exports = { UPGRADE_ID, AREAS, upgradeDatabase, noteFallback, newCollections, oldCollections, getState, foreignDependencies, logDifferences, CleanupNotDone };

@@ -286,6 +286,13 @@ async function ensurePocketBaseSchema(appConfig, { onUpgrading } = {}) {
     if (repaired) console.log(`[Migration] ${repaired} duty status(es) now fit who has the duty`);
     return { repaired };
   });
+  // The holes (null) an older donations list kept: the upgrade copies them exactly (the old API answers the same
+  // list), and with them the statistics and the bookings fail - as they did on the old server
+  await runRepairOnce(appConfig, 'donations-without-holes', async () => {
+    const removed = await financeStore.removeDonationHoles(appConfig);
+    if (removed) console.log(`[Migration] Removed ${removed} empty entr${removed === 1 ? 'y' : 'ies'} (null) from the donations list`);
+    return { removed };
+  });
 }
 
 /**
@@ -503,7 +510,8 @@ async function findUserByCalendarToken(appConfig, token) {
 
 
 const getPeopleRecord = (appConfig, personKey) => financeStore.getPeopleRecord(appConfig, personKey);
-const listPeopleRecords = (appConfig, query = {}) => financeStore.listPeopleRecords(appConfig, query);
+// options.shared: the caller only reads them (see stores/finance.js)
+const listPeopleRecords = (appConfig, query = {}, options = {}) => financeStore.listPeopleRecords(appConfig, query, options);
 const upsertPeopleRecord = (appConfig, personKey, value, expectedUpdated = null) => financeStore.upsertPeopleRecord(appConfig, personKey, value, expectedUpdated);
 
 /**

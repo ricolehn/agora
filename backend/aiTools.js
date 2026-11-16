@@ -201,7 +201,7 @@ async function moneyEntries(kind, user, from, to) {
     return payments.map((payment) => ({ date: payment.date || '', cents: payment.amountCents || 0, description: payment.description || '', who: nameOf.get(payment.memberId) || '', whoId: payment.memberId }));
   }
   const list = data.LIST_READS[kind];
-  return (await list.rows()).map(list.toV2)
+  return (await list.rows()).filter(list.shown).map(list.toV2)
     .map((entry) => ({ date: entry.date || '', cents: entry.amountCents || 0, description: entry.description || '', who: (kind === 'expenses' ? entry.issuer : entry.donorName) || '' }))
     .filter((entry) => inRange(entry.date, from, to));
 }
@@ -304,7 +304,7 @@ async function membersLookup(args, user, limits) {
   for (const payment of payments) (paymentsOf.get(payment.memberId) || paymentsOf.set(payment.memberId, []).get(payment.memberId)).push(payment);
 
   const rows = members
-    .map(({ row, person }) => ({ row, member: data.memberOf(row, person), paidUntil: person?.data?._paidUntil }))
+    .map(({ row, person, payments: own }) => ({ row, member: data.memberOf(row, person, own), paidUntil: person?.data?._paidUntil }))
     .filter(({ member }) => args.includeDeleted === true || !member.isDeleted)
     .filter(({ member }) => !names.length || matchesAny(fold(member.name), names))
     .filter(({ member }) => !status || member.status === status)
@@ -449,27 +449,36 @@ async function totalsLookup(args, user, limits) {
   const fromMonth = (dayFrom(args.from) || '').slice(0, 7);
   const toMonth = (dayTo(args.to) || '').slice(0, 7);
   const kinds = { memberPayment: 0, donation: 1, expense: 2 };
-  const periods = new Map();
-  let balance = 0;
-  // The cash balance counts everything from the first entry on, also before the period asked for
-  for (const row of await data.monthlyTotalRows()) {
-    if (!(row.kind in kinds)) continue;
-    balance += row.kind === 'expense' ? -row.totalCents : row.totalCents;
-    const key = per === 'year' ? row.month.slice(0, 4) : row.month;
-    const entry = periods.get(key) || periods.set(key, { cents: [0, 0, 0], entries: 0, balance: 0 }).get(key);
-    entry.cents[kinds[row.kind]] += row.totalCents;
-    entry.entries += row.entries;
-    entry.balance = balance;
-  }
-  const rows = [...periods.entries()]
-    .filter(([key]) => (!fromMonth || key >= fromMonth.slice(0, key.length)) && (!toMonth || key <= toMonth.slice(0, key.length)))
-    .reverse()
+  const signed = (row) => (row.kind === 'expense' ? -row.totalCents : row.totalCents);
+  const asked = ([key]) => (!fromMonth || key >= fromMonth.slice(0, key.length)) && (!toMonth || key <= toMonth.slice(0, key.length));
+  const money = await data.moneyBooks();
+  const byPeriod = (list, withBalance) => {
+    const periods = new Map();
+    // The cash balance counts everything from the first entry on, also before the period asked for - and the entries
+    // without a readable day (the app's statistics count them too) - up to today: what is dated later is planned
+    let balance = withBalance ? Object.entries(money.undated).reduce((sum, [kind, entry]) => sum + signed({ kind, totalCents: entry.totalCents }), 0) : 0;
+    for (const row of list) {
+      if (!(row.kind in kinds)) continue;
+      balance += signed(row);
+      const key = per === 'year' ? row.month.slice(0, 4) : row.month;
+      const entry = periods.get(key) || periods.set(key, { cents: [0, 0, 0], entries: 0, balance: 0 }).get(key);
+      entry.cents[kinds[row.kind]] += row.totalCents;
+      entry.entries += row.entries;
+      entry.balance = balance;
+    }
+    return [...periods.entries()].filter(asked).reverse();
+  };
+  const rows = byPeriod(money.booked, true)
     .map(([key, entry]) => [key, eur(entry.cents[0]), eur(entry.cents[1]), eur(entry.cents[2]), eur(entry.cents[0] + entry.cents[1] - entry.cents[2]), eur(entry.balance), entry.entries]);
+  const planned = byPeriod(money.planned, false)
+    .map(([key, entry]) => [key, eur(entry.cents[0]), eur(entry.cents[1]), eur(entry.cents[2]), eur(entry.cents[0] + entry.cents[1] - entry.cents[2]), entry.entries]);
   return withRows({
     total: { periods: rows.length },
-    today: toDateStr(new Date()),
+    today: money.today,
     columns: [per, 'memberPaymentsEur', 'donationsEur', 'expensesEur', 'differenceEur', 'cashBalanceAtEndEur', 'entries'],
-    order: 'newest first'
+    order: 'newest first',
+    note: 'Booked up to today; the cash balance of the current period is that of today. Entries dated after today are "planned" and not in any balance.',
+    ...(planned.length ? { plannedColumns: [per, 'memberPaymentsEur', 'donationsEur', 'expensesEur', 'differenceEur', 'entries'], planned } : {})
   }, rows, limits);
 }
 

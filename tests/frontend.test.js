@@ -412,3 +412,51 @@ describe('AI reply steps (assets/aiReply.js)', () => {
     assert.equal(timers.length, 0);
   });
 });
+
+describe('donations and expenses (assets/app.js)', () => {
+  /** A function of app.js as it is written there (up to the brace that closes it). */
+  const take = (name) => {
+    const start = app.indexOf(`async function ${name}(`);
+    assert.ok(start >= 0, `found ${name}()`);
+    return app.slice(start, app.indexOf('\n}\n', start) + 2);
+  };
+  // The web app's way of changing a list (mutateCollection) against a stand-in server: the current one, or the
+  // previous version, which serves while the upgrade waits and takes transactions of people only
+  function againstServer({ previous, refused = previous }) {
+    const server = { list: [{ id: 1, amount: 10, name: 'Anna' }] };
+    const parts = {
+      db: {},
+      API: '/api',
+      ref: (database, name) => name,
+      apiGet: async () => structuredClone(server.list),
+      set: async (name, value) => { server.list = structuredClone(value); },
+      runTransaction: async (name, update) => {
+        if (refused) throw Object.assign(new Error('Refused (test).'), { status: 400 });
+        const next = update(structuredClone(server.list));
+        if (next !== undefined) server.list = next;
+      },
+      // The previous version's status names no API versions
+      fetch: async () => ({ ok: true, json: async () => (previous ? { ready: true, upgrade: { state: 'waiting' } } : { ready: true, apiVersions: [1, 2] }) })
+    };
+    const code = `${app.match(/^const safeList = .*$/m)[0]}\n${take('mutateCollection')}\n${take('isPreviousServer')}\nreturn mutateCollection;`;
+    return { server, mutateCollection: new Function(...Object.keys(parts), code)(...Object.values(parts)) };
+  }
+
+  test('while the upgrade waits, the previous version takes them too: added, changed and deleted', async () => {
+    // It refused every change of the lists with 400 - nothing could be added, changed or deleted at all
+    for (const previous of [false, true]) {
+      const { server, mutateCollection } = againstServer({ previous });
+      await mutateCollection('donations', (list) => [...list, { id: 2, amount: 25, name: 'Ben' }]);
+      await mutateCollection('donations', (list) => list.map((entry) => (entry.id === 2 ? { ...entry, amount: 30 } : entry)));
+      await mutateCollection('donations', (list) => list.filter((entry) => entry.id !== 1));
+      assert.deepEqual(server.list, [{ id: 2, amount: 30, name: 'Ben' }], previous ? 'on the previous version' : 'on the current server');
+    }
+  });
+
+  test('a refusal of the current server stands: the list is never written past it', async () => {
+    const { server, mutateCollection } = againstServer({ previous: false, refused: true });
+    await assert.rejects(mutateCollection('expenses', (list) => [...list, { id: 3, amount: 5 }]), { status: 400 });
+    assert.deepEqual(server.list, [{ id: 1, amount: 10, name: 'Anna' }]);
+  });
+});
+

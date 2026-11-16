@@ -82,9 +82,12 @@ const findEventByPublicToken = (appConfig, publicToken) => events.first(appConfi
 
 const listEventRegistrations = (appConfig, filter = '') => registrations.list(appConfig, filter, '+created');
 
+// The sign-up of [userId] for [eventId]. A sign-up whose event is gone (an older version deleted events without all of
+// their sign-ups) keeps the event's id in `original` and is found by it like the old table found it - only here: the
+// lists of an event read the column, where the index helps
 async function getEventRegistration(appConfig, eventId, userId) {
   const filter = `${client.pbFilterEquals('event', eventId)} && ${client.pbFilterEquals('user', userId)}`;
-  return (await registrations.list(appConfig, filter))[0] || null;
+  return (await registrations.list(appConfig, filter, '', { exact: ['event'] }))[0] || null;
 }
 
 async function upsertEventRegistration(appConfig, eventId, userId, status) {

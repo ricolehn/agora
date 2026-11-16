@@ -92,21 +92,21 @@ async function memberRow(id) {
 }
 
 router.get(`${BASE}/members`, verifyToken, handle(async (req, res) => {
-  const members = (await membersFor(req)).map(({ row, person }) => memberOf(row, person));
+  const members = (await membersFor(req)).map(({ row, person, payments }) => memberOf(row, person, payments));
   res.json(page(members.filter((member) => req.query.includeDeleted === '1' || !member.isDeleted), req, (member) => member.name));
 }));
 
+// One member: from the books' memo where it is up to date (stores/finance.js), its rows are read only here
 router.get(`${BASE}/members/:id`, verifyToken, handle(async (req, res) => {
-  const row = await memberRow(req.params.id);
+  const member = await finance.memberReadOnly(context.appConfig, req.params.id);
+  if (!member) throw notFound('Member');
+  const { row, person, payments, periods, orders } = member;
   needs(canView(req) || row.user === uidOf(req));
-  const person = await finance.getPeopleRecord(context.appConfig, finance.keyOfMember(row));
-  const [payments, periods, orders] = await Promise.all([finance.COLLECTIONS.PAYMENTS, finance.COLLECTIONS.PERIODS, finance.COLLECTIONS.STANDING_ORDERS]
-    .map((collection) => client.listAllRecords(collection, client.pbFilterEquals('member', row.id), context.appConfig)));
   res.json({
-    ...memberOf(row, person),
+    ...memberOf(row, person, payments),
     payments: payments.map((payment) => paymentOf(payment)).sort((a, b) => String(b.date).localeCompare(String(a.date))),
     statusPeriods: periods.map(statusPeriodOf),
-    standingOrders: orders.sort((a, b) => (a.position || 0) - (b.position || 0)).map(standingOrderOf)
+    standingOrders: [...orders].sort((a, b) => (a.position || 0) - (b.position || 0)).map(standingOrderOf)
   });
 }));
 
@@ -244,7 +244,7 @@ for (const [name, list] of Object.entries(LISTS)) {
   router.get(`${BASE}/${name}`, verifyToken, handle(async (req, res) => {
     needs(canView(req));
     const [rows, version] = await Promise.all([list.rows(), list.version()]);
-    res.json({ ...page(rows.map(list.toV2), req, (item) => item.date), listVersion: version });
+    res.json({ ...page(rows.filter(list.shown).map(list.toV2), req, (item) => item.date), listVersion: version });
   }));
 
   // The rows and the list as the apps see it belong together by position (both in the order the list is kept)
@@ -275,7 +275,7 @@ for (const [name, list] of Object.entries(LISTS)) {
   router.patch(`${BASE}/${name}/:id`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
     await change(req, (rows, values) => {
       const index = rows.findIndex((row) => row.id === req.params.id);
-      if (index < 0 || !values[index]) throw notFound('Entry');
+      if (index < 0 || !values[index] || !list.shown(rows[index])) throw notFound('Entry');
       const next = [...values];
       next[index] = list.fromV2(req.body || {}, values[index]);
       return { values: next };
@@ -287,7 +287,7 @@ for (const [name, list] of Object.entries(LISTS)) {
   router.delete(`${BASE}/${name}/:id`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
     await change(req, (rows, values) => {
       const index = rows.findIndex((row) => row.id === req.params.id);
-      if (index < 0) throw notFound('Entry');
+      if (index < 0 || !list.shown(rows[index])) throw notFound('Entry');
       return { values: values.filter((value, position) => position !== index) };
     });
     res.status(204).end();
@@ -337,14 +337,23 @@ router.post(`${BASE}/requests/:id/decision`, protectedActionRateLimit, verifyTok
   res.json(requestOf(await finance.getRequestRecord(context.appConfig, req.params.id)));
 }));
 
+// The money as the app's statistics count it: booked up to today (with what has no readable day), the balance of that,
+// and apart from it what is dated after today
 router.get(`${BASE}/finance/summary`, verifyToken, handle(async (req, res) => {
   needs(canView(req));
-  const months = await data.monthlyTotalRows();
-  const totals = {};
-  for (const row of months) totals[row.kind] = (totals[row.kind] || 0) + row.totalCents;
+  const money = await data.moneyBooks();
+  const undated = Object.entries(money.undated).map(([kind, entry]) => ({ kind, totalCents: entry.totalCents }));
+  const totals = data.centsByKind([...money.booked, ...undated]);
+  const planned = data.centsByKind(money.planned);
+  const undatedCents = data.centsByKind(undated);
+  const month = (row) => ({ month: row.month, kind: row.kind, totalCents: row.totalCents, entries: row.entries });
   res.json({
-    totalsCents: { memberPayments: totals.memberPayment || 0, donations: totals.donation || 0, expenses: totals.expense || 0 },
-    months: months.map((row) => ({ month: row.month, kind: row.kind, totalCents: row.totalCents, entries: row.entries }))
+    today: money.today,
+    totalsCents: { memberPayments: totals.memberPayment, donations: totals.donation, expenses: totals.expense, balance: totals.memberPayment + totals.donation - totals.expense },
+    months: money.booked.map(month),
+    undatedCents: { memberPayments: undatedCents.memberPayment, donations: undatedCents.donation, expenses: undatedCents.expense },
+    plannedCents: { memberPayments: planned.memberPayment, donations: planned.donation, expenses: planned.expense },
+    planned: money.planned.map(month)
   });
 }));
 

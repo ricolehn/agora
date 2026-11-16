@@ -7,8 +7,9 @@ const {
 async function getPaginatedTransactions(appConfig, page, perPage, search = '') {
   // ⚡ Bolt: Fetch independent records concurrently to reduce endpoint latency.
   // Expected impact: ~50-60% reduction in total query time (e.g., from ~120ms sequentially to ~50ms).
+  // The members are only read here (shared: no copy of them all)
   const [people, expenses, donationsRecord] = await Promise.all([
-    listPeopleRecords(appConfig),
+    listPeopleRecords(appConfig, {}, { shared: true }),
     listExpenseRecords(appConfig),
     getStateRecord(appConfig, 'donations')
   ]);

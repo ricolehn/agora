@@ -118,8 +118,8 @@ function recordStore({ kind, tableName = kind, codec, fields, links = {}, groupL
   const scopeFilter = scope ? Object.entries(scope).map(([column, value]) => client.pbFilterEquals(column, value)).join(' && ') : '';
   const inScope = (row) => !scope || Object.entries(scope).every(([column, value]) => row?.[column] === value);
   /** [filter] of the old table for the new one: translated, and limited to this kind's records. */
-  const filterOf = (filter) => {
-    const translated = translateFilter(filter, columns, exact);
+  const filterOf = (filter, moreExact = []) => {
+    const translated = translateFilter(filter, columns, [...exact, ...moreExact]);
     if (!scopeFilter) return translated;
     return translated ? `${scopeFilter} && (${translated})` : scopeFilter;
   };
@@ -159,8 +159,9 @@ function recordStore({ kind, tableName = kind, codec, fields, links = {}, groupL
     body,
     writeContext,
 
-    async list(appConfig, filter = '', sort = '') {
-      return (await client.listAllRecords(collection(), filterOf(filter), appConfig, sortOf(sort))).map(toOld);
+    /** [options.exact]: more fields to match in `original` too for this read only (see translateFilter). */
+    async list(appConfig, filter = '', sort = '', { exact: moreExact = [] } = {}) {
+      return (await client.listAllRecords(collection(), filterOf(filter, moreExact), appConfig, sortOf(sort))).map(toOld);
     },
 
     async first(appConfig, filter, sort = '') {
