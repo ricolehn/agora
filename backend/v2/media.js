@@ -4,7 +4,7 @@
 const express = require('express');
 const { verifyToken } = require('../context');
 const mediaRouter = require('../routes/media');
-const { handle, bodyOf, page, sortable, v1Route, runV1 } = require('./http');
+const { handle, bodyOf, page, sortable, v1Route, runV1, runSteps } = require('./http');
 
 const router = express.Router();
 const BASE = '/api/v2';
@@ -20,20 +20,6 @@ const downloadRoute = v1Route(mediaRouter, 'post', '/api/media/download');
 const archiveRoute = v1Route(mediaRouter, 'get', '/api/media/download/:id');
 const rulesRoute = v1Route(mediaRouter, 'get', '/api/media/rules');
 const setRulesRoute = v1Route(mediaRouter, 'put', '/api/media/rules');
-
-/** Runs the steps of an old API's route on this very request: a file goes out (or comes in) as v1 streams it. */
-function runSteps(steps, req, res) {
-  const queue = [...steps];
-  const next = (err) => {
-    if (err) {
-      if (!res.headersSent) res.status(err.status || 500).json({ error: err.status ? err.message : '' });
-      return;
-    }
-    const step = queue.shift();
-    if (step) Promise.resolve(step(req, res, next)).catch(next);
-  };
-  next();
-}
 
 const pathQuery = (req) => (typeof req.query.path === 'string' ? { path: req.query.path } : {});
 

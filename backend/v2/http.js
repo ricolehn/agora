@@ -424,6 +424,23 @@ function runV1(route, req, { params = {}, body = {}, query = {} } = {}) {
   });
 }
 
+/**
+ * Runs the steps of an old API's route ([steps], v1Route) on this very request: a file goes out or comes in as v1 sends
+ * and takes it (errorShape gives what it refuses the shape of v2).
+ */
+function runSteps(steps, req, res) {
+  const queue = [...steps];
+  const next = (err) => {
+    if (err) {
+      if (!res.headersSent) res.status(err.status || 500).json({ error: err.status ? err.message : COULD_NOT });
+      return;
+    }
+    const step = queue.shift();
+    if (step) Promise.resolve(step(req, res, next)).catch(next);
+  };
+  next();
+}
+
 module.exports = {
   COULD_NOT,
   CHANGED,
@@ -475,5 +492,6 @@ module.exports = {
   storedPage,
   page,
   v1Route,
-  runV1
+  runV1,
+  runSteps
 };

@@ -8,6 +8,7 @@ const eventsStore = require('./db/stores/events');
 const { toCents, amountValue } = require('./db/codec');
 const { toDateStr } = require('./utils/date');
 const { receiptNames } = require('./v2/http');
+const { isBookedOut } = require('./eventSeats');
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -308,7 +309,11 @@ const eventOf = (event, counts, mine) => ({
   // null: no minimum
   minimumReached: (event.minParticipants || 0) > 0 ? counts.registered >= event.minParticipants : null,
   myRegistration: mine ? { id: mine.id, status: mine.status } : null,
-  createdAt: event.created || null
+  createdAt: event.created || null,
+  // Grown with what the apps show: every place taken (a sign-up goes onto the waiting list), and the key of the link
+  // that shows a shared event to people without an account (/?share=<shareToken>) while it is shared
+  isFull: isBookedOut(event, counts.registered),
+  shareToken: event.isPublic === true && event.publicToken ? event.publicToken : null
 });
 
 /** May [user] see [event] in the calendar: their own events and those of their target groups (as GET /api/events). */

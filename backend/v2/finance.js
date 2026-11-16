@@ -26,7 +26,7 @@ const {
   CHANGED, invalid, notFound, conflict, needs, handle, ID, TEXT_LIMITS,
   bodyOf, isCalendarDay, dayInput, optionalDayInput, monthInput, centsInput, boolInput, textInput, receiptNames, receiptFieldInput, idInput,
   versionInput, requestIdInput, choiceInput, daysOf, idOfQuery, sortable, searchOf, dayTexts, amountTexts, matchesSearch,
-  limitOf, storedCursorOf, storedPage, page, v1Route, runV1
+  limitOf, storedCursorOf, storedPage, page, v1Route, runV1, runSteps
 } = require('./http');
 
 const { cents, isoOf, isoFromMillis, memberOf, paymentOf, statusPeriodOf, standingOrderOf } = data;
@@ -578,20 +578,6 @@ router.get(`${BASE}/receipts/:name`, verifyToken, (req, res) => {
   req.params.filename = req.params.name;
   runSteps(receiptRoute, req, res);
 });
-
-/** Runs the steps of an old API's route on this very request (a file goes out or comes in as v1 sends and takes it). */
-function runSteps(steps, req, res) {
-  const queue = [...steps];
-  const next = (err) => {
-    if (err) {
-      if (!res.headersSent) res.status(err.status || 500).json({ error: err.status ? err.message : 'The request could not be handled.' });
-      return;
-    }
-    const step = queue.shift();
-    if (step) Promise.resolve(step(req, res, next)).catch(next);
-  };
-  next();
-}
 
 // --- Requests: members ask, those who manage the finances decide -------------------------------------------------
 

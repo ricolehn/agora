@@ -1,17 +1,24 @@
 // API v2: who is signed in, the groups, the songbook and mentoring (docs/API_V2.md). Reads come from the new tables;
 // writes run the old API's own handlers (v1Route / runV1): the same checks, encryption and notifications as v1.
+const crypto = require('crypto');
 const express = require('express');
-const { context, verifyToken, protectedActionRateLimit } = require('../context');
+const { context, verifyToken, protectedActionRateLimit, writeLogicalPath, broadcastDataUpdate } = require('../context');
 const { createItemStore } = require('../itemStore');
-const { listGroupRecords, listMentoringThreadsForUser, listMentorRecords, listUserRecords, decryptMentoringText, getMentorByUserId, getMentoringThreadSummary } = require('../pocketbase');
-const { translate, requestLanguage } = require('../i18n');
+const {
+  listGroupRecords, listMentoringThreadsForUser, listMentorRecords, listUserRecords, decryptMentoringText, getMentorByUserId, getMentoringThreadSummary,
+  getStateValue, DEFAULT_SYSTEM_STATE
+} = require('../pocketbase');
+const { translate, requestLanguage, normalizeLanguage } = require('../i18n');
 const { DECRYPTION_FAILED } = require('../mentoringCrypto');
+const { NOTIFICATION_TYPES, readNotificationSettings, mergeNotificationSettings } = require('../notificationPrefs');
+const { validTimeZone } = require('../dutyReminders');
+const usersRouter = require('../routes/users');
 const songbookRouter = require('../routes/songbook');
 const mentoringRouter = require('../routes/mentoring');
 const data = require('../v2Data');
 const {
-  notFound, needs, handle, bodyOf, textInput, requiredTextInput, wholeInput, boolInput, idInput, choiceInput,
-  sortable, searchOf, matchesSearch, limitOf, storedCursorOf, storedPage, page, v1Route, runV1
+  invalid, notFound, needs, handle, bodyOf, textInput, requiredTextInput, wholeInput, boolInput, idInput, choiceInput,
+  sortable, searchOf, matchesSearch, limitOf, storedCursorOf, storedPage, page, v1Route, runV1, runSteps
 } = require('./http');
 
 const { isoFromMillis } = data;
@@ -21,31 +28,140 @@ const uidOf = (req) => data.uidOf(req.user);
 
 // --- Who am I, the groups --------------------------------------------------------------------------------------------
 
-router.get(`${BASE}/me`, verifyToken, handle(async (req, res) => {
+/** The signed-in person [user] (req.user, or as a change of /me left it) as GET /me answers. */
+async function meOf(user) {
   const groups = await listGroupRecords(context.appConfig).catch(() => []);
-  const mine = new Set(req.user.groups || []);
-  res.json({
-    id: uidOf(req),
-    email: req.user.email || '',
-    firstName: req.user.firstName || '',
-    lastName: req.user.lastName || '',
-    name: req.user.name || '',
-    isAdmin: req.user.admin === true,
-    isOwner: req.user.owner === true,
-    permissions: req.user.permissions || [],
+  const mine = new Set(user.groups || []);
+  const permissions = user.permissions || [];
+  return {
+    id: data.uidOf(user),
+    email: user.email || '',
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    name: user.name || '',
+    isAdmin: user.admin === true,
+    isOwner: user.owner === true,
+    permissions,
     groups: groups.filter((group) => mine.has(group.id) || mine.has(group.name)).map((group) => ({ id: group.id, name: group.name })),
-    language: req.user.language || null,
-    timeZone: req.user.timeZone || null,
+    language: user.language || null,
+    timeZone: user.timeZone || null,
+    // Which messages reach the person, and how: the two channels and the kinds of message for each
+    notificationSettings: readNotificationSettings(user),
     // What the person may do, as the apps decide what to offer (the server checks every call itself)
     can: {
-      viewFinances: req.user.canViewFinances === true,
-      manageFinances: req.user.canManageFinances === true,
-      manageEvents: req.user.canManageEvents === true || (req.user.permissions || []).includes('manage_events'),
-      manageMentoring: req.user.canManageMentoring === true || (req.user.permissions || []).includes('manage_mentoring'),
-      manageSongbook: (req.user.permissions || []).includes('manage_songbook'),
-      useAi: req.user.canAccessAi === true || (req.user.permissions || []).includes('access_ai')
+      viewFinances: user.canViewFinances === true,
+      manageFinances: user.canManageFinances === true,
+      manageEvents: user.canManageEvents === true || permissions.includes('manage_events'),
+      manageMentoring: user.canManageMentoring === true || permissions.includes('manage_mentoring'),
+      manageSongbook: permissions.includes('manage_songbook'),
+      useAi: user.canAccessAi === true || permissions.includes('access_ai'),
+      manageRegistrationCode: user.canManageRegistrationCode === true
     }
-  });
+  };
+}
+
+router.get(`${BASE}/me`, verifyToken, handle(async (req, res) => {
+  res.json(await meOf(req.user));
+}));
+
+/** The notification settings a change of /me sends, checked: channels, and the kinds of message for push and e-mail. */
+function notificationSettingsInput(value) {
+  const name = 'notificationSettings';
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('{name} must be an object.', { name }, name);
+  const switches = (source, keys, prefix) => {
+    if (source === undefined) return undefined;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) throw invalid('{name} must be an object.', { name: prefix }, prefix);
+    // Kinds a newer server knows and this one does not are left alone
+    return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, boolInput(source[key], `${prefix}.${key}`)]));
+  };
+  const settings = {};
+  for (const [key, keys] of [['channels', ['push', 'email']], ['push', NOTIFICATION_TYPES], ['email', NOTIFICATION_TYPES]]) {
+    const checked = switches(value[key], keys, `${name}.${key}`);
+    if (checked) settings[key] = checked;
+  }
+  return settings;
+}
+
+// Changes what is the person's own to choose: which messages reach them (notificationSettings: channels, push, email -
+// what it does not name stays as it is), their time zone (duty reminders come in it) and their language
+router.patch(`${BASE}/me`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
+  const body = bodyOf(req);
+  const value = {};
+  if (body.notificationSettings !== undefined) value.notificationSettings = notificationSettingsInput(body.notificationSettings);
+  if (body.timeZone !== undefined) {
+    value.timeZone = typeof body.timeZone === 'string' ? validTimeZone(body.timeZone) : '';
+    if (!value.timeZone) throw invalid('timeZone must be a time zone such as Europe/Berlin.', null, 'timeZone');
+  }
+  if (body.language !== undefined) {
+    value.language = typeof body.language === 'string' ? normalizeLanguage(body.language) : null;
+    if (!value.language) throw invalid('language must be a language of the app, such as de or en.', null, 'language');
+  }
+  // The same change as the apps' through the old API: what the person may change of their own account, merged
+  if (Object.keys(value).length) {
+    await writeLogicalPath(`users/${uidOf(req)}`, value, req.user, 'patch');
+    broadcastDataUpdate();
+  }
+  const user = { ...req.user, ...value };
+  if (value.notificationSettings) user.notificationSettings = mergeNotificationSettings(req.user, value.notificationSettings);
+  res.json(await meOf(user));
+}));
+
+// --- The registration code, the profile pictures, reports -----------------------------------------------------------
+
+const managesRegistrationCode = (req) => needs(req.user.canManageRegistrationCode === true, 'Registration code management rights required');
+
+// The code people register with - for those who manage it
+router.get(`${BASE}/registration-code`, verifyToken, handle(async (req, res) => {
+  managesRegistrationCode(req);
+  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  res.json({ code: String(system?.inviteCode || '') });
+}));
+
+// A new code, made by the server (six digits, as after every registration): the one before stops working
+router.post(`${BASE}/registration-code`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
+  managesRegistrationCode(req);
+  const code = String(crypto.randomInt(100000, 1000000));
+  await writeLogicalPath('system/inviteCode', code, req.user, 'set');
+  broadcastDataUpdate();
+  res.status(201).json({ code });
+}));
+
+const picturesRoute = v1Route(usersRouter, 'get', '/api/profile/pictures');
+const pictureRoute = v1Route(usersRouter, 'get', '/api/profile/picture/:uid');
+const pictureUploadRoute = v1Route(usersRouter, 'post', '/api/profile/picture');
+const reportRoute = v1Route(usersRouter, 'post', '/api/reports');
+
+// Who has a profile picture, with its version (it changes with the picture): lists ask only for those, under the
+// address with the version, which may be kept for good
+router.get(`${BASE}/pictures`, verifyToken, handle(async (req, res) => {
+  const { body } = await runV1(picturesRoute, req);
+  const items = Object.entries(body && typeof body === 'object' ? body : {}).map(([userId, version]) => ({ id: userId, userId, version }));
+  res.json(page(items, req, (item) => item.userId, { ascending: true }));
+}));
+
+// The picture of an account (JPEG; 204: it has none) - with ?v=<version> it may be kept for good
+router.get(`${BASE}/pictures/:id`, verifyToken, (req, res) => {
+  req.params.uid = req.params.id;
+  runSteps(pictureRoute, req, res);
+});
+
+// The person's own picture (multipart, field "picture": a JPEG, at most 5 MB) - answers its new version
+router.put(`${BASE}/me/picture`, verifyToken, (req, res) => {
+  const json = res.json.bind(res);
+  res.json = (body) => (res.statusCode < 400 && body?.success === true ? json({ userId: uidOf(req), version: body.version }) : json(body));
+  runSteps(pictureUploadRoute, req, res);
+});
+
+// Reports an AI reply (type ai, with the prompt) or a message of a mentoring conversation (type chat, with its
+// threadId) to the admins, who are told and review it
+router.post(`${BASE}/reports`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
+  const body = bodyOf(req);
+  const type = choiceInput(body.type, 'type', ['ai', 'chat']);
+  const report = { type, content: requiredTextInput(body, 'content', 4000), reason: body.reason === undefined ? '' : textInput(body, 'reason', 500) };
+  if (type === 'ai' && body.prompt !== undefined) report.prompt = textInput(body, 'prompt', 4000);
+  if (type === 'chat') report.threadId = idInput(body.threadId, 'threadId');
+  await runV1(reportRoute, req, { body: report });
+  res.status(204).end();
 }));
 
 router.get(`${BASE}/groups`, verifyToken, handle(async (req, res) => {
@@ -360,4 +476,7 @@ router.patch(`${BASE}/mentoring/threads/:id`, protectedActionRateLimit, verifyTo
 }));
 
 
-module.exports = { router, RESOURCES: ['me', 'groups', 'songs', 'prayers', 'mentoring/mentors', 'mentoring/profile', 'mentoring/application', 'mentoring/threads'] };
+module.exports = {
+  router,
+  RESOURCES: ['me', 'groups', 'registration-code', 'pictures', 'me/picture', 'reports', 'songs', 'prayers', 'mentoring/mentors', 'mentoring/profile', 'mentoring/application', 'mentoring/threads']
+};

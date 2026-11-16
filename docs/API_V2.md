@@ -90,9 +90,15 @@ Changes made through v2 are the same changes as through the web app: the balance
 | Method and path | What | Who |
 | --- | --- | --- |
 | `GET /api/v2` | the resources | signed in |
-| `GET /me` | the signed-in person: id, name, e-mail, `isAdmin`, `isOwner`, `permissions`, `groups`, `language`, `timeZone`, and `can` (`viewFinances`, `manageFinances`, `manageEvents`, `manageMentoring`, `manageSongbook`, `useAi` - what the app may offer; the server checks every call itself) | signed in |
+| `GET /me` | the signed-in person: id, name, e-mail, `isAdmin`, `isOwner`, `permissions`, `groups`, `language`, `timeZone`, `notificationSettings` (`channels`: `push`, `email`; `push` and `email`: for each kind of message - `duties`, `events`, `messages`, `requests`, `finances`, `reports` - whether it comes that way), and `can` (`viewFinances`, `manageFinances`, `manageEvents`, `manageMentoring`, `manageSongbook`, `useAi`, `manageRegistrationCode` - what the app may offer; the server checks every call itself) | signed in |
+| `PATCH /me` | what is the person's own to choose: `notificationSettings` (what it does not name stays as it is), `timeZone` (an IANA name such as `Europe/Berlin`: duty reminders come in it), `language` (`de`, `en`). Answers as `GET /me` | signed in |
+| `PUT /me/picture` | the own profile picture (multipart, field `picture`: a JPEG, at most 5 MB). Answers `{ userId, version }` | signed in |
+| `GET /pictures` | who has a profile picture, by account id: `userId`, `version` (it changes with the picture) | signed in |
+| `GET /pictures/:id` | the picture of an account (JPEG; `204`: it has none) - with `?v=<version>` it may be kept for good | signed in |
 | `GET /groups` | the groups with their permissions, by name | signed in |
 | `GET /people` | the people a duty can go to, by name (`?q=`): `id`, `name`, `groups`, `email` (only for those who organise events) | signed in |
+| `GET /registration-code`, `POST /registration-code` | the code people register with (`{ code }`) / a new one, made by the server (the one before stops working) | *manage registration code* |
+| `POST /reports` | reports an AI reply (`type: ai`, `content`, `prompt`) or a message of a mentoring conversation (`type: chat`, `content`, `threadId`) to the admins - with a `reason` (500); `content` and `prompt` at most 4,000 characters. Answers `204` | signed in |
 
 ### The books
 
@@ -145,9 +151,9 @@ Changes made through v2 are the same changes as through the web app: the balance
 
 | Method and path | What | Who |
 | --- | --- | --- |
-| `GET /events` | the events the person sees, in the order they take place (`?from=`, `?to=`, `?q=`), with `registeredCount`, `waitlistCount`, `minimumReached`, `myRegistration` | signed in |
-| `GET /events/:id` | one event, with `canEdit`; `duties` and `program` for those who see the duty roster | signed in, if they see it |
-| `POST /events` | an event: `title`, `date`, `endDate`, `startTime`, `endTime`, `location`, `description`, `requiresRegistration`, `minParticipants`, `maxParticipants` (0: no limit; the minimum no higher than the places), `targetGroups` (names or ids; empty: everyone), `imageUrl` (from `POST /events/images`). Those who manage events also `kind` (`event`, `termin`), `isPinned` and `recurrence` (`{ rule: weekly, biweekly or monthly, count: 2 to 52 }`). Answers the first date with `seriesCount`; the target groups are told | signed in |
+| `GET /events` | the events the person sees, in the order they take place (`?from=`, `?to=`, `?q=`), with `registeredCount`, `waitlistCount`, `minimumReached`, `isFull` (every place taken: a sign-up goes onto the waiting list), `myRegistration`, `createdByName`, `canEdit`, `shareToken` (while the event is shared: the link `/?share=<shareToken>` shows it to people without an account) and `duties` - the duty roster for those who see it (`null` for everyone else): `id`, `section`, `roleName`, `status` (`open`, `requested`, `declined`, `assigned`, `confirmed`), `notes`, `assignedGroupId`, `assignedUserId`, `requestedUserId`, `requestedById`, each with its name (`assignedGroupName`, `assignedUserName`, `requestedUserName`, `requestedByName`) | signed in |
+| `GET /events/:id` | one event, as the list has it; the `program` (the order of service: `items`, `updatedAt`) for those who see the duty roster | signed in, if they see it |
+| `POST /events` | an event: `title`, `date`, `endDate`, `startTime`, `endTime`, `location`, `description`, `requiresRegistration`, `minParticipants`, `maxParticipants` (0: no limit; the minimum no higher than the places), `targetGroups` (names or ids; empty: everyone), `imageUrl` (from `POST /events/images`). `duties` (at most 50 it starts with - every date of a series gets them: `roleName`, `section`, `notes`, `assignedGroupId`). Those who manage events also `kind` (`event`, `termin`), `isPinned` and `recurrence` (`{ rule: weekly, biweekly or monthly, count: 2 to 52 }`). Answers the first date with `seriesCount`; the target groups are told | signed in |
 | `PATCH /events/:id` | change it - also `status` (`scheduled`, `cancelled`) and `isPublic` (shared with people without an account). More places move the waiting list up | its creator, those who manage events |
 | `DELETE /events/:id` | delete it with its order of service | its creator, those who manage events |
 | `PUT /events/:id/registration` | sign up: a place, or the waiting list when it is fully booked (`myRegistration` of the answer says which) | who sees the event |

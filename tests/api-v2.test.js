@@ -471,6 +471,11 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     await refused(v2('max', 'POST', '/events', { title: 'Termin', date: day(31), kind: 'termin' }), 403, 'forbidden');
     assert.equal((await refused(v2('max', 'POST', '/events', { title: 'Zeit', date: day(31), startTime: '25:00' }), 400, 'invalid')).field, 'startTime');
     assert.equal((await refused(v2('max', 'POST', '/events', { title: 'Plätze', date: day(31), minParticipants: 5, maxParticipants: 2 }), 400, 'invalid')).code, 'invalid');
+    // The duties an event starts with
+    const withDuties = await ok(v2('max', 'POST', '/events', { title: 'Putztag', date: day(32), duties: [{ roleName: 'Aufbau', section: 'Vorher' }, { roleName: 'Abbau' }] }));
+    assert.deepEqual(withDuties.duties.map((entry) => [entry.roleName, entry.status]), [['Aufbau', 'open'], ['Abbau', 'open']]);
+    assert.equal((await refused(v2('max', 'POST', '/events', { title: 'Ohne', date: day(32), duties: [{ roleName: ' ' }] }), 400, 'invalid')).field, 'duties.0.roleName');
+    assert.equal((await v2('max', 'DELETE', `/events/${withDuties.id}`)).status, 204);
     const changed = await ok(v2('max', 'PATCH', `/events/${created.id}`, { title: 'Grillfest' }));
     assert.equal(changed.title, 'Grillfest');
     await refused(v2('mia', 'PATCH', `/events/${created.id}`, { title: 'Meins' }), 403, 'forbidden');
@@ -486,6 +491,22 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     // A duty asked of Mia: she sees the request, accepts it, gives it back; Ella takes it
     const duty = await ok(v2('max', 'POST', `/events/${created.id}/duties`, { roleName: 'Grill', section: 'Essen', requestedUserId: uids.mia, sendEmail: false }));
     assert.deepEqual([duty.status, duty.requestedUserId, duty.eventId], ['requested', uids.mia, created.id]);
+    // The list carries who made it, whether it is full and the roster with the names, as the event alone does - the
+    // roster only for those who see it
+    const names = { max: (await ok(v2('max', 'GET', '/me'))).name, mia: (await ok(v2('mia', 'GET', '/me'))).name };
+    const listed = async (who) => (await ok(v2(who, 'GET', `/events?from=${day(30)}&to=${day(30)}`))).items.find((event) => event.id === created.id);
+    const forMax = await listed('max');
+    assert.deepEqual([forMax.createdByName, forMax.canEdit, forMax.isFull, forMax.shareToken], [names.max, true, true, null]);
+    const listedDuty = forMax.duties.find((entry) => entry.id === duty.id);
+    assert.deepEqual([listedDuty.requestedUserName, listedDuty.requestedByName, listedDuty.assignedUserName], [names.mia, names.max, '']);
+    assert.deepEqual([duty.requestedUserName, duty.requestedByName], [names.mia, names.max], 'a duty answers with the names, too');
+    assert.equal((await listed('ella')).duties, null, 'Ella has no duty and does not organise it');
+    assert.equal((await listed('mia')).duties.length, 1, 'Mia was asked');
+    // Shared with people without an account: the key of the link while it is shared
+    const shared = await ok(v2('max', 'PATCH', `/events/${created.id}`, { isPublic: true }));
+    assert.match(String(shared.shareToken), /^[A-Za-z0-9_-]{8,}$/);
+    assert.equal((await listed('mia')).shareToken, shared.shareToken);
+    assert.equal((await ok(v2('max', 'PATCH', `/events/${created.id}`, { isPublic: false }))).shareToken, null);
     assert.ok((await ok(v2('mia', 'GET', '/duty-requests'))).items.some((request) => request.dutyId === duty.id));
     await refused(v2('ella', 'POST', `/duties/${duty.id}/answer`, { answer: 'accept' }), 403, 'forbidden');
     const accepted = await ok(v2('mia', 'POST', `/duties/${duty.id}/answer`, { answer: 'accept' }));
@@ -617,6 +638,65 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     // /me says what the person may do
     const me = await ok(v2('treasurer', 'GET', '/me'));
     assert.deepEqual([me.can.manageFinances, me.can.viewFinances, me.can.manageEvents], [true, true, false]);
+  });
+
+  // --- Who is signed in --------------------------------------------------------------------------------------------
+
+  test('the own account through v2: notifications, time zone and language; the registration code; profile pictures; reports', async () => {
+    await account('rita', 'Rita');
+    const before = await ok(v2('rita', 'GET', '/me'));
+    assert.deepEqual(before.notificationSettings.channels, { push: true, email: false });
+    assert.equal(before.can.manageRegistrationCode, false);
+
+    // What a change does not name stays as it was; every value is checked
+    const changed = await ok(v2('rita', 'PATCH', '/me', { notificationSettings: { channels: { email: true }, email: { finances: false } }, timeZone: 'Europe/Berlin', language: 'de' }));
+    assert.deepEqual(changed.notificationSettings.channels, { push: true, email: true });
+    assert.deepEqual([changed.notificationSettings.email.finances, changed.notificationSettings.email.duties, changed.notificationSettings.push.finances], [false, true, true]);
+    assert.deepEqual([changed.timeZone, changed.language], ['Europe/Berlin', 'de']);
+    const again = await ok(v2('rita', 'GET', '/me'));
+    assert.deepEqual([again.notificationSettings.email.finances, again.notificationSettings.channels.email, again.timeZone], [false, true, 'Europe/Berlin']);
+    // The old API reads the same choice (the flat keys are the push choice for older apps)
+    const v1User = (await ok(call('rita', 'GET', '/api/auth/me'))).user;
+    assert.deepEqual([v1User.notificationSettings.channels.email, v1User.notificationSettings.email.finances, v1User.timeZone], [true, false, 'Europe/Berlin']);
+    assert.equal((await refused(v2('rita', 'PATCH', '/me', { timeZone: 'Mars/Olympus' }), 400, 'invalid')).field, 'timeZone');
+    assert.equal((await refused(v2('rita', 'PATCH', '/me', { notificationSettings: { push: { duties: 'yes' } } }), 400, 'invalid')).field, 'notificationSettings.push.duties');
+    await refused(v2('rita', 'PATCH', '/me', { language: 'tlh' }), 400, 'invalid');
+
+    // The registration code: for those who manage it - a new one made by the server replaces the one before
+    await refused(v2('rita', 'GET', '/registration-code'), 403, 'forbidden');
+    const desk = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Empfang', permissions: ['manage_registration_code'] }));
+    await ok(call('owner', 'PUT', `/api/admin/users/${uids.rita}/groups`, { groups: [desk.id || desk.group?.id] }));
+    assert.equal((await ok(v2('rita', 'GET', '/me'))).can.manageRegistrationCode, true);
+    const made = await ok(v2('rita', 'POST', '/registration-code'));
+    assert.match(made.code, /^\d{6}$/);
+    assert.equal((await ok(v2('rita', 'GET', '/registration-code'))).code, made.code);
+    assert.equal(await ok(call('rita', 'GET', `/api/db?path=${encodeURIComponent('system/inviteCode')}`)), made.code, 'the code the old API reads');
+
+    // A profile picture: listed with its version, given under its address; only JPEG
+    const form = (bytes, type) => {
+      const data = new FormData();
+      data.append('picture', new Blob([bytes], { type }), 'ich.jpg');
+      return data;
+    };
+    const jpeg = Buffer.from('ffd8ffe000104a46494600010100000100010000ffd9', 'hex');
+    const uploaded = await ok(call('rita', 'PUT', '/api/v2/me/picture', form(jpeg, 'image/jpeg'), { form: true }));
+    assert.equal(uploaded.userId, uids.rita);
+    assert.ok(Number.isFinite(uploaded.version));
+    const pictures = (await ok(v2('max', 'GET', '/pictures?limit=500'))).items;
+    assert.ok(pictures.some((entry) => entry.userId === uids.rita && Number.isFinite(entry.version)));
+    const picture = await v2('max', 'GET', `/pictures/${uids.rita}?v=${uploaded.version}`);
+    assert.equal(picture.status, 200);
+    assert.deepEqual(picture.buffer, jpeg);
+    assert.equal((await v2('max', 'GET', `/pictures/${uids.max}`)).status, 204, 'no picture');
+    await refused(call('rita', 'PUT', '/api/v2/me/picture', form(PNG, 'image/png'), { form: true }), 400, 'invalid');
+
+    // A report reaches the admins; what it reports is checked, not cut
+    assert.equal((await v2('rita', 'POST', '/reports', { type: 'ai', content: 'Eine seltsame Antwort', reason: 'Falsch', prompt: 'Frage' })).status, 204);
+    assert.ok((await ok(call('owner', 'GET', '/api/admin/reports'))).reports.some((report) => report.content === 'Eine seltsame Antwort' && report.reportedBy === uids.rita));
+    await refused(v2('rita', 'POST', '/reports', { type: 'ai', content: 'x'.repeat(4001) }), 400, 'invalid');
+    await refused(v2('rita', 'POST', '/reports', { type: 'spam', content: 'x' }), 400, 'invalid');
+    const index = await ok(v2('rita', 'GET', ''));
+    for (const resource of ['registration-code', 'pictures', 'me/picture', 'reports']) assert.ok(index.resources.includes(resource), resource);
   });
 });
 

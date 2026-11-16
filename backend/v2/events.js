@@ -13,7 +13,7 @@ const eventsRouter = require('../routes/events');
 const data = require('../v2Data');
 const {
   invalid, forbidden, notFound, handle, bodyOf, dayInput, optionalDayInput, timeInput, wholeInput, boolInput, textInput, requiredTextInput,
-  idInput, choiceInput, daysOf, searchOf, matchesSearch, sortable, page, v1Route, runV1
+  idInput, choiceInput, daysOf, searchOf, matchesSearch, sortable, page, v1Route, runV1, runSteps
 } = require('./http');
 
 const { isoFromMillis, eventOf, seesEvent } = data;
@@ -23,7 +23,21 @@ const uidOf = (req) => data.uidOf(req.user);
 
 // --- Reading -------------------------------------------------------------------------------------------------------
 
-const dutyOf = (duty) => ({
+/**
+ * The names of the accounts and groups (by id) that duties and events name, read once per answer: an account by its
+ * name (never its e-mail address), a group by its name.
+ */
+async function namesOf() {
+  const [users, groups] = await Promise.all([listUserRecords(context.appConfig).catch(() => []), listGroupRecords(context.appConfig).catch(() => [])]);
+  return {
+    users: new Map(users.map((user) => [user.id, user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()])),
+    groups: new Map(groups.map((group) => [group.id, group.name]))
+  };
+}
+
+// The names go with the ids, as the apps show them ('' when the account is gone; a group kept by its name in an older
+// record shows that name)
+const dutyOf = (duty, names) => ({
   id: duty.id,
   eventId: duty.event || null,
   section: duty.section || '',
@@ -33,47 +47,67 @@ const dutyOf = (duty) => ({
   requestedUserId: duty.requestedUser || null,
   requestedById: duty.requestedBy || null,
   status: duty.status || 'open',
-  notes: duty.notes || ''
+  notes: duty.notes || '',
+  assignedGroupName: duty.assignedGroup ? names.groups.get(duty.assignedGroup) || duty.assignedGroup : '',
+  assignedUserName: duty.assignedUser ? names.users.get(duty.assignedUser) || '' : '',
+  requestedUserName: duty.requestedUser ? names.users.get(duty.requestedUser) || '' : '',
+  requestedByName: duty.requestedBy ? names.users.get(duty.requestedBy) || '' : ''
 });
 
-// In the order they take place; ?q= finds them by title, place or description. Only the sign-ups and guests of the
-// events of the page are read (seatsOf)
-router.get(`${BASE}/events`, verifyToken, handle(async (req, res) => {
+// The duties of the events [eventIds], by event id - only theirs (as seatsOf reads the sign-ups of a page)
+const DUTIES_AT_ONCE = 100;
+async function dutiesOf(eventIds) {
+  const duties = new Map(eventIds.map((id) => [id, []]));
+  const ids = [...duties.keys()];
+  for (let start = 0; start < ids.length; start += DUTIES_AT_ONCE) {
+    for (const duty of await eventsStore.listEventDuties(context.appConfig, client.pbFilterIn('event', ids.slice(start, start + DUTIES_AT_ONCE)))) duties.get(duty.event)?.push(duty);
+  }
+  return duties;
+}
+
+/**
+ * [event] as [req]'s person sees it: who made it (createdByName), whether they may edit it, and its duty roster where
+ * they see it (duties: null where they do not) - the same in the list and alone.
+ */
+function eventView(req, event, { registrations, guests, duties }, names) {
   const uid = uidOf(req);
+  const mine = registrations.find((reg) => reg.user === uid && reg.status !== 'cancelled');
+  const seesPlan = canUserAccessEventDutyPlan(req.user, event, duties, names.groups);
+  return {
+    ...eventOf(event, seatCounts(registrations, guests), mine),
+    createdByName: names.users.get(event.createdBy) || '',
+    canEdit: event.createdBy === uid || canManageEvents(req),
+    duties: seesPlan ? duties.map((duty) => dutyOf(duty, names)) : null
+  };
+}
+
+// In the order they take place; ?q= finds them by title, place or description. Only the sign-ups, guests and duties
+// of the events of the page are read (seatsOf, dutiesOf)
+router.get(`${BASE}/events`, verifyToken, handle(async (req, res) => {
   const { from, to } = daysOf(req);
   const words = searchOf(req);
   const events = (await data.visibleEvents(req.user, { from, to })).filter((event) => matchesSearch(words, [event.title, event.location, event.description]));
   const { items, nextCursor } = page(events, req, (event) => `${event.date} ${event.startTime || ''}`, { ascending: true });
-  const seats = await data.seatsOf(items.map((event) => event.id));
+  const ids = items.map((event) => event.id);
+  const [seats, duties, names] = await Promise.all([data.seatsOf(ids), dutiesOf(ids), namesOf()]);
   res.json({
-    items: items.map((event) => {
-      const { registrations, guests } = seats.get(event.id);
-      const mine = registrations.find((reg) => reg.user === uid && reg.status !== 'cancelled');
-      return eventOf(event, seatCounts(registrations, guests), mine);
-    }),
+    items: items.map((event) => eventView(req, event, { ...seats.get(event.id), duties: duties.get(event.id) }, names)),
     nextCursor
   });
 }));
 
 /** The event [id] as [req]'s person sees it - with the duties and the order of service where they see the roster. */
 async function eventAnswer(req, id) {
-  const uid = uidOf(req);
   const event = typeof id === 'string' && id ? await eventsStore.getEventRecord(context.appConfig, id) : null;
   if (!event || !seesEvent(req.user, event)) throw notFound('There is no such event.');
   const is = client.pbFilterEquals('event', event.id);
-  const [registrations, guests, duties, groups] = await Promise.all([
+  const [registrations, guests, duties, names] = await Promise.all([
     eventsStore.listEventRegistrations(context.appConfig, is), eventsStore.listEventGuests(context.appConfig, is), eventsStore.listEventDuties(context.appConfig, is),
-    listGroupRecords(context.appConfig).catch(() => [])
+    namesOf()
   ]);
-  const mine = registrations.find((reg) => reg.user === uid && reg.status !== 'cancelled');
-  const seesPlan = canUserAccessEventDutyPlan(req.user, event, duties, new Map(groups.map((group) => [group.id, group.name])));
-  const program = seesPlan ? await eventsStore.programStore.get(context.appConfig, event.id) : null;
-  return {
-    ...eventOf(event, seatCounts(registrations, guests), mine),
-    canEdit: event.createdBy === uid || canManageEvents(req),
-    duties: seesPlan ? duties.map(dutyOf) : null,
-    program: seesPlan && program ? { items: program.items || [], updatedAt: isoFromMillis(program.updatedAt) } : null
-  };
+  const view = eventView(req, event, { registrations, guests, duties }, names);
+  const program = view.duties ? await eventsStore.programStore.get(context.appConfig, event.id) : null;
+  return { ...view, program: view.duties && program ? { items: program.items || [], updatedAt: isoFromMillis(program.updatedAt) } : null };
 }
 
 const canManageEvents = (req) => req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
@@ -121,6 +155,28 @@ function eventInput(body, { isNew }) {
   return v1;
 }
 
+/**
+ * The duties a new event starts with - each date of a series gets them, as in v1: roleName, section, notes, and the
+ * group that has it (assignedGroupId; it is told once, for the first date).
+ */
+function newDutiesInput(value) {
+  if (!Array.isArray(value) || value.length > 50) throw invalid('duties must be a list of at most 50 duties.', null, 'duties');
+  return value.map((duty, index) => {
+    const field = `duties.${index}`;
+    if (!duty || typeof duty !== 'object' || Array.isArray(duty)) throw invalid('{name} must be an object.', { name: field }, field);
+    const text = (key, limit) => {
+      if (duty[key] === undefined || duty[key] === null) return '';
+      if (typeof duty[key] !== 'string') throw invalid('{name} must be text.', { name: `${field}.${key}` }, `${field}.${key}`);
+      if (duty[key].length > limit) throw invalid('{name} is at most {limit} characters long.', { name: `${field}.${key}`, limit }, `${field}.${key}`);
+      return duty[key];
+    };
+    const roleName = text('roleName', 120);
+    if (!roleName.trim()) throw invalid('{name} is needed.', { name: `${field}.roleName` }, `${field}.roleName`);
+    const group = duty.assignedGroupId === undefined || duty.assignedGroupId === null || duty.assignedGroupId === '' ? '' : idInput(duty.assignedGroupId, `${field}.assignedGroupId`);
+    return { roleName, section: text('section', 120), notes: text('notes', 1000), ...(group ? { assignedGroup: group } : {}) };
+  });
+}
+
 /** Appointments, pinned and repeated events are for those who manage events (v1 left them out silently). */
 function managersOnly(req, v1) {
   if (!canManageEvents(req) && (v1.eventType === 'termin' || v1.isPinned === true || v1.isRecurring === true)) {
@@ -142,6 +198,7 @@ router.post(`${BASE}/events`, protectedActionRateLimit, verifyToken, handle(asyn
     v1.recurringRule = choiceInput(body.recurrence.rule, 'recurrence.rule', RECURRENCE_RULES);
     v1.recurringCount = wholeInput(body.recurrence.count, 'recurrence.count', 2, 52);
   }
+  if (body.duties !== undefined && body.duties !== null) v1.duties = newDutiesInput(body.duties);
   managersOnly(req, v1);
   const { body: created } = await runV1(createRoute, req, { body: v1 });
   res.status(201).json({ ...(await eventAnswer(req, created.event.id)), seriesCount: created.count || 1 });
@@ -246,7 +303,7 @@ const candidatesRoute = v1Route(eventsRouter, 'get', '/api/events/candidates');
 async function dutyAnswer(id) {
   const duty = await eventsStore.getEventDuty(context.appConfig, id);
   if (!duty) throw notFound('There is no such duty.');
-  return dutyOf(duty);
+  return dutyOf(duty, await namesOf());
 }
 
 const optionalId = (body, key) => (body[key] === undefined || body[key] === null || body[key] === '' ? '' : idInput(body[key], key));
@@ -365,20 +422,6 @@ const imageRoute = v1Route(eventsRouter, 'post', '/api/events/upload-image');
 const feedRoute = v1Route(eventsRouter, 'get', '/api/user/calendar-feed');
 const feedResetRoute = v1Route(eventsRouter, 'post', '/api/user/calendar-feed/reset');
 const icsRoute = v1Route(eventsRouter, 'get', '/api/events/:id/export.ics');
-
-/** Runs the steps of an old API's route on this very request (a file goes out or comes in as v1 sends and takes it). */
-function runSteps(steps, req, res) {
-  const queue = [...steps];
-  const next = (err) => {
-    if (err) {
-      if (!res.headersSent) res.status(err.status || 500).json({ error: err.status ? err.message : '' });
-      return;
-    }
-    const step = queue.shift();
-    if (step) Promise.resolve(step(req, res, next)).catch(next);
-  };
-  next();
-}
 
 // A picture for an event (multipart, field "image"): its url goes into the event's imageUrl
 router.post(`${BASE}/events/images`, verifyToken, (req, res) => {
