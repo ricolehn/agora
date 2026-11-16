@@ -391,9 +391,10 @@ removed automatically; the history of the fees and fresh starts is kept for good
 keeps that their income status changed, not to what.
 
 **For app developers.** [API v2](docs/API_V2.md) (`/api/v2/…`) hands out the data in the new shapes: record ids, money in
-whole cents, ISO times, pages with a cursor, and changes that name the version they are based on (409 instead of an
-unseen overwrite); finance writes go through the same code as the web app. The old API (`/api/db?path=…`) answers
-exactly as before, for every app version. A list saved as
+whole cents, ISO times, every list in pages with a cursor, every error as `{ error: { code, message } }`, and changes
+that name the version they are based on (409 instead of an unseen overwrite); finance writes go through the same code
+as the web app. It is stable: it only grows, and whatever would break an app comes as a new version next to it. The
+old API (`/api/db?path=…`) answers exactly as before, for every app version. A list saved as
 a whole (donations, expenses) can send the version it read (`POST /api/db/transaction` with `currentVersion`, or
 `version` with `PUT /api/db`): a list that changed meanwhile is then refused with 409 instead of overwritten.
 

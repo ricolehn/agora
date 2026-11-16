@@ -40,6 +40,9 @@ RUN mkdir -p /app/data /app/db /app/html-seed && \
 COPY --chown=node:node docker-entrypoint.sh /app/
 RUN dos2unix /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
+# Production mode: an error Express answers itself never shows its stack trace
+ENV NODE_ENV=production
+
 EXPOSE 3000
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

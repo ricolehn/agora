@@ -264,7 +264,7 @@ The finance change log: who changed what and when. Kept for the bookkeeping peri
 | created | moment (set by the database) | When the record was created (set by the database). |
 | updated | moment (set by the database) | When the record was last changed (set by the database). |
 
-Indexes: `(area, at)`, `(member)`
+Indexes: `(area, at, id)`, `(member, at, id)`, `(at, id)`
 
 ### finance_ledger (view)
 

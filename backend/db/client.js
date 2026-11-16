@@ -362,6 +362,19 @@ async function getFirstRecord(collectionName, filter, appConfig, sort = '') {
   return result.items?.[0] || null;
 }
 
+/**
+ * The first [perPage] records of [collectionName] that match [filter], in [sort] order - one page, nothing counted.
+ * For pages that start after an item (API v2): the filter says where, an index in the sort's order keeps it short.
+ */
+async function listRecordsPage(collectionName, filter, appConfig, { sort = '', perPage = 100 } = {}) {
+  const token = await authenticateSuperuser(appConfig);
+  const params = new URLSearchParams({ page: '1', perPage: String(perPage), skipTotal: '1' });
+  if (filter) params.set('filter', filter);
+  if (sort) params.set('sort', sort);
+  const result = await pocketBaseRequest(`/api/collections/${collectionName}/records?${params.toString()}`, { token });
+  return result.items || [];
+}
+
 // --- Values of json fields ---
 // PocketBase reads a string written to a json field as JSON when it is JSON: "1771345242762" comes back as the number
 // 1771345242762, "true" as true, "[1]" as a list. The web app gives standing orders ids like "1771345242762": they came
@@ -582,6 +595,7 @@ module.exports = {
   pbFilterEquals,
   pbFilterIn,
   getFirstRecord,
+  listRecordsPage,
   getRecord,
   newRecordId,
   createRecord,

@@ -187,9 +187,12 @@ const collections = [
       json('details', 'The change: the values before and after, or the log entry of a fee change or fresh start.'),
       ...automaticTimes()
     ],
+    // The log is read newest first, a page at a time (API v2, the AI): each index ends in (at, id), the order of its
+    // pages - a page is read from where the one before ended instead of sorting the whole log for every page
     indexes: [
-      'CREATE INDEX idx_finance_changes_area_at ON finance_changes (area, at)',
-      'CREATE INDEX idx_finance_changes_member ON finance_changes (member)'
+      'CREATE INDEX idx_finance_changes_area_at ON finance_changes (area, at, id)',
+      'CREATE INDEX idx_finance_changes_member ON finance_changes (member, at, id)',
+      'CREATE INDEX idx_finance_changes_at ON finance_changes (at, id)'
     ]
   }
 ];

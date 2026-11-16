@@ -490,7 +490,8 @@ async function changesLookup(args, user, limits) {
   const area = CHANGE_AREAS.includes(args.area) ? args.area : null;
   const search = wordsOf(args.search);
   const keys = groupByOf(args.groupBy, ['year', 'month', 'area', 'by']);
-  const [changes, members] = await Promise.all([data.financeChanges({ area }), data.memberRowsFor(user)]);
+  // Only the period asked for is read (the log grows with every booking and is kept ten years)
+  const [changes, members] = await Promise.all([data.financeChanges({ area, from, to }), data.memberRowsFor(user)]);
   const nameOf = new Map(members.map((row) => [row.id, row.name || '']));
   const names = wordsOf(args.members);
   const entries = changes

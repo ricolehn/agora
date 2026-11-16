@@ -1587,7 +1587,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal(me.id, uids.treasurer);
     assert.ok(me.permissions.includes('manage_finances'));
     assert.deepEqual((await v2('max', 'GET', '/nothing-here')).body, { error: { code: 'not_found', message: 'There is no such resource in API v2.' } });
-    assert.equal((await v2(null, 'GET', '/members')).status, 401);
+    const unsigned = await v2(null, 'GET', '/members');
+    assert.deepEqual([unsigned.status, unsigned.body.error?.code], [401, 'unauthorized']);
 
     // Members: the treasurer sees all, a member only their own
     const all = await ok(v2('treasurer', 'GET', '/members?limit=500'));
@@ -1610,10 +1611,24 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal(changed.amountCents, 3000);
     assert.equal(changed.id, created.id, 'the payment keeps its id');
     assert.ok((await ok(call('treasurer', 'GET', `/api/db?path=people/${uids.mia}`))).payments.some((payment) => payment.amount === 30 && payment.description === 'Über v2'));
-    // Booked for a request: once, however often it is sent
+    // Booked for a request: once, however often it is sent. Sent again - with the version it was first sent with, as
+    // after an answer that got lost, or with the current one - it answers with that booking (it answered 409 "read it
+    // again and repeat the change", and a client doing just that was refused for ever)
     const forRequest = { memberId: mia.id, memberVersion: changed.memberVersion, amountCents: 1000, date: '2026-05-06', description: 'Antrag', requestId: 'v2-test-request' };
-    const booked = await ok(v2('treasurer', 'POST', '/payments', forRequest));
-    assert.equal((await v2('treasurer', 'POST', '/payments', { ...forRequest, memberVersion: booked.memberVersion })).status, 409);
+    const first = await v2('treasurer', 'POST', '/payments', forRequest);
+    assert.equal(first.status, 201);
+    const booked = first.body;
+    for (const memberVersion of [forRequest.memberVersion, booked.memberVersion]) {
+      const again = await v2('treasurer', 'POST', '/payments', { ...forRequest, memberVersion });
+      assert.deepEqual([again.status, again.body.id, again.body.memberVersion], [200, booked.id, booked.memberVersion]);
+    }
+    // Another amount or another member for the same request is no repetition
+    assert.equal((await v2('treasurer', 'POST', '/payments', { ...forRequest, memberVersion: booked.memberVersion, amountCents: 999 })).status, 409);
+    const maxMember = all.items.find((member) => member.userId === uids.max);
+    assert.equal((await v2('treasurer', 'POST', '/payments', { ...forRequest, memberId: maxMember.id, memberVersion: maxMember.version })).status, 409);
+    // Every payment in an answer carries its member's version
+    assert.ok((await ok(v2('treasurer', 'GET', `/payments?member=${mia.id}`))).items.every((payment) => payment.memberVersion === booked.memberVersion));
+    assert.ok((await ok(v2('treasurer', 'GET', `/members/${mia.id}`))).payments.every((payment) => payment.memberVersion === booked.memberVersion));
     // Pages: the next one starts after the last item of the one before
     const page1 = await ok(v2('treasurer', 'GET', `/payments?member=${mia.id}&limit=1`));
     assert.equal(page1.items.length, 1);
@@ -1640,11 +1655,22 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await v2('treasurer', 'DELETE', `/donations/${donation.id}?listVersion=${encodeURIComponent(donationNow.listVersion)}`)).status, 204);
     assert.equal((await v2('max', 'GET', '/donations')).status, 403);
 
-    // Requests: a member asks, the treasurer decides once
+    // Requests: a member asks, the treasurer decides once. A request names its member by the record id, as everything
+    // else in v2 does (memberId, memberName; it was memberKey and personName)
     const asked = await ok(v2('max', 'POST', '/requests', { type: 'payment', details: { amount: '12.5', date: '2026-05-09', note: 'v2' } }));
     assert.equal(asked.status, 'pending');
     assert.equal(asked.amountCents, 1250);
+    assert.deepEqual([asked.memberId, asked.memberName], [maxMember.id, maxMember.name]);
+    assert.ok(!('memberKey' in asked) && !('personName' in asked));
     assert.ok((await ok(v2('max', 'GET', '/requests'))).items.every((request) => request.userId === uids.max));
+    // A member asks only about themselves; a kind of request that does not exist is refused
+    assert.equal((await v2('max', 'POST', '/requests', { type: 'payment', details: {}, memberId: mia.id })).status, 403);
+    assert.equal((await v2('max', 'POST', '/requests', { type: 'gift', details: {} })).status, 400);
+    // The treasurer asks for a member: the request is about that member, under their name
+    const forMia = await ok(v2('treasurer', 'POST', '/requests', { type: 'status', details: { newStatus: 'geringverdiener', date: '2026-06-01' }, memberId: mia.id }));
+    assert.deepEqual([forMia.memberId, forMia.memberName], [mia.id, mia.name]);
+    await ok(v2('treasurer', 'POST', `/requests/${forMia.id}/decision`, { status: 'rejected', rejectionReason: 'Nur ein Test' }));
+    assert.equal((await v2('max', 'POST', `/requests/${asked.id}/decision`, { status: 'approved' })).status, 403);
     const decided = await ok(v2('treasurer', 'POST', `/requests/${asked.id}/decision`, { status: 'rejected', rejectionReason: 'Doppelt' }));
     assert.deepEqual([decided.status, decided.rejectionReason], ['rejected', 'Doppelt']);
     assert.equal((await v2('treasurer', 'POST', `/requests/${asked.id}/decision`, { status: 'approved' })).status, 409);
@@ -1657,6 +1683,151 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const event = (await ok(v2('max', 'GET', '/events?limit=500'))).items.find((item) => item.id === eventId);
     assert.deepEqual([event.title, event.startTime, event.registeredCount, event.myRegistration.status], ['v2-Abend', '19:00', 1, 'registered']);
     assert.equal((await ok(v2('max', 'GET', `/events/${eventId}`))).id, eventId);
+  });
+
+  test('API v2: every error in its shape - no sign-in, a broken body, a value that does not fit - and never the server\'s inner workings', async () => {
+    const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
+    // Without a sign-in, or with a token that is none: 401 in the shape of v2 (it was the text "Unauthorized")
+    for (const headers of [{}, { Authorization: 'Bearer not-a-token' }]) {
+      const res = await fetch(`${base}/api/v2/members`, { headers: { 'X-Forwarded-For': '10.42.7.1', ...headers } });
+      assert.equal(res.status, 401);
+      assert.equal((await res.json()).error.code, 'unauthorized');
+    }
+    // A body that is no JSON: 400 in the shape of v2, and a JSON error on the old API - Express' own page showed the
+    // stack trace with the server's paths
+    const broken = (url) => fetch(base + url, { method: 'POST', headers: { 'X-Forwarded-For': '10.42.7.2', Authorization: `Bearer ${tokens.treasurer}`, 'Content-Type': 'application/json' }, body: '{"memberId": ' });
+    const brokenV2 = await broken('/api/v2/payments');
+    assert.equal(brokenV2.status, 400);
+    assert.deepEqual(await brokenV2.json(), { error: { code: 'invalid', message: 'The body is no valid JSON.' } });
+    const brokenV1 = await broken('/api/db/transaction');
+    const brokenText = await brokenV1.text();
+    assert.equal(brokenV1.status, 400);
+    assert.match(brokenV1.headers.get('content-type') || '', /json/);
+    assert.ok(!/node_modules|JSON\.parse|<pre>/.test(brokenText), brokenText);
+    // Paging values and filters that are none are refused, not guessed
+    for (const query of ['limit=abc', 'limit=0', 'cursor=bm9wZQ', 'from=2026-02-31', 'member=a%20b']) {
+      const res = await v2('treasurer', 'GET', `/payments?${query}`);
+      assert.deepEqual([res.status, res.body.error?.code], [400, 'invalid'], query);
+    }
+    // What a booking sends is checked, never cut or guessed - and nothing is booked
+    const mia = (await ok(v2('treasurer', 'GET', '/members?limit=500'))).items.find((member) => member.userId === uids.mia);
+    const booking = { memberId: mia.id, memberVersion: mia.version, amountCents: 100, date: '2026-03-01' };
+    const wrongs = [{ date: '2026-02-31' }, { date: '1.3.2026' }, { amountCents: 1e300 }, { amountCents: 12.5 }, { amountCents: '100' },
+      { description: 'x'.repeat(501) }, { description: { text: 'x' } }, { receipt: '../config.json' }, { requestId: 'a b' }];
+    for (const wrong of wrongs) {
+      const res = await v2('treasurer', 'POST', '/payments', { ...booking, ...wrong });
+      assert.deepEqual([res.status, res.body.error?.code], [400, 'invalid'], JSON.stringify(wrong).slice(0, 80));
+    }
+    const donations = await ok(v2('treasurer', 'GET', '/donations'));
+    assert.equal((await v2('treasurer', 'POST', '/donations', { listVersion: donations.listVersion, amountCents: 100, date: '2026-03-01', donorName: 'x'.repeat(201) })).status, 400);
+    assert.equal((await ok(v2('treasurer', 'GET', `/members/${mia.id}`))).version, mia.version, 'nothing was booked');
+    assert.equal((await ok(v2('treasurer', 'GET', '/donations'))).listVersion, donations.listVersion, 'no donation was saved');
+  });
+
+  test('API v2: every list in pages and in a fixed order - names and titles A to Z, the change log newest first, page after page', async () => {
+    const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
+    const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/ß/g, 'ss');
+    const inOrder = (texts) => texts.every((text, index) => index === 0 || fold(texts[index - 1]) <= fold(text));
+    // All pages of [path] ([limit] at a time)
+    const allPages = async (who, path, limit) => {
+      const items = [];
+      let cursor = null;
+      do {
+        const pageNow = await ok(v2(who, 'GET', `${path}${path.includes('?') ? '&' : '?'}limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`));
+        assert.ok(pageNow.items.length <= limit && 'nextCursor' in pageNow, path);
+        items.push(...pageNow.items);
+        cursor = pageNow.nextCursor;
+      } while (cursor);
+      return items;
+    };
+    // The members by name, A to Z (they came Z to A) - "Ärmin" with the A's
+    await account('armin', 'Ärmin');
+    await account('zacharias', 'Zacharias');
+    const names = (await ok(v2('treasurer', 'GET', '/members?limit=500'))).items.map((member) => member.name);
+    assert.ok(inOrder(names), names.join(', '));
+    assert.ok(names.indexOf('Ärmin Test') < names.indexOf('Mia Test') && names.indexOf('Mia Test') < names.indexOf('Zacharias Test'));
+    // The songs by title
+    for (const title of ['Zuversicht', 'Ägypten-Lied', 'Morgenlicht']) await ok(call('owner', 'POST', '/api/songs', { title, content: '[G]Halleluja' }));
+    const titles = (await ok(v2('max', 'GET', '/songs?limit=500'))).items.map((song) => song.title);
+    assert.ok(inOrder(titles), titles.join(', '));
+    // Lists that came whole come in pages, too
+    const groups = await allPages('owner', '/groups', 1);
+    assert.ok(groups.length > 1 && inOrder(groups.map((group) => group.name)));
+    assert.deepEqual(groups.map((group) => group.id), (await ok(v2('owner', 'GET', '/groups?limit=500'))).items.map((group) => group.id));
+    for (const path of ['/mentoring/mentors', '/mentoring/threads']) assert.ok('nextCursor' in (await ok(v2('owner', 'GET', path))), path);
+
+    // The change log, newest first and a page at a time from the database: nothing twice, nothing left out
+    const mia = (await ok(v2('treasurer', 'GET', '/members?limit=500'))).items.find((member) => member.userId === uids.mia);
+    let version = mia.version;
+    for (const day of ['2026-06-01', '2026-06-02', '2026-06-03']) {
+      version = (await ok(v2('treasurer', 'POST', '/payments', { memberId: mia.id, memberVersion: version, amountCents: 700, date: day, description: 'Seiten' }))).memberVersion;
+    }
+    const whole = await allPages('treasurer', `/finance/changes?member=${mia.id}`, 500);
+    assert.ok(whole.length >= 3 && whole.every((change, index) => index === 0 || whole[index - 1].at >= change.at), 'newest first');
+    assert.deepEqual((await allPages('treasurer', `/finance/changes?member=${mia.id}`, 2)).map((change) => change.id), whole.map((change) => change.id));
+    assert.deepEqual((await allPages('treasurer', '/finance/changes?area=payment', 3)).map((change) => change.id),
+      (await allPages('treasurer', '/finance/changes?area=payment', 500)).map((change) => change.id));
+    // Days of the moments (UTC), asked of the database too
+    const today = new Date().toISOString().slice(0, 10);
+    const sinceToday = (await ok(v2('treasurer', 'GET', `/finance/changes?member=${mia.id}&from=${today}&limit=500`))).items;
+    assert.ok(sinceToday.length >= 3 && sinceToday.every((change) => change.at.slice(0, 10) >= today));
+    assert.deepEqual((await ok(v2('treasurer', 'GET', `/finance/changes?member=${mia.id}&to=2000-12-31`))).items, []);
+    assert.equal((await v2('treasurer', 'GET', '/finance/changes?area=nonsense')).status, 400);
+    assert.equal((await v2('treasurer', 'GET', `/finance/changes?cursor=${Buffer.from(JSON.stringify(['gestern', 'x'])).toString('base64url')}`)).status, 400);
+    // The bookings of this test go again
+    const now = await ok(v2('treasurer', 'GET', `/members/${mia.id}`));
+    version = now.version;
+    for (const payment of now.payments.filter((entry) => entry.description === 'Seiten')) {
+      assert.equal((await v2('treasurer', 'DELETE', `/payments/${payment.id}?memberVersion=${encodeURIComponent(version)}`)).status, 204);
+      version = (await ok(v2('treasurer', 'GET', `/members/${mia.id}`))).version;
+    }
+  });
+
+  test('API v2: a page of events counts the places of its own events; a conversation comes in pages, newest first', async () => {
+    const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
+    // Two events on days no other test uses: a page holds one, with its own sign-ups (they were read for every event
+    // of every year and sorted out for each)
+    const [day1, day2] = [inDays(333), inDays(334)];
+    const first = await eventBy('owner', { title: 'Seite eins', date: day1, startTime: '10:00', requiresRegistration: true });
+    const second = await eventBy('owner', { title: 'Seite zwei', date: day2, startTime: '10:00', requiresRegistration: true });
+    await ok(call('max', 'POST', `/api/events/${first}/register`, { action: 'register' }));
+    await ok(call('max', 'POST', `/api/events/${second}/register`, { action: 'register' }));
+    await ok(call('mia', 'POST', `/api/events/${second}/register`, { action: 'register' }));
+    const page1 = await ok(v2('max', 'GET', `/events?from=${day1}&to=${day2}&limit=1`));
+    assert.deepEqual(page1.items.map((event) => [event.id, event.registeredCount, event.myRegistration?.status]), [[first, 1, 'registered']]);
+    const page2 = await ok(v2('max', 'GET', `/events?from=${day1}&to=${day2}&limit=1&cursor=${page1.nextCursor}`));
+    assert.deepEqual(page2.items.map((event) => [event.id, event.registeredCount, event.myRegistration?.status]), [[second, 2, 'registered']]);
+    assert.equal(page2.nextCursor, null);
+    assert.equal((await ok(v2('mia', 'GET', `/events?from=${day1}&to=${day2}`))).items[0].myRegistration, null);
+    for (const id of [first, second]) await ok(call('owner', 'DELETE', `/api/events/${id}`));
+
+    // A conversation: a page at a time, newest first, decrypted - only the page is read
+    const mentor = await account('pagementor', 'Paula');
+    await account('pagementee', 'Pius');
+    const profile = await ok(call('pagementor', 'POST', '/api/mentoring/apply', { bio: 'Seiten', maxMentees: 2 }));
+    await ok(call('owner', 'POST', `/api/mentoring/manage/${profile.mentor.id}/status`, { status: 'approved' }));
+    const { threadId } = await ok(call('pagementee', 'POST', '/api/mentoring/threads', { mentorId: mentor }));
+    for (let n = 1; n <= 5; n += 1) await ok(call('pagementee', 'POST', `/api/mentoring/threads/${threadId}/messages`, { text: `Nachricht ${n}` }));
+    const thread = (await ok(v2('pagementor', 'GET', '/mentoring/threads'))).items.find((item) => item.id === threadId);
+    assert.equal(thread.role, 'mentor');
+    assert.ok(!('mentee' in thread) && !JSON.stringify(thread).includes(uids.pagementee), 'the mentee stays anonymous');
+    const messages = [];
+    let cursor = null;
+    let pages = 0;
+    do {
+      const pageNow = await ok(v2('pagementor', 'GET', `/mentoring/threads/${threadId}/messages?limit=2${cursor ? `&cursor=${cursor}` : ''}`));
+      assert.ok(pageNow.items.length <= 2);
+      messages.push(...pageNow.items);
+      cursor = pageNow.nextCursor;
+      pages += 1;
+    } while (cursor);
+    assert.equal(pages, 3);
+    assert.deepEqual(messages.map((message) => message.text).sort(), [1, 2, 3, 4, 5].map((n) => `Nachricht ${n}`));
+    assert.ok(messages.every((message, index) => index === 0 || messages[index - 1].createdAt >= message.createdAt), 'newest first');
+    assert.ok(messages.every((message) => message.from === 'mentee' && message.isRead === false));
+    // Someone else's conversation is none for them; a cursor that is none is refused
+    assert.equal((await v2('max', 'GET', `/mentoring/threads/${threadId}/messages`)).status, 404);
+    assert.equal((await v2('pagementor', 'GET', `/mentoring/threads/${threadId}/messages?cursor=bm9wZQ`)).status, 400);
   });
 
   test('API v2: the money as the statistics count it - up to today, what is dated later apart; a member\'s total is what its payments add up to', async () => {

@@ -106,7 +106,10 @@ async function memberHistories(memberId) {
   return byMember;
 }
 
-/** The payments of the members [user] may see, between the days [from] and [to] (both optional) - of [member] only if given. */
+/**
+ * The payments of the members [user] may see, between the days [from] and [to] (both optional) - of [member] only if
+ * given. Each carries its member's version (memberVersion), the one a change of it is based on.
+ */
 async function paymentsFor(user, { member, from, to } = {}) {
   const after = DAY.test(String(from || '')) ? from : null;
   const before = DAY.test(String(to || '')) ? to : null;
@@ -117,7 +120,7 @@ async function paymentsFor(user, { member, from, to } = {}) {
       // As PocketBase compared the day columns: a payment without a day is before every day
       if (after !== null && !((payment.date || '') >= after)) continue;
       if (before !== null && !((payment.date || '') <= before)) continue;
-      list.push(paymentOf(payment));
+      list.push(paymentOf(payment, row.updated));
     }
   }
   return list;
@@ -195,12 +198,64 @@ function centsByKind(rows) {
 
 const changeOf = (row) => ({ id: row.id, area: row.area, action: row.action, at: isoOf(row.at), by: row.by || null, byName: row.byName || '', memberId: row.member || null, target: row.target || null, details: row.details ?? null });
 
-/** The finance change log, of one [area] and one [member] if given. */
-async function financeChanges({ area, member } = {}) {
+// A value in a filter (the values come checked: ids, days, moments as the database writes them)
+const quoted = (value) => JSON.stringify(String(value));
+
+/**
+ * The filter of the change log: one [area], one [member], the days [from] to [to] (UTC days, as the log's moments are
+ * kept) - all optional. Asked of the database, never read whole and sorted out here: the log grows with every booking
+ * and is kept ten years.
+ */
+function changesFilter({ area, member, from, to } = {}) {
   const filters = [];
   if (area) filters.push(client.pbFilterEquals('area', String(area)));
   if (member) filters.push(client.pbFilterEquals('member', String(member)));
-  return (await client.listAllRecords(finance.COLLECTIONS.CHANGES, filters.join(' && '), context.appConfig)).map(changeOf);
+  if (DAY.test(String(from || ''))) filters.push(`at >= ${quoted(`${from} 00:00:00.000Z`)}`);
+  if (DAY.test(String(to || ''))) filters.push(`at <= ${quoted(`${to} 23:59:59.999Z`)}`);
+  return filters;
+}
+
+/** The whole finance change log (or the part [changesFilter] picks), oldest first - for the AI's lookups. */
+async function financeChanges(options = {}) {
+  return (await client.listAllRecords(finance.COLLECTIONS.CHANGES, changesFilter(options).join(' && '), context.appConfig, 'at,id')).map(changeOf);
+}
+
+/**
+ * Where the next page of a list newest first ([field] descending, then the id) starts: after [at] and [id]. The first
+ * condition alone finds the place in the index, the second leaves out what the page before showed.
+ */
+const pageAfter = (field, [at, id]) => `${field} <= ${quoted(at)} && (${field} < ${quoted(at)} || id < ${quoted(id)})`;
+
+/**
+ * One page of the finance change log, newest first: [limit] entries after [after] ([at, id] of the last entry of the
+ * page before, as the database keeps them; null: from the newest). { items, next }: next is where the following page
+ * starts (null: this was the last).
+ */
+async function financeChangesPage({ limit, after = null, ...options }) {
+  const filters = changesFilter(options);
+  if (after) filters.push(pageAfter('at', after));
+  const rows = await client.listRecordsPage(finance.COLLECTIONS.CHANGES, filters.join(' && '), context.appConfig, { sort: '-at,-id', perPage: limit + 1 });
+  const items = rows.slice(0, limit);
+  const last = items[items.length - 1];
+  return { items: items.map(changeOf), next: rows.length > limit && last ? [last.at || '', last.id] : null };
+}
+
+// --- Mentoring ----------------------------------------------------------------------------------------------------
+
+/**
+ * One page of the messages of the conversation [threadId], newest first: [limit] records after [after] ([created, id]
+ * of the last message of the page before; null: from the newest), as the old table gave them (still encrypted).
+ * { items, next } as financeChangesPage. Only the page is read and decrypted - a conversation of years was read and
+ * decrypted whole for every look at it.
+ */
+async function messagesPage(threadId, { limit, after = null }) {
+  const { messages } = require('./db/stores/mentoring');
+  const filters = [client.pbFilterEquals('thread', threadId)];
+  if (after) filters.push(pageAfter('created', after));
+  const rows = await client.listRecordsPage(messages.collection(), filters.join(' && '), context.appConfig, { sort: '-created,-id', perPage: limit + 1 });
+  const items = rows.slice(0, limit);
+  const last = items[items.length - 1];
+  return { items: items.map(messages.toOld), next: rows.length > limit && last ? [last.created || '', last.id] : null };
 }
 
 // --- Events -------------------------------------------------------------------------------------------------------
@@ -244,6 +299,29 @@ async function visibleEvents(user, { from, to } = {}) {
   return events.filter((event) => seesEvent(user, event));
 }
 
+// The events whose sign-ups one read asks for (a page of API v2 holds at most 500)
+const EVENTS_AT_ONCE = 100;
+
+/**
+ * The sign-ups and guests of the events [eventIds], by event id ({ registrations, guests }, each in the order of the
+ * queue). Only theirs: every sign-up of every year, read and sorted out for each event of a page, made a page of the
+ * calendar slower with every year (1,000 events with 20,000 sign-ups: almost half a second).
+ */
+async function seatsOf(eventIds) {
+  const seats = new Map(eventIds.map((id) => [id, { registrations: [], guests: [] }]));
+  const ids = [...seats.keys()];
+  for (let start = 0; start < ids.length; start += EVENTS_AT_ONCE) {
+    const filter = client.pbFilterIn('event', ids.slice(start, start + EVENTS_AT_ONCE));
+    const [registrations, guests] = await Promise.all([
+      eventsStore.listEventRegistrations(context.appConfig, filter),
+      eventsStore.listEventGuests(context.appConfig, filter)
+    ]);
+    for (const registration of registrations) seats.get(registration.event)?.registrations.push(registration);
+    for (const guest of guests) seats.get(guest.event)?.guests.push(guest);
+  }
+  return seats;
+}
+
 module.exports = {
   DAY,
   cents,
@@ -265,7 +343,10 @@ module.exports = {
   centsByKind,
   changeOf,
   financeChanges,
+  financeChangesPage,
+  messagesPage,
   eventOf,
   seesEvent,
-  visibleEvents
+  visibleEvents,
+  seatsOf
 };

@@ -43,6 +43,7 @@ const features = require('./features');
 const songbookRouter = require('./routes/songbook');
 const prayersRouter = require('./routes/prayers');
 const mediaRouter = require('./routes/media');
+const v2Api = require('./routes/v2');
 
 const app = express();
 app.set('trust proxy', resolveTrustProxySetting());
@@ -78,6 +79,9 @@ scheduledTasks.push(cron.schedule('0 5 * * *', () => {
       .catch((err) => console.warn('[Finance] Pruning the change log failed:', err.message));
   }
 }));
+
+// API v2 answers every error in its own shape, also those given before its routes run (setup, start, sign-in, limits)
+app.use('/api/v2', v2Api.errorShape);
 
 // Setup mode redirection / guard middleware
 app.use((req, res, next) => {
@@ -167,7 +171,7 @@ app.use(songbookRouter);
 app.use(prayersRouter);
 app.use(mediaRouter);
 // API v2 (docs/API_V2.md): the shapes of the new database structure
-app.use(require('./routes/v2'));
+app.use(v2Api.router);
 
 // A shared event's page (the share switch is on): the app as always, its head carrying the event for link previews
 app.get('/events/:slug', pageRateLimit, async (req, res, next) => {
@@ -197,6 +201,21 @@ app.get('*', pageRateLimit, (req, res, next) => {
     return sendPage(path.join(frontendDir, 'index.html'))(req, res);
   }
   next();
+});
+
+// Errors no route caught - a body that is no JSON or is too large, above all - are answered without the server's inner
+// workings: Express' own page showed the stack trace with the server's paths to anyone who sent a broken body
+app.use('/api/v2', v2Api.errorHandler);
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = Number(err?.status || err?.statusCode);
+  const known = status >= 400 && status < 500;
+  if (!known) console.error(`[Server] ${req.method} ${req.originalUrl} failed:`, err);
+  const message = err?.type === 'entity.parse.failed' ? 'The body is no valid JSON.'
+    : err?.type === 'entity.too.large' ? 'The body is too large.'
+      : known ? (err.expose && err.message) || 'Bad request' : 'Internal server error';
+  if (req.path.startsWith('/api/')) return res.status(known ? status : 500).json({ error: message });
+  return res.status(known ? status : 500).type('txt').send(message);
 });
 
 const PORT = process.env.PORT || 3000;
