@@ -21,7 +21,7 @@ Agora is a web-based financial management application for small groups, clubs, o
 - **Fresh start for the fees** *(CALDERA)*: on a day the system admins choose - past or future - every fee account is settled and started afresh: whoever was behind starts from zero, whoever had paid ahead takes exactly that credit along, and from that day on months and payments count anew. Nothing is deleted: payments, the history, the cash balance and "member since" stay as they are. Members who join later simply count from their own start. Set in *Settings → Monthly Fees*, see below.
 - **Monthly fees over time** *(CALDERA)*: a change of the fees says from which month it counts - still to come, this month, or reaching back - and the months before keep the old fees. So raising a fee no longer puts everyone who paid month by month behind. Before anything is saved, the admin sees which months cost something else and who owes how much more or less. Every change can be edited, moved to another month or taken back. In *Settings → Monthly Fees*, see below.
 - **Donations:** Separate tracking for general donations.
-- **Expenses:** Log expenses with optional receipt uploads.
+- **Expenses:** Log expenses with optional receipt uploads - pictures or PDFs (an invoice opens in the browser's viewer).
 - **Own address for every page:** `/events`, `/events/Jugendfreizeit_2026`, `/settings/profile`, `/songbook/Amazing_Grace`, `/mentoring/chat/<id>` … – links can be shared and bookmarked, a reload stays on the page, and the browser back button walks back step by step. Repeating titles get the date (`/events/Gottesdienst_2026-10-12`); old `#` links keep working.
 - **Extras hub:** one place for the additional offers – AI assistant, songbook, prayer requests, media and anonymous polls (tiles appear only for those who may use them).
 - **AI assistant (Extras):** answers questions about the community, the finances (with permission) and the events of the coming year – dates, places, registrations, your own duties and, where you may see them, the duty roster and order of service. It only knows what the asking member is allowed to see. Every question gets a compact summary (the newest entries and the totals); when a question needs more – what the Christmas services cost over five years, what was spent on flowers, rent or technology per year, who paid irregularly since 2019, a forecast of the cash balance – it looks up the full history itself (payments, expenses, donations, members with their status history and standing orders, the calendar, the totals per month and year, the finance change log), with the same permissions checked on every lookup. While it works, the line above the reply says what it is doing right now - the lookup in the AI's own words ("Finding Nick among the members"), or the title of its newest thought where the provider shares its thoughts - and afterwards that line opens the steps in order, as in Claude's apps: thoughts, notes on the way, every lookup with what it found. The line stays one line high and calm - it only shows finished titles, each long enough to be read - and the steps open as a window of a few lines ("Show more" opens them in full), so long thoughts never take over the chat; how long the thoughts are is up to the provider (its own summary where it offers one). Categories come from the descriptions; the answer says which descriptions it counted and marks estimates as such. How much it may look up per question is set in *System settings → AI* (**Effort**: low – the summary only; medium – up to 4 small lookups, the default; high, very high (xhigh) and maximum – up to 10, 15 and 20 larger ones and ever deeper thinking where the provider offers it). Providers without tool calls (some local models) keep answering from the summary. See *AI providers* below for the services to choose from.
@@ -393,19 +393,27 @@ removed automatically; the history of the fees and fresh starts is kept for good
 keeps that their income status changed, not to what.
 
 **For app developers.** [API v2](docs/API_V2.md) (`/api/v2/…`) hands out the data in the new shapes: record ids, money in
-whole cents, ISO times, every list in pages with a cursor, every error as `{ error: { code, message } }`, and changes
-that name the version they are based on (409 instead of an unseen overwrite); finance writes go through the same code
-as the web app. It is stable: it only grows, and whatever would break an app comes as a new version next to it. The
-old API (`/api/db?path=…`) answers exactly as before, for every app version. A list saved as
-a whole (donations, expenses) can send the version it read (`POST /api/db/transaction` with `currentVersion`, or
-`version` with `PUT /api/db`): a list that changed meanwhile is then refused with 409 instead of overwritten.
+whole cents, ISO times, every list in pages with a cursor (most of them searchable with `?q=`), every error as
+`{ error: { code, message } }` with the message in the language of the request, and changes that name the version
+they are based on (409 instead of an unseen overwrite). It does everything the apps do: the books with the members'
+fee accounts, payments, standing orders, status changes, donations, expenses, receipts (pictures and PDFs) and all
+bookings in one list; requests - decided and booked in one step, once -; the fees over time and the fresh starts; the
+calendar with sign-ups, participants, the duty roster and the order of service; mentoring; the songbook; prayer
+requests; the media library. Its writes go through the same code and handlers as the web app's: the same checks, change log and
+notifications. It is stable: it only grows, and whatever would break an app comes as a new version next to it. The
+old API (`/api/db?path=…`) answers exactly as before, for every app version. A list saved as a whole (donations,
+expenses) can send the version it read (`POST /api/db/transaction` with `currentVersion`, or `version` with
+`PUT /api/db`): a list that changed meanwhile is then refused with 409 instead of overwritten. Every entry keeps its
+record whatever form the list comes in - a map as the first versions kept the donations, a list in another order, an
+entry of an older app without an id at another place: such a save used to write every donation anew (new record ids,
+the change log full of removals and additions) the first time an app sent the list back.
 
 ## 🌍 Languages
 
 English is the source language of the code: every text is written in English, and `assets/locales/en.json` (web app) is always complete. Other languages are optional translations: texts nobody has translated yet are simply left empty (or missing) and show in English. The tests only check English; translations never make them fail.
 
 - **Web app:** users get their system language by default (or pick one in the settings); unsupported languages show English.
-- **Server:** error messages are written in English in the code and translated by `backend/locales/<lang>.json` (English text → translation). Push messages and e-mails go out in each member's language: the language their app reported, otherwise the instance's default language (System configuration), otherwise English.
+- **Server:** error messages are written in English in the code and translated by `backend/locales/<lang>.json` (English text → translation, `{placeholders}` kept) - those of API v2 too, in the language the app asks for (`Accept-Language`), else the member's own, else the instance's default; the error `code` stays the same in every language. Push messages and e-mails go out in each member's language: the language their app reported, otherwise the instance's default language (System configuration), otherwise English.
 
 Adding a language (e.g. French):
 
@@ -422,11 +430,12 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
 | `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
 | `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
-| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, the monthly fees over time (their rules, and what is stored about them), what the web app books (`assets/finance.js`) |
+| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, the monthly fees over time (their rules, and what is stored about them), what the web app books (`assets/finance.js`) - and that the server books the same with its copy of these rules (`backend/bookings.js`, API v2) |
 | `community.test.js` | events, guests and shared places, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
 | `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
 | `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, the monthly fees over time, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses, API v2 (its money as the app's statistics count it), the AI assistant and its lookups against stand-in AI providers (only when the model asks, the effort levels, permissions on every lookup, size caps, categories, providers without tool calls; Anthropic, OpenAI and Gemini through their own protocols, with what they refuse) |
+| `api-v2.test.js` | API v2 with its own server and PocketBase: lists saved as a whole keep every record (a map of donations an older version kept, sent back as a list; expenses without ids that moved), errors in the language of the request with the field that did not fit, the members' fee accounts, standing orders booked at once and ended, status changes as the web app makes them, receipts (pictures and PDFs), search, requests decided and booked in one step, the fees and fresh starts, member records linked to accounts, events with places, waiting list and the duty roster, mentoring, the songbook, prayer requests, media |
 | `ai.test.js` | what the server passes on from the AI provider's stream, and how tool calls arrive in it |
 | `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files; donations and expenses are saved on the previous version too, while the upgrade waits |
 | `codecs.test.js` | the exact round trip between what the apps write and the new tables: 5000 random records per kind, odd values included |
@@ -436,7 +445,7 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 
 ```bash
 cd backend && npm ci
-POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests (api.test.js, the real server in years.test.js) are skipped
+POCKETBASE_BIN=/path/to/pocketbase npm test   # without POCKETBASE_BIN the HTTP tests (api.test.js, api-v2.test.js, the real server in years.test.js) are skipped
 YEARS_SEEDS=1-200 node --test ../tests/years.test.js   # a long look: 200 other communities (a few minutes)
 POCKETBASE_BIN=/path/to/pocketbase node ../tests/benchmark.js 300:30   # the books of 300 members over 30 years, before and after the upgrade: read again, first after a change, and API v2
 ```

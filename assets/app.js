@@ -907,6 +907,24 @@ function renderReceiptPreviewCard(imgUrl, filename, label) {
         </div>`;
 }
 
+// A receipt that is a PDF (an invoice): it opens in the browser's viewer, as a picture opens large
+const isPdfReceipt = filename => /\.pdf$/i.test(String(filename || ''));
+const pdfThumb = `<div style="width:40px; height:40px; background:var(--surface); border-radius:8px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); flex-shrink:0;">${svgIcon('file', 20)}</div>`;
+const openPdfLink = (url, compact = false) => `<a href="${url}" target="_blank" rel="noopener" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${compact ? STYLE.iconBtn : 'display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;'}" title="${t('media_open', 'Open')}">${svgIcon('eye')}${compact ? '' : ` ${t('media_open', 'Open')}`}</a>`;
+
+function renderReceiptDocumentCard(url, filename) {
+    return `
+        <div style="border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface-alt);">
+            <div style="display:flex; align-items:center; gap:10px; min-width:0;">${pdfThumb}<span style="${STYLE.fileName} color:var(--text); font-weight:600;">${escapeHtml(filename)}</span></div>
+            <div style="margin-top:10px; display:flex; gap:10px; justify-content:flex-end;">
+                ${openPdfLink(url)}
+                <a href="${url}" download="${escapeHtml(filename)}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:0.85rem; border-radius:8px;">
+                    ${svgIcon('download')} ${t('download_btn', 'Download')}
+                </a>
+            </div>
+        </div>`;
+}
+
 // Loads receipt images into `container`, revoking object URLs from a previous render.
 async function renderReceiptsInto(container, receiptField, { loading, header = '', empty, error, listStyle }) {
     JSON.parse(container.dataset.blobUrls || '[]').forEach(url => URL.revokeObjectURL(url));
@@ -921,7 +939,7 @@ async function renderReceiptsInto(container, receiptField, { loading, header = '
         const urls = [];
         for (const filename of filenames) urls.push(await fetchReceiptImage(filename));
         container.dataset.blobUrls = JSON.stringify(urls);
-        container.innerHTML = `${header}<div style="${listStyle}">${urls.map((url, i) => renderReceiptPreviewCard(url, filenames[i], t('receipt', 'Receipt'))).join('')}</div>`;
+        container.innerHTML = `${header}<div style="${listStyle}">${urls.map((url, i) => (isPdfReceipt(filenames[i]) ? renderReceiptDocumentCard(url, filenames[i]) : renderReceiptPreviewCard(url, filenames[i], t('receipt', 'Receipt')))).join('')}</div>`;
     } catch (err) {
         console.error(err);
         container.innerHTML = error;
@@ -6127,7 +6145,7 @@ function openRequestDetail(reqId) {
             ${text ? row(req.type === 'expense' ? 'receipt' : 'fileText', req.type === 'expense' ? t('request_detail_purpose', 'Purpose') : t('request_detail_note', 'Note'), escapeHtml(text)) : ''}
             ${req.timestamp ? row('clock', t('request_detail_received', 'Received'), escapeHtml(dateTimeFormatter.format(new Date(req.timestamp)))) : ''}
             ${req.status !== 'pending' || !canApproveRequests() ? row('check', t('request_detail_status', 'Status'), `<span class="reqd-state" style="--state-color: ${(USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending)[0]};">${escapeHtml(requestStateLabel(req))}</span>`) : ''}
-            ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Reason'), escapeHtml(req.rejectionReason || t('user_no_reason', 'No reason given'))) : ''}
+            ${req.status === 'rejected' ? row('alert', t('request_detail_reason', 'Reason'), escapeHtml(rejectionReasonOf(req))) : ''}
         </div>
         ${resetHint ? `<div class="fee-reset-note">${feeResetNoteHtml(resetHint)}</div>` : ''}
         ${data.receipt ? `<div class="reqd-receipts" id="reqd-receipts"></div>` : ''}`;
@@ -6318,8 +6336,9 @@ async function renderEditReceiptsList() {
         try {
             const imgUrl = await fetchReceiptImage(filename);
             if (token !== receiptsRenderToken) return;
-            item.innerHTML = fileRowInner(`<img src="${imgUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Receipt')}">`, filename,
-                `<a href="${imgUrl}" download="${escapeHtml(filename)}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="${t('download_btn', 'Download')}">${svgIcon('download')}</a>${deleteBtn}`);
+            const pdf = isPdfReceipt(filename);
+            item.innerHTML = fileRowInner(pdf ? pdfThumb : `<img src="${imgUrl}" style="${STYLE.thumb}" alt="${t('receipt', 'Receipt')}">`, filename,
+                `${pdf ? openPdfLink(imgUrl, true) : ''}<a href="${imgUrl}" download="${escapeHtml(filename)}" class="btn btn-secondary btn-small" style="${STYLE.outlineBtn} ${STYLE.iconBtn}" title="${t('download_btn', 'Download')}">${svgIcon('download')}</a>${deleteBtn}`);
         } catch {
             if (token !== receiptsRenderToken) return;
             item.innerHTML = fileRowInner('<span style="font-size:1.25rem;">⚠️</span>', filename, deleteBtn, 'color:var(--text);');
@@ -6402,6 +6421,9 @@ async function approveRequest(reqId = openRequestId) {
     }, err => (err?.key ? t(err.key, err.message) : t('alert_approve_failed', 'Could not approve request. Please try again.')));
     setRequestBusy(false);
 }
+
+// The reason of a rejection in the reader's language: without one, the apps store "Kein Grund angegeben" (a fixed value)
+const rejectionReasonOf = req => (req.rejectionReason && req.rejectionReason !== 'Kein Grund angegeben' ? req.rejectionReason : t('user_no_reason', 'No reason given'));
 
 // Rejection with an optional reason typed into the popup (instead of a browser prompt)
 async function confirmRejectRequest(reqId = openRequestId) {
@@ -6558,7 +6580,7 @@ function renderUserRequests() {
         const [stateColor] = USER_REQUEST_STATES[req.status] || USER_REQUEST_STATES.pending;
         // A second line only where it helps: why it was rejected, or what an expense was for
         const text = req.status === 'rejected'
-            ? t('user_request_reason', 'Reason: {reason}', { reason: req.rejectionReason || t('user_no_reason', 'No reason given') })
+            ? t('user_request_reason', 'Reason: {reason}', { reason: rejectionReasonOf(req) })
             : (req.type === 'expense' ? data.description : '') || '';
         return `
             <button type="button" class="home-msg-row req-row my-req-row" style="--req-color: ${REQUEST_COLORS[req.type] || 'var(--primary)'}; --state-color: ${stateColor};" data-id="${escapeHtml(req.id)}" onclick="window.openRequestDetail(this.dataset.id)">

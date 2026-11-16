@@ -636,7 +636,7 @@ router.post('/api/events/:id/register', verifyToken, async (req, res) => {
     res.json({ success: true, registration: reg, status: nextStatus, isWaitlist: nextStatus === 'waitlist' });
   } catch (err) {
     console.error('Failed to register for event:', err);
-    res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+    res.status(500).json({ error: 'Registration failed' });
   }
 });
 
@@ -691,6 +691,7 @@ router.get('/api/events/my-requests', verifyToken, async (req, res) => {
         section: d.section || '',
         roleName: d.roleName,
         requestedBy: d.requestedBy,
+        // A fixed value of the old API when the person who asked is gone (API v2 names them in the reader's language)
         requestedByName: userMap.get(d.requestedBy) || 'Leitung',
         notes: d.notes || ''
       };
@@ -1256,7 +1257,7 @@ router.delete('/api/events/:id/attendees/:userId', verifyToken, async (req, res)
     const isCreator = event.createdBy === currentUid;
     const canManageEvents = hasEventPermission(req.user);
     if (!isCreator && !canManageEvents) {
-      return res.status(403).json({ error: 'Keine Berechtigung' });
+      return res.status(403).json({ error: 'No permission to remove participants of this event' });
     }
 
     const targetUid = String(req.params.userId || '');
@@ -1395,7 +1396,7 @@ router.post('/api/events/upload-image', protectedActionRateLimit, verifyToken, (
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: 'Image file too large (max. 25 MB)' });
       }
-      return res.status(400).json({ error: error.message || 'Upload fehlgeschlagen' });
+      return res.status(400).json({ error: error.message || 'The upload failed.' });
     }
     if (!req.file) return res.status(400).json({ error: 'No file was sent.' });
     res.json({ filename: req.file.filename, url: `/api/events/images/${req.file.filename}` });

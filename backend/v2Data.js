@@ -7,6 +7,7 @@ const finance = require('./db/stores/finance');
 const eventsStore = require('./db/stores/events');
 const { toCents, amountValue } = require('./db/codec');
 const { toDateStr } = require('./utils/date');
+const { receiptNames } = require('./v2/http');
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -48,8 +49,24 @@ function memberOf(row, person, paymentRows = null) {
     // "paid until the 30th" instead of the 31st)
     paidUntil: data._paidUntil && !Number.isNaN(new Date(data._paidUntil).getTime()) ? toDateStr(new Date(data._paidUntil)) : null,
     isOverdue: data._statusMeta?.isOverdue === true,
+    // The fee account as the apps show it: the status this month is charged at, overdue / paid by a standing order /
+    // in order, a standing order still to book this month ("due soon", and what it books), and the fresh start the
+    // account counts from with what happened on its day
+    currentStatus: data._currentStatus || row.status || null,
+    feeState: feeStateOf(data._statusMeta),
+    isDueSoon: data._statusMeta?.isSoonDue === true,
+    hasActiveStandingOrder: data._statusMeta?.isActiveStandingOrder === true,
+    anticipatedCents: data._anticipatedPayment === undefined ? null : cents(data._anticipatedPayment),
+    freshStart: data._feeReset ? { day: data._feeReset, carriedOverCents: cents(data._feeCarriedOver || 0), writtenOffCents: cents(data._feeWrittenOff || 0) } : null,
     version: row.updated
   };
+}
+
+/** The state of a fee account: overdue, paid by a running standing order, or in order (null: nothing worked out). */
+function feeStateOf(meta) {
+  if (!meta) return null;
+  if (meta.isOverdue === true) return 'overdue';
+  return meta.isActiveStandingOrder === true ? 'standingOrder' : 'ok';
 }
 
 const paymentOf = (row, memberVersion) => ({
@@ -59,6 +76,7 @@ const paymentOf = (row, memberVersion) => ({
   date: row.date || null,
   description: row.description || '',
   receipt: row.receipt || null,
+  receipts: receiptNames(row.receipt),
   source: row.source || 'manual',
   standingOrderId: row.standingOrder || null,
   clientId: row.clientId ?? null,
@@ -68,7 +86,8 @@ const paymentOf = (row, memberVersion) => ({
 const statusPeriodOf = (period) => ({ id: period.id, status: period.status || null, startDate: period.startDate || null, endDate: period.endDate || null });
 
 const standingOrderOf = (order) => ({
-  id: order.id, amountCents: order.amountCents, startDate: order.startDate || null, endDate: order.endDate || null, note: order.note || '', lastBookedOn: order.lastAutoPayment || null
+  id: order.id, amountCents: order.amountCents, startDate: order.startDate || null, endDate: order.endDate || null, note: order.note || '', lastBookedOn: order.lastAutoPayment || null,
+  clientId: order.clientId ?? null
 });
 
 // Who may see which member: those with finance rights all of them, everyone else their own. The members come from
@@ -133,12 +152,15 @@ const LIST_READS = {
   donations: {
     rows: async () => (await client.listAllRecords(finance.COLLECTIONS.DONATIONS, '', context.appConfig)).sort((a, b) => (a.position || 0) - (b.position || 0)),
     shown: (row) => !finance.isKeptEntry(row),
-    toV2: (row) => ({ id: row.id, amountCents: row.amountCents, date: row.date || null, donorName: row.donorName || '', description: row.description || '' })
+    toV2: (row) => ({ id: row.id, amountCents: row.amountCents, date: row.date || null, donorName: row.donorName || '', description: row.description || '', clientId: row.clientId ?? null })
   },
   expenses: {
     rows: () => client.listAllRecords(finance.COLLECTIONS.EXPENSES, '', context.appConfig),
     shown: () => true,
-    toV2: (row) => ({ id: row.id, amountCents: row.amountCents, date: row.date || null, issuer: row.issuer || '', description: row.description || '', receipt: row.receipt || null })
+    toV2: (row) => ({
+      id: row.id, amountCents: row.amountCents, date: row.date || null, issuer: row.issuer || '', description: row.description || '', receipt: row.receipt || null,
+      receipts: receiptNames(row.receipt), clientId: row.clientId ?? null
+    })
   }
 };
 

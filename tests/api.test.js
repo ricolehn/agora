@@ -1713,7 +1713,8 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const mia = (await ok(v2('treasurer', 'GET', '/members?limit=500'))).items.find((member) => member.userId === uids.mia);
     const booking = { memberId: mia.id, memberVersion: mia.version, amountCents: 100, date: '2026-03-01' };
     const wrongs = [{ date: '2026-02-31' }, { date: '1.3.2026' }, { amountCents: 1e300 }, { amountCents: 12.5 }, { amountCents: '100' },
-      { description: 'x'.repeat(501) }, { description: { text: 'x' } }, { receipt: '../config.json' }, { requestId: 'a b' }];
+      { description: 'x'.repeat(5001) }, { description: { text: 'x' } }, { receipt: '../config.json' }, { receipts: ['a.png', '../b.png'] }, { receipts: 'a.png' },
+      { receipt: 'a.png', receipts: ['a.png'] }, { requestId: 'a b' }];
     for (const wrong of wrongs) {
       const res = await v2('treasurer', 'POST', '/payments', { ...booking, ...wrong });
       assert.deepEqual([res.status, res.body.error?.code], [400, 'invalid'], JSON.stringify(wrong).slice(0, 80));

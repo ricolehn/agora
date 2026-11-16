@@ -293,18 +293,21 @@ const eventImageStorage = multer.diskStorage({
 });
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'];
-const imageFileFilter = (errorMessage) => (req, file, cb) => {
+const imageFileFilter = (errorMessage, { pdf = false } = {}) => (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (IMAGE_MIME_TYPES.includes(file.mimetype) && IMAGE_EXTENSIONS.includes(ext)) {
+  const isImage = IMAGE_MIME_TYPES.includes(file.mimetype) && IMAGE_EXTENSIONS.includes(ext);
+  const isPdf = pdf && file.mimetype === 'application/pdf' && ext === '.pdf';
+  if (isImage || isPdf) {
     cb(null, true);
   } else {
     cb(new Error(errorMessage));
   }
 };
+// Receipts: pictures or PDFs (an invoice comes as a PDF; the apps offer both - a PDF was refused here)
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
-  fileFilter: imageFileFilter('Invalid file type. Only JPG, PNG, WEBP, GIF, HEIC, and HEIF are allowed.')
+  fileFilter: imageFileFilter('Invalid file type. Only JPG, PNG, WEBP, GIF, HEIC, HEIF and PDF are allowed.', { pdf: true })
 });
 const logoUpload = multer({
   storage: multer.memoryStorage(),
@@ -942,7 +945,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     }
     // Only the known kinds of request (the type is shown to treasurers)
     if (!Object.hasOwn(REQUEST_TYPE_LABELS, nextValue.type)) {
-      throw Object.assign(new Error('Unbekannte Anfrageart'), { status: 400 });
+      throw Object.assign(new Error('Unknown kind of request'), { status: 400 });
     }
     // Members file requests, only treasurers decide on them - and only for themselves: whose record a request books
     // to and the name the treasurers see come from the member's own record, whatever was sent (a request naming
@@ -1054,13 +1057,22 @@ function formatEventShort(event, lang, now = new Date()) {
 /** Push bodies are facts, not sentences: "Sunday service · Sun 1 Nov, 10:00 · Main hall" (empty parts left out). */
 const pushLine = (...parts) => parts.filter(Boolean).join(' · ');
 
+// What the apps store as the reason of a rejection without one: a fixed value every app shows its own text for
+const NO_REASON_GIVEN = 'Kein Grund angegeben';
+/** The reason a rejection names ('' when none was given). */
+const rejectionReasonText = (value) => {
+  const text = String(value || '').trim();
+  return text === NO_REASON_GIVEN ? '' : text;
+};
+
 // Push and e-mail to the member whose request was decided (kind "requests")
 async function notifyRequestDecision(request, origin = '') {
   const { notifyUsers } = require('./notify');
   const author = request.userId ? await getUserRecord(context.appConfig, request.userId).catch(() => null) : null;
   if (!author) return;
   const approved = request.status === 'approved';
-  const reason = String(request.rejectionReason || '').trim();
+  // The apps store "Kein Grund angegeben" when no reason was given: no reason to name (it went out in German to all)
+  const reason = rejectionReasonText(request.rejectionReason);
   // Texts in the author's language
   const texts = (tr) => {
     const type = tr(REQUEST_TYPE_LABELS[request.type] || 'Request');
@@ -1378,6 +1390,8 @@ module.exports = {
   setAuthCookie,
   clearAuthCookie,
   verifyToken,
+  NO_REASON_GIVEN,
+  rejectionReasonText,
   resolveRequestUser,
   verifyAdmin,
   verifyAiAccess,

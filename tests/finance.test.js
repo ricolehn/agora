@@ -1276,3 +1276,74 @@ describe('web app bookings (assets/finance.js)', () => {
     assert.equal(isOutdatedVersion('2026-10-16 12:00:00.000Z', null), false, 'writes without a version are not checked');
   });
 });
+
+// API v2 books on the server what the web app books in the browser: the server's copy of the rules
+// (backend/bookings.js) must give the very same records as the web app's (assets/finance.js), case by case
+describe('the server books as the web app does (backend/bookings.js)', () => {
+  const path = require('path');
+  const { pathToFileURL } = require('url');
+  const server = require('../backend/bookings');
+  const load = () => import(pathToFileURL(path.join(__dirname, '..', 'assets', 'finance.js')).href);
+  const outcome = (fn) => {
+    try {
+      return { value: fn() };
+    } catch (err) {
+      return { error: err.message, key: err.key };
+    }
+  };
+  const histories = [
+    [{ status: 'vollverdiener', startDate: '2025-01-01' }],
+    [{ status: 'vollverdiener', startDate: '2025-01-01', endDate: '2025-07-01' }, { status: 'pausiert', startDate: '2025-07-01' }],
+    [{ status: 'geringverdiener', startDate: '2025-01-01', endDate: '2025-05-01' }],
+    [],
+    { a: { status: 'keinverdiener', startDate: '2025-02-01' } }
+  ];
+  const people = histories.flatMap((statusHistory) => [
+    { id: 'p', name: 'Paula', status: 'vollverdiener', memberSince: '2025-01-01', originalMemberSince: '2025-01-01', payments: [{ id: 'own', amount: 50, date: '2025-02-01' }], standingOrders: [{ id: 'so', amount: 25, startDate: '2025-03-01' }], statusHistory },
+    { id: 'q', name: 'Quentin', status: 'pausiert', memberSince: '2025-03-15', payments: [], statusHistory }
+  ]);
+  const days = ['2024-12-31', '2025-01-01', '2025-03-15', '2025-07-01', '2026-01-01', '2026-06-30'];
+
+  test('a status change from a day comes out the same, also where it is refused', async () => {
+    const web = await load();
+    for (const person of people) {
+      for (const status of ['geringverdiener', 'pausiert']) {
+        for (const date of days) {
+          const label = `${person.name} ${JSON.stringify(person.statusHistory)} ${status} ${date}`;
+          assert.deepEqual(outcome(() => server.applyStatusChangeToHistory(structuredClone(person), status, date)), outcome(() => web.applyStatusChangeToHistory(structuredClone(person), status, date)), label);
+        }
+      }
+    }
+  });
+
+  test('approved requests, their bookings once and taken back, come out the same', async () => {
+    const web = await load();
+    const requests = [
+      { id: 'r1', type: 'payment', data: { amount: '12.5', date: '2026-05-09', note: 'Fest' } },
+      { id: 'r2', type: 'payment', data: { amount: '7', date: '2026-05-10' } },
+      { id: 'r3', type: 'standing_order', data: { amount: '15', date: '2026-06-01', note: '' } },
+      { id: 'r4', type: 'status', data: { newStatus: 'geringverdiener', date: '2026-02-01' } },
+      { id: 'r5', type: 'status', data: { newStatus: 'pausiert', date: '2024-01-01' } },
+      { id: 'r6', type: 'gift', data: {} }
+    ];
+    for (const person of people) {
+      for (const request of requests) {
+        const label = `${person.name} ${request.id}`;
+        const booked = outcome(() => server.applyApprovedRequest(structuredClone(person), request, 'Zahlung (Genehmigt)'));
+        assert.deepEqual(booked, outcome(() => web.applyApprovedRequest(structuredClone(person), request, 'Zahlung (Genehmigt)')), label);
+        if (booked.error) continue;
+        // Once: approving it again changes nothing
+        assert.deepEqual(server.applyApprovedRequest(structuredClone(booked.value), request, 'x'), web.applyApprovedRequest(structuredClone(booked.value), request, 'x'), `${label} again`);
+        const before = { status: person.status, statusHistory: person.statusHistory };
+        assert.deepEqual(server.withoutApprovedRequest(structuredClone(booked.value), request, before), web.withoutApprovedRequest(structuredClone(booked.value), request, before), `${label} taken back`);
+        assert.equal(server.isBookedOn(booked.value, request), ['payment', 'standing_order'].includes(request.type), `${label} found booked`);
+      }
+    }
+    const expense = { id: 'r7', type: 'expense', personName: 'Paula', data: { amount: '80', description: 'Kerzen', date: '2026-10-02', receipt: '["a.png"]' } };
+    for (const list of [[], [{ id: 1, amount: 5 }], [{ id: 'req_r7', amount: 80 }]]) {
+      const added = server.addApprovedExpense(structuredClone(list), expense);
+      assert.deepEqual(added, web.addApprovedExpense(structuredClone(list), expense));
+      assert.deepEqual(server.withoutApprovedExpense(added || list, expense), web.withoutApprovedExpense(added || list, expense));
+    }
+  });
+});

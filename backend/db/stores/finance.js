@@ -474,25 +474,56 @@ function childEntries(prefix, personKey, list, codec, stripKeys = null) {
  * had just deleted stayed in the books, and entries without an id - their key holds their place in the list - were
  * left behind and written anew, twice in the books, whenever the list changed above them.)
  * Entries with the same key (the same id twice in one list) pair up with the stored records one by one, in order.
+ *
+ * An entry may name several keys (`keys`, the surest first): what one key leaves unpaired is paired by the next - an
+ * entry of the list in another form (a list that was kept as a map) or at another place still finds its record.
  */
 function diffChildren(collection, memberId, existing, wanted, { extraColumns = () => ({}) } = {}) {
   const ops = [];
-  const free = new Map();
-  for (const entry of existing) {
-    const list = free.get(entry.key);
-    if (list) list.push(entry);
-    else free.set(entry.key, [entry]);
-  }
+  const pairs = pairChildren(existing, wanted);
   wanted.forEach((entry, index) => {
-    const current = free.get(entry.key)?.shift();
+    const current = pairs.get(entry);
     const body = { member: memberId, ...entry.columns, ...extraColumns(entry, index), original: entry.original };
     if (!current) ops.push({ method: 'POST', collection, body: { id: entry.id || newRecordId(), ...body } });
     else if (!sameRow(current.row, body)) ops.push({ method: 'PATCH', collection, id: current.row.id, body });
   });
+  const paired = new Set(pairs.values());
   for (const entry of existing) {
-    if (free.get(entry.key)?.includes(entry)) ops.push({ method: 'DELETE', collection, id: entry.row.id });
+    if (!paired.has(entry)) ops.push({ method: 'DELETE', collection, id: entry.row.id });
   }
   return { ops };
+}
+
+const keysOf = (entry) => entry.keys || [entry.key];
+
+/**
+ * Which stored record ([existing]: { key or keys, row }) each entry of [wanted] is: a Map from the wanted entry to the
+ * stored one. Key by key: the first keys pair what they can (one by one, in order), the next keys what is left - a
+ * key that is null pairs nothing.
+ */
+function pairChildren(existing, wanted) {
+  const pairs = new Map();
+  const taken = new Set();
+  const rounds = Math.max(1, ...existing.map((entry) => keysOf(entry).length), ...wanted.map((entry) => keysOf(entry).length));
+  for (let round = 0; round < rounds; round += 1) {
+    const free = new Map();
+    for (const entry of existing) {
+      const key = keysOf(entry)[round];
+      if (taken.has(entry) || key === undefined || key === null) continue;
+      const list = free.get(key);
+      if (list) list.push(entry);
+      else free.set(key, [entry]);
+    }
+    for (const entry of wanted) {
+      const key = keysOf(entry)[round];
+      if (pairs.has(entry) || key === undefined || key === null) continue;
+      const current = free.get(key)?.shift();
+      if (!current) continue;
+      pairs.set(entry, current);
+      taken.add(current);
+    }
+  }
+  return pairs;
 }
 
 const MOMENT = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/;
@@ -757,35 +788,67 @@ async function removeDonationHoles(appConfig) {
   });
 }
 
+/** The key of an entry that has an id of its own ('id:<the id as JSON>'), else null. */
+const idKeyOf = (entry) => (isPlainEntry(entry) && entry.id !== undefined && entry.id !== null && entry.id !== '' ? `id:${JSON.stringify(entry.id)}` : null);
+/** The key of an entry by everything it holds (its id included: entries with different ids never pair). */
+const contentKeyOf = (entry) => `content:${shapes.stableSerialize(entry)}`;
+/** The key of a stored record, as a write that knows which record an entry is names it ([rowIds], see saveDonations). */
+const rowKeyOf = (id) => (typeof id === 'string' && id ? `row:${id}` : null);
+
+/**
+ * The entries of a list sent as a whole ([value]: a list, or a map by key as the first versions kept the donations)
+ * as [objectKey, entry, rowId]: [rowIds] names the record each entry of a list is (a write of the server that read the
+ * records itself, API v2; null where it is new). Holes (null) are no entries.
+ */
+function sentEntries(value, rowIds, { keepKeys }) {
+  const isMap = Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  const entries = isMap
+    ? Object.entries(value).map(([objectKey, entry]) => [keepKeys ? objectKey : null, entry, null])
+    : (Array.isArray(value) ? value : []).map((entry, index) => [null, entry, Array.isArray(rowIds) ? rowIds[index] ?? null : null]);
+  return { isMap, entries: entries.filter(([, entry]) => entry !== null && entry !== undefined) };
+}
+
+/**
+ * The change log of a list saved as a whole: what was added, removed, or changed as the apps see it. A record that only
+ * moved in the list, or only lost the key of the map it was kept in, is no change of it.
+ */
+function listChangeOps(area, ops, rows, decode) {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const changed = (op) => op.method !== 'PATCH' || !isDeepStrictEqual(decode(byId.get(op.id) || {}), decode({ ...(byId.get(op.id) || {}), ...op.body }));
+  return changeOpsFor(area, ops.filter(changed), rows, decode);
+}
+
 /**
  * Saves the donations an app sends as a whole ([value]: list or map). With [expectedVersion] (the web app) a list that
  * changed meanwhile is refused (409); without (older apps) the list is written as sent, like the old server did.
+ *
+ * Every donation keeps its record, whatever form the list comes in: by the record a write names ([rowIds]), the key of
+ * the map, the donation's own id, or what it holds - in that order. The first versions kept the donations as a map;
+ * the web app and the apps send a list. That list paired with no record of the map: every donation was removed and
+ * written anew - new record ids, and the change log full of removals and additions - at the first save of each
+ * instance, a donation saved through API v2 included.
  */
-function saveDonations(appConfig, value, { expectedVersion } = {}) {
+function saveDonations(appConfig, value, { expectedVersion, rowIds = null } = {}) {
   return queueRecordWrite('finance:donations', async () => {
     const rows = await getDonationRows(appConfig);
     if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== listVersion(rows)) throw Object.assign(new Error('Conflict'), { status: 409 });
-    const isMap = Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-    const entries = isMap ? Object.entries(value) : (Array.isArray(value) ? value : []).map((entry, index) => [null, entry]);
+    const { isMap, entries } = sentEntries(value, rowIds, { keepKeys: true });
     const keyOfEntry = (objectKey, entry, index) => {
       if (objectKey !== null) return `key:${objectKey}`;
-      const hasId = entry && entry.id !== undefined && entry.id !== null && entry.id !== '';
-      return hasId ? `id:${JSON.stringify(entry.id)}` : `content:${index}:${shapes.stableSerialize(entry)}`;
+      return idKeyOf(entry) || `content:${index}:${shapes.stableSerialize(entry)}`;
     };
     // A hole in the list (null) is no entry: the statistics and the bookings of the old server failed on it
-    const wanted = entries.filter(([, entry]) => entry !== null && entry !== undefined).map(([objectKey, entry], index) => {
+    const wanted = entries.map(([objectKey, entry, rowId], index) => {
       const { columns, original } = donationBody(entry, objectKey);
-      return { key: keyOfEntry(objectKey, entry, index), columns, original };
+      return { keys: [rowKeyOf(rowId), keyOfEntry(objectKey, entry, index), idKeyOf(entry), contentKeyOf(entry)], columns, original };
     });
     const existing = rows.map((row, index) => {
       const data = decodeDonation(row);
-      return { key: keyOfEntry(typeof originalOf(row).key === 'string' ? originalOf(row).key : null, data, index), row };
+      return { keys: [rowKeyOf(row.id), keyOfEntry(typeof originalOf(row).key === 'string' ? originalOf(row).key : null, data, index), idKeyOf(data), contentKeyOf(data)], row };
     });
     const { ops } = diffChildren(DONATIONS, null, existing, wanted, { extraColumns: (entry, index) => ({ position: index }) });
     for (const op of ops) if (op.body) delete op.body.member;
-    // A donation that only moved in the list is no change of it
-    const moved = (op) => op.method === 'PATCH' && Object.keys(op.body).every((key) => key === 'position' || sameValue(rows.find((row) => row.id === op.id)?.[key], op.body[key]));
-    await runBatch(appConfig, [...ops, ...changeOpsFor('donation', ops.filter((op) => !moved(op)), rows, decodeDonation)]);
+    await runBatch(appConfig, [...ops, ...listChangeOps('donation', ops, rows, decodeDonation)]);
     await setSetting(appConfig, 'compat', { ...(await readCompat(appConfig)), donations: isMap ? 'object' : 'array' });
   });
 }
@@ -804,21 +867,31 @@ async function listExpenseRecords(appConfig) {
   return (await getExpenseRows(appConfig)).map(oldExpenseRecord);
 }
 
-/** Saves the expenses an app sends as a whole (see saveDonations for [expectedVersion]). */
-function syncExpenseRecords(appConfig, value, { expectedVersion } = {}) {
+/**
+ * Saves the expenses an app sends as a whole (see saveDonations for [expectedVersion] and [rowIds]). Every expense
+ * keeps its record: by the record a write names, its key, its own id, or what it holds - an expense of an older app
+ * without an id (its key holds its place in the list) was written anew whenever an entry above it was added or removed.
+ */
+function syncExpenseRecords(appConfig, value, { expectedVersion, rowIds = null } = {}) {
   return queueRecordWrite('finance:expenses', async () => {
     const rows = await getExpenseRows(appConfig);
     if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== listVersion(rows)) throw Object.assign(new Error('Conflict'), { status: 409 });
-    const wanted = shapes.normalizeRecordListInput(value).map((expense, index) => {
+    // As normalizeRecordListInput: a list or the values of a map, without what is no entry
+    const entries = sentEntries(value, rowIds, { keepKeys: false }).entries.filter(([, expense]) => Boolean(expense));
+    const wanted = entries.map(([, expense, rowId], index) => {
       const payload = shapes.buildExpenseRecordPayload(expense, index);
       const hasId = expense && expense.id !== undefined && expense.id !== null && expense.id !== '';
       const { columns, original } = codecs.expense.encode(expense);
-      return { key: payload.expenseKey, columns, original: hasId ? original : { ...(original || {}), key: payload.expenseKey } };
+      return { keys: [rowKeyOf(rowId), payload.expenseKey, idKeyOf(expense), contentKeyOf(expense)], columns, original: hasId ? original : { ...(original || {}), key: payload.expenseKey } };
     });
-    const existing = rows.map((row) => ({ key: oldExpenseRecord(row).expenseKey, row }));
+    const decode = (row) => codecs.expense.decode(row);
+    const existing = rows.map((row) => {
+      const data = decode(row);
+      return { keys: [rowKeyOf(row.id), oldExpenseRecord(row).expenseKey, idKeyOf(data), contentKeyOf(data)], row };
+    });
     const { ops } = diffChildren(EXPENSES, null, existing, wanted);
     for (const op of ops) if (op.body) delete op.body.member;
-    await runBatch(appConfig, [...ops, ...changeOpsFor('expense', ops, rows, (row) => codecs.expense.decode(row))]);
+    await runBatch(appConfig, [...ops, ...listChangeOps('expense', ops, rows, decode)]);
   });
 }
 
@@ -1139,6 +1212,7 @@ module.exports = {
   memberReadOnly,
   donationsVersion,
   expensesVersion,
+  listVersion,
   listRequestRecords,
   getRequestRecord,
   upsertRequestRecord,
