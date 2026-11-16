@@ -227,6 +227,18 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     assert.equal((await ok(v2('treasurer', 'GET', '/members?q=gibtsnicht'))).items.length, 0);
   });
 
+  test('a record that never said whether its member pays counts as paying, as the web app and the fee calculation count it', async () => {
+    // As older versions of the apps wrote member records: no "pays" at all - and one that says the member pays nothing
+    const record = (id, name, extra = {}) => ({ id, name, status: 'vollverdiener', memberSince: '2025-01-01', originalMemberSince: '2025-01-01', payments: [], statusHistory: [{ status: 'vollverdiener', startDate: '2025-01-01' }], standingOrders: [], ...extra });
+    await ok(call('treasurer', 'PUT', '/api/db', { path: 'people/ohne-angabe', value: record('ohne-angabe', 'Olaf Ohneangabe') }));
+    await ok(call('treasurer', 'PUT', '/api/db', { path: 'people/zahlt-nicht', value: record('zahlt-nicht', 'Zora Zahltnicht', { pays: false }) }));
+    const [unsaid] = (await ok(v2('treasurer', 'GET', '/members?q=ohneangabe'))).items;
+    const [notPaying] = (await ok(v2('treasurer', 'GET', '/members?q=zahltnicht'))).items;
+    assert.deepEqual([unsaid.pays, notPaying.pays], [true, false]);
+    assert.equal((await ok(v2('treasurer', 'GET', `/members/${unsaid.id}`))).pays, true);
+    assert.equal((await ok(v2('treasurer', 'GET', `/members/${notPaying.id}`))).pays, false);
+  });
+
   test('member records and accounts: a member sees the record that bears their name and links it; administrators link any account', async () => {
     const uid = await account('claire', 'Claire');
     // A record of the books nobody's account is linked to, with Claire's name (as the treasury made it before she had an account)

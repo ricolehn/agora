@@ -35,7 +35,9 @@ function memberOf(row, person, paymentRows = null) {
     status: row.status || null,
     memberSince: row.memberSince || null,
     originalMemberSince: row.originalMemberSince || null,
-    pays: row.pays !== false,
+    // Whether the member pays fees: a record that never said so pays - as the web app, the old API and the fee
+    // calculation read it. The column keeps a missing value as false, which made every such member one who pays nothing
+    pays: (person ? data.pays : row.pays) !== false,
     isDeleted: row.isDeleted === true,
     // What the member's payments add up to: the sum of its payments as API v2 lists them (whole cents each). The old
     // API sums the amounts as written - with an amount beyond the cent (33.333) a member's payments and its total
