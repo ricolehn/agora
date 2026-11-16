@@ -233,12 +233,17 @@ async function getPeopleRecord(appConfig, personKey) {
 // (a write the server cannot place) reads them all again. Working them all out anew after every booking read every
 // payment again: 2.3 s at 108,000 payments for the read every app makes after a change - no faster than before the new
 // structure, and after any delete anywhere (a prayer request, a push device) seven times slower.
-// Changes made outside the app (PocketBase's admin page) are seen after MEMBERS_MEMO_MS: then the members are read anew
-// in the background while the kept ones are handed out.
+// Changes made outside the app (PocketBase's admin page) are seen after MEMBERS_MEMO_MS: then the database is asked how
+// the books' tables stand, and only if they changed are the members read anew - in the background, while the kept ones
+// are handed out.
 const MEMBERS_MEMO_MS = 30 * 1000;
 const localDay = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const ROW_TABLES = new Set([MEMBERS, PAYMENTS, PERIODS, STANDING_ORDERS]);
 const FEE_TABLES = new Set([FEE_CHANGES, FRESH_STARTS]);
+
+/** How the books' tables stand (records and newest change of each): the same as before, nothing in them changed. */
+const rowTablesStand = async (appConfig) => JSON.stringify(await Promise.all([...ROW_TABLES].map((collection) => client.tableStand(collection, appConfig))));
+
 // { seq: the last write it knows, at, day, fees, ids: member ids in their order, byId: id -> { rows, member }, list }
 let memo = null;
 let memoUpdate = null;
@@ -272,11 +277,13 @@ async function buildMemo(appConfig) {
   const seq = client.writeGeneration();
   const at = Date.now();
   const day = localDay();
+  // How the tables stand before they are read: whatever changes after this is seen by the next look (refreshMemo)
+  const stand = await rowTablesStand(appConfig);
   const [rows, fees] = await Promise.all([client.listAllRecords(MEMBERS, '', appConfig, '', { cache: false }), getFeeState(appConfig)]);
   const kept = rows.filter((row) => !isOrphan(row));
   const byId = new Map();
   for (const memberRows of await rowsOf(appConfig, kept, { all: true, kept: true })) byId.set(memberRows.member.id, { rows: memberRows, member: listed(hydrateRows(memberRows, fees)) });
-  return { seq, at, day, fees, ids: kept.map((row) => row.id), byId, list: null };
+  return { seq, at, day, fees, ids: kept.map((row) => row.id), byId, list: null, stand };
 }
 
 /** [current] brought up to date by [plan] (see pendingChanges): the members it names read again, all worked out anew for new fees or a new day. */
@@ -312,14 +319,24 @@ async function patchMemo(appConfig, current, plan) {
   return next;
 }
 
-/** Reads all members anew in the background (the kept ones are handed out meanwhile). */
+/**
+ * Reads all members anew in the background (the kept ones are handed out meanwhile) - when the books' tables changed
+ * since they were read whole: by the server itself (its own writes the memo took in already) or outside it. Read whole
+ * every 30 seconds, every payment of every year was read twice a minute while anyone used the app, for changes on
+ * PocketBase's admin page that hardly ever come; now four small questions find out first.
+ */
 function refreshMemo(appConfig) {
   if (memoRefresh) return;
-  memoRefresh = buildMemo(appConfig)
-    .then((fresh) => {
-      // A newer full read has come in meanwhile: it stays
-      if (!memo || memo.at <= fresh.at) memo = fresh;
-    })
+  const current = memo;
+  memoRefresh = (async () => {
+    if (current?.stand && current.stand === await rowTablesStand(appConfig)) {
+      current.at = Date.now();
+      return;
+    }
+    const fresh = await buildMemo(appConfig);
+    // A newer full read has come in meanwhile: it stays
+    if (!memo || memo.at <= fresh.at) memo = fresh;
+  })()
     .catch((err) => console.warn('[People] Reading the members anew failed:', err.message))
     .finally(() => { memoRefresh = null; });
 }

@@ -102,4 +102,30 @@ describe('starting the server', () => {
     assert.deepEqual(await status(), { setupMode: false, ready: true, updating: false, apiVersions: [1, 2] });
     assert.equal((await post('/api/setup', setupBody('late@test.local'))).status, 403);
   });
+
+  test('a start writes no table anew that is as it should be (every start wrote sixteen of them again)', { skip: !POCKETBASE_BIN && 'POCKETBASE_BIN not set' }, async (t) => {
+    const { makeRoot, startPocketBase, startBackend, waitUntilReady, httpClient, superuser, PASSWORD } = require('./instance');
+    const root = makeRoot('agora-restart-');
+    const running = [];
+    t.after(async () => {
+      for (const child of running.reverse()) await stop(child);
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    });
+    const pocketbase = await startPocketBase(root);
+    running.push(pocketbase.process);
+    const first = await startBackend(root, pocketbase.port);
+    running.push(first.process);
+    const http = httpClient(first.base);
+    await http.ok(http.call(null, 'POST', '/api/setup', { appName: 'Neustart', adminUser: { firstName: 'Olga', lastName: 'Owner', email: 'owner@restart.local', password: PASSWORD } }));
+    await waitUntilReady(first.base, first.process);
+    await stop(first.process);
+    // When each table was last changed - PocketBase notes it with every write of its definition
+    const su = await superuser(root, pocketbase.port);
+    const written = async () => Object.fromEntries((await su.collections()).map((collection) => [collection.name, collection.updated]));
+    const before = await written();
+    const again = await startBackend(root, pocketbase.port, { port: first.port });
+    running.push(again.process);
+    const after = await written();
+    assert.deepEqual(Object.keys(after).filter((name) => after[name] !== before[name]), []);
+  });
 });

@@ -1830,6 +1830,47 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal((await v2('pagementor', 'GET', `/mentoring/threads/${threadId}/messages?cursor=bm9wZQ`)).status, 400);
   });
 
+  test('the books are read whole again only when they changed - not every 30 seconds while anyone uses the app', async (t) => {
+    const { superuser } = require('./instance');
+    const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);
+    const store = require(path.join(BACKEND_DIR, 'db', 'stores', 'finance'));
+    const appConfig = { pocketbase: { adminEmail: su.config.pocketbase.adminEmail, adminPassword: su.config.pocketbase.adminPassword } };
+    process.env.POCKETBASE_PORT = new URL(pocketbaseUrl).port;
+    // Every read of the whole payments table is counted; the clock is moved on instead of waiting half a minute
+    let wholeReads = 0;
+    const realFetch = global.fetch;
+    global.fetch = (url, options) => {
+      if (/\/api\/collections\/finance_payments\/records\?/.test(String(url)) && /perPage=1000/.test(String(url)) && !/filter=/.test(String(url))) wholeReads += 1;
+      return realFetch(url, options);
+    };
+    const realNow = Date.now;
+    let ahead = 0;
+    Date.now = () => realNow() + ahead;
+    t.after(() => {
+      global.fetch = realFetch;
+      Date.now = realNow;
+    });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 1000));
+    await store.membersReadOnly(appConfig);
+    await settle();
+    const before = wholeReads;
+    assert.ok(before > 0, 'read whole the first time');
+    // Read again and again, half a minute apart: nothing changed, nothing is read whole again
+    for (let round = 0; round < 3; round += 1) {
+      ahead += 31000;
+      await store.membersReadOnly(appConfig);
+      await settle();
+    }
+    assert.equal(wholeReads, before, 'read whole again although nothing changed');
+    // A change outside this server (as PocketBase's admin page makes one): the next look reads them whole
+    const [payment] = await su.list('finance_payments');
+    await su.update('finance_payments', payment.id, { description: payment.description });
+    ahead += 31000;
+    await store.membersReadOnly(appConfig);
+    for (let waited = 0; wholeReads === before && waited < 10000; waited += 100) await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(wholeReads > before, 'a change outside the server is read');
+  });
+
   test('API v2: the money as the statistics count it - up to today, what is dated later apart; a member\'s total is what its payments add up to', async () => {
     const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
     const stats = await ok(call('treasurer', 'GET', '/api/stats'));

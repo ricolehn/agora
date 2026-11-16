@@ -29,12 +29,12 @@ run_shell_as_runtime_user() {
 
 # Preserve the current working directory so relative CMD paths like
 # `node backend/server.js` still resolve after dropping privileges.
+# The server takes this shell's place (exec): signals reach it, and its exit code is the container's.
 run_as_runtime_user() {
     if [ "$(id -u)" -eq 0 ]; then
         current_dir=$(pwd)
         # Keep a placeholder for $0 so the preserved working directory stays in $1.
-        su "$runtime_user" -s /bin/sh -c 'cd "$1" && shift && exec "$@"' -- su-placeholder "$current_dir" "$@"
-        return
+        exec su "$runtime_user" -s /bin/sh -c 'cd "$1" && shift && exec "$@"' -- su-placeholder "$current_dir" "$@"
     fi
 
     exec "$@"

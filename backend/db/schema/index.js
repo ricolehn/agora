@@ -59,6 +59,9 @@ function creationOrder(specs = allCollections()) {
 /** A field definition as PocketBase takes it ([collectionIdOf] gives the id of a linked collection). */
 function toPocketBaseField(field, collectionIdOf) {
   const { target, ...rest } = field;
+  // PocketBase keeps no help text with an autodate field (created, updated): sent along, every start found the tables
+  // with such fields different from their definition and wrote them anew (docs/DATABASE.md still shows the text)
+  if (field.type === 'autodate') delete rest.help;
   if (field.type !== 'relation') return rest;
   const collectionId = collectionIdOf(target);
   if (!collectionId) throw new Error(`The collection ${target} (linked from ${field.name}) does not exist yet.`);

@@ -553,6 +553,17 @@ async function deleteCollection(appConfig, nameOrId) {
   return pocketBaseRequest(`/api/collections/${encodeURIComponent(nameOrId)}`, { method: 'DELETE', token, allow404: true });
 }
 
+/**
+ * How [collectionName] stands: [how many records it has, when its newest change was] - one small question, past the
+ * read cache. The same as before: nothing in it was changed meanwhile (also not on PocketBase's admin page).
+ */
+async function tableStand(collectionName, appConfig) {
+  const token = await authenticateSuperuser(appConfig);
+  const params = new URLSearchParams({ page: '1', perPage: '1', sort: '-updated', fields: 'updated' });
+  const result = await pocketBaseRequest(`/api/collections/${collectionName}/records?${params.toString()}`, { token, cache: false });
+  return [Number(result.totalItems) || 0, result.items?.[0]?.updated || ''];
+}
+
 /** Counts the records of [collectionName] that match [filter] (one COUNT, no records). */
 async function countRecords(collectionName, filter, appConfig) {
   const token = await authenticateSuperuser(appConfig);
@@ -602,6 +613,7 @@ module.exports = {
   updateRecord,
   deleteRecord,
   countRecords,
+  tableStand,
   ensureBatchSettings,
   batchWrite,
   writeInBatches,

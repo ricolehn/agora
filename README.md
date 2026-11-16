@@ -63,6 +63,8 @@ docker run -d \
 
 > **Unraid / Permission Note:** Agora starts as root only long enough to prepare bind-mounted `/app/data`, `/app/db`, and `/app/html` directories for the bundled `node` user (UID 1000), then drops back to `node` before starting the app. If your storage backend blocks ownership changes, make sure every mapped host directory is writable by UID 1000, e.g. `chown -R 1000:1000 /path/to/your/storage /path/to/your/cache /path/to/your/frontend`.
 
+> **Stopping and health:** the image runs a small init (tini): `docker stop` ends the server and its database at once and cleanly (it used to wait ten seconds and then kill both). Docker's health check shows the container `healthy` while the server and its database both answer - `docker ps` and Unraid show it - and `unhealthy` when one of them stopped.
+
 ### Optional: Frontend Volume Mapping
 
 The frontend files are bundled directly in `/app/html` inside the container. If you want to customize the frontend (e.g. replace `index.html` or static assets), you can optionally map this path as well:

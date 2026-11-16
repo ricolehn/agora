@@ -10,7 +10,7 @@ RUN npm install --omit=dev
 
 WORKDIR /app
 
-RUN apk add --no-cache curl unzip dos2unix && \
+RUN apk add --no-cache curl unzip dos2unix tini && \
     case "${TARGETARCH:-amd64}" in \
       amd64) pb_arch="amd64" ;; \
       arm64) pb_arch="arm64" ;; \
@@ -45,5 +45,14 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Healthy while the server and its database both answer (docker ps, Unraid and orchestrators show it): a PocketBase that
+# stopped behind a running server was not noticed
+HEALTHCHECK --interval=30s --timeout=10s --start-period=2m --retries=3 \
+  CMD pb="${POCKETBASE_HTTP:-0.0.0.0:8090}"; \
+      wget -q -O /dev/null "http://127.0.0.1:${PORT:-3000}/api/status" && \
+      wget -q -O /dev/null "http://127.0.0.1:${pb##*:}/api/health" || exit 1
+
+# tini as the first process: it passes docker stop on to the server and PocketBase (-g: to all of them) and reaps what
+# ends. The shell of the entrypoint ignored the signal - both were killed hard after ten seconds
+ENTRYPOINT ["/sbin/tini", "-s", "-g", "--", "/app/docker-entrypoint.sh"]
 CMD ["node", "backend/server.js"]

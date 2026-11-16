@@ -13,6 +13,8 @@ const NEW_COLLECTIONS = ['user_groups'];
 const BUILDING_FIELDS = { usersGroupsField: 'groupLinks' };
 // The fields of users that are worked out now (codecs/accounts.js) - removed in the cleanup
 const REMOVED_USER_FIELDS = ['name', 'avatar', 'superAdmin', 'emailNotifications', 'isClaimed', 'groups'];
+// The rules of a collection (who may list, view, create, update, delete its records)
+const RULES = Object.keys(SERVER_ONLY_RULES);
 
 function newFindings() {
   return { groupsNamedOrAsObjects: [], groupsThatDoNotExist: [], ownerAndSuperAdminDiffer: [], nameDiffersFromFirstAndLast: [], emailNotificationsDifferFromSettings: [], claimedDiffersFromEmail: [], unknownPermissions: [] };
@@ -110,6 +112,8 @@ async function rollback(appConfig) {
 async function ensureUsersSchema(appConfig) {
   const users = await client.getCollection(appConfig, 'users');
   const groupsId = (await client.getCollection(appConfig, 'user_groups'))?.id;
+  // As it is now (the fields below are changed in place): written only when it is not what it should be
+  const stored = JSON.stringify([users.fields, users.indexes || [], users.authToken?.duration, RULES.map((rule) => users[rule] ?? null)]);
   const fields = [...users.fields];
   const problems = [];
   for (const wanted of schema.USERS_FIELDS) {
@@ -132,6 +136,8 @@ async function ensureUsersSchema(appConfig) {
     fields: kept,
     indexes: [...otherIndexes, "CREATE UNIQUE INDEX idx_users_calendar_token ON users (calendarToken) WHERE calendarToken != ''"]
   };
+  // It was written at every start, whether anything was different or not
+  if (JSON.stringify([body.fields, body.indexes, body.authToken.duration, RULES.map((rule) => body[rule] ?? null)]) === stored) return problems;
   try {
     await client.updateCollection(appConfig, 'users', body);
   } catch (error) {
