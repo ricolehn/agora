@@ -3982,11 +3982,13 @@ async function loadMemberData() {
     let peopleList = [];
     try {
         peopleList = safeList(ownPeople);
-        // Members created before their account existed: link the person record with the same name once
+        // Members created before their account existed: link the person record with the same name once - only the
+        // one record of that name no account uses (two are two people: the treasury assigns the account)
         const name = fullName(currentUser) || currentUser.name || '';
         if (peopleList.length === 0 && name) {
             const val = await byField('name', name);
-            const key = Object.keys(val)[0];
+            const unused = Object.keys(val).filter(k => !val[k]?.uid && !val[k]?.isDeleted);
+            const key = unused.length === 1 ? unused[0] : null;
             if (key) {
                 await update(child(peopleRef, key), { uid }).catch(err => console.warn('Auto-link update failed:', err));
                 peopleList = [{ ...val[key], uid }];

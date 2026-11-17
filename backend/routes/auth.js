@@ -173,6 +173,12 @@ router.post('/api/auth/login', authRateLimit, async (req, res) => {
   }
 });
 
+/** The finance entries that bear [fullName] and no account uses (none deleted): a member kept before their account. */
+function unusedEntriesNamed(people, fullName) {
+  const name = fullName.trim().toLowerCase();
+  return people.filter(p => !p.uid && !p.data?.uid && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === name);
+}
+
 router.post('/api/auth/register', authRateLimit, async (req, res) => {
   if (context.setupMode) {
     return res.status(503).json({ error: 'App is in setup mode. Please complete setup first.' });
@@ -236,17 +242,24 @@ router.post('/api/auth/register', authRateLimit, async (req, res) => {
         // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
         const uid = matchingUnclaimedUser.id;
         const people = await listPeopleRecords(context.appConfig);
-        const unusedEntry = !people.some(p => p.uid === uid || p.data?.uid === uid) && people.find(p => !p.uid && !p.data?.uid
-          && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === fullName.toLowerCase());
-        if (unusedEntry) {
-          await upsertPeopleRecord(context.appConfig, unusedEntry.personKey, { ...(unusedEntry.data || {}), uid, name: fullName });
+        const unused = unusedEntriesNamed(people, fullName);
+        if (!people.some(p => p.uid === uid || p.data?.uid === uid) && unused.length === 1) {
+          await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
         }
       } else {
         auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
 
-        const personKey = auth.user.id;
-        const today = new Date().toISOString().slice(0, 10);
-        await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(personKey, fullName, today));
+        // A member the treasury kept before they had an account (an entry with their name that no account uses) gets
+        // that entry, with its payments and history - a new one beside it was charged from today and the apps showed
+        // it instead. Two such entries are two people: the account gets none, the treasury assigns it ("Unlinked users")
+        const uid = auth.user.id;
+        const unused = unusedEntriesNamed(await listPeopleRecords(context.appConfig), fullName);
+        if (unused.length === 1) {
+          await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
+        } else if (unused.length === 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          await upsertPeopleRecord(context.appConfig, uid, newPersonRecord(uid, fullName, today));
+        }
       }
 
       // The next code, into the settings as they are now (not as they were read at the start)

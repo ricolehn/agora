@@ -587,6 +587,30 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.deepEqual(await own('junior'), ['2026-09-01'], "the son sees only his own entry, not his father's payments");
   });
 
+  test('registering gets the entry the treasury kept under the name before the account existed - two such entries are two people, and none is taken', async () => {
+    const register = async (who, firstName, lastName) => {
+      const inviteCode = await read('owner', 'system/inviteCode');
+      tokens[who] = (await ok(call(null, 'POST', '/api/auth/register', { email: `${who}@test.local`, password: PASSWORD, firstName, lastName, inviteCode }))).token;
+      return (await ok(call(who, 'GET', '/api/auth/me'))).user.uid;
+    };
+    const entry = (key, name, extra = {}) => ({ path: `people/${key}`, value: { id: key, name, status: 'geringverdiener', memberSince: '2015-03-01', originalMemberSince: '2015-03-01', totalPaid: 10, pays: true, payments: [{ id: 1767000000001, amount: 10, date: '2026-01-03', description: 'Januar' }], standingOrders: [], statusHistory: [{ status: 'geringverdiener', startDate: '2015-03-01' }], ...extra } });
+    // The treasury kept Erna's entry before she had an account (its own key, its payments and status)
+    await ok(call('treasurer', 'PUT', '/api/db', entry('-NalteErna01', 'Erna Früher')));
+    const erna = await register('erna', 'Erna', 'Früher');
+    const own = Object.values(await read('erna', 'people')).filter((p) => p.uid === erna);
+    assert.deepEqual(own.map((p) => [p.id, p.memberSince, p.status]), [['-NalteErna01', '2015-03-01', 'geringverdiener']], 'her entry, with its history');
+    assert.equal(Object.values(await read('treasurer', 'people')).filter((p) => p.name === 'Erna Früher').length, 1, 'no second one beside it');
+
+    // Two entries of one name without an account are two people: the account gets none of them, and no new one -
+    // the treasury assigns it (the web app lists it under "Unlinked users")
+    await ok(call('treasurer', 'PUT', '/api/db', entry('-NpaulA', 'Paul Doppelt')));
+    await ok(call('treasurer', 'PUT', '/api/db', entry('-NpaulB', 'Paul Doppelt', { memberSince: '1990-01-01' })));
+    const paul = await register('paul', 'Paul', 'Doppelt');
+    const everyone = Object.values(await read('treasurer', 'people'));
+    assert.deepEqual(everyone.filter((p) => p.uid === paul), []);
+    assert.deepEqual(everyone.filter((p) => p.name === 'Paul Doppelt').map((p) => p.uid || null), [null, null]);
+  });
+
   test('two bookings for the same member at the same time: neither one is lost', async () => {
     const key = await account('lea', 'Lea');
     const latest = (who) => ok(call(who, 'GET', `/api/db?path=people/${key}&raw=1`));
