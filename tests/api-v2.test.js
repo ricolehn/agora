@@ -417,6 +417,19 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     assert.deepEqual([long.status, long.body.error.field], [400, 'details.note']);
   });
 
+  test('the fees from the beginning come through v2 before any change of the fees was saved - as on every instance updated from a version without the history', async () => {
+    // Nothing of the history is stored yet: v1 reads the fees off the fee settings and lists them from the beginning.
+    // v2 lists them the same - an empty list made the app take the server for one without the history
+    const v1 = await ok(call('owner', 'GET', '/api/fees'));
+    assert.deepEqual(v1.entries.map((entry) => [entry.from, entry.state]), [[null, 'current']]);
+    const inCents = (fees) => Object.fromEntries(Object.entries(fees).map(([status, amount]) => [status, Math.round(amount * 100)]));
+    for (const who of ['owner', 'treasurer', 'max']) {
+      const fees = await ok(v2(who, 'GET', '/fees'));
+      assert.deepEqual(fees.feeChanges, [{ fromMonth: '', feesCents: inCents(v1.entries[0].fees), state: 'current', setAt: null, setByName: '' }], who);
+      assert.deepEqual(fees.feeChanges[0].feesCents, fees.currentCents, who);
+    }
+  });
+
   test('the fees over time and the fresh starts through v2: in cents, who set them only for the finances, changed by system admins as checked', async () => {
     // A change from the next month: checked first, saved as checked, taken back
     const next = new Date();
@@ -433,6 +446,7 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     const saved = await ok(v2('owner', 'POST', '/fees', { ...change, version: preview.version }));
     assert.equal(saved.next.fromMonth, fromMonth);
     assert.equal(saved.next.feesCents.vollverdiener, 6100);
+    assert.deepEqual(saved.feeChanges.map((entry) => entry.fromMonth), ['', fromMonth]);
     assert.ok(saved.feeChanges.some((entry) => entry.fromMonth === fromMonth && entry.state === 'planned' && entry.setByName === 'Olga Owner'));
     assert.ok(saved.log.some((entry) => entry.fromMonth === fromMonth && entry.feesCents.vollverdiener === 6100));
     // Who set the fees: for those who see the finances (v1 kept it from the members; v2 showed it to everyone)
@@ -444,7 +458,7 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     assert.ok((await ok(v2('treasurer', 'GET', '/fees'))).feeChanges.some((entry) => entry.setByName === 'Olga Owner'));
     await refused(v2('owner', 'POST', '/fees', { ...change, version: preview.version }), 409, 'conflict');
     const removed = await ok(v2('owner', 'POST', '/fees/remove', { fromMonth, version: saved.version }));
-    assert.equal(removed.feeChanges.some((entry) => entry.fromMonth === fromMonth), false);
+    assert.deepEqual(removed.feeChanges.map((entry) => [entry.fromMonth, entry.state]), [['', 'current']]);
 
     // A fresh start a week ahead: the numbers first, then the day twice and the password
     const freshDay = day(7);

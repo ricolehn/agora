@@ -29,7 +29,7 @@ const {
   limitOf, storedCursorOf, storedPage, page, v1Route, runV1, runSteps
 } = require('./http');
 
-const { cents, isoOf, isoFromMillis, memberOf, paymentOf, statusPeriodOf, standingOrderOf } = data;
+const { cents, isoFromMillis, memberOf, paymentOf, statusPeriodOf, standingOrderOf } = data;
 
 const router = express.Router();
 const BASE = '/api/v2';
@@ -794,21 +794,24 @@ const sideInCents = (side) => (side ? { count: side.count, totalCents: centsOfAm
 
 const feesRoute = v1Route(financeRouter, 'get', '/api/fees');
 
-/** The fees as v2 answers them, from v1's answer [fees] ([req]: who reads - who set what only for insiders, as in v1). */
+/**
+ * The fees as v2 answers them, from v1's answer [fees] ([req]: who reads - who set what only for insiders, as in v1).
+ * The fees over time are those that count, as v1 lists them - the fees from the beginning first. An instance on which
+ * no change was ever saved (every one updated from a version before the history) has none stored: its fees are read
+ * off the fee settings and the fresh starts (scheduleFromLegacy), and listed all the same.
+ */
 async function feesAnswer(req, fees) {
-  const changes = await client.listAllRecords(finance.COLLECTIONS.FEE_CHANGES, '', context.appConfig, 'fromMonth');
   const starts = await client.listAllRecords(finance.COLLECTIONS.FRESH_STARTS, '', context.appConfig, 'day');
   const insider = isFeeInsider(req);
-  const stateOf = new Map((fees.entries || []).map((entry) => [entry.from || '', entry.state]));
   return {
     today: fees.today,
     month: fees.month,
     currentCents: feesInCents(fees.current),
     since: fees.since,
     next: fees.next ? { fromMonth: fees.next.from, feesCents: feesInCents(fees.next.fees) } : null,
-    feeChanges: changes.map((row) => ({
-      fromMonth: row.fromMonth, feesCents: row.feesCents || {}, state: stateOf.get(row.fromMonth || '') || null,
-      setAt: insider ? isoOf(row.setAt) : null, setByName: insider ? row.setByName || '' : ''
+    feeChanges: (fees.entries || []).map((entry) => ({
+      fromMonth: entry.from || '', feesCents: feesInCents(entry.fees) || {}, state: entry.state || null,
+      setAt: insider ? isoFromMillis(entry.setAt) : null, setByName: insider ? entry.setByName || '' : ''
     })),
     freshStarts: starts.map((row) => ({ day: row.day, feesBeforeCents: insider ? row.feesBeforeCents || null : null })),
     ...(insider ? {
