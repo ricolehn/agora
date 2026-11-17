@@ -530,6 +530,32 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     await refused(v2('max', 'GET', `/events/${created.id}`), 404, 'not_found');
   });
 
+  test('who changes an event: those who manage events every event, everyone their own - its kind and pinning only those who manage events', async () => {
+    await account('lena', 'Lena');
+    const lead = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Leitung', permissions: ['manage_events'] }));
+    await ok(call('owner', 'PUT', `/api/admin/users/${uids.lena}/groups`, { groups: [lead.id || lead.group?.id] }));
+    // Everyone creates events; appointments only those who manage events
+    const own = await ok(v2('max', 'POST', '/events', { title: 'Spieleabend', date: day(33) }));
+    await refused(v2('max', 'POST', '/events', { title: 'Gottesdienst', date: day(33), kind: 'termin' }), 403, 'forbidden');
+    // Lena makes Max's event an appointment and pins it
+    const pinned = await ok(v2('lena', 'PATCH', `/events/${own.id}`, { kind: 'termin', isPinned: true, location: 'Saal' }));
+    assert.deepEqual([pinned.kind, pinned.isPinned, pinned.location, pinned.canEdit], ['termin', true, 'Saal', true]);
+    // Max still changes his own event - also when he sends its kind and pinning as they are, as an app sends the whole
+    // event back - but changes neither of them
+    const changed = await ok(v2('max', 'PATCH', `/events/${own.id}`, { title: 'Großer Spieleabend', kind: 'termin', isPinned: true }));
+    assert.deepEqual([changed.title, changed.kind, changed.isPinned, changed.canEdit], ['Großer Spieleabend', 'termin', true, true]);
+    await refused(v2('max', 'PATCH', `/events/${own.id}`, { isPinned: false }), 403, 'forbidden');
+    await refused(v2('max', 'PATCH', `/events/${own.id}`, { kind: 'event' }), 403, 'forbidden');
+    assert.equal((await ok(v2('max', 'GET', `/events/${own.id}`))).isPinned, true);
+    // Someone else's event: only those who manage events - every event and appointment
+    await refused(v2('mia', 'PATCH', `/events/${own.id}`, { title: 'Meins' }), 403, 'forbidden');
+    const appointment = await ok(v2('lena', 'POST', '/events', { title: 'Gottesdienst', date: day(34), kind: 'termin' }));
+    await refused(v2('max', 'PATCH', `/events/${appointment.id}`, { title: 'Meins' }), 403, 'forbidden');
+    assert.equal((await ok(v2('lena', 'PATCH', `/events/${own.id}`, { title: 'Spieleabend für alle' }))).title, 'Spieleabend für alle');
+    assert.equal((await v2('lena', 'DELETE', `/events/${own.id}`)).status, 204);
+    assert.equal((await v2('lena', 'DELETE', `/events/${appointment.id}`)).status, 204);
+  });
+
   // --- Community -------------------------------------------------------------------------------------------------
 
   test('mentoring through v2: apply, approved by those who manage it, a conversation with unread messages, read and closed', async () => {

@@ -177,6 +177,21 @@ function newDutiesInput(value) {
   });
 }
 
+/**
+ * A change of an event by one who does not manage events - its creator, who changes their own event at any time: its
+ * kind and pinning may come as they are (an app sends the whole event back, also after those who manage events made it
+ * an appointment or pinned it) and stay; changing either is for those who manage events.
+ */
+async function creatorsChange(req, v1) {
+  if (canManageEvents(req) || (v1.eventType === undefined && v1.isPinned === undefined)) return;
+  const event = await eventsStore.getEventRecord(context.appConfig, req.params.id);
+  // No such event: v1 says so
+  if (!event) return;
+  if (v1.eventType === (event.eventType || (event.isRecurring ? 'termin' : 'event'))) delete v1.eventType;
+  if (v1.isPinned === (event.isPinned === true)) delete v1.isPinned;
+  if (v1.eventType !== undefined || v1.isPinned !== undefined) throw forbidden('Only those who manage events change whether an event is an appointment or pinned.');
+}
+
 /** Appointments, pinned and repeated events are for those who manage events (v1 left them out silently). */
 function managersOnly(req, v1) {
   if (!canManageEvents(req) && (v1.eventType === 'termin' || v1.isPinned === true || v1.isRecurring === true)) {
@@ -204,8 +219,10 @@ router.post(`${BASE}/events`, protectedActionRateLimit, verifyToken, handle(asyn
   res.status(201).json({ ...(await eventAnswer(req, created.event.id)), seriesCount: created.count || 1 });
 }));
 
+// Those who manage events change every event; its creator their own (all but its kind and pinning: creatorsChange)
 router.patch(`${BASE}/events/:id`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
   const v1 = eventInput(bodyOf(req), { isNew: false });
+  await creatorsChange(req, v1);
   managersOnly(req, v1);
   // The minimum against the places as they will be: v1 checks the pair
   await runV1(updateRoute, req, { params: { id: req.params.id }, body: v1 });

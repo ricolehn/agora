@@ -437,6 +437,7 @@
   "targetGroups must be a list of group names or ids (empty: everyone).": "targetGroups muss eine Liste von Gruppennamen oder -IDs sein (leer: alle).",
   "recurrence must be an object: { rule, count }.": "recurrence muss ein Objekt sein: { rule, count }.",
   "Only those who manage events make appointments, pin events or repeat them.": "Nur wer Veranstaltungen verwaltet, kann Termine anlegen, Veranstaltungen anheften oder wiederholen.",
+  "Only those who manage events change whether an event is an appointment or pinned.": "Nur wer Veranstaltungen verwaltet, ändert, ob eine Veranstaltung ein Termin oder angeheftet ist.",
   "Name a participant by their account id or as guest:<guestId>.": "Bitte eine Person mit ihrer Konto-ID oder als guest:<guestId> angeben.",
   "items must be a list of at most 60 items.": "items muss eine Liste von höchstens 60 Punkten sein.",
   "items.{index} must be an object.": "items.{index} muss ein Objekt sein.",
