@@ -29,8 +29,9 @@ export const API = config.apiBaseUrl;
 /** Switched-off features (backend/features.js); an old cached config.js has none, so everything stays off. */
 export const FEATURES = { polls: config.features?.polls === true };
 
-// The name from the server configuration; the system settings change it right after saving
+// The name from the server configuration (also the window's title); the system settings change it right after saving
 const [appName, setAppNameSignal] = createSignal(config.appName || 'Agora');
+document.title = config.appName || 'Agora';
 export { appName };
 export function setAppName(name: string) {
   setAppNameSignal(name || 'Agora');
