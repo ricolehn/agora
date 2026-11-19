@@ -14,9 +14,8 @@ initTheme();
 // The texts first (pages for visitors render before any data), then the app; the session decides what shows
 await languageReady;
 render(() => <App />, document.getElementById('root')!);
+// The session decides what shows; the boot screen of index.html stays until then (app/auth.ts)
 startAuth();
-// The boot screen of index.html gives way to the app's own screens
-document.getElementById('boot')?.remove();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
