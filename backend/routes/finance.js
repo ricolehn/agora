@@ -478,7 +478,9 @@ router.get('/api/receipts/:filename', protectedActionRateLimit, verifyToken, asy
     return res.status(403).send('Forbidden');
   }
   const user = req.user;
-  const allowed = user.canViewFinances || user.canManageFinances || user.admin || user.owner || ownsReceipt(user, filename);
+  // Receipts belong to the books: those who see or manage the finances open them, and whoever uploaded the file. A
+  // system admin (the owner too) without these rights is a member like any other here, as for events (v3.0.0)
+  const allowed = user.canViewFinances || user.canManageFinances || ownsReceipt(user, filename);
   if (!allowed) return res.status(403).send('Forbidden');
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);

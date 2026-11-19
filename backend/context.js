@@ -165,6 +165,8 @@ async function initializeRuntime(config) {
   purgeExpiredRequests(context.appConfig);
   repairRequestAuthors(context.appConfig);
   pruneDeletedPeopleRecords(context.appConfig);
+  // What the finance change log may no longer hold since a request or a member was deleted (db/stores/finance.js)
+  require('./db/stores/finance').clearDeletedFromChangeLog(context.appConfig);
 }
 
 // A start that failed (PocketBase not answering yet, a full disk) is tried again by itself: the instance must not stay

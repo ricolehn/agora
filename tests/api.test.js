@@ -426,6 +426,23 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.notEqual((await open('owner', '..%2Fconfig.json')).status, 200);
   });
 
+  test('system admins see the finances only through their groups: receipts and the change log too', async () => {
+    await account('adele', 'Adele', { admin: true });
+    assert.equal((await ok(call('adele', 'GET', '/api/auth/me'))).user.admin, true);
+    const { filename } = await ok(uploadReceipt('max', 'Max Test'));
+    const reads = async () => [
+      (await call('adele', 'GET', `/api/receipts/${encodeURIComponent(filename)}`)).status,
+      (await call('adele', 'GET', `/api/v2/receipts/${encodeURIComponent(filename)}`)).status,
+      (await call('adele', 'GET', '/api/v2/finance/changes?limit=5')).status
+    ];
+    // Without finance rights an admin is a member like any other here (as for events): the receipts and the change log
+    // hold the books (the log: every member's payments, statuses and requests)
+    assert.deepEqual(await reads(), [403, 403, 403]);
+    const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Einsicht der Admins', permissions: ['view_finances'] }));
+    await ok(call('owner', 'PUT', `/api/admin/users/${uids.adele}/groups`, { groups: [group.id || group.group?.id] }));
+    assert.deepEqual(await reads(), [200, 200, 200], 'with the right of a group they see them');
+  });
+
   test('events: members create plain events, appointments / pinned need the permission (also for admins)', async () => {
     const event = { title: 'Jugendabend', date: '2026-11-07', startTime: '19:00', endTime: '21:00', location: 'Saal', description: 'Test' };
     const typeOf = async (who, payload) => {
@@ -738,6 +755,79 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const left = await shown();
     assert.ok(!left.includes(named.id), 'her name and request are no longer shown to everyone');
     assert.ok(!left.includes(anonymous.id));
+  });
+
+  test('deleting an account takes its finance requests and what the books said about it out of the change log, too', async () => {
+    const { superuser } = require('./instance');
+    const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);
+    const v2 = (who, method, url, body) => call(who, method, `/api/v2${url}`, body);
+    const uid = await account('protokoll', 'Petra');
+    const memberId = (await su.list('finance_members', `user = "${uid}"`))[0].id;
+    const version = async () => (await ok(v2('treasurer', 'GET', `/members/${memberId}`))).version;
+    // What she asked for, and what the treasury did with it and with her record
+    const status = await ok(v2('protokoll', 'POST', '/requests', { type: 'status', details: { newStatus: 'keinverdiener', date: '2026-09-01', note: 'Seit Juni arbeitslos, Scheidung läuft' } }));
+    await ok(v2('treasurer', 'POST', `/requests/${status.id}/decision`, { status: 'rejected', rejectionReason: 'Bitte einen Nachweis' }));
+    const payment = await ok(v2('protokoll', 'POST', '/requests', { type: 'payment', details: { amount: 42, date: '2026-09-02', note: 'Bar an Theo gegeben' } }));
+    await ok(v2('treasurer', 'POST', `/requests/${payment.id}/decision`, { status: 'approved', book: true }));
+    await ok(v2('treasurer', 'POST', '/status-changes', { memberId, memberVersion: await version(), status: 'geringverdiener', date: '2026-10-01' }));
+    await ok(v2('treasurer', 'POST', '/standing-orders', { memberId, memberVersion: await version(), amountCents: 2500, startDate: '2026-11-01', note: 'Dauerauftrag Petra' }));
+    const PRIVATE = ['arbeitslos', 'Nachweis', 'Bar an Theo', 'Dauerauftrag Petra', 'keinverdiener', 'geringverdiener', 'vollverdiener'];
+    const hers = async () => (await su.list('finance_changes')).filter((row) => [status.id, payment.id].includes(row.target) || row.member === memberId);
+    // The payments stay in the books (by law) and so in the log: everything else of hers must go
+    const told = (rows) => rows.filter((row) => row.area !== 'payment' && PRIVATE.some((text) => JSON.stringify(row.details).includes(text)));
+    assert.ok(told(await hers()).length >= 5, 'while she is a member, the log holds what she asked for, her status and her standing order');
+
+    await ok(call('protokoll', 'POST', '/api/auth/delete-account', { password: PASSWORD }));
+    const left = await hers();
+    assert.deepEqual(told(left).map((row) => `${row.area} ${row.action}`), [], 'nothing of it is left in the log');
+    // It keeps that it happened, by whom and when (PRIVACY.md: decided requests go after 30 days - the same way)
+    for (const id of [status.id, payment.id]) {
+      const rows = left.filter((row) => row.area === 'request' && row.target === id);
+      assert.equal(rows[0].action, 'create');
+      assert.equal(rows[0].by, uid, 'filed by her');
+      assert.equal(rows.at(-1).action, 'delete');
+      assert.ok(rows.length >= 3 && rows.every((row) => row.at), 'filed, decided, deleted - and when');
+      assert.deepEqual(rows.map((row) => row.details), [...rows.slice(0, -1).map(() => ({ removed: true })), {}]);
+    }
+    assert.ok(left.filter((row) => row.area === 'member' && row.action !== 'delete').every((row) => row.details.removed === true));
+    assert.deepEqual(left.filter((row) => row.area === 'member' && row.action === 'delete').map((row) => row.details), [{ before: { name: 'Petra Test' } }]);
+    assert.ok(left.some((row) => row.area === 'payment' && row.action === 'create' && row.details.after?.amount === 42), 'the booked payment stays');
+    // As API v2 hands the log to the treasury
+    const logged = (await ok(v2('treasurer', 'GET', '/finance/changes?area=request&limit=500'))).items.filter((row) => row.target === status.id);
+    assert.ok(logged.length >= 3 && logged.every((row) => !PRIVATE.some((text) => JSON.stringify(row).includes(text))));
+  });
+
+  test('the change log forgets what an earlier version kept of deleted requests and members', async () => {
+    const { superuser } = require('./instance');
+    const su = await superuser(dataRoot, new URL(pocketbaseUrl).port);
+    const store = require(path.join(BACKEND_DIR, 'db', 'stores', 'finance'));
+    const appConfig = { pocketbase: { adminEmail: su.config.pocketbase.adminEmail, adminPassword: su.config.pocketbase.adminPassword } };
+    process.env.POCKETBASE_PORT = new URL(pocketbaseUrl).port;
+    // As the betas of this version left them: a deleted request with all it asked for, a deleted member's status and
+    // standing order - next to what stays: the name and payment of that member, and a request that is still there
+    const log = (body) => su.create('finance_changes', { at: new Date().toISOString(), by: uids.treasurer, byName: 'Theo Test', ...body });
+    const gone = await su.create('finance_members', { name: 'Gerda Gelöscht', isDeleted: true });
+    const planted = {
+      request: await log({ area: 'request', action: 'delete', target: 'geloeschteanfr1', details: { before: { type: 'status', data: { note: 'Krankheit, bitte vertraulich' } } } }),
+      status: await log({ area: 'member', action: 'update', member: gone.id, target: gone.id, details: { before: { status: 'vollverdiener' }, after: { status: 'keinverdiener' } } }),
+      order: await log({ area: 'standingOrder', action: 'create', member: gone.id, target: 'dauerauftrag001', details: { after: { amount: 30, note: 'Miete Gerda' } } }),
+      name: await log({ area: 'member', action: 'delete', member: gone.id, target: gone.id, details: { before: { name: 'Gerda Gelöscht' } } }),
+      payment: await log({ area: 'payment', action: 'create', member: gone.id, target: 'zahlunggerda01', details: { after: { amount: 30, date: '2026-01-01' } } })
+    };
+    const live = await ok(call('max', 'POST', '/api/v2/requests', { type: 'payment', details: { amount: 5, date: '2026-09-03', note: 'Noch offen' } }));
+    try {
+      assert.ok(await store.clearDeletedFromChangeLog(appConfig) >= 3);
+      const details = async (key) => (await su.request('GET', `/api/collections/finance_changes/records/${planted[key].id}`)).details;
+      for (const key of ['request', 'status', 'order']) assert.deepEqual(await details(key), { removed: true }, key);
+      assert.deepEqual(await details('name'), { before: { name: 'Gerda Gelöscht' } });
+      assert.equal((await details('payment')).after.amount, 30);
+      const liveRows = await su.list('finance_changes', `target = "${live.id}"`);
+      assert.ok(liveRows.length && liveRows.every((row) => JSON.stringify(row.details).includes('Noch offen')), 'a request that is there keeps its rows');
+      assert.equal(await store.clearDeletedFromChangeLog(appConfig), 0, 'nothing more the second time');
+    } finally {
+      for (const row of Object.values(planted)) await su.remove('finance_changes', row.id).catch(() => {});
+      await su.remove('finance_members', gone.id).catch(() => {});
+    }
   });
 
   test('deleting a duplicate finance entry keeps the account; deleting the last one removes it', async () => {

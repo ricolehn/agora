@@ -50,7 +50,8 @@ v2 (`/api/v3`), never as a change of v2.
   person's own (as the app reported it), else the instance's default - English where no translation exists. `field`
   (only with `invalid`, where one value did not fit) names that value as the request named it (`date`,
   `details.note`, `items.2.minutes`).
-- **Permissions** are those of v1: the finances need *view finances* to read and *manage finances* to write; a member
+- **Permissions** are those of v1: the finances need *view finances* to read and *manage finances* to write - system
+  admins and the owner too, who see the finances only through the permissions of their groups; a member
   reads their own member record, payments, standing orders and requests (and sees a record nobody's account is linked
   to that bears their full name, to link it to their account). The fees and fresh starts are changed by
   system admins; the calendar, mentoring, the songbook and media follow their own rights as in the apps.
@@ -123,9 +124,9 @@ Changes made through v2 are the same changes as through the web app: the balance
 | `POST`, `PATCH /:id`, `DELETE /:id` `/expenses` | with `listVersion` (`POST` takes `requestId` as payments do) | manage finances |
 | `GET /finance/ledger` | every booking in one list - the history of the books - newest first (`?q=`, `?kind=` `memberPayment`, `donation` or `expense`, `?member=`, `?from=`, `?to=`): `kind`, `id`, `amountCents`, `date`, `who` (the member, donor or issuer), `memberId`, `description`, `receipts`, `clientId`, `source` | view finances |
 | `POST /receipts` | upload a receipt (multipart, field `receipt`): a picture (JPG, PNG, WebP, GIF, HEIC, HEIF) or a PDF, at most 50 MB. Answers `201 { name }` - name it with an entry or a request | signed in |
-| `GET /receipts/:name` | the file | view or manage finances, admins - and whoever uploaded it |
+| `GET /receipts/:name` | the file | view or manage finances - and whoever uploaded it |
 | `GET /finance/summary` | the money as the app's statistics count it, on `today`: `totalsCents` (`memberPayments`, `donations`, `expenses`, `balance`) of what is booked up to today, with what has no readable day (`undatedCents`, from older apps); `months`: per month and kind; `plannedCents` and `planned`: what is dated after today - in no total or balance yet | view finances |
-| `GET /finance/changes` | the change log, newest first: `area`, `action`, `at`, `by`, `byName`, `memberId`, `target`, `details` (`before` / `after`) (`?area=`, `?member=`, `?from=`, `?to=` - days of `at`, in UTC) | view finances, admins |
+| `GET /finance/changes` | the change log, newest first: `area`, `action`, `at`, `by`, `byName`, `memberId`, `target`, `details` (`before` / `after`; `{ "removed": true }` once what it was about is deleted - a request, or a member's status, standing order or own values: the log keeps that it changed, by whom and when, not to what) (`?area=`, `?member=`, `?from=`, `?to=` - days of `at`, in UTC) | view finances |
 
 ### Requests
 
