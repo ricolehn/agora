@@ -1,0 +1,35 @@
+{
+  "name": "Agora",
+  "short_name": "Agora",
+  "description": "Finance management for youth work",
+  "lang": "en",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4f1",
+  "theme_color": "#f5f4f1",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/assets/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icon-notification.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/badge-monochrome.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "monochrome"
+    }
+  ],
+  "categories": [
+    "finance",
+    "productivity"
+  ]
+}

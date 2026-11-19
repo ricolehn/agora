@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+/* The dark theme is chosen in the app (system / light / dark): <html data-theme="dark">, not the media query */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/* --- Typeface: Inter (variable, self-hosted, SIL OFL - fonts/OFL.txt) --- */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    src: url('./fonts/inter-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    src: url('./fonts/inter-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* --- Palette "Stone & Lagoon": warm stone neutrals, a deep lagoon teal that runs into emerald as the brand.
+       The values are the ones the previous stylesheets ended up with (light and dark). Components use them through
+       the Tailwind colours below (bg-surface, text-text-secondary, border-hairline, ...), so a theme switch only
+       changes these variables. --- */
+:root {
+    --brand: #0d9e94;
+    --brand-rgb: 13, 158, 148;
+    --brand-deep: #0b7d75;
+    --primary: #0c8d84;
+    --primary-dark: #0a6f68;
+    --secondary: #14a87c;
+    --gradient-primary: linear-gradient(135deg, #0e9f96 0%, #17ad80 100%);
+    --gradient-hover: linear-gradient(135deg, #12aba1 0%, #1cb98a 100%);
+
+    --bg: #f5f4f1;
+    --surface: #ffffff;
+    --surface-alt: #f1efeb;
+    --border-light: #e8e5df;
+    --border: #d9d5cd;
+    --hairline: rgba(48, 38, 26, 0.09);
+    --text: #1a1917;
+    --text-secondary: #6d6861;
+    --success: #0f9b6c;
+    --danger: #e5484d;
+    --warning: #e0900f;
+
+    --nav-pill: #dcf1ec;
+    --nav-pill-text: #0a5049;
+    --desktop-header-bg: #ffffff;
+    --desktop-header-border: #e8e5df;
+    --desktop-nav-text: #6d6861;
+    --desktop-nav-active: #1a1917;
+    --desktop-nav-underline: #0d9e94;
+    --desktop-profile-border: #d1d5db;
+    --desktop-profile-text: #1c1917;
+
+    --glow-rgb: 48, 38, 26;
+    --shadow: 0 1px 2px rgba(48, 38, 26, 0.05), 0 2px 6px -1px rgba(48, 38, 26, 0.05);
+    --shadow-md: 0 1px 2px rgba(48, 38, 26, 0.05), 0 8px 20px -6px rgba(48, 38, 26, 0.12);
+    --shadow-lg: 0 2px 4px rgba(48, 38, 26, 0.04), 0 18px 44px -12px rgba(48, 38, 26, 0.24);
+    --shadow-brand: 0 1px 2px rgba(48, 38, 26, 0.12), 0 4px 10px -4px rgba(48, 38, 26, 0.18);
+    --ring: 0 0 0 3px rgba(13, 158, 148, 0.28);
+    --frost: saturate(150%) blur(14px);
+    --frost-bg: color-mix(in srgb, var(--bg) 88%, transparent);
+    --frost-surface: color-mix(in srgb, var(--surface) 86%, transparent);
+
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --radius: 20px;
+    --page-gutter: clamp(20px, 2.8vw, 64px);
+    --desktop-header-offset: 108px;
+    --mobile-bottom-nav-height: 60px;
+    --mobile-bottom-nav-offset: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+    --mobile-ai-chat-input-height: 92px;
+    --mentoring-desktop-chrome: 380px;
+    --mentoring-mobile-chrome: calc(340px + env(safe-area-inset-bottom, 0px));
+}
+[data-theme="dark"] {
+    --brand: #2ea398;
+    --brand-rgb: 46, 163, 152;
+    --brand-deep: #268a80;
+    --primary: #63c0b4;
+    --primary-dark: #2ea398;
+    --secondary: #3fae84;
+    --gradient-primary: linear-gradient(135deg, #0f8e86 0%, #159a72 100%);
+    --gradient-hover: linear-gradient(135deg, #12988f 0%, #19a57b 100%);
+
+    --bg: #181817;
+    --surface: #222120;
+    --surface-alt: #2b2a28;
+    --border-light: #343230;
+    --border: #45433f;
+    --hairline: rgba(255, 252, 245, 0.07);
+    --text: #ebe8e3;
+    --text-secondary: #a3a09a;
+    --success: #5bb48b;
+    --danger: #de6f72;
+    --warning: #d4a24e;
+
+    --nav-pill: #22403b;
+    --nav-pill-text: #addcd3;
+    --desktop-header-bg: #222120;
+    --desktop-header-border: #343230;
+    --desktop-nav-text: #a3a09a;
+    --desktop-nav-active: #ebe8e3;
+    --desktop-nav-underline: #2ea398;
+    --desktop-profile-border: #45433f;
+    --desktop-profile-text: #ebe8e3;
+
+    --glow-rgb: 0, 0, 0;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -6px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.3), 0 20px 48px -12px rgba(0, 0, 0, 0.7);
+    --ring: 0 0 0 3px rgba(46, 163, 152, 0.28);
+}
+
+/* Tailwind theme: the palette above as colours, shadows and radius; breakpoints of the previous layout
+   (phone up to 768px, desktop from 769px: md: and max-md: are exactly that split) */
+@theme inline {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    --color-brand: var(--brand);
+    --color-brand-deep: var(--brand-deep);
+    --color-primary: var(--primary);
+    --color-primary-dark: var(--primary-dark);
+    --color-secondary: var(--secondary);
+    --color-bg: var(--bg);
+    --color-surface: var(--surface);
+    --color-surface-alt: var(--surface-alt);
+    --color-border: var(--border);
+    --color-border-light: var(--border-light);
+    --color-hairline: var(--hairline);
+    --color-text: var(--text);
+    --color-text-secondary: var(--text-secondary);
+    --color-success: var(--success);
+    --color-danger: var(--danger);
+    --color-warning: var(--warning);
+    --color-nav-pill: var(--nav-pill);
+    --color-nav-pill-text: var(--nav-pill-text);
+
+    --shadow-card: var(--shadow);
+    --shadow-card-md: var(--shadow-md);
+    --shadow-card-lg: var(--shadow-lg);
+    --shadow-brand: var(--shadow-brand);
+    --shadow-ring: var(--ring);
+
+    --radius-card: var(--radius);
+    --ease-app: var(--ease);
+
+    --background-image-gradient-primary: var(--gradient-primary);
+    --background-image-gradient-hover: var(--gradient-hover);
+}
+@theme {
+    --breakpoint-md: 769px;
+}
+
+/* --- Base: what every element had before (no visible scrollbars, no tap flash, crisp type) --- */
+@layer base {
+    * {
+        -webkit-tap-highlight-color: transparent;
+        scrollbar-width: none;
+    }
+    ::-webkit-scrollbar { display: none; }
+    html {
+        overscroll-behavior: none;
+        background-color: var(--bg);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+    }
+    body {
+        background-color: var(--bg);
+        color: var(--text);
+        height: 100dvh;
+        overflow: hidden;
+        overscroll-behavior: none;
+        transition: background-color 0.3s ease;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    h1, h2, h3 { letter-spacing: -0.022em; }
+    ::selection { background: rgba(var(--brand-rgb), 0.22); }
+    /* Buttons look like buttons where the old browser default showed (the previous stylesheet kept that cursor) */
+    button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+}
+
+/* --- Respect "reduce motion" --- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* The app fills the window; the page scrolls inside the shell's container */
+#root { height: 100%; }

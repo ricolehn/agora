@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#181817">
+    <meta name="theme-color" content="#f5f4f1">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <!-- Pages have their own paths (/events/...): relative files are always found from the root -->
+    <base href="/">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/assets/church-logo.svg">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    <title>Agora</title>
+    <!-- Written by the backend for this instance (name, features): fetched beside the app, not after it -->
+    <link rel="modulepreload" href="/assets/config.js">
+    <script>
+        // The theme before the first paint (no light flash in the dark theme)
+        (function () {
+            try {
+                var stored = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
+                var theme = stored === 'system' ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : stored;
+                if (theme) document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {}
+        })();
+    </script>
+    <style>
+        /* The boot screen until the app has started (the same as the app's own loading screen) */
+        html { background: #f5f4f1; }
+        html[data-theme="dark"] { background: #181817; }
+        #boot { position: fixed; inset: 0; z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; background: inherit; }
+        #boot.on { display: flex; }
+        #boot .boot-spinner { width: 60px; height: 60px; border: 4px solid rgba(13, 158, 148, 0.1); border-left-color: #0c8d84; border-radius: 50%; animation: boot-spin 1s linear infinite; }
+        html[data-theme="dark"] #boot .boot-spinner { border-left-color: #63c0b4; }
+        @keyframes boot-spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div id="boot" aria-hidden="true"><div class="boot-spinner"></div></div>
+<script>
+    // Signed in before (or a shared event's link): the loading screen right away instead of a flash of the sign-in
+    try {
+        if (localStorage.getItem('agora-is-logged-in') === 'true' || localStorage.getItem('nova-is-logged-in') === 'true' || /[?&](share|guest)=/.test(window.location.search)) {
+            document.getElementById('boot').className = 'on';
+        }
+    } catch (e) {}
+</script>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
