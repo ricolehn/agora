@@ -184,7 +184,7 @@ const collections = [
       text('byName', 'Name of who did it.'),
       link('member', 'finance_members', 'The member it concerns, if any.'),
       text('target', 'Id of the record that changed.'),
-      json('details', 'The change: the values before and after, or the log entry of a fee change or fresh start.'),
+      json('details', 'The change: the values before and after, or the log entry of a fee change or fresh start. {"removed": true}: what it was about is deleted (a request, or a member\'s status, standing order or own values) - the log keeps that it changed, not to what.'),
       ...automaticTimes()
     ],
     // The log is read newest first, a page at a time (API v2, the AI): each index ends in (at, id), the order of its

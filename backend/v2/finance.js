@@ -778,9 +778,11 @@ router.get(`${BASE}/finance/summary`, verifyToken, handle(async (req, res) => {
   });
 }));
 
-// Newest first, a page at a time - asked of the database: the log grows with every booking and is kept ten years
+// Newest first, a page at a time - asked of the database: the log grows with every booking and is kept ten years.
+// It holds the books, so it is for those who see them: a system admin without these rights reads it no more than any
+// other member (as v1 and the AI's finance_changes keep it)
 router.get(`${BASE}/finance/changes`, verifyToken, handle(async (req, res) => {
-  needs(canView(req) || req.user.admin === true);
+  needs(canView(req));
   const area = req.query.area === undefined || req.query.area === '' ? null : choiceInput(req.query.area, 'area', CHANGE_AREAS);
   const { from, to } = daysOf(req);
   res.json(storedPage(await data.financeChangesPage({ area, member: idOfQuery(req, 'member'), from, to, limit: limitOf(req), after: storedCursorOf(req) })));

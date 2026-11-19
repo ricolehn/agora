@@ -260,7 +260,7 @@ The finance change log: who changed what and when. Kept for the bookkeeping peri
 | byName | text | Name of who did it. |
 | member | link → finance_members | The member it concerns, if any. |
 | target | text | Id of the record that changed. |
-| details | json | The change: the values before and after, or the log entry of a fee change or fresh start. |
+| details | json | The change: the values before and after, or the log entry of a fee change or fresh start. {"removed": true}: what it was about is deleted (a request, or a member's status, standing order or own values) - the log keeps that it changed, not to what. |
 | created | moment (set by the database) | When the record was created (set by the database). |
 | updated | moment (set by the database) | When the record was last changed (set by the database). |
 

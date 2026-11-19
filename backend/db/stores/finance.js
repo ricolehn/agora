@@ -570,6 +570,41 @@ function changeOpsFor(area, ops, rows, decode, member = '') {
   });
 }
 
+// What the log keeps of something deleted: that it changed, by whom and when - never what it held. A request goes with
+// all it asked for (a decided one after 30 days, all of an account that is deleted: PRIVACY.md, ACCOUNT_DELETION.md);
+// a deleted member keeps only the name and the payments in the books, and so in the log: their income status, standing
+// orders and own values go. The log of payments, donations and expenses stays, as they stay in the books.
+const REMOVED_DETAILS = { removed: true };
+const PERSONAL_AREAS = ['member', 'statusPeriod', 'standingOrder'];
+const PERSONAL_FILTER = `(${PERSONAL_AREAS.map((area) => `area = "${area}"`).join(' || ')})`;
+// The row of a member's deletion keeps only the name, as the books do
+const isPersonal = (row) => PERSONAL_AREAS.includes(row.area) && !(row.area === 'member' && row.action === 'delete');
+const holdsValues = (row) => Boolean(row?.details) && (row.details.before !== undefined || row.details.after !== undefined);
+/** The writes that leave the log [rows] with the fact of the change only. */
+const clearedRows = (rows) => rows.filter(holdsValues).map((row) => ({ method: 'PATCH', collection: CHANGES, id: row.id, body: { details: REMOVED_DETAILS } }));
+
+/**
+ * Clears what the log may no longer hold (see clearedRows) wherever a deletion left it: the versions before this one
+ * did not clear it, and a change written while a deletion ran is not among the rows that deletion cleared. Runs at
+ * every start and with the daily cleanup, never throws; returns how many rows it cleared.
+ */
+async function clearDeletedFromChangeLog(appConfig) {
+  if (!appConfig) return 0;
+  try {
+    // The rows first, then the requests there are: a request filed in between has no row in this list yet
+    const requestRows = await client.listAllRecords(CHANGES, 'area = "request"', appConfig, '', { fields: 'id,target,details' });
+    const requests = new Set((await client.listAllRecords(REQUESTS, '', appConfig, '', { fields: 'id' })).map((row) => row.id));
+    const memberRows = await client.listAllRecords(CHANGES, `member.isDeleted = true && ${PERSONAL_FILTER}`, appConfig, '', { fields: 'id,area,action,details' });
+    const ops = clearedRows([...requestRows.filter((row) => !requests.has(row.target)), ...memberRows.filter(isPersonal)]);
+    await runBatch(appConfig, ops);
+    if (ops.length) console.log(`[Finance] Cleared ${ops.length} change log entr${ops.length === 1 ? 'y' : 'ies'} of deleted requests and members`);
+    return ops.length;
+  } catch (error) {
+    console.warn('[Finance] Clearing deleted requests and members from the change log failed:', error.message);
+    return 0;
+  }
+}
+
 const CHANGE_LOG_YEARS = () => {
   const years = Number(process.env.AGORA_CHANGE_LOG_YEARS);
   return Number.isFinite(years) && years > 0 ? years : 10;
@@ -694,17 +729,20 @@ async function writeDeletedMember(appConfig, row, record) {
   const body = { ...encoded.columns, original: Object.keys(original).length ? original : null };
   delete body.id;
   const [periods, orders] = await Promise.all([PERIODS, STANDING_ORDERS].map((collection) => client.listAllRecords(collection, client.pbFilterEquals('member', row.id), appConfig)));
-  // The income status says much about a person: once they are deleted, the log keeps that it changed, not to what
-  const statusRows = await client.listAllRecords(CHANGES, `${client.pbFilterEquals('member', row.id)} && area = "statusPeriod"`, appConfig, '', { fields: 'id' });
-  await queueRecordWrite(`people:${keyOfMember(row)}`, () => runBatch(appConfig, [
-    ...periods.map((period) => ({ method: 'DELETE', collection: PERIODS, id: period.id })),
-    ...orders.map((order) => ({ method: 'DELETE', collection: STANDING_ORDERS, id: order.id })),
-    { method: 'PATCH', collection: MEMBERS, id: row.id, body },
-    ...statusRows.map((change) => ({ method: 'PATCH', collection: CHANGES, id: change.id, body: { details: { removed: true } } })),
-    ...orders.map((order) => changeOp('standingOrder', 'delete', { member: row.id, target: order.id, before: codecs.standingOrder.decode(order) })),
-    ...periods.map((period) => changeOp('statusPeriod', 'delete', { member: row.id, target: period.id })),
-    changeOp('member', 'delete', { member: row.id, target: row.id, before: { name: record.name || record.data?.name || '' } })
-  ], { tag: { members: [row.id] } }));
+  await queueRecordWrite(`people:${keyOfMember(row)}`, async () => {
+    // What the log said about the person goes with them (see clearedRows): it keeps that their income status, standing
+    // orders and own values changed, not to what. Read in the member's queue: a write queued before is in it, too
+    const personalRows = await client.listAllRecords(CHANGES, `${client.pbFilterEquals('member', row.id)} && ${PERSONAL_FILTER}`, appConfig, '', { fields: 'id,area,action,details' });
+    return runBatch(appConfig, [
+      ...periods.map((period) => ({ method: 'DELETE', collection: PERIODS, id: period.id })),
+      ...orders.map((order) => ({ method: 'DELETE', collection: STANDING_ORDERS, id: order.id })),
+      { method: 'PATCH', collection: MEMBERS, id: row.id, body },
+      ...clearedRows(personalRows.filter(isPersonal)),
+      ...orders.map((order) => changeOp('standingOrder', 'delete', { member: row.id, target: order.id })),
+      ...periods.map((period) => changeOp('statusPeriod', 'delete', { member: row.id, target: period.id })),
+      changeOp('member', 'delete', { member: row.id, target: row.id, before: { name: record.name || record.data?.name || '' } })
+    ], { tag: { members: [row.id] } });
+  });
 }
 
 /**
@@ -987,9 +1025,13 @@ async function updateRequestData(appConfig, requestKey, data, { setColumns = [] 
 async function deleteRequestRecord(appConfig, requestKey) {
   const row = await findRequestRow(appConfig, requestKey);
   if (row) {
+    // Out of the log, too (see clearedRows): it keeps that the request was filed, decided and deleted, by whom and when -
+    // not its note, amount or the status it asked for
+    const logged = await client.listAllRecords(CHANGES, `area = "request" && ${client.pbFilterEquals('target', row.id)}`, appConfig, '', { fields: 'id,details' });
     await client.batchWrite(appConfig, [
       { method: 'DELETE', collection: REQUESTS, id: row.id },
-      changeOp('request', 'delete', { target: row.id, before: has(originalOf(row), 'noData') ? null : codecs.request.decode(row) })
+      ...clearedRows(logged),
+      changeOp('request', 'delete', { target: row.id })
     ]);
   }
 }
@@ -1178,6 +1220,7 @@ require('../links').holdLinks('users', async (appConfig, uid) => {
 
 module.exports = {
   pruneChangeLog,
+  clearDeletedFromChangeLog,
   CHANGE_LOG_YEARS,
   COLLECTIONS: { MEMBERS, PAYMENTS, PERIODS, STANDING_ORDERS, DONATIONS, EXPENSES, REQUESTS, FEE_CHANGES, FRESH_STARTS, CHANGES },
   FINANCE_STATE_KEYS,

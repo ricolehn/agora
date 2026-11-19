@@ -77,6 +77,9 @@ scheduledTasks.push(cron.schedule('0 5 * * *', () => {
     require('./db/stores/finance').pruneChangeLog(context.appConfig)
       .then((removed) => { if (removed) console.log(`[Finance] Removed ${removed} change log entr${removed === 1 ? 'y' : 'ies'} past the kept years`); })
       .catch((err) => console.warn('[Finance] Pruning the change log failed:', err.message));
+    // What it may no longer hold since a request or a member was deleted (a deletion clears it itself; this catches
+    // what a change written meanwhile left)
+    require('./db/stores/finance').clearDeletedFromChangeLog(context.appConfig);
   }
 }));
 

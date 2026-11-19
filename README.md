@@ -389,8 +389,11 @@ as someone's own.
 **The finance change log.** Every change of a booking, member, donation, expense, standing order, status or request is
 recorded with who made it and when, with the values before and after (`finance_changes`, written in the same step as
 the change itself). It is kept 10 years (the usual bookkeeping period; `AGORA_CHANGE_LOG_YEARS` changes it) and then
-removed automatically; the history of the fees and fresh starts is kept for good. When a member is deleted, the log
-keeps that their income status changed, not to what.
+removed automatically; the history of the fees and fresh starts is kept for good. What is deleted leaves the log, too:
+when a request is deleted (a decided one after 30 days, all of an account that is deleted) and when a member is deleted,
+the log keeps that it changed, by whom and when – not the note, amount or status of the request, nor the member's income
+status, standing orders or own values (`details` becomes `{"removed": true}`). The log of payments, donations and
+expenses stays, as they stay in the books.
 
 **For app developers.** [API v2](docs/API_V2.md) (`/api/v2/…`) hands out the data in the new shapes: record ids, money in
 whole cents, ISO times, every list in pages with a cursor (most of them searchable with `?q=`), every error as
