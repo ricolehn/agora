@@ -260,6 +260,37 @@ describe('media helpers of the web app (assets/media.js)', () => {
     assert.deepEqual(['Brief.docx', 'Predigt.MP3', 'README', 'archiv.backup', 'a.b.pdf'].map(m.typeLabel), ['DOCX', 'MP3', '', '', 'PDF']);
   });
 
+  test('the path as pills, as in the Android app: all steps up to three folders down, deeper the middle folds into "…"', async () => {
+    const m = await load();
+    const names = (steps) => steps.map((step) => (step.folded.length ? `…(${step.folded.map((f) => f.target).join(',')})` : `${step.name}=${step.target}`));
+    assert.deepEqual(names(m.pathSteps('', 'Media')), ['Media=']);
+    assert.equal(m.pathSteps('', 'Media')[0].root, true);
+    assert.deepEqual(names(m.pathSteps('Fotos/2026/Sommer', 'Media')), ['Media=', 'Fotos=Fotos', '2026=Fotos/2026', 'Sommer=Fotos/2026/Sommer']);
+    // Four folders down: the base folder, then the folders before the last two in "…", the last two
+    assert.deepEqual(names(m.pathSteps('Fotos/2026/Sommer/Bühne', 'Media')), ['Media=', '…(Fotos,Fotos/2026)', 'Sommer=Fotos/2026/Sommer', 'Bühne=Fotos/2026/Sommer/Bühne']);
+    assert.deepEqual(names(m.pathSteps('a/b/c/d/e/f/g', 'Medien')), ['Medien=', '…(a,a/b,a/b/c,a/b/c/d,a/b/c/d/e)', 'f=a/b/c/d/e/f', 'g=a/b/c/d/e/f/g']);
+    assert.deepEqual(m.pathSteps('a/b/c/d', 'M')[1].folded.map((f) => f.name), ['a', 'b']);
+    assert.equal(m.pathSteps('a/b/c/d', 'M')[1].root, false, '"…" is not the base folder');
+    assert.deepEqual(['', 'Fotos', 'Fotos/2026', '/Fotos//2026/'].map(m.folderDepth), [0, 1, 2, 2]);
+  });
+
+  test('names on the tiles leave out the type the tile shows; files look like their kind', async () => {
+    const m = await load();
+    assert.deepEqual(['Gemeindebrief.pdf', 'a.b.pdf', 'README', '.pdf', 'Foto.jpeg', 'Archiv.backup'].map(m.shownName),
+      ['Gemeindebrief', 'a.b', 'README', '.pdf', 'Foto', 'Archiv.backup']);
+    const look = (name, kind) => {
+      const { colors, motif } = m.fileLook({ name, kind });
+      return `${motif}:${colors.deep}`;
+    };
+    // Pictures in the library's warm colours, PDFs rose, music blue, videos lilac; other documents by their type
+    assert.equal(look('a.jpg', 'image'), `picture:${m.MEDIA_FIELD.deep}`);
+    assert.equal(look('a.pdf', 'pdf'), 'document:#d6667c');
+    assert.equal(look('a.mp3', 'audio'), 'notes:#4a98c4');
+    assert.equal(look('a.mp4', 'video'), 'film:#7c6fd6');
+    assert.deepEqual(['a.DOCX', 'a.txt', 'a.xlsx', 'a.csv', 'a.pptx', 'a.key', 'a.zip', 'README'].map((name) => look(name, 'other')),
+      ['document:#4a7fd6', 'document:#4a7fd6', 'document:#3e9b6a', 'document:#3e9b6a', 'document:#e07b42', 'document:#e07b42', 'document:#8a837a', 'document:#8a837a']);
+  });
+
   test('zooming: the spot under the fingers stays put, the picture never leaves its box', async () => {
     const m = await load();
     const start = { scale: 1, x: 0, y: 0 };

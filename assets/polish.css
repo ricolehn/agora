@@ -560,10 +560,11 @@ h1, h2, h3,
 }
 .modal-header { background: var(--frost-surface); }
 
-/* Sub-pages (settings pages, songbook, prayers): the back button and title stay reachable while scrolling */
+/* Sub-pages (settings pages, songbook, prayers, media): the back button and title stay reachable while scrolling */
 .settings-paged[data-page] > .settings-nav,
 #songbook > .polls-head,
-#prayers > .polls-head {
+#prayers > .polls-head,
+#media > .media-top {
     position: sticky;
     top: 0;
     z-index: 7;
@@ -619,12 +620,12 @@ h1, h2, h3,
 @media (max-width: 768px) {
     .settings-paged[data-page] > .settings-nav,
     #songbook > .polls-head,
-    #prayers > .polls-head { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    #prayers > .polls-head,
+    #media > .media-top { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
     .container:has(> .app-layout > .header:not(.header-hidden)) .settings-paged[data-page] > .settings-nav,
     .container:has(> .app-layout > .header:not(.header-hidden)) #songbook > .polls-head,
-    .container:has(> .app-layout > .header:not(.header-hidden)) #prayers > .polls-head { top: var(--mobile-header-h, 68px); }
-    #media > .media-selectbar { transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
-    .container:has(> .app-layout > .header:not(.header-hidden)) #media > .media-selectbar { top: calc(var(--mobile-header-h, 68px) + 8px); }
+    .container:has(> .app-layout > .header:not(.header-hidden)) #prayers > .polls-head,
+    .container:has(> .app-layout > .header:not(.header-hidden)) #media > .media-top { top: var(--mobile-header-h, 68px); }
 }
 
 /* ==========================================================================
@@ -1517,16 +1518,15 @@ h1, h2, h3,
 @media (min-width: 769px) {
     .settings-paged[data-page] > .settings-nav,
     #songbook > .polls-head,
-    #prayers > .polls-head {
+    #prayers > .polls-head,
+    #media > .media-top {
         top: calc(72px - var(--desktop-header-offset));
         transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
     .container:has(> .app-layout > .header.header-hidden) .settings-paged[data-page] > .settings-nav,
     .container:has(> .app-layout > .header.header-hidden) #songbook > .polls-head,
-    .container:has(> .app-layout > .header.header-hidden) #prayers > .polls-head { top: calc(0px - var(--desktop-header-offset)); }
-    /* The media selection bar likewise, with a little air */
-    #media > .media-selectbar { top: calc(80px - var(--desktop-header-offset)); transition: top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
-    .container:has(> .app-layout > .header.header-hidden) #media > .media-selectbar { top: calc(8px - var(--desktop-header-offset)); }
+    .container:has(> .app-layout > .header.header-hidden) #prayers > .polls-head,
+    .container:has(> .app-layout > .header.header-hidden) #media > .media-top { top: calc(0px - var(--desktop-header-offset)); }
 
     /* Settings: one centred column like the chat and the prayers */
     #settings,
@@ -1654,71 +1654,51 @@ h1, h2, h3,
 .event-attendee-contact a { color: inherit; }
 
 /* ==========================================================================
-   AI chat, second pass: an orb as the assistant's sign (soft colours, slowly turning, faster while it
-   thinks), a warmer start page with suggestion cards, messages that glide in, the start page fading
-   upwards for the first message, and a quiet "Thinking · 4 s" line that opens to show the thoughts
+   AI chat, second pass: the assistant's sign (assets/aiSign.js, as in the Android app - two soft forms in lagoon
+   and sand whose outlines slowly change, livelier while it thinks), a warm start page with suggestion cards,
+   messages that glide in, the start page fading upwards for the first message, and a quiet "Thinking · 4 s" line
+   that opens to show the thoughts. No violet: the chat wears the sign's colours
    ========================================================================== */
-.ai-orb {
-    --orb-a: #7c6fd6;
-    --orb-b: #9b8cf0;
-    --orb-c: #5fa8d3;
-    --orb-d: #5dbfaa;
+.ai-sign {
     position: relative;
-    display: inline-grid;
-    place-items: center;
+    display: inline-block;
     flex-shrink: 0;
-    border-radius: 50%;
-    color: #ffffff;
-    isolation: isolate;
+    width: var(--ai-sign-size, 28px);
+    height: var(--ai-sign-size, 28px);
+    vertical-align: middle;
 }
-.ai-orb-lg { width: 76px; height: 76px; }
-.ai-orb-sm { width: 28px; height: 28px; }
-.ai-orb-core {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    overflow: hidden;
-    background: conic-gradient(from 0deg, var(--orb-a), var(--orb-b), var(--orb-c), var(--orb-d), var(--orb-b), var(--orb-a));
-    animation: aiOrbSpin 12s linear infinite;
-}
-/* Depth: light from the upper left, a little shade below - the colours keep turning underneath */
-.ai-orb::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background:
-        radial-gradient(75% 65% at 32% 24%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 62%),
-        radial-gradient(90% 70% at 60% 105%, rgba(40, 30, 90, 0.28) 0%, rgba(40, 30, 90, 0) 60%);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
-    pointer-events: none;
-}
-.ai-orb-glow {
-    position: absolute;
-    inset: -28%;
-    z-index: -1;
-    border-radius: 50%;
-    background: radial-gradient(closest-side, color-mix(in srgb, var(--orb-b) 55%, transparent), color-mix(in srgb, var(--orb-d) 25%, transparent) 60%, transparent);
-    filter: blur(10px);
-    opacity: 0.7;
-    animation: aiOrbBreathe 4.5s ease-in-out infinite;
-}
-.ai-orb-sm .ai-orb-glow { inset: -18%; filter: blur(5px); opacity: 0; }
-.ai-orb-glyph { position: relative; z-index: 1; filter: drop-shadow(0 1px 2px rgba(40, 30, 90, 0.35)); }
-.ai-orb.is-thinking .ai-orb-core { animation-duration: 2.2s; }
-.ai-orb.is-thinking .ai-orb-glow { opacity: 0.8; animation-duration: 1.6s; }
-.ai-orb.is-thinking .ai-orb-glyph { animation: aiOrbTwinkle 1.6s ease-in-out infinite; }
-@keyframes aiOrbSpin { to { transform: rotate(1turn); } }
-@keyframes aiOrbBreathe { 0%, 100% { transform: scale(0.92); } 50% { transform: scale(1.06); } }
-@keyframes aiOrbTwinkle { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(0.82) rotate(20deg); } }
+/* The halo reaches beyond the sign */
+.ai-sign > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+/* Sand behind, lagoon in front (a little translucent where they overlap); the halo in both, as strong as --ai-sign-glow */
+.ai-sign-b0 { stop-color: #f0dec2; }
+.ai-sign-b1 { stop-color: #dab98d; }
+.ai-sign-f0 { stop-color: #4fa597; }
+.ai-sign-f1 { stop-color: #1f6a62; }
+.ai-sign-front { fill-opacity: 0.86; }
+.ai-sign-h0, .ai-sign-h1 { stop-color: #e2be8a; }
+.ai-sign-h2, .ai-sign-h3 { stop-color: #8cc7bb; }
+.ai-sign-h0, .ai-sign-h3 { stop-opacity: 0; }
+.ai-sign-h1 { stop-opacity: calc(0.26 * var(--ai-sign-glow, 0)); }
+.ai-sign-h2 { stop-opacity: calc(0.1 * var(--ai-sign-glow, 0)); }
+[data-theme="dark"] .ai-sign-b0 { stop-color: #e3c99f; }
+[data-theme="dark"] .ai-sign-b1 { stop-color: #bf9868; }
+[data-theme="dark"] .ai-sign-f0 { stop-color: #86c2b6; }
+[data-theme="dark"] .ai-sign-f1 { stop-color: #4c8c82; }
+[data-theme="dark"] .ai-sign-h1 { stop-opacity: calc(0.14 * var(--ai-sign-glow, 0)); }
+[data-theme="dark"] .ai-sign-h2 { stop-opacity: calc(0.05 * var(--ai-sign-glow, 0)); }
 
-/* Header: the small orb before the title */
+/* Room for the glow of a thinking sign beside a reply: the list of the messages clips what reaches beyond it */
+#ai-chat .ai-chat-messages { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+
+/* Header: the small sign before the title */
 .ai-chat-title { display: inline-flex; align-items: center; gap: 10px; }
+.ai-chat-title-sign { display: inline-flex; flex-shrink: 0; width: 28px; height: 28px; }
 
 /* --- Start page --- */
 .ai-chat-messages { position: relative; }
 .ai-chat-welcome { gap: 0; padding: 28px 4px 24px; }
-.ai-chat-welcome > .ai-orb { margin-bottom: 22px; animation: aiWelcomeOrb 0.7s var(--ease) backwards; }
+/* The sign only fades in: it never turns */
+.ai-chat-welcome > .ai-sign { margin-bottom: 22px; animation: aiWelcomeSign 0.45s cubic-bezier(0.4, 0, 0.2, 1) backwards; }
 .ai-chat-welcome-text {
     display: flex;
     flex-direction: column;
@@ -1732,17 +1712,12 @@ h1, h2, h3,
     animation: aiWelcomeUp 0.6s var(--ease) 0.08s backwards;
 }
 .ai-chat-welcome-hi { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; color: var(--text-secondary); }
-.ai-chat-welcome-ask {
-    background: linear-gradient(100deg, #6c5fd0 0%, #7d6fe0 35%, #3f9fb8 75%, #2f9e8c 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    padding-bottom: 2px;
-}
+.ai-chat-welcome-ask { color: var(--text); padding-bottom: 2px; }
 .ai-chat-welcome-sub { max-width: 360px; margin: 10px 0 0; font-size: 0.93rem; line-height: 1.5; animation: aiWelcomeUp 0.6s var(--ease) 0.14s backwards; }
 .ai-chat-ideas { display: grid; grid-template-columns: 1fr; gap: 10px; width: 100%; max-width: 420px; margin-top: 26px; }
+/* The suggestions in the sign's lagoon and sand, and stone */
 .ai-chat-idea {
-    --c: #7c6fd6;
+    --c: #2d6a62;
     position: relative;
     display: flex;
     align-items: center;
@@ -1764,8 +1739,8 @@ h1, h2, h3,
     animation: aiWelcomeUp 0.55s var(--ease) backwards;
     animation-delay: calc(0.22s + var(--i, 0) * 0.07s);
 }
-.ai-chat-idea:nth-child(2) { --c: #4a98c4; }
-.ai-chat-idea:nth-child(3) { --c: #479f82; }
+.ai-chat-idea:nth-child(2) { --c: #a8743f; }
+.ai-chat-idea:nth-child(3) { --c: #6d6861; }
 .ai-chat-idea-icon {
     width: 36px;
     height: 36px;
@@ -1806,7 +1781,7 @@ h1, h2, h3,
 }
 @keyframes aiWelcomeOut { to { opacity: 0; transform: translateY(-24px) scale(0.97); filter: blur(2px); } }
 @keyframes aiWelcomeUp { from { opacity: 0; transform: translateY(10px); } }
-@keyframes aiWelcomeOrb { from { opacity: 0; transform: scale(0.6) rotate(-30deg); } }
+@keyframes aiWelcomeSign { from { opacity: 0; } }
 
 /* --- Messages glide in --- */
 .ai-chat-bubble-user { transform-origin: bottom right; animation: aiMsgIn 0.36s var(--ease) backwards; }
@@ -1814,7 +1789,7 @@ h1, h2, h3,
 .ai-chat-bubble-user.is-after-welcome { animation-delay: 0.14s; }
 .ai-chat-row.is-after-welcome { animation-delay: 0.22s; }
 @keyframes aiMsgIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
-.ai-chat-mark { width: 28px; height: 28px; background: none; margin-top: 0; }
+.ai-chat-mark { display: inline-flex; flex-shrink: 0; width: 28px; height: 28px; background: none; margin-top: 0; }
 .ai-chat-row .ai-chat-bubble-assistant { padding-top: 4px; }
 .ai-answer:empty { display: none; }
 /* Blank lines between blocks: the paragraphs and lists keep their own spacing, no extra empty line on top */
@@ -1884,7 +1859,7 @@ h1, h2, h3,
 .ai-thinking-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-thinking-text.is-leaving { position: absolute; top: 0; left: 0; overflow: visible; }
 .ai-thinking.is-live .ai-thinking-text {
-    background: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #8f84e6 50%, var(--text-secondary) 65%, var(--text-secondary) 100%);
+    background: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #2d625b 50%, var(--text-secondary) 65%, var(--text-secondary) 100%);
     background-size: 250% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -1904,7 +1879,7 @@ h1, h2, h3,
 .ai-thinking-content {
     margin: 10px 0 0 6px;
     padding: 2px 0 2px 14px;
-    border-left: 2px solid color-mix(in srgb, #7c6fd6 30%, var(--hairline));
+    border-left: 2px solid rgba(210, 164, 110, 0.6);
     font-size: 0.84rem;
     line-height: 1.55;
     color: var(--text-secondary);
@@ -1943,14 +1918,14 @@ h1, h2, h3,
     height: 22px;
     margin-top: 1px;
     border-radius: 7px;
-    background: color-mix(in srgb, #7c6fd6 12%, var(--surface));
-    color: #6c5fd0;
+    background: color-mix(in srgb, #2d6a62 12%, var(--surface));
+    color: #2d625b;
 }
 .ai-step-body { min-width: 0; }
 .ai-step-title { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
 .ai-step-detail { margin-top: 1px; font-size: 0.78rem; color: var(--text-secondary); overflow-wrap: anywhere; }
 .ai-thinking.is-live .ai-step-lookup.is-running .ai-step-title {
-    background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #8f84e6 50%, var(--text) 65%, var(--text) 100%);
+    background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #2d625b 50%, var(--text) 65%, var(--text) 100%);
     background-size: 250% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -1997,14 +1972,15 @@ h1, h2, h3,
 /* Text that was only a note before a lookup folds away from the answer (it is among the steps now) */
 .ai-answer-leaving { overflow: hidden; pointer-events: none; }
 
-/* Dark: the same orb and cards, the headline a little lighter */
-[data-theme="dark"] .ai-step-icon { background: color-mix(in srgb, #7c6fd6 26%, var(--surface)); color: #b4aaf7; }
-[data-theme="dark"] .ai-chat-welcome-ask { background-image: linear-gradient(100deg, #a99cf5 0%, #9d90f2 35%, #6cc3d8 75%, #63c7b2 100%); }
+/* Dark: the same sign and cards, the headline as light as the other big headings */
+[data-theme="dark"] .ai-step-icon { background: color-mix(in srgb, #2d6a62 26%, var(--surface)); color: #8fc2b9; }
+[data-theme="dark"] .ai-thinking-content { border-left-color: rgba(217, 188, 143, 0.5); }
+[data-theme="dark"] .ai-chat-welcome-ask { color: #e4ded6; }
 [data-theme="dark"] .ai-chat-idea-icon { background: color-mix(in srgb, var(--c) 22%, var(--surface)); color: color-mix(in srgb, var(--c) 70%, #ffffff); }
-[data-theme="dark"] .ai-orb-glow { opacity: 0.45; }
-[data-theme="dark"] .ai-thinking.is-live .ai-thinking-text { background-image: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #b4aaf7 50%, var(--text-secondary) 65%, var(--text-secondary) 100%); }
+[data-theme="dark"] .ai-thinking.is-live .ai-thinking-text { background-image: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #b5ddd5 50%, var(--text-secondary) 65%, var(--text-secondary) 100%); }
+[data-theme="dark"] .ai-thinking.is-live .ai-step-lookup.is-running .ai-step-title { background-image: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #b5ddd5 50%, var(--text) 65%, var(--text) 100%); }
 
 @media (prefers-reduced-motion: reduce) {
-    .ai-orb-core, .ai-orb-glow, .ai-orb-glyph, .ai-thinking-text, .ai-step-title { animation: none !important; }
+    .ai-thinking-text, .ai-step-title { animation: none !important; }
     .ai-thinking-summary, .ai-thinking-summary::after, .ai-thinking-more::after { transition: none !important; }
 }
