@@ -9734,93 +9734,100 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 }
 .print-preview-canvas .preview-stat-value.is-text { font-size: 17px; line-height: 1.3; }
 
-/* --- Apps hub: one nav entry for further apps. The AI chat leads as a large gradient card, the other apps follow
-       as tiles. Their icons are drawn like everywhere else in the app: a flat, lightly tinted square with a thin
-       border and the sign in the app's colour. --- */
+/* --- Painted fields and motifs (assets/motifs.js), as in the Android app: a small 3D picture in a field softly
+       painted in its colours - a fall of the light tone, lighter up left, a breath of a neighbouring hue down right,
+       two still soft forms - deep and quiet in the dark theme. Extras and the media library share them. --- */
+.painted-field {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
+    background:
+        radial-gradient(55% 55% at 8% 0%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)),
+        radial-gradient(62% 62% at 95% 100%, color-mix(in srgb, var(--field-hint) 60%, transparent), transparent),
+        linear-gradient(135deg, color-mix(in oklab, var(--field-light), #ffffff 50%), color-mix(in oklab, var(--field-light), #ffffff 8%));
+}
+/* A fine light edge over everything in it */
+.painted-field::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+}
+.painted-field-forms { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; }
+.painted-field-upper { fill: #ffffff; fill-opacity: 0.3; }
+.painted-field-lower { fill: var(--field-deep); fill-opacity: 0.07; }
+.painted-field > .motif { grid-area: 1 / 1; }
+.motif { display: block; width: 60%; height: 60%; }
+[data-theme="dark"] .painted-field {
+    background:
+        radial-gradient(55% 55% at 8% 0%, color-mix(in srgb, var(--field-light) 14%, transparent), transparent),
+        radial-gradient(62% 62% at 95% 100%, color-mix(in srgb, var(--field-hint) 16%, transparent), transparent),
+        linear-gradient(135deg, color-mix(in oklab, var(--surface), var(--field-deep) 38%), color-mix(in oklab, var(--surface), var(--field-deep) 16%));
+}
+[data-theme="dark"] .painted-field::after { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
+[data-theme="dark"] .painted-field-upper { fill-opacity: 0.035; }
+[data-theme="dark"] .painted-field-lower { fill: var(--field-light); fill-opacity: 0.06; }
+
+/* --- Apps hub, as in the Android app: one nav entry for further apps. The AI chat leads across the full width with
+       the assistant's sign; the other apps follow as rows - their motif in a painted field, name and what they offer,
+       an arrow in their colour. Tiles rise in one after another; nothing in a row moves. --- */
 .hub-head { margin-bottom: 20px; }
 .hub-title { margin: 0; font-size: 1.6rem; font-weight: 750; color: var(--text); letter-spacing: -0.03em; }
 .hub-subtitle { margin: 4px 0 0; font-size: 0.92rem; color: var(--text-secondary); }
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .hub-app {
+    /* The arrow and "Start chat": the deep tone in light mode, the light one in the dark */
+    --app-tone: var(--app-color);
     position: relative;
     overflow: hidden;
     isolation: isolate;
     display: flex;
     align-items: center;
-    gap: 16px;
     min-width: 0;
-    padding: 18px 16px 18px 18px;
+    padding: 8px;
     border-radius: 22px;
     border: 1px solid var(--hairline, var(--border-light));
-    background:
-        radial-gradient(120% 130% at 100% 0%, color-mix(in srgb, var(--app-light) 14%, transparent) 0%, transparent 50%),
-        var(--surface);
+    background: var(--surface);
     font: inherit;
     text-align: left;
     color: var(--text);
     cursor: pointer;
-    box-shadow:
-        0 1px 2px rgba(48, 38, 26, 0.05),
-        0 12px 28px -20px rgba(28, 25, 23, 0.28);
+    box-shadow: 0 6px 14px rgba(28, 25, 23, 0.1);
     transition: transform 0.3s var(--ease, ease), box-shadow 0.3s var(--ease, ease), border-color 0.3s var(--ease, ease);
-    animation: hubTileIn 0.5s var(--ease, ease) backwards;
+    animation: hubTileIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
     animation-delay: calc(var(--i, 0) * 55ms);
 }
-/* The app's sign once more, large and faint in the corner */
-.hub-app-mark {
-    position: absolute;
-    right: -16px;
-    bottom: -26px;
-    z-index: -1;
-    color: var(--app-color);
-    opacity: 0.06;
-    transform: rotate(-14deg);
-    transition: transform 0.45s var(--ease, ease), opacity 0.45s var(--ease, ease);
-    pointer-events: none;
-}
-.hub-app-icon {
-    position: relative;
-    width: 50px;
-    height: 50px;
-    border-radius: 15px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--app-color);
-    background: color-mix(in srgb, var(--app-color) 12%, var(--surface));
-    border: 1px solid color-mix(in srgb, var(--app-color) 22%, var(--border-light));
-    transition: transform 0.25s var(--ease, ease), background-color 0.25s var(--ease, ease), border-color 0.25s var(--ease, ease);
-}
-.hub-app-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-.hub-app-title { font-weight: 700; font-size: 1.02rem; letter-spacing: -0.015em; }
+.hub-app-field { width: 76px; height: 76px; border-radius: 15.2px; }
+.hub-app-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; padding: 0 8px 0 14px; }
+.hub-app-title { font-weight: 700; font-size: 1.02rem; letter-spacing: -0.015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-app-desc { font-size: 0.84rem; color: var(--text-secondary); line-height: 1.4; }
 .hub-app-go {
     flex-shrink: 0;
     display: inline-flex;
-    color: var(--app-color);
-    opacity: 0.75;
+    margin-right: 8px;
+    color: var(--app-tone);
+    opacity: 0.8;
     transition: transform 0.25s var(--ease, ease), opacity 0.25s var(--ease, ease);
 }
 @media (hover: hover) {
     .hub-app:hover:not(:disabled) {
         transform: translateY(-2px);
-        border-color: color-mix(in srgb, var(--app-color) 30%, var(--border-light));
-        box-shadow:
-            0 2px 4px rgba(48, 38, 26, 0.05),
-            0 20px 36px -22px rgba(28, 25, 23, 0.36);
+        border-color: color-mix(in srgb, var(--app-color) 28%, var(--border-light));
+        box-shadow: 0 10px 22px rgba(28, 25, 23, 0.13);
     }
-    .hub-app:hover:not(:disabled) .hub-app-icon {
-        background: color-mix(in srgb, var(--app-color) 17%, var(--surface));
-        border-color: color-mix(in srgb, var(--app-color) 32%, var(--border-light));
-    }
-    .hub-app:hover:not(:disabled) .hub-app-mark { opacity: 0.1; transform: rotate(-6deg) scale(1.05); }
     .hub-app:hover:not(:disabled) .hub-app-go { opacity: 1; transform: translateX(3px); }
 }
 .hub-app:active:not(:disabled) { transform: scale(0.985); transition-duration: 0.1s; }
 .hub-app.is-soon { cursor: default; opacity: 0.75; }
 .hub-app-soon {
     flex-shrink: 0;
+    margin-right: 8px;
     padding: 3px 9px;
     border-radius: 999px;
     font-size: 0.7rem;
@@ -9832,18 +9839,24 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
     white-space: nowrap;
 }
 
-/* The AI chat: the same tile across the full width on top, a little more tint and a few quiet sparkles */
-.hub-app.is-featured {
-    grid-column: 1 / -1;
-    background:
-        radial-gradient(90% 160% at 100% 0%, color-mix(in srgb, var(--app-light) 30%, transparent) 0%, transparent 60%),
-        var(--surface);
+/* The AI chat: across the full width on top, a breath of sand from the upper right corner that fades out past the
+   middle of the tile, the assistant's sign - and once more, still and faint, in the corner */
+.hub-app.is-featured { grid-column: 1 / -1; padding: 16px 14px 16px 16px; }
+.hub-app.is-featured::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: -2;
+    width: 120%;
+    aspect-ratio: 1;
+    transform: translate(50%, -50%);
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--app-light) 20%, transparent), transparent);
+    pointer-events: none;
 }
-.hub-hero-sparks { position: absolute; top: 10px; right: 128px; width: 60px; height: 44px; z-index: -1; pointer-events: none; color: var(--app-color); opacity: 0.35; }
-.hub-hero-sparks svg { position: absolute; animation: hubSpark 4.8s ease-in-out infinite; }
-.hub-hero-sparks svg:nth-child(1) { right: 0; top: 0; }
-.hub-hero-sparks svg:nth-child(2) { right: 28px; top: 20px; opacity: 0.7; animation-delay: -1.6s; }
-.hub-hero-sparks svg:nth-child(3) { right: 36px; top: 0; opacity: 0.5; animation-delay: -3.2s; }
+.hub-ai-mark { position: absolute; top: -58px; right: -38px; z-index: -1; opacity: 0.08; pointer-events: none; }
+.hub-ai-sign { display: inline-grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; }
+.hub-app.is-featured .hub-app-text { padding: 0 14px; }
 .hub-hero-cta {
     display: inline-flex;
     align-items: center;
@@ -9851,9 +9864,9 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
     flex-shrink: 0;
     padding: 7px 10px 7px 14px;
     border-radius: 999px;
-    font-weight: 700;
-    font-size: 0.82rem;
-    color: var(--app-color);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--app-tone);
     background: color-mix(in srgb, var(--app-light) 22%, var(--surface));
     white-space: nowrap;
     transition: transform 0.25s var(--ease, ease), background-color 0.25s var(--ease, ease);
@@ -9861,45 +9874,28 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
 @media (hover: hover) {
     .hub-app.is-featured:hover:not(:disabled) .hub-hero-cta { transform: translateX(3px); background: color-mix(in srgb, var(--app-light) 34%, var(--surface)); }
 }
+/* Phones: only the arrow, like the other tiles */
 @media (max-width: 600px) {
-    .hub-app { padding: 16px 14px 16px 16px; }
-    .hub-app-icon { width: 46px; height: 46px; border-radius: 14px; }
-    /* Small screens: only the arrow, like the other tiles */
-    .hub-hero-cta { padding: 0; background: none; }
+    .hub-hero-cta { padding: 0; background: none; opacity: 0.75; }
+    .hub-hero-cta svg { width: 18px; height: 18px; }
     .hub-hero-cta-label { display: none; }
-    .hub-hero-sparks { right: 36px; }
 }
 
-/* Dark: the same colours, a little deeper; the tiles glow from within instead of casting light shadows */
-[data-theme="dark"] .hub-app {
-    background:
-        radial-gradient(120% 130% at 100% 0%, color-mix(in srgb, var(--app-color) 14%, transparent) 0%, transparent 52%),
-        var(--surface);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 30px -18px rgba(0, 0, 0, 0.7);
+/* Dark: the same colours, deep and quiet; the tiles cast a plain dark shadow */
+[data-theme="dark"] .hub-app { --app-tone: var(--app-light); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45); }
+[data-theme="dark"] .hub-app.is-featured::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--app-color) 14%, transparent), transparent); }
+[data-theme="dark"] .hub-ai-mark { opacity: 0.07; }
+[data-theme="dark"] .hub-hero-cta { background: color-mix(in srgb, var(--app-light) 16%, var(--surface)); }
+@media (hover: hover) {
+    [data-theme="dark"] .hub-app:hover:not(:disabled) { box-shadow: 0 10px 22px rgba(0, 0, 0, 0.55); }
 }
-[data-theme="dark"] .hub-app.is-featured {
-    background:
-        radial-gradient(90% 160% at 100% 0%, color-mix(in srgb, var(--app-color) 22%, transparent) 0%, transparent 60%),
-        var(--surface);
+@media (max-width: 600px) {
+    [data-theme="dark"] .hub-hero-cta { background: none; }
 }
-[data-theme="dark"] .hub-app-icon {
-    color: var(--app-light);
-    background: color-mix(in srgb, var(--app-color) 18%, var(--surface));
-    border-color: color-mix(in srgb, var(--app-color) 30%, var(--border-light));
-}
-[data-theme="dark"] .hub-app-mark { opacity: 0.08; color: var(--app-light); }
-[data-theme="dark"] .hub-app-go,
-[data-theme="dark"] .hub-hero-cta { color: var(--app-light); }
-[data-theme="dark"] .hub-hero-cta { background: color-mix(in srgb, var(--app-color) 22%, var(--surface)); }
-[data-theme="dark"] .hub-hero-sparks { color: var(--app-light); opacity: 0.3; }
 
 @keyframes hubTileIn {
     from { opacity: 0; transform: translateY(10px) scale(0.985); }
     to { opacity: 1; transform: none; }
-}
-@keyframes hubSpark {
-    0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
-    50% { transform: translateY(-5px) rotate(12deg) scale(1.08); }
 }
 .hub-back-btn {
     width: 34px;
@@ -10274,8 +10270,7 @@ details[open] > summary .event-chevron { transform: rotate(180deg); }
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
     }
-    .hub-app:hover, .hub-app:hover .hub-app-icon, .hub-app:hover .hub-app-mark { transform: none !important; }
-    .hub-hero-sparks svg { animation: none !important; }
+    .hub-app:hover, .hub-app:hover .hub-app-go { transform: none !important; }
 }
 
 /* Printing a song: only the song, chords included, CCLI notes at the end */
@@ -10770,37 +10765,84 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
 /* Keyboard: event cards open with Enter / Space and show where the focus is */
 .event-card:focus-visible, .churchtools-event-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-/* --- Media (Extras): the community's Nextcloud folder - folders, thumbnails, picture and PDF viewer --- */
-.media-head { margin-bottom: 4px; }
-.media-head .polls-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* --- Media (Extras), as in the Android app: the community's Nextcloud folder - the header and the path on top,
+       folders as rows like the apps in Extras (a small 3D folder in a painted field), files three to a row with their
+       names under them; folders and tiles give a little when pressed. Picture, PDF and media viewer below --- */
+#media { --media-accent: #e0874f; }
+[data-theme="dark"] #media { --media-accent: #e5925d; }
+
+/* The top bar: the header - while entries are selected, what to do with them - and the path (sticky, polish.css) */
+.media-top { margin-bottom: 6px; }
+.media-head { margin-bottom: 2px; }
+#media.is-selecting .media-head { display: none; }
+.media-title { position: relative; overflow: hidden; }
+.media-title-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-title-text.is-leaving { position: absolute; top: 0; left: 0; right: 0; }
 .media-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.media-sort {
-    height: 34px; padding: 0 28px 0 12px; border-radius: 999px; border: 1px solid var(--border-light);
-    background: var(--surface-alt) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
-    color: var(--text); font-size: 0.82rem; font-weight: 600; appearance: none; -webkit-appearance: none; cursor: pointer;
-}
 .media-icon-btn {
     width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-light); background: var(--surface-alt);
     color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
 }
-.media-icon-btn:hover, .media-sort:hover { border-color: var(--border); }
+.media-icon-btn:hover { border-color: var(--border); }
 
-.media-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 16px; min-height: 30px; min-width: 0; }
-.media-crumbs[hidden] { display: none; }
-.media-crumb {
-    display: inline-flex; align-items: center; gap: 6px; max-width: min(240px, 72vw); min-width: 0; padding: 5px 8px; border: 0; border-radius: 8px;
-    background: none; color: var(--text-secondary); font-size: 0.86rem; font-weight: 600; cursor: pointer;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* The path: pills with a small arrow between them, the open one painted in the library's warm colours. The row keeps
+   its end in sight; what does not fit fades out at the edges */
+.media-path {
+    --fade-start: 0px;
+    --fade-end: 0px;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 2px 0 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
 }
-.media-crumb span { overflow: hidden; text-overflow: ellipsis; }
-.media-crumb:hover { background: var(--surface-alt); color: var(--text); }
-.media-crumb.is-current { color: var(--text); cursor: default; }
-.media-crumb-sep { display: inline-flex; color: var(--text-secondary); opacity: 0.6; }
-.media-access-badge {
-    display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 4px 10px; border-radius: 999px;
-    font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); background: var(--surface-alt); border: 1px solid var(--border-light);
+.media-path::-webkit-scrollbar { display: none; }
+.media-path.has-start { --fade-start: 28px; }
+.media-path.has-end { --fade-end: 28px; }
+.media-path-step { display: inline-flex; align-items: center; flex-shrink: 0; }
+.media-path-step.is-new { animation: mediaFadeIn 0.18s cubic-bezier(0, 0, 0.2, 1) backwards; }
+.media-path-sep { display: inline-flex; margin: 0 4px; color: var(--text-secondary); opacity: 0.5; }
+.media-path-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 228px;
+    min-height: 32px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline, var(--border-light));
+    background: var(--surface);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
-.media-access-badge.is-write { color: var(--primary); background: rgba(var(--brand-rgb), 0.08); border-color: rgba(var(--brand-rgb), 0.25); }
+.media-path-pill.is-root { padding-left: 8px; }
+.media-path-pill.is-compact { padding-right: 8px; }
+.media-path-pill.is-more { padding: 5px 10px; }
+.media-path-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.media-path-motif { width: 20px; height: 20px; flex-shrink: 0; }
+.media-path-pill.is-open {
+    cursor: default;
+    color: var(--text);
+    font-weight: 600;
+    border-color: rgba(255, 255, 255, 0.7);
+    background: linear-gradient(90deg, color-mix(in oklab, #f6c7a4, #ffffff 38%), color-mix(in oklab, #f6c7a4, #ffffff 12%));
+}
+[data-theme="dark"] .media-path-pill.is-open {
+    border-color: rgba(255, 255, 255, 0.06);
+    background: linear-gradient(90deg, color-mix(in oklab, var(--surface), #e0874f 34%), color-mix(in oklab, var(--surface), #e0874f 20%));
+}
+@media (hover: hover) { .media-path-pill:not(.is-open):hover { background: var(--surface-alt); color: var(--text); } }
+.media-path-pill:not(.is-open):active { transform: scale(0.96); }
 
 .media-upload { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; padding: 10px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border-light); }
 .media-upload[hidden] { display: none; }
@@ -10808,166 +10850,146 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
 .media-upload-bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--primary); transition: width 0.2s ease; }
 .media-upload-text { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
 
-/* The media library's colour (as its tile in Extras) and the colours of the file kinds */
-#media { --media-accent: #e0874f; --kind: #8a837a; }
-#media .kind-pdf { --kind: #d6667c; }
-#media .kind-video { --kind: #7c6fd6; }
-#media .kind-audio { --kind: #e0874f; }
-#media .kind-image { --kind: #4a98c4; }
-
+/* A folder that opens rises from below, going back it comes down from above (app.js showMediaPage): the page left
+   moves on and fades over the new one */
+.media-list { position: relative; }
+.media-page.is-leaving { position: absolute; left: 0; right: 0; pointer-events: none; }
+.media-page.is-fresh { animation: mediaContentIn 0.32s var(--ease, ease); }
 /* Loading: one circle in the middle, shown only after a moment */
 .media-loading { display: flex; justify-content: center; padding: 72px 0; animation: mediaFadeIn 0.3s ease 0.18s backwards; }
 .media-loading .spinner { width: 44px; height: 44px; margin: 0; }
-.media-content.is-fresh { animation: mediaContentIn 0.32s var(--ease, ease); }
 @keyframes mediaFadeIn { from { opacity: 0; } }
 @keyframes mediaContentIn { from { opacity: 0; transform: translateY(6px); } }
 
-.media-section-label {
-    display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 0.76rem; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
+/* What the member may do here: only look, or also add */
+.media-access { display: flex; margin: 4px 0 2px; }
+.media-access-badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); background: var(--surface-alt);
 }
-.media-section-label:not(:first-child) { margin-top: 22px; }
-.media-content > .media-section-label:first-child { margin-top: 10px; }
-.media-section-count {
-    min-width: 20px; padding: 1px 7px; border-radius: 999px; font-size: 0.7rem; letter-spacing: 0; text-align: center;
-    background: var(--surface-alt); color: var(--text-secondary); font-variant-numeric: tabular-nums;
-}
+.media-access-badge svg { flex-shrink: 0; }
+.media-access-badge.is-write { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
 
-/* min(…, 100%) and min-width: 0: a long name never makes a card (or the page) wider than the screen */
-.media-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 10px; }
+.media-section-label {
+    display: flex; align-items: baseline; gap: 8px; margin: 20px 0 12px 2px; font-size: 0.75rem; font-weight: 700;
+    letter-spacing: 0.067em; text-transform: uppercase; color: var(--text-secondary);
+}
+.media-page > .media-section-label:first-child { margin-top: 12px; }
+.media-section-count { font-size: 0.75rem; font-weight: 600; letter-spacing: 0; color: var(--text-secondary); opacity: 0.6; font-variant-numeric: tabular-nums; }
+
+/* Folders: rows like the apps in Extras - the folder in a painted field, name, date and size, an arrow. Two side by
+   side on wider screens; min-width: 0 keeps a long name from making a row (or the page) wider than the screen */
+.media-folders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
 .media-folder {
-    position: relative; display: flex; align-items: stretch; min-width: 0; border-radius: 18px; background: var(--surface);
-    border: 1px solid var(--hairline, var(--border-light)); box-shadow: var(--shadow);
-    transition: border-color 0.25s var(--ease, ease), transform 0.25s var(--ease, ease), box-shadow 0.25s var(--ease, ease);
+    position: relative; min-width: 0; border-radius: 20px; background: var(--surface);
+    border: 1px solid var(--hairline, var(--border-light)); box-shadow: 0 4px 12px rgba(28, 25, 23, 0.07);
+    transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1), border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
-@media (hover: hover) {
-    .media-folder:hover { border-color: color-mix(in srgb, var(--media-accent) 40%, var(--border-light)); transform: translateY(-2px); box-shadow: var(--shadow-md); }
-    .media-folder:hover .media-folder-icon { background: color-mix(in srgb, var(--media-accent) 17%, var(--surface)); border-color: color-mix(in srgb, var(--media-accent) 34%, var(--border-light)); }
-}
-.media-folder:active { transform: scale(0.985); }
-.media-folder.is-passage { opacity: 0.85; }
+.media-folder:active { transform: scale(0.96); }
 .media-folder-open {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 11px 14px 11px 11px; border: 0; background: none;
-    color: var(--text); text-align: left; cursor: pointer; border-radius: 18px;
+    display: flex; align-items: center; width: 100%; min-width: 0; padding: 7px; border: 0; border-radius: 20px;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
 }
-.media-folder-icon {
-    width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center;
-    color: var(--media-accent); background: color-mix(in srgb, var(--media-accent) 12%, var(--surface));
-    border: 1px solid color-mix(in srgb, var(--media-accent) 22%, var(--border-light));
-    transition: background-color 0.25s var(--ease, ease), border-color 0.25s var(--ease, ease);
-}
-.media-folder.is-passage .media-folder-icon { color: var(--text-secondary); background: var(--surface-alt); border-color: var(--border-light); }
-.media-folder-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.media-folder-field { width: 56px; height: 56px; border-radius: 14px; }
+.media-folder-field > .motif { width: 64%; height: 64%; }
+.media-folder-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 0 8px 0 14px; }
 .media-folder-name {
-    min-width: 0; font-weight: 700; font-size: 0.93rem; line-height: 1.3; overflow-wrap: anywhere;
+    min-width: 0; font-weight: 600; font-size: 0.875rem; line-height: 1.43; overflow-wrap: anywhere;
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
 }
-.media-folder-meta { font-size: 0.76rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.media-folder-mark { display: inline-flex; flex-shrink: 0; }
-.media-folder-mark.is-hidden { color: var(--warning); }
-.media-folder-rights {
-    width: 44px; flex-shrink: 0; border: 0; border-left: 1px solid var(--hairline, var(--border-light)); background: none; color: var(--text-secondary);
-    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 0 18px 18px 0;
+.media-folder-meta { font-size: 0.6875rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.media-folder-go { display: inline-flex; flex-shrink: 0; margin-right: 8px; color: var(--media-accent); opacity: 0.8; }
+@media (hover: hover) {
+    .media-folder:hover { border-color: color-mix(in srgb, var(--media-accent) 32%, var(--border-light)); box-shadow: 0 8px 20px rgba(28, 25, 23, 0.1); }
 }
-.media-folder-rights:hover { color: var(--primary); background: var(--surface-alt); }
-.media-folder-rights.is-set { color: #4a98c4; }
 
-.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px 14px; }
+/* Files: three to a row on phones, tiles of at least 150px on wider screens - the square, then name and size */
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 8px; }
 .media-tile { position: relative; min-width: 0; }
 .media-tile-open {
-    display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; padding: 0; border: 0; background: none;
-    color: var(--text); text-align: left; cursor: pointer; border-radius: 16px;
+    display: flex; flex-direction: column; width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 12px;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+    transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
+.media-tile-open:active { transform: scale(0.96); }
 /* Held down on a phone: no text selection and no menu of the browser, the app selects instead */
 .media-tile, .media-folder { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-/* While a thumbnail comes: a calm tile in the colour of its kind with its sign, no shimmer */
-.media-thumb {
-    position: relative; display: block; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; margin-bottom: 7px;
-    background: color-mix(in srgb, var(--kind) 9%, var(--surface)); border: 1px solid var(--hairline, var(--border-light));
-    box-shadow: var(--shadow); transition: transform 0.25s var(--ease, ease), box-shadow 0.25s var(--ease, ease);
+/* The square: the painted field of the file's kind with its motif, under the preview while that comes; without a
+   preview a larger motif and the type in its corner */
+.media-face { width: 100%; aspect-ratio: 1; border-radius: 12px; transition: transform 0.25s var(--ease, ease); }
+.media-face-motif { grid-area: 1 / 1; display: flex; width: 32%; }
+.media-face-motif > .motif { width: 100%; height: auto; aspect-ratio: 1; }
+.media-face.is-icon .media-face-motif { width: 42%; }
+.media-face-img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.35s ease; }
+.media-face.is-loaded .media-face-img { opacity: 1; }
+.media-face-type {
+    position: absolute; top: 8px; left: 8px; z-index: 2; display: none; padding: 1px 5px; border-radius: 5px;
+    font-size: 0.5625rem; font-weight: 800; letter-spacing: 0.04em; line-height: 1.5; color: #ffffff;
+    background: color-mix(in srgb, var(--field-deep) 92%, transparent);
 }
-.media-thumb.is-loaded { background: var(--surface-alt); }
-.media-thumb-img {
-    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.35s ease, transform 0.35s var(--ease, ease);
+.media-face.is-icon .media-face-type { display: block; }
+.media-face-play {
+    position: absolute; top: 50%; left: 50%; z-index: 2; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; color: #2a2830; background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); pointer-events: none;
 }
-.media-thumb.is-loaded .media-thumb-img { opacity: 1; }
-@media (hover: hover) {
-    .media-tile:hover .media-thumb { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-    .media-tile:hover .media-thumb-img { transform: scale(1.04); }
-}
-.media-tile:active .media-thumb { transform: scale(0.98); }
-.media-thumb-icon {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--kind); opacity: 0.35;
-    transition: opacity 0.3s ease;
-}
-.media-thumb.is-loaded .media-thumb-icon { opacity: 0; }
-.media-thumb.is-icon .media-thumb-icon { opacity: 0.85; }
-.media-thumb.is-icon .media-thumb-icon svg { width: 38px; height: 38px; }
-.media-thumb-type {
-    position: absolute; left: 8px; bottom: 8px; padding: 2px 7px; border-radius: 7px; font-size: 0.66rem; font-weight: 800;
-    letter-spacing: 0.04em; color: #fff; background: var(--kind);
-}
-.media-thumb.is-loaded .media-thumb-type { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-.media-thumb-play {
-    position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; padding-left: 3px; color: #fff;
-    background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.35);
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: none;
-}
-.media-tile-name {
-    padding: 0 2px; font-size: 0.85rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere;
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
-}
-.media-tile-meta { padding: 0 2px; font-size: 0.74rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.media-tile-open:focus-visible, .media-folder-open:focus-visible, .media-folder-rights:focus-visible, .media-crumb:focus-visible,
+.media-tile-name { padding: 6px 2px 0; font-size: 0.75rem; font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-tile-meta { padding: 0 2px; font-size: 0.6875rem; line-height: 1.35; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.media-tile-open:focus-visible, .media-folder-open:focus-visible, .media-path-pill:focus-visible,
 .media-check:focus-visible, .media-selectbar-btn:focus-visible, .media-menu-item:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-/* Selecting: a round mark on the tile's corner (on hover, always while selecting), the selected ones framed */
+/* Selecting: a round mark - on a tile's corner, in place of a folder's arrow - on hover and always while selecting;
+   the selected ones framed (a tile's square gives way a little) */
 .media-check {
-    position: absolute; top: 8px; left: 8px; z-index: 2; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+    position: absolute; z-index: 4; width: 24px; height: 24px; padding: 0; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
-    color: transparent; background: rgba(255, 255, 255, 0.82); border: 1.5px solid rgba(28, 25, 23, 0.28);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    color: transparent; background: transparent; border: 2px solid var(--border);
     opacity: 0; transform: scale(0.85); pointer-events: none;
     transition: opacity 0.18s ease, transform 0.18s var(--ease, ease), background-color 0.18s ease, border-color 0.18s ease;
 }
-.media-folder .media-check { top: 6px; left: 6px; width: 22px; height: 22px; }
-.media-folder .media-check svg { width: 12px; height: 12px; }
-/* Only where it can be seen it can be hit (an invisible one would catch taps meant to open the tile) */
+.media-check svg { width: 13px; height: 13px; }
+.media-tile .media-check { top: 6px; right: 6px; background: rgba(0, 0, 0, 0.18); border-color: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
+.media-folder .media-check { top: 50%; right: 14px; margin-top: -12px; }
+/* Only where it can be seen it can be hit (an invisible one would catch taps meant to open the entry) */
 @media (hover: hover) {
     .media-check { pointer-events: auto; }
     .media-tile:hover .media-check, .media-folder:hover .media-check { opacity: 1; transform: none; }
+    .media-folder:hover .media-folder-go { visibility: hidden; }
     .media-check:hover { border-color: var(--primary); }
 }
 .media-check:focus-visible, #media.is-selecting .media-check { opacity: 1; transform: none; pointer-events: auto; }
-.is-selected > .media-check { color: #ffffff; background: var(--primary); border-color: var(--primary); }
-.media-tile.is-selected .media-thumb { outline: 3px solid var(--primary); outline-offset: -3px; transform: scale(0.94); }
-.media-folder.is-selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, var(--surface)); box-shadow: 0 0 0 1px var(--primary); }
-#media.is-selecting .media-folder-rights { visibility: hidden; }
+#media.is-selecting .media-folder-go { visibility: hidden; }
+.is-selected > .media-check { color: #ffffff; background: var(--primary); border-color: #ffffff; }
+.media-folder .is-selected > .media-check, .media-folder.is-selected > .media-check { box-shadow: 0 0 0 1px var(--primary); }
+.media-tile.is-selected .media-face { transform: scale(0.9); }
+.media-tile.is-selected .media-face::after { box-shadow: inset 0 0 0 2.5px var(--primary); }
+.media-folder.is-selected { border-color: color-mix(in srgb, var(--primary) 60%, transparent); background: color-mix(in srgb, var(--primary) 8%, var(--surface)); box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--primary) 60%, transparent), 0 4px 12px rgba(28, 25, 23, 0.07); }
 
-/* The bar while something is selected: stays on top while scrolling */
+/* While entries are selected their bar takes the header's place, as high as the header, so nothing below moves: the
+   close sign where the back button was, how many in the title's place, all / none, download and delete */
 .media-selectbar {
-    position: sticky; top: 8px; z-index: 20; display: flex; align-items: center; gap: 6px; margin: 0 0 14px; padding: 6px 8px 6px 6px;
-    border-radius: 18px; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--hairline, var(--border-light));
-    box-shadow: var(--shadow-md); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    position: relative; display: flex; align-items: center; gap: 6px; min-height: 34px; margin: 0 0 2px;
     animation: mediaSelectbarIn 0.22s var(--ease, ease);
 }
 .media-selectbar[hidden] { display: none; }
 .media-selectbar.is-busy { opacity: 0.6; pointer-events: none; }
-.media-selectbar-count { flex: 1; min-width: 0; font-weight: 700; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.media-selectbar-count {
+    flex: 1; min-width: 0; margin-left: 8px; font-weight: 800; font-size: 1.45rem; letter-spacing: -0.022em; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+}
 .media-selectbar-btn {
-    display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 12px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; flex-shrink: 0;
     border: 1px solid var(--border-light); background: var(--surface-alt); color: var(--text); font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .media-selectbar-btn:hover:not(:disabled) { border-color: var(--border); }
 .media-selectbar-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.media-selectbar-btn.is-close { width: 36px; padding: 0; justify-content: center; border-color: transparent; background: none; }
+.media-selectbar-btn.is-close { width: 34px; padding: 0; }
 .media-selectbar-btn.is-text { border-color: transparent; background: none; color: var(--text-secondary); }
 .media-selectbar-btn.is-danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); border-color: color-mix(in srgb, var(--danger) 24%, var(--border-light)); }
 @keyframes mediaSelectbarIn { from { opacity: 0; transform: translateY(-6px); } }
 
-/* The menu of an entry (right click) */
+/* The menu of an entry (right click), of the order and of the folders folded into "…" */
 .media-menu {
     position: fixed; z-index: 3000; min-width: 210px; max-width: min(300px, calc(100vw - 16px)); padding: 6px; border-radius: 16px;
     background: var(--surface); border: 1px solid var(--hairline, var(--border-light)); box-shadow: 0 18px 40px -12px rgba(28, 25, 23, 0.35), 0 2px 6px rgba(28, 25, 23, 0.08);
@@ -10982,40 +11004,40 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
     display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 10px; background: none;
     color: var(--text); font: inherit; font-size: 0.88rem; font-weight: 600; text-align: left; cursor: pointer;
 }
+.media-menu-item > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-menu-item svg { flex-shrink: 0; color: var(--text-secondary); }
+.media-menu-item.is-chosen svg { color: var(--primary); }
+.media-menu-motif { width: 20px; height: 20px; }
 .media-menu-item:hover:not(:disabled), .media-menu-item:focus-visible { background: var(--surface-alt); }
 .media-menu-item.is-danger, .media-menu-item.is-danger svg { color: var(--danger); }
 .media-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
 @keyframes mediaMenuIn { from { opacity: 0; transform: scale(0.97); } }
-.media-empty-icon { color: var(--media-accent); background: color-mix(in srgb, var(--media-accent) 12%, transparent); }
+
+/* An empty folder or one that could not be loaded: the folder motif with a word, and what can be done */
+.media-message { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 24px 24px; text-align: center; }
+.media-message-motif { width: 76px; height: 76px; margin-bottom: 6px; }
+.media-message-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+.media-message-hint { max-width: 38ch; font-size: 0.875rem; line-height: 1.45; color: var(--text-secondary); }
+.media-message .btn { margin-top: 6px; }
 #media.is-dropping .media-list { outline: 2px dashed var(--primary); outline-offset: 6px; border-radius: 16px; }
 
-[data-theme="dark"] #media { --media-accent: #e5925d; }
-[data-theme="dark"] .media-folder-icon { background: color-mix(in srgb, var(--media-accent) 16%, var(--surface)); border-color: color-mix(in srgb, var(--media-accent) 30%, var(--border-light)); }
-[data-theme="dark"] .media-check { background: rgba(28, 25, 23, 0.7); border-color: rgba(255, 255, 255, 0.4); }
+[data-theme="dark"] .media-folder { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+[data-theme="dark"] .media-folder.is-selected { box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--primary) 60%, transparent), 0 4px 12px rgba(0, 0, 0, 0.35); }
+@media (hover: hover) {
+    [data-theme="dark"] .media-folder:hover { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45); }
+}
 [data-theme="dark"] .media-menu { box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7); }
-[data-theme="dark"] .media-thumb { background: color-mix(in srgb, var(--kind) 14%, var(--surface)); }
 
 @media (max-width: 600px) {
-    .media-folders { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-    /* Three pictures side by side on phones, the tile's parts a little smaller to match */
-    .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; }
-    .media-thumb, .media-tile-open { border-radius: 12px; }
-    .media-thumb { margin-bottom: 5px; }
-    .media-thumb.is-icon .media-thumb-icon svg { width: 30px; height: 30px; }
-    .media-thumb-type { left: 6px; bottom: 6px; padding: 1px 5px; border-radius: 6px; font-size: 0.6rem; }
-    .media-thumb-play { width: 36px; height: 36px; margin: -18px 0 0 -18px; }
-    .media-tile-name { font-size: 0.78rem; }
-    .media-tile-meta { font-size: 0.68rem; }
-    .media-tile .media-check { top: 6px; left: 6px; width: 24px; height: 24px; }
-    .media-access-badge { margin-left: 0; }
+    .media-folders { grid-template-columns: minmax(0, 1fr); }
+    /* Three pictures side by side on phones */
+    .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     /* Phones: the bar shows its signs only (the count stays) */
     .media-selectbar-btn:not(.is-close) span { display: none; }
-    .media-selectbar-btn:not(.is-close) { width: 38px; padding: 0; justify-content: center; }
+    .media-selectbar-btn:not(.is-close) { width: 34px; padding: 0; }
 }
-@media (min-width: 601px) and (max-width: 900px) {
-    .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
+/* The count as large as the title it replaces */
+@media (max-width: 768px) { .media-selectbar-count { font-size: 1.25rem; } }
 
 /* Viewer: fills the screen, dark around the picture in both themes */
 .modal.media-viewer { background: #0b0b0d; align-items: stretch; justify-content: stretch; }
@@ -11186,6 +11208,5 @@ fieldset.poll-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
 .media-cfg-actions .btn { flex: 1; min-width: 180px; }
 
 @media (prefers-reduced-motion: reduce) {
-    .media-thumb, .media-tile-skeleton { animation: none; }
-    .media-thumb-img, .media-folder { transition: none; }
+    .media-face-img, .media-face, .media-folder, .media-tile-open, .media-path-pill { transition: none; }
 }

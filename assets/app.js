@@ -1,8 +1,10 @@
 import { initializeApp, getDatabase, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, apiGet } from "./pocketbase-compat.js";
 import { config } from "./config.js";
 import { renderSongHtml, transposedKey, keySteps, searchText, normalizeSearch } from "./songbook.js";
-import { breadcrumb, parentPath, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
+import { breadcrumb, parentPath, folderDepth, pathSteps, shownName, fileLook, MEDIA_FIELD, folderFromRoute, thumbSize, viewerSize, previewUrl, fileUrl, sortEntries, formatSize, opensInViewer, opensAsPdf, opensInPlayer, typeLabel, browserShowsOriginal, LARGEST_PREVIEW_SIZE, neighbourIndex, rightsRows, removableRow, addableTargets, rightsPayload, zoomAt, pinchView, clampView } from "./media.js";
 import { splitAiThinking, createReplyWork, createTitlePacer, readingTime, liveLabel, lookupTitle, lookupWhat, lookupFound } from "./aiReply.js";
+import { aiSignMarkup, wakeAiSigns, setAiSignState } from "./aiSign.js";
+import { motifSvg, paintedField, seedOf, MOTIF_SEEDS } from "./motifs.js";
 import { parseAmount, applyStatusChangeToHistory, applyApprovedRequest, addApprovedExpense, withoutApprovedRequest, withoutApprovedExpense, findPaymentIndex, calculatePaidUntil, droppedFeesBefore, typedDayMatches, feeResetIsNews } from "./finance.js";
 
 const db = getDatabase(initializeApp(config));
@@ -256,6 +258,7 @@ const ICONS = {
     grid: '<rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect>',
     palette: '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.1 0 5.6-2.5 5.6-5.6C21.8 6 17.4 2 12 2z"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    sort: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
@@ -824,7 +827,7 @@ function handleHistoryBack() {
     if (tabHistoryPushed && historyLevels.length) {
         historyLevels.pop();
         if (settingsPageOpen()) closeSettingsPage(true);
-        else if (currentActiveTab === 'media' && mediaFolder) openMediaFolder(parentPath(mediaFolder));
+        else if (currentActiveTab === 'media' && mediaFolder) openMediaFolder(parentPath(mediaFolder), { back: true });
         else if (HUB_TABS.includes(currentActiveTab)) switchTab('hub', 'history');
         return;
     }
@@ -838,7 +841,7 @@ function handleHistoryBack() {
         }
         // In a folder of the library: the folder above
         if (currentActiveTab === 'media' && mediaFolder) {
-            openMediaFolder(parentPath(mediaFolder));
+            openMediaFolder(parentPath(mediaFolder), { back: true });
             history.pushState({ tab: 'media' }, '');
             return;
         }
@@ -1103,16 +1106,18 @@ function updateAiNavVisibility() {
     renderHub();
 }
 
-// --- Apps hub: one permanent nav entry for further apps; the AI chat is one of them (with the rights) and leads
-// across the full width, the others follow as tiles in this order. [colors] runs from the light to the deep tone of the icon. ---
+// --- Apps hub, as in the Android app: one permanent nav entry for further apps. The AI chat leads across the full
+// width with the assistant's sign (with the rights); the others follow as rows, each with a small 3D motif in a field
+// softly painted in its colours (motifs.js). [colors]: the light tone of the app and its deep one (its arrow in light
+// mode, the field in the dark theme), [hint] a breath of a neighbouring hue in the field. ---
 const HUB_APPS = [
-    { key: 'ai', icon: 'sparkles', featured: true, colors: ['#c4b8f5', '#7c6fd6'], title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
+    { key: 'ai', featured: true, colors: ['#ebd3ae', '#2d625b'], title: ['hub_ai_title', 'AI Support'], desc: ['hub_ai_desc', 'Questions about the community, appointments and finances'],
         visible: () => aiEnabled && canAccessAi(), open: () => switchTab('ai-chat') },
-    { key: 'media', icon: 'folder', colors: ['#f6c7a4', '#e0874f'], title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
+    { key: 'media', motif: 'picture', colors: ['#f6c7a4', '#e0874f'], hint: '#f9da9e', title: ['hub_media_title', 'Media'], desc: ['hub_media_desc', 'Pictures and files of the community'],
         visible: () => mediaStatus.hasAccess, open: () => openMediaFolder('') },
-    { key: 'songbook', icon: 'music', colors: ['#aed6ec', '#4a98c4'], title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
-    { key: 'prayers', icon: 'heart', colors: ['#f2b5c0', '#d6667c'], title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
-    { key: 'polls', icon: 'poll', colors: ['#acdcc7', '#479f82'], title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
+    { key: 'songbook', motif: 'notes', colors: ['#aed6ec', '#4a98c4'], hint: '#c9c6f3', title: ['hub_songbook_title', 'Songbook'], desc: ['hub_songbook_desc', 'Songs and lyrics for services and small groups'], open: () => switchTab('songbook') },
+    { key: 'prayers', motif: 'heart', colors: ['#f2b5c0', '#d6667c'], hint: '#f8c6ae', title: ['hub_prayers_title', 'Prayer requests'], desc: ['hub_prayers_desc', 'Share requests and pray for each other'], open: () => switchTab('prayers') },
+    { key: 'polls', motif: 'poll', colors: ['#acdcc7', '#479f82'], hint: '#d9eab4', title: ['hub_polls_title', 'Anonymous polls'], desc: ['hub_polls_desc', 'Ask for opinions without names'],
         visible: () => FEATURES.polls, open: () => switchTab('polls') }
 ];
 
@@ -1125,30 +1130,31 @@ function renderHub() {
     const signature = `${uiLang}:${apps.map(app => app.key).join(',')}`;
     if (signature === hubSignature && target.childElementCount) return;
     hubSignature = signature;
+    const texts = app => `
+            <span class="hub-app-text">
+                <span class="hub-app-title">${t(...app.title)}</span>
+                <span class="hub-app-desc">${t(...app.desc)}</span>
+            </span>`;
     target.innerHTML = apps.map((app, index) => {
         const style = `--app-light: ${app.colors[0]}; --app-color: ${app.colors[1]}; --i: ${index};`;
         const action = app.soon ? 'disabled aria-disabled="true"' : `onclick="window.openHubApp('${app.key}')"`;
+        // The AI: a breath of sand from the upper right, its sign (once more, still and faint, in the corner) and "Start chat"
         if (app.featured) return `
         <button type="button" class="hub-app is-featured" style="${style}" ${action}>
-            <span class="hub-hero-sparks" aria-hidden="true">${svgIcon('sparkles', 24, 1.8)}${svgIcon('sparkles', 14, 2)}${svgIcon('sparkles', 10, 2)}</span>
-            <span class="hub-app-icon">${svgIcon(app.icon, 22, 2)}</span>
-            <span class="hub-app-text">
-                <span class="hub-app-title">${t(...app.title)}</span>
-                <span class="hub-app-desc">${t(...app.desc)}</span>
-            </span>
+            <span class="hub-ai-mark" aria-hidden="true">${aiSignMarkup({ size: 132, still: true, time: 9, glow: false })}</span>
+            <span class="hub-ai-sign">${aiSignMarkup({ size: 42 })}</span>
+            ${texts(app)}
             <span class="hub-hero-cta"><span class="hub-hero-cta-label">${t('hub_ai_cta', 'Start chat')}</span>${svgIcon('chevronRight', 16, 2.6)}</span>
         </button>`;
+        const field = paintedField({ light: app.colors[0], deep: app.colors[1], hint: app.hint }, MOTIF_SEEDS[app.motif] || 0, motifSvg(app.motif), 'hub-app-field');
         return `
         <button type="button" class="hub-app${app.soon ? ' is-soon' : ''}" style="${style}" ${action}>
-            <span class="hub-app-mark" aria-hidden="true">${svgIcon(app.icon, 96, 1.4)}</span>
-            <span class="hub-app-icon">${svgIcon(app.icon, 22, 2)}</span>
-            <span class="hub-app-text">
-                <span class="hub-app-title">${t(...app.title)}</span>
-                <span class="hub-app-desc">${t(...app.desc)}</span>
-            </span>
-            ${app.soon ? `<span class="hub-app-soon">${t('hub_soon', 'Coming soon')}</span>` : `<span class="hub-app-go">${svgIcon('chevronRight', 16, 2.6)}</span>`}
+            ${field}
+            ${texts(app)}
+            ${app.soon ? `<span class="hub-app-soon">${t('hub_soon', 'Coming soon')}</span>` : `<span class="hub-app-go">${svgIcon('chevronRight', 18, 2.4)}</span>`}
         </button>`;
     }).join('');
+    wakeAiSigns(target);
 }
 
 function openHubApp(key) {
@@ -1161,7 +1167,11 @@ function openHubApp(key) {
 
 // --- Media (Extras): the community's Nextcloud folder as a library. The server checks every request against the
 // folder rights; this part shows what it sends: folders, thumbnails (Nextcloud's previews), the picture viewer,
-// the PDF viewer, uploads and - for members with extended media rights - the rights of each folder. ---
+// the PDF viewer, uploads and - for members with extended media rights - the rights of each folder. It looks like
+// the Android app's: folders as rows like the apps in Extras (a small 3D folder in a painted field), files three to a
+// row with their names under them, the path as pills under the title; a folder that opens rises from below, going
+// back it comes down from above and the folder above shows where it was left. Folders carry no marks of their
+// rights: managers set the open folder's with the shield in the header and see all of them in the list. ---
 let mediaStatus = { enabled: false, canManage: false, hasAccess: false };
 let mediaFolder = '';
 let mediaListing = null;
@@ -1175,7 +1185,6 @@ let mediaShownFolders = [];
 // Names selected in the open folder (to download or delete several at once)
 const mediaSelected = new Set();
 
-const MEDIA_KIND_ICONS = { image: 'image', pdf: 'fileText', video: 'play', audio: 'music', other: 'file' };
 const MEDIA_LEVEL_LABELS = () => ({
     read: t('media_level_read', 'Read'),
     write: t('media_level_write', 'Write'),
@@ -1198,13 +1207,22 @@ async function loadMediaStatus() {
     if (!mediaStatus.hasAccess && currentActiveTab === 'media') switchTab('hub');
 }
 
-/** Opens [path] in the library (from the hub, a folder, the breadcrumb or an address). */
-function openMediaFolder(path = '') {
-    if (path !== mediaFolder) clearMediaSelection();
+// Where each folder was scrolled to: going back up shows a folder where it was left, one opened anew starts on top
+const mediaScrolled = new Map();
+let mediaRestoreScroll = null;
+const mediaScroller = () => document.querySelector('.container');
+
+/** Opens [path] in the library (from the hub, a folder, the path or an address); [back]: going up to it. */
+function openMediaFolder(path = '', { back = false } = {}) {
+    if (path !== mediaFolder) {
+        clearMediaSelection();
+        if (currentActiveTab === 'media') mediaScrolled.set(mediaFolder, mediaScroller()?.scrollTop || 0);
+    }
+    if (!back) mediaScrolled.delete(path);
+    mediaRestoreScroll = back ? path : null;
     mediaFolder = path;
     if (currentActiveTab !== 'media') return switchTab('media');
     loadMediaFolder();
-    document.querySelector('.container')?.scrollTo({ top: 0 });
 }
 
 // Folders seen before show at once from memory; the server is always asked again and the page only drawn anew when
@@ -1257,8 +1275,8 @@ async function loadMediaFolder({ silent = false } = {}) {
             mediaError = err.status === 503 || err.status === 404 ? t('media_unavailable', 'There is nothing to see here yet.') : err.message;
         }
     }
-    // Faded in only after the loading circle; a folder already on the page changes in place
-    renderMedia({ fresh: shown === null });
+    // A folder already on the page changes in place
+    renderMedia();
     updateFabVisibility();
     syncUrl();
 }
@@ -1266,15 +1284,14 @@ async function loadMediaFolder({ silent = false } = {}) {
 function mediaBack() {
     if (mediaFolder) {
         leaveHistoryLevels('folder');
-        openMediaFolder(parentPath(mediaFolder));
+        openMediaFolder(parentPath(mediaFolder), { back: true });
     } else switchTab('hub');
 }
 
 /** A folder of the path above the open one: the history steps of the folders in between are left behind. */
 function openMediaCrumb(path) {
-    const depth = folder => breadcrumb(folder).length;
-    leaveHistoryLevels('folder', depth(mediaFolder) - depth(path));
-    openMediaFolder(path);
+    leaveHistoryLevels('folder', folderDepth(mediaFolder) - folderDepth(path));
+    openMediaFolder(path, { back: true });
 }
 
 function setMediaSort(value) {
@@ -1283,96 +1300,236 @@ function setMediaSort(value) {
     renderMedia();
 }
 
-function renderMediaCrumbs() {
-    const target = $('media-crumbs');
-    if (!target) return;
-    const crumbs = breadcrumb(mediaFolder);
-    const access = mediaListing?.access;
-    // The rights hold for managers too: they also open folders whose files are hidden from them
-    const badge = access === 'write'
-        ? `<span class="media-access-badge is-write">${svgIcon('upload', 12, 2.2)}${t('media_access_write', 'You can add files here')}</span>`
-        : access === 'read' ? `<span class="media-access-badge">${svgIcon('eye', 12, 2.2)}${t('media_access_read', 'Read only')}</span>`
-        : access === 'none' && mediaStatus.canManage ? `<span class="media-access-badge">${svgIcon('eyeOff', 12, 2.2)}${t('media_access_none', 'Files hidden from you')}</span>` : '';
-    // In the base folder the title says where you are; the path only appears below it
-    target.hidden = !crumbs.length && !badge;
-    target.innerHTML = `
-        ${crumbs.length ? `<button type="button" class="media-crumb" onclick="openMediaCrumb('')">${svgIcon('folder', 14, 2.2)}<span>${t('media_title', 'Media')}</span></button>` : ''}
-        ${crumbs.map((crumb, index) => `<span class="media-crumb-sep" aria-hidden="true">${svgIcon('chevronRight', 12, 2.4)}</span><button type="button" class="media-crumb${index === crumbs.length - 1 ? ' is-current" aria-current="page' : ''}" onclick="openMediaCrumb(${jsArg(crumb.path)})" title="${escapeHtml(crumb.name)}"><span>${escapeHtml(crumb.name)}</span></button>`).join('')}
-        ${badge}`;
+/** Name or newest first (remembered on the device), from the sort sign in the header. */
+function openMediaSortMenu(button) {
+    const rect = button.getBoundingClientRect();
+    const choices = [['name', t('media_sort_name', 'Name')], ['newest', t('media_sort_newest', 'Newest')]];
+    showMediaMenu(`<div class="media-menu-title">${escapeHtml(t('media_sort', 'Order'))}</div>`
+        + choices.map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${value === mediaSort}" class="media-menu-item${value === mediaSort ? ' is-chosen' : ''}" data-value="${value}"><span>${escapeHtml(label)}</span>${value === mediaSort ? svgIcon('check', 16, 2.6) : ''}</button>`).join(''),
+    { x: rect.right, y: rect.bottom + 6, alignEnd: true, label: t('media_sort', 'Order') }, item => setMediaSort(item.dataset.value));
 }
 
-const mediaEntryMeta = entry => [formatSize(entry.size, uiLocale()), entry.modified ? formatDateFast(entry.modified) : ''].filter(Boolean).join(' · ');
+/** The folders folded into "…" of a deep path, each a little further in like the way down; a tap goes there. */
+function openMediaPathMenu(button) {
+    const folded = pathSteps(mediaFolder, '').find(step => step.folded.length)?.folded || [];
+    if (!folded.length) return;
+    const rect = button.getBoundingClientRect();
+    showMediaMenu(folded.map((folder, level) => `<button type="button" role="menuitem" class="media-menu-item" data-target="${escapeHtml(folder.target)}" style="padding-left: ${10 + level * 12}px">${motifSvg('folder', { className: 'motif media-menu-motif' })}<span>${escapeHtml(folder.name)}</span></button>`).join(''),
+    { x: rect.left, y: rect.bottom + 6, label: t('media_path_between', 'Folders in between') }, item => openMediaCrumb(item.dataset.target));
+}
 
-// The round mark in the corner of a folder or tile: shown on hover and while selecting, filled when selected
+// The app's FastOutSlowInEasing: how folders and the title move
+const MEDIA_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
+const mediaMoves = el => typeof el?.animate === 'function' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true && el.getClientRects().length > 0;
+
+/** The open folder's name in the header, moving along with the page: up and in from below for a folder further in. */
+let mediaTitlePath = null;
+function renderMediaTitle() {
+    const title = $('media-title');
+    if (!title) return;
+    const text = mediaFolder ? breadcrumb(mediaFolder).pop().name : t('media_title', 'Media');
+    const current = title.querySelector('.media-title-text:not(.is-leaving)');
+    if (current?.textContent === text && mediaTitlePath === mediaFolder) return;
+    const way = mediaTitlePath === null || mediaTitlePath === mediaFolder ? 0 : folderDepth(mediaFolder) >= folderDepth(mediaTitlePath) ? 1 : -1;
+    mediaTitlePath = mediaFolder;
+    const next = createEl('span', 'media-title-text', text);
+    title.querySelectorAll('.media-title-text.is-leaving').forEach(old => old.remove());
+    if (!current || !way || !mediaMoves(title)) {
+        title.replaceChildren(next);
+        return;
+    }
+    current.classList.add('is-leaving');
+    title.appendChild(next);
+    const gone = () => current.remove();
+    current.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${-way * 100}%)`, opacity: 0 }], { duration: 260, easing: MEDIA_EASE, fill: 'forwards' }).finished.then(gone, gone);
+    next.animate([{ transform: `translateY(${way * 100}%)` }, { transform: 'none' }], { duration: 320, easing: MEDIA_EASE });
+    next.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: 60, fill: 'backwards' });
+}
+
+/**
+ * The way down to the open folder under the title, as pills with a small arrow between them: each opens its folder,
+ * the open one is painted in the library's warm colours. From three folders down the base folder shows only its
+ * sign; deeper than three the middle folds into "…" (its folders in a menu), so the way home, the folder above and
+ * the open one stay in sight on a phone. The row keeps its end in sight; what does not fit fades at the edges, and a
+ * pill that comes with a new path fades in.
+ */
+let mediaPathKeys = null;
+function renderMediaPath() {
+    const nav = $('media-crumbs');
+    if (!nav) return;
+    const steps = pathSteps(mediaFolder, t('media_title', 'Media'));
+    const compactRoot = steps.length >= 4;
+    const keyOf = step => (step.folded.length ? '…' : `/${step.target}`);
+    const signature = `${uiLang}:${mediaFolder}`;
+    if (nav.dataset.shows === signature) return;
+    nav.dataset.shows = signature;
+    const before = mediaPathKeys;
+    nav.innerHTML = steps.map((step, index) => {
+        const sep = index ? `<span class="media-path-sep" aria-hidden="true">${svgIcon('chevronRight', 16, 2.2)}</span>` : '';
+        const fresh = before && !before.has(keyOf(step)) ? ' is-new' : '';
+        if (step.folded.length) {
+            const label = escapeHtml(t('media_path_between', 'Folders in between'));
+            return `<span class="media-path-step${fresh}">${sep}<button type="button" class="media-path-pill is-more" onclick="openMediaPathMenu(this)" aria-haspopup="menu" title="${label}" aria-label="${label}">${svgIcon('more', 20, 2.6)}</button></span>`;
+        }
+        const compact = step.root && compactRoot;
+        const name = escapeHtml(step.name);
+        const content = `${step.root ? motifSvg('folder', { className: 'motif media-path-motif' }) : ''}${compact ? '' : `<span class="media-path-name">${name}</span>`}`;
+        const classes = `media-path-pill${step.root ? ' is-root' : ''}${compact ? ' is-compact' : ''}`;
+        // The open folder is where you are, not a way to go
+        if (index === steps.length - 1) return `<span class="media-path-step${fresh}">${sep}<span class="${classes} is-open" aria-current="page" title="${name}">${content}</span></span>`;
+        return `<span class="media-path-step${fresh}">${sep}<button type="button" class="${classes}" onclick="openMediaCrumb(${jsArg(step.target)})" title="${name}"${compact ? ` aria-label="${name}"` : ''}>${content}</button></span>`;
+    }).join('');
+    mediaPathKeys = new Set(steps.map(keyOf));
+    nav.scrollLeft = nav.scrollWidth;
+    syncMediaPathEdges();
+}
+
+/** Lets the pills that do not fit fade at the edge where there is more. */
+function syncMediaPathEdges() {
+    const nav = $('media-crumbs');
+    if (!nav) return;
+    nav.classList.toggle('has-start', nav.scrollLeft > 1);
+    nav.classList.toggle('has-end', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 1);
+}
+
+// The round mark of a folder or tile: shown on hover and while selecting, filled when selected
 const mediaCheck = name => `<button type="button" class="media-check" data-media-check aria-pressed="false" aria-label="${escapeHtml(t('media_select_item', 'Select {name}', { name }))}">${svgIcon('check', 14, 3)}</button>`;
 
+/** A folder: a row like the apps in Extras - the folder in a painted field, its name, date and size, an arrow. */
 function mediaFolderCard(folder) {
-    const manage = mediaStatus.canManage;
-    const hidden = manage && folder.hiddenFor?.length
-        ? `<span class="media-folder-mark is-hidden" title="${escapeHtml(t('media_hidden_for_some', 'Hidden for some groups'))}">${svgIcon('eyeOff', 14, 2.2)}</span>` : '';
-    const passage = folder.access === 'none';
-    // The shield turns blue on folders with rights of their own
-    const rightsTitle = folder.hasRules ? t('media_has_rights', 'Has rights of its own') : t('media_rights_title', 'Folder rights');
-    const meta = mediaEntryMeta(folder);
+    const meta = [folder.modified ? formatDateFast(folder.modified) : '', formatSize(folder.size, uiLocale())].filter(Boolean).join(' · ');
     return `
-        <div class="media-folder${passage ? ' is-passage' : ''}" data-media-name="${escapeHtml(folder.name)}">
+        <div class="media-folder" data-media-name="${escapeHtml(folder.name)}">
             <button type="button" class="media-folder-open" data-media-open title="${escapeHtml(folder.name)}">
-                <span class="media-folder-icon">${svgIcon('folder', 22, 2)}</span>
+                ${paintedField(MEDIA_FIELD, seedOf(folder.name), motifSvg('folder'), 'media-folder-field')}
                 <span class="media-folder-text">
                     <span class="media-folder-name">${escapeHtml(folder.name)}</span>
                     ${meta ? `<span class="media-folder-meta">${escapeHtml(meta)}</span>` : ''}
                 </span>
-                ${hidden}
+                <span class="media-folder-go" aria-hidden="true">${svgIcon('chevronRight', 18, 2.4)}</span>
             </button>
             ${mediaCheck(folder.name)}
-            ${manage ? `<button type="button" class="media-folder-rights${folder.hasRules ? ' is-set' : ''}" onclick="openMediaRights(${jsArg(folder.path)})" title="${escapeHtml(rightsTitle)}" aria-label="${escapeHtml(t('media_rights_of', 'Rights of {name}', { name: folder.name }))}">${svgIcon('shield', 16, 2)}</button>` : ''}
         </div>`;
 }
 
+// The play sign on a video's picture
+const MEDIA_PLAY = '<svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+
+/**
+ * A file: its square and under it its name (without the type its tile shows) and size. The square is the painted
+ * field of its kind with its motif, under the preview while that comes (a play sign on videos); without a preview
+ * the motif is larger and the type (PDF, DOCX, MP3) stands in its corner.
+ */
 function mediaFileTile(file) {
-    const icon = svgIcon(MEDIA_KIND_ICONS[file.kind] || 'file', 30, 1.6);
-    const thumb = file.hasPreview
-        ? `<img class="media-thumb-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">`
-        : '';
-    const meta = mediaEntryMeta(file);
-    // Photos and videos show what they are (the picture, the play button): the type only for the rest (PDF, DOCX ...)
-    const label = file.kind === 'image' || file.kind === 'video' ? '' : typeLabel(file.name);
+    const { colors, motif } = fileLook(file);
+    const type = typeLabel(file.name);
+    const face = `<span class="media-face-motif">${motifSvg(motif, { accent: colors.deep })}</span>`
+        + (file.hasPreview ? `<img class="media-face-img" src="${escapeHtml(previewUrl(API, file, mediaTileSize()))}" alt="" loading="lazy" decoding="async" draggable="false">` : '')
+        + (file.kind === 'video' && file.hasPreview ? `<span class="media-face-play">${MEDIA_PLAY}</span>` : '')
+        + (type ? `<span class="media-face-type">${escapeHtml(type)}</span>` : '');
+    const size = formatSize(file.size, uiLocale());
     return `
         <div class="media-tile kind-${escapeHtml(file.kind)}" data-media-name="${escapeHtml(file.name)}">
             <button type="button" class="media-tile-open" data-media-open title="${escapeHtml(file.name)}">
-                <span class="media-thumb${file.hasPreview ? '' : ' is-icon'}">
-                    <span class="media-thumb-icon">${icon}</span>
-                    ${thumb}
-                    ${file.kind === 'video' && file.hasPreview ? `<span class="media-thumb-play" aria-hidden="true">${svgIcon('play', 18, 2)}</span>` : ''}
-                    ${label ? `<span class="media-thumb-type">${escapeHtml(label)}</span>` : ''}
-                </span>
-                <span class="media-tile-name">${escapeHtml(file.name)}</span>
-                <span class="media-tile-meta">${escapeHtml(meta)}</span>
+                ${paintedField(colors, seedOf(file.name), face, `media-face${file.hasPreview ? '' : ' is-icon'}`)}
+                <span class="media-tile-name">${escapeHtml(shownName(file.name))}</span>
+                ${size ? `<span class="media-tile-meta">${escapeHtml(size)}</span>` : ''}
             </button>
             ${mediaCheck(file.name)}
         </div>`;
 }
 
-function renderMedia({ fresh = false } = {}) {
+/** An empty folder or one that could not be loaded: the folder motif with a word, and what can be done. */
+const mediaMessage = (title, hints = [], action = '') => `
+    <div class="media-message">
+        ${motifSvg('folder', { className: 'motif media-message-motif' })}
+        <span class="media-message-title">${title}</span>
+        ${hints.filter(Boolean).map(hint => `<span class="media-message-hint">${hint}</span>`).join('')}
+        ${action}
+    </div>`;
+
+/** What the member may do in the open folder: only look, or also add (managers know it), or see no files here. */
+function mediaAccessNote(access, hasEntries) {
+    const note = access === 'read' ? ['', 'eye', t('media_access_read', 'Read only')]
+        : access === 'write' && !mediaStatus.canManage ? [' is-write', 'upload', t('media_access_write', 'You can add files here')]
+        // The rights hold for managers too: they also open folders whose files are hidden from them
+        : access === 'none' && mediaStatus.canManage && hasEntries ? ['', 'eyeOff', t('media_access_none', 'Files hidden from you')] : null;
+    return note ? `<div class="media-access"><span class="media-access-badge${note[0]}">${svgIcon(note[1], 13, 2.2)}<span>${note[2]}</span></span></div>` : '';
+}
+
+// The folder on the page (its entries, or the circle while they load) and how the next entries come in: from below
+// for a folder further in, from above going back up, in place (0) for the same folder
+let mediaPagePath = null;
+let mediaEnterWay = 0;
+
+/**
+ * Puts [html] on the page as the open folder's. Another folder's page moves on a little and fades out over it (from
+ * where it was seen), the new one rises from below or comes down from above; the page stays where it was scrolled
+ * for the same folder, starts on top for one opened anew and shows one gone back to where it was left.
+ */
+function showMediaPage(list, html, { loading = false } = {}) {
+    const path = mediaFolder;
+    const scroller = mediaScroller();
+    const old = list.querySelector('.media-page:not(.is-leaving)');
+    // Coming to the library from elsewhere (its tab still hidden) is no move between folders
+    const visible = list.getClientRects().length > 0;
+    const moved = visible && mediaPagePath !== null && mediaPagePath !== path;
+    const afterLoading = !!old?.hasAttribute('data-loading');
+    if (moved) mediaEnterWay = folderDepth(path) >= folderDepth(mediaPagePath) ? 1 : -1;
+    else if (!visible) {
+        mediaEnterWay = 0;
+        mediaRestoreScroll = null;
+    }
+    mediaPagePath = path;
+    const page = createEl('div', 'media-page');
+    if (loading) page.setAttribute('data-loading', '');
+    page.innerHTML = html;
+    const seen = scroller?.scrollTop || 0;
+    const leaving = moved && old && !afterLoading && mediaMoves(old) ? old : null;
+    if (!leaving) old?.remove();
+    list.appendChild(page);
+    // Where the page is shown: on top for a folder that changed (the one gone back to once its entries are there)
+    let top = null;
+    if (!loading && mediaRestoreScroll === path) {
+        top = mediaScrolled.get(path) || 0;
+        mediaRestoreScroll = null;
+    } else if (moved) top = 0;
+    if (top !== null && scroller) scroller.scrollTo({ top, behavior: 'instant' });
+    if (leaving) {
+        const way = mediaEnterWay;
+        // A page still leaving from the move before makes room at once (a page whose answer comes quickly lets it finish)
+        list.querySelectorAll('.media-page.is-leaving').forEach(gone => gone.remove());
+        leaving.classList.add('is-leaving');
+        // Out of the flow, still where it was seen
+        leaving.style.top = `${(scroller?.scrollTop || 0) - seen}px`;
+        const gone = () => leaving.remove();
+        leaving.animate([{ transform: 'none' }, { transform: `translateY(${-way * Math.round(window.innerHeight / 12)}px)` }], { duration: 260, easing: MEDIA_EASE, fill: 'forwards' }).finished.then(gone, gone);
+        leaving.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'linear', fill: 'forwards' });
+    }
+    if (loading) return page;
+    if (mediaEnterWay && mediaMoves(page)) {
+        page.animate([{ transform: `translateY(${mediaEnterWay * Math.round(window.innerHeight / 7)}px)` }, { transform: 'none' }], { duration: 340, easing: MEDIA_EASE });
+        page.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 60, easing: 'linear', fill: 'backwards' });
+    } else if (afterLoading) page.classList.add('is-fresh');
+    mediaEnterWay = 0;
+    return page;
+}
+
+function renderMedia() {
     const list = $('media-list');
     if (!list) return;
-    setValue('media-sort', mediaSort);
-    setText('media-title', mediaFolder ? breadcrumb(mediaFolder).pop().name : t('media_title', 'Media'));
-    show('media-rights-btn', mediaStatus.canManage && !!mediaListing, 'inline-flex');
+    renderMediaTitle();
+    // The shield stays while a folder loads: whether the member sets rights is the same in every folder
+    show('media-rights-btn', mediaStatus.canManage && !mediaError, 'inline-flex');
     show('media-rules-btn', mediaStatus.canManage, 'inline-flex');
-    renderMediaCrumbs();
+    renderMediaPath();
     if (mediaError) {
-        list.innerHTML = `
-            <div class="polls-empty">
-                <span class="polls-empty-icon media-empty-icon">${svgIcon('folder', 26, 1.8)}</span>
-                <span class="polls-empty-title">${escapeHtml(mediaError)}</span>
-                <button type="button" class="btn btn-secondary btn-small" onclick="loadMediaFolder()">${t('btn_retry', 'Try again')}</button>
-            </div>`;
+        showMediaPage(list, mediaMessage(escapeHtml(mediaError), [], `<button type="button" class="btn btn-secondary btn-small" onclick="loadMediaFolder()">${t('btn_retry', 'Try again')}</button>`));
         return;
     }
     if (!mediaListing) {
         // One calm circle (only after a moment, so fast folders do not flash) instead of tiles that may never come
-        list.innerHTML = `<div class="media-loading" aria-busy="true" role="status"><span class="spinner"></span><span class="sr-only">${t('loading', 'Loading…')}</span></div>`;
+        showMediaPage(list, `<div class="media-loading" aria-busy="true" role="status"><span class="spinner"></span><span class="sr-only">${t('loading', 'Loading…')}</span></div>`, { loading: true });
         return;
     }
     const folders = sortEntries(mediaListing.folders, mediaSort === 'newest' ? 'newest' : 'name');
@@ -1381,29 +1538,28 @@ function renderMedia({ fresh = false } = {}) {
     // Deleted or gone on another device: no longer selected
     const present = new Set([...folders, ...mediaShownFiles].map(entry => entry.name));
     for (const name of [...mediaSelected]) if (!present.has(name)) mediaSelected.delete(name);
-    syncMediaSelection();
+    const access = mediaListing.access;
     if (!folders.length && !mediaShownFiles.length) {
         // A manager in a folder the rights hide from them: not empty, only not theirs to see
-        const hidden = mediaListing.access === 'none';
-        list.innerHTML = `
-            <div class="polls-empty">
-                <span class="polls-empty-icon media-empty-icon">${svgIcon(hidden ? 'eyeOff' : 'folder', 26, 1.8)}</span>
-                <span class="polls-empty-title">${hidden ? t('media_hidden_title', 'The files here are hidden from you') : t('media_empty', 'This folder is empty')}</span>
-                ${hidden ? `<span class="polls-empty-hint">${t('media_hidden_hint', 'The folder rights apply to you too. Change them with the shield to see the files.')}</span>` : ''}
-                ${mediaListing.access === 'write' ? `<span class="polls-empty-hint">${t('media_empty_hint', 'Add files with the plus at the bottom right, or drop them here.')}</span>` : ''}
-            </div>`;
+        const hidden = access === 'none';
+        showMediaPage(list, mediaMessage(
+            hidden ? t('media_hidden_title', 'The files here are hidden from you') : t('media_empty', 'This folder is empty'),
+            [hidden && t('media_hidden_hint', 'The folder rights apply to you too. Change them with the shield to see the files.'), access === 'write' && t('media_empty_hint', 'Add files with the plus at the bottom right, or drop them here.')]
+        ));
+        syncMediaSelection();
         return;
     }
     const section = (label, count) => `<h2 class="media-section-label">${label}<span class="media-section-count">${count}</span></h2>`;
-    list.innerHTML = `<div class="media-content${fresh ? ' is-fresh' : ''}">
+    const page = showMediaPage(list, `${mediaAccessNote(access, folders.length > 0)}
         ${folders.length ? `${section(t('media_section_folders', 'Folders'), folders.length)}<div class="media-folders">${folders.map(mediaFolderCard).join('')}</div>` : ''}
-        ${mediaShownFiles.length ? `${section(t('media_section_files', 'Files'), mediaShownFiles.length)}<div class="media-grid">${mediaShownFiles.map(mediaFileTile).join('')}</div>` : ''}
-    </div>`;
-    // Thumbnails fade in when they arrive; without one (no preview for this file) the type icon stays
-    list.querySelectorAll('.media-thumb-img').forEach(img => {
-        const done = () => img.parentElement.classList.add('is-loaded');
+        ${mediaShownFiles.length ? `${section(t('media_section_files', 'Files'), mediaShownFiles.length)}<div class="media-grid">${mediaShownFiles.map(mediaFileTile).join('')}</div>` : ''}`);
+    // Thumbnails fade in when they arrive; without one (no preview for this file) the motif of its kind stays
+    page.querySelectorAll('.media-face-img').forEach(img => {
+        const face = img.closest('.media-face');
+        const done = () => face.classList.add('is-loaded');
         const failed = () => {
-            img.parentElement.classList.add('is-icon');
+            face.classList.add('is-icon');
+            face.querySelector('.media-face-play')?.remove();
             img.remove();
         };
         if (img.complete && img.naturalWidth) done();
@@ -1568,7 +1724,7 @@ async function deleteMediaEntries(names) {
 const downloadMediaSelection = () => downloadMediaEntries([...mediaSelected]);
 const deleteMediaSelection = () => deleteMediaEntries([...mediaSelected]);
 
-// --- The menu of an entry (right click, the menu key or Shift + F10) ---
+// --- The menu of an entry (right click, the menu key or Shift + F10), of the order and of a folded path ---
 function closeMediaMenu() {
     const menu = $('media-menu');
     if (!menu || menu.hidden) return;
@@ -1576,10 +1732,30 @@ function closeMediaMenu() {
     menu.innerHTML = '';
 }
 
-function openMediaMenu(name, x, y) {
+/** Shows the menu with [html] at (x, y) - [alignEnd]: x is its right edge - kept on screen; [onPick] gets the item. */
+function showMediaMenu(html, { x, y, alignEnd = false, label = '' }, onPick) {
     const menu = $('media-menu');
+    if (!menu) return;
+    menu.innerHTML = html;
+    if (label) menu.setAttribute('aria-label', label);
+    else menu.removeAttribute('aria-label');
+    menu.onclick = e => {
+        const item = e.target.closest('.media-menu-item');
+        if (!item || item.disabled) return;
+        closeMediaMenu();
+        onPick(item);
+    };
+    menu.hidden = false;
+    const rect = menu.getBoundingClientRect();
+    const left = alignEnd ? x - rect.width : x;
+    menu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    menu.querySelector('.media-menu-item:not(:disabled)')?.focus({ preventScroll: true });
+}
+
+function openMediaMenu(name, x, y) {
     const entry = mediaEntry(name);
-    if (!menu || !entry) return;
+    if (!entry) return;
     // On a selected entry the menu is for the whole selection
     const names = mediaSelected.has(name) && mediaSelected.size > 1 ? [...mediaSelected] : [name];
     const several = names.length > 1;
@@ -1588,26 +1764,21 @@ function openMediaMenu(name, x, y) {
         !several && { action: 'open', icon: entry.folder ? 'folder' : 'eye', label: t('media_open', 'Open') },
         { action: 'download', icon: 'download', label: several ? t('media_download_count', 'Download {count}', { count: names.length }) : t('media_download', 'Download') },
         { action: 'select', icon: 'check', label: mediaSelected.has(name) ? t('media_unselect', 'Unselect') : t('media_select', 'Select') },
+        // Folders carry no marks of their rights: managers find them here too
+        !several && entry.folder && mediaStatus.canManage && { action: 'rights', icon: 'shield', label: t('media_rights_title', 'Folder rights') },
         mediaListing?.access === 'write' && { action: 'delete', icon: 'trash', danger: true, disabled: !deletable, label: several ? t('media_delete_count', 'Delete {count}', { count: names.length }) : t('media_delete', 'Delete') }
     ].filter(Boolean);
-    menu.innerHTML = `
+    showMediaMenu(`
         <div class="media-menu-title">${escapeHtml(several ? t('media_selected', '{count} selected', { count: names.length }) : name)}</div>
-        ${items.map(item => `<button type="button" role="menuitem" class="media-menu-item${item.danger ? ' is-danger' : ''}" data-action="${item.action}"${item.disabled ? ` disabled title="${escapeHtml(t('media_delete_not_allowed', 'You may not delete everything in a selected folder.'))}"` : ''}>${svgIcon(item.icon, 16, 2.2)}<span>${escapeHtml(item.label)}</span></button>`).join('')}`;
-    menu.onclick = e => {
-        const action = e.target.closest('[data-action]')?.dataset.action;
-        if (!action) return;
-        closeMediaMenu();
+        ${items.map(item => `<button type="button" role="menuitem" class="media-menu-item${item.danger ? ' is-danger' : ''}" data-action="${item.action}"${item.disabled ? ` disabled title="${escapeHtml(t('media_delete_not_allowed', 'You may not delete everything in a selected folder.'))}"` : ''}>${svgIcon(item.icon, 16, 2.2)}<span>${escapeHtml(item.label)}</span></button>`).join('')}`,
+    { x, y }, item => {
+        const action = item.dataset.action;
         if (action === 'open') openMediaEntry(name);
         else if (action === 'download') downloadMediaEntries(names);
         else if (action === 'select') toggleMediaSelected(name);
+        else if (action === 'rights') openMediaRights(entry.folder.path);
         else if (action === 'delete') deleteMediaEntries(names);
-    };
-    menu.hidden = false;
-    // Kept on screen
-    const rect = menu.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
-    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
-    menu.querySelector('.media-menu-item:not(:disabled)')?.focus({ preventScroll: true });
+    });
 }
 
 (() => {
@@ -1624,7 +1795,7 @@ function openMediaMenu(name, x, y) {
         lastPointer = e.pointerType;
         mediaSuppressClick = false;
         const item = e.target.closest('[data-media-name]');
-        if (!item || e.pointerType === 'mouse' || e.target.closest('.media-folder-rights, [data-media-check]')) return;
+        if (!item || e.pointerType === 'mouse' || e.target.closest('[data-media-check]')) return;
         const name = item.dataset.mediaName;
         press = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
             press = null;
@@ -1640,7 +1811,7 @@ function openMediaMenu(name, x, y) {
 
     list.addEventListener('click', e => {
         const item = e.target.closest('[data-media-name]');
-        if (!item || e.target.closest('.media-folder-rights')) return;
+        if (!item) return;
         const name = item.dataset.mediaName;
         if (mediaSuppressClick) {
             mediaSuppressClick = false;
@@ -1668,6 +1839,7 @@ function openMediaMenu(name, x, y) {
         if (!e.target.closest('#media-menu')) closeMediaMenu();
     }, true);
     window.addEventListener('resize', closeMediaMenu);
+    window.addEventListener('resize', syncMediaPathEdges);
     document.addEventListener('scroll', closeMediaMenu, true);
     document.addEventListener('keydown', e => {
         if (currentActiveTab !== 'media' || document.querySelector('.modal.show')) return;
@@ -3681,7 +3853,10 @@ function switchTab(tabName, source) {
         if (tabName === 'ai-chat') {
             requestAnimationFrame(() => {
                 adjustAiInputHeight($('ai-chat-input'));
-                aiChatToEnd();
+                // A conversation opens at its end; a new chat on top, its header and greeting in sight (scrolled to
+                // its end, the greeting pushed the header under the app's on phones, out of sight on small ones)
+                if (aiMessages.length) aiChatToEnd();
+                else if ($('ai-chat')?.classList.contains('active')) document.querySelector('.container')?.scrollTo({ top: 0, behavior: 'instant' });
             });
         }
     }
@@ -4799,7 +4974,7 @@ async function confirmProfileCrop() {
 
 Object.assign(window, {
     switchTab, switchFinanceSubpage, toggleProfileMenu, closeProfileMenu, toggleFab, allowPushOnDevice, sendTestPush, setTheme, attemptLogin, attemptRegister, logout, changePassword, deleteOwnAccount,
-    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, openMediaCrumb, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, clearMediaSelection, toggleSelectAllMedia, downloadMediaSelection, deleteMediaSelection, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
+    generateNewCode, copyInviteCode, setNotificationChannel, setNotificationKind, setNotificationTab, openSettingsPage, closeSettingsPage, toggleDeleteAccount, openHubApp, openMediaFolder, openMediaCrumb, openMediaPathMenu, openMediaSortMenu, syncMediaPathEdges, loadMediaFolder, mediaBack, setMediaSort, openMediaFile, clearMediaSelection, toggleSelectAllMedia, downloadMediaSelection, deleteMediaSelection, stepMediaViewer, toggleMediaZoom, zoomMediaPdf, pickMediaFiles, uploadMediaFiles, openMediaFolderDialog, createMediaFolder, openMediaRights, setMediaRightLevel, removeMediaRightRow, openMediaRightsAdd, closeMediaRightsAdd, renderMediaRightsAdd, addMediaRightRow, saveMediaRights, openMediaRulesOverview, openMediaRuleFolder, editMediaRule, testMediaConfig, saveMediaConfig, setPollFilter, openPollDetail, votePoll, loadPolls, clearPollDurationChips, closePoll, deletePoll, openCreatePoll, addPollOption, removePollOption, setPollDuration, submitPoll, renderSongs, loadSongs, openSong, closeSong, printSong, loadPrayers, setPrayerFilter, openPrayerEditor, setPrayerDuration, updatePrayerCounter, submitPrayer, openPrayerOptions, extendPrayer, deletePrayer, openProgramSong, openPlanEntry, openPlanEntryForItem, openPlanEntryForRole, renderPlanSuggestions, choosePlanSong, clearPlanSong, keepPlanTask, setPlanWhen, setPlanPlace, setPlanMinutes, updatePlanOrder, pickPlanPerson, renderPlanWhoList, togglePlanWho, clearPlanPerson, removePlanPerson, savePlanEntry, deletePlanEntry, shareSong, toggleSongChords, transposeSong, resetSongKey, toggleSongPanel, songBodyTap, sizeSong, toggleSongScroll, cycleSongSpeed, openSongEditor, editOpenSong, previewSongEdit, saveSong, deleteSong, openProfileCrop, cancelProfileCrop, confirmProfileCrop,
     showLogin: () => showAuthForm(true),
     showRegister: () => showAuthForm(false),
     openSettingsTab: () => {
@@ -7872,13 +8047,25 @@ function createEl(tag, className, text) {
     return created;
 }
 
-// The AI's sign: a soft orb in the colours of the assistant with a sparkle in it (slowly turning, faster while it thinks)
-const aiOrb = (size, extra = '') => `<span class="ai-orb ai-orb-${size}${extra ? ' ' + extra : ''}" aria-hidden="true"><span class="ai-orb-glow"></span><span class="ai-orb-core"></span>${svgIcon('sparkles', size === 'lg' ? 30 : 14, size === 'lg' ? 1.7 : 2.1, 'class="ai-orb-glyph"')}</span>`;
+// The AI's sign (aiSign.js): two soft forms in lagoon and sand whose outlines slowly change - livelier while the AI
+// works, at rest once a reply is complete. Every reply's sign starts at another moment of its motion
+let aiReplyCount = 0;
+
+/** The small sign before the chat's title: livelier while a reply comes in. */
+function headerAiSign() {
+    const holder = $('ai-chat-sign');
+    if (holder && !holder.firstElementChild) {
+        holder.innerHTML = aiSignMarkup({ size: 28 });
+        wakeAiSigns(holder);
+    }
+    return holder?.firstElementChild || null;
+}
 
 // A new chat: a friendly start with three questions the assistant can answer (members, finances, requests, events)
 function clearAiChat() {
     aiMessages = [];
     aiChatAbort?.abort();
+    setAiSignState(headerAiSign(), 'calm');
     const messagesEl = $('ai-chat-messages');
     if (!messagesEl) return;
     const admin = canViewFinances();
@@ -7887,9 +8074,10 @@ function clearAiChat() {
         ? t(`ai_suggest_admin_${n}`, ['Who is behind with their fee?', 'What is coming up this week?', 'Which requests are still open?'][n - 1])
         : t(`ai_suggest_member_${n}`, ['Until when is my fee paid?', 'What is coming up this week?', 'Where am I on duty next?'][n - 1]));
     const first = (currentUser?.firstName || fullName(currentUser) || currentUser?.name || '').trim().split(/\s+/)[0];
+    aiReplyCount = 0;
     messagesEl.innerHTML = `
         <div class="ai-chat-welcome">
-            ${aiOrb('lg')}
+            ${aiSignMarkup({ size: 76 })}
             <h2 class="ai-chat-welcome-text">
                 ${first ? `<span class="ai-chat-welcome-hi">${escapeHtml(t('ai_chat_hi_name', 'Hi {name},', { name: first }))}</span>` : ''}
                 <span class="ai-chat-welcome-ask">${t('ai_chat_hello', 'How can I help?')}</span>
@@ -7903,6 +8091,7 @@ function clearAiChat() {
                 </button>`).join('')}
             </div>
         </div>`;
+    wakeAiSigns(messagesEl);
 }
 
 function askAi(text) {
@@ -7972,13 +8161,14 @@ function appendAiMessage(role, content) {
         bubble.appendChild(renderMarkdown(content));
         item = createEl('div', 'ai-chat-row');
         const mark = createEl('span', 'ai-chat-mark');
-        mark.innerHTML = aiOrb('sm');
+        mark.innerHTML = aiSignMarkup({ size: 28, seed: aiReplyCount++ * 7.3 });
         item.append(mark, bubble);
     } else {
         bubble.textContent = content;
     }
     if (afterWelcome) item.classList.add('is-after-welcome');
     messagesEl.appendChild(item);
+    wakeAiSigns(item);
     aiChatToEnd();
     return bubble;
 }
@@ -8032,7 +8222,10 @@ const AI_STEP_TEXT_MS = 90;
 // only drawn while they are open, at most once per frame, so long thoughts cost nothing while nobody looks.
 function createAiReply(bubble) {
     const row = bubble.closest('.ai-chat-row');
-    const orb = row?.querySelector('.ai-orb');
+    // The sign beside the reply: livelier while the AI works, calm while the answer comes, at rest once it is complete
+    const sign = row?.querySelector('.ai-sign');
+    let complete = false;
+    const signState = live => setAiSignState(sign, live ? 'thinking' : complete ? 'resting' : 'calm');
     const details = createEl('details', 'ai-thinking is-live is-empty');
     const summary = createEl('summary', 'ai-thinking-summary');
     const label = createEl('span', 'ai-thinking-label');
@@ -8090,7 +8283,7 @@ function createAiReply(bubble) {
     const showTitle = (text, live) => {
         lineTitle = text;
         details.classList.toggle('is-live', live);
-        orb?.classList.toggle('is-thinking', live);
+        signState(live);
         refold();
         const current = label.lastElementChild;
         // While it folds away the line keeps its words
@@ -8114,7 +8307,7 @@ function createAiReply(bubble) {
     const pacer = createTitlePacer(showTitle);
     const thinkingTitle = t('ai_thinking', 'Thinking');
     pacer.want(thinkingTitle, { tag: true });
-    orb?.classList.add('is-thinking');
+    signState(true);
 
     const work = createReplyWork();
     // When the answer began (0: the AI is still working - a lookup after some text makes that text a note again)
@@ -8335,6 +8528,7 @@ function createAiReply(bubble) {
         // The reply is complete: last drawing; the line says how long it took (it is gone when there was nothing to show)
         finish() {
             clearInterval(tick);
+            complete = true;
             draw();
             drawSteps(true);
             if (frame) cancelAnimationFrame(frame);
@@ -8342,13 +8536,15 @@ function createAiReply(bubble) {
             if (!answeringSince) answeringSince = Date.now();
             showSeconds();
             pacer.want(doneLabel(), { tag: false, hold: 0 });
+            signState(false);
         },
         stop() {
             clearInterval(tick);
             if (frame) cancelAnimationFrame(frame);
             pacer.stop();
             details.classList.remove('is-live');
-            orb?.classList.remove('is-thinking');
+            complete = true;
+            signState(false);
         }
     };
 }
@@ -8603,6 +8799,7 @@ async function sendAiMessage() {
     appendAiMessage('user', text);
     aiStreaming = true;
     if (sendBtn) sendBtn.disabled = true;
+    setAiSignState(headerAiSign(), 'thinking');
 
     // The reply appears right away as "Thinking…" and fills in when the words come
     const bubble = appendAiMessage('assistant', '');
@@ -8694,6 +8891,7 @@ async function sendAiMessage() {
             aiChatAbort = null;
             aiStreaming = false;
             if (sendBtn) sendBtn.disabled = false;
+            setAiSignState(headerAiSign(), 'calm');
         }
     }
 }

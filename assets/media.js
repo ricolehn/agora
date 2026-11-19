@@ -15,6 +15,23 @@ export const parentPath = path => {
     return parts.join('/');
 };
 
+/** How deep a folder lies: "" 0, "Photos" 1, "Photos/2026" 2. */
+export const folderDepth = path => breadcrumb(path).length;
+
+/**
+ * The path from the base folder ([rootName]) down to [path] as the pills under the title, as in the Android app: all
+ * steps up to three folders down; deeper, the folders between the base folder and the last two fold into one step
+ * ("…", which lists them in [folded]): Media › … › Stage › Band. A step: { target, name, root, folded }.
+ */
+export function pathSteps(path, rootName) {
+    const crumbs = breadcrumb(path);
+    const step = crumb => ({ target: crumb.path, name: crumb.name, root: false, folded: [] });
+    const root = { target: '', name: rootName, root: true, folded: [] };
+    if (crumbs.length < 4) return [root, ...crumbs.map(step)];
+    const folded = crumbs.slice(0, -2).map(crumb => ({ target: crumb.path, name: crumb.name }));
+    return [root, { target: '', name: '…', root: false, folded }, ...crumbs.slice(-2).map(step)];
+}
+
 /** The page address of a folder: /media/Photos/2026 (each name encoded, so "#", "?" and "%" stay names). */
 export const folderUrl = path => ['/media', ...String(path || '').split('/').filter(Boolean).map(encodeURIComponent)].join('/');
 
@@ -83,6 +100,46 @@ export const opensInPlayer = file => file?.kind === 'video' || file?.kind === 'a
 export function typeLabel(name) {
     const match = /\.([a-z0-9]{1,4})$/i.exec(String(name || ''));
     return match ? match[1].toUpperCase() : '';
+}
+
+/** A file's name as its tile shows it: without the type its tile names ("Gemeindebrief.pdf" → "Gemeindebrief"). */
+export function shownName(name) {
+    const text = String(name || '');
+    const type = typeLabel(text);
+    const shown = type ? text.slice(0, -(type.length + 1)) : text;
+    return shown.trim() ? shown : text;
+}
+
+/** The library's warm colours (its tile in Extras): the painted field of its folders and pictures. */
+export const MEDIA_FIELD = { light: '#f6c7a4', deep: '#e0874f', hint: '#f9da9e' };
+const FILE_FIELDS = {
+    pdf: { light: '#f2b5c0', deep: '#d6667c', hint: '#f8c6ae' },
+    audio: { light: '#aed6ec', deep: '#4a98c4', hint: '#c9c6f3' },
+    video: { light: '#cfc8f3', deep: '#7c6fd6', hint: '#f0c6e6' },
+    text: { light: '#b9ccf2', deep: '#4a7fd6', hint: '#c3e2f0' },
+    table: { light: '#b5dec6', deep: '#3e9b6a', hint: '#d9eab4' },
+    slides: { light: '#f7c9a8', deep: '#e07b42', hint: '#f6dd9e' },
+    other: { light: '#e3dcd3', deep: '#8a837a', hint: '#ede3cf' }
+};
+const DOCUMENT_TYPES = {
+    text: ['doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'pages'],
+    table: ['xls', 'xlsx', 'ods', 'csv', 'numbers'],
+    slides: ['ppt', 'pptx', 'odp', 'key']
+};
+
+/**
+ * How a file's tile looks, as in the Android app: the painted field in the colours of its kind - pictures in the
+ * library's warm colours, PDFs rose, music blue, videos lilac, other documents by their type (text blue, tables green,
+ * slides orange) - and its motif (motifs.js: a picture, two notes, a screen, a document).
+ */
+export function fileLook(file) {
+    const kind = file?.kind;
+    const motif = kind === 'image' ? 'picture' : kind === 'audio' ? 'notes' : kind === 'video' ? 'film' : 'document';
+    if (kind === 'image') return { colors: MEDIA_FIELD, motif };
+    if (FILE_FIELDS[kind] && kind !== 'other') return { colors: FILE_FIELDS[kind], motif };
+    const type = typeLabel(file?.name).toLowerCase();
+    const group = Object.keys(DOCUMENT_TYPES).find(key => DOCUMENT_TYPES[key].includes(type));
+    return { colors: FILE_FIELDS[group || 'other'], motif };
 }
 
 // --- Zooming the picture viewer. A view is { scale, x, y }: the picture is scaled around its centre and moved by

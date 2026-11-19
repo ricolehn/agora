@@ -413,6 +413,161 @@ describe('AI reply steps (assets/aiReply.js)', () => {
   });
 });
 
+// The points of an SVG path ("M x y C x y x y x y …"): every number pair in order
+const pathPoints = (d) => [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0])).reduce((pairs, value, i, all) => (i % 2 ? pairs : [...pairs, [value, all[i + 1]]]), []);
+/** Every url(#…) of an SVG's markup points to an id of the same markup. */
+const ownReferences = (markup) => [...markup.matchAll(/url\(#([^)]+)\)/g)].every((m) => markup.includes(`id="${m[1]}"`));
+
+describe('the assistant\'s sign (assets/aiSign.js), as in the Android app', () => {
+  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'aiSign.js')).href);
+
+  test('a soft form at rest is a true circle; moving, its points keep their directions and only move in and out', async () => {
+    const { softFormPath } = await load();
+    // Seven curves; at rest every point - also halfway along each curve - lies on the circle
+    const still = pathPoints(softFormPath(50, 50, 40, 3.2, 0, 1.3));
+    assert.equal(still.length, 1 + 7 * 3);
+    const bezier = (p0, c1, c2, p3, s) => [0, 1].map((k) => (1 - s) ** 3 * p0[k] + 3 * (1 - s) ** 2 * s * c1[k] + 3 * (1 - s) * s * s * c2[k] + s ** 3 * p3[k]);
+    for (let i = 0; i < 7; i += 1) {
+      const [p0, c1, c2, p3] = [still[i * 3], still[i * 3 + 1], still[i * 3 + 2], still[i * 3 + 3]];
+      for (const point of [p3, bezier(p0, c1, c2, p3, 0.5)]) assert.ok(Math.abs(Math.hypot(point[0] - 50, point[1] - 50) - 40) < 0.15, `curve ${i}: ${point}`);
+    }
+    const ends = (t) => pathPoints(softFormPath(50, 50, 40, t, 0.12, 4.1)).filter((_, i) => i === 0 || i % 3 === 0).slice(0, 7);
+    const [now, later] = [ends(2), ends(2.7)];
+    for (let i = 0; i < 7; i += 1) {
+      const angle = (p) => Math.atan2(p[1] - 50, p[0] - 50);
+      assert.ok(Math.abs(angle(now[i]) - angle(later[i])) < 0.01, `point ${i} keeps its direction`);
+      for (const p of [now[i], later[i]]) assert.ok(Math.abs(Math.hypot(p[0] - 50, p[1] - 50) - 40) <= 40 * 0.12 + 0.01, `point ${i} stays near its circle`);
+    }
+    assert.notDeepEqual(now, later, 'the outline changes');
+  });
+
+  test('sand behind up right, lagoon in front down left; the halo only for large signs and while it thinks', async () => {
+    const { signFrame } = await load();
+    const middle = (form) => [(form.x1 + form.x2) / 2, (form.y1 + form.y2) / 2];
+    for (const t of [0, 7.5, 33]) {
+      const frame = signFrame(t);
+      const [back, front] = [middle(frame.back), middle(frame.front)];
+      assert.ok(back[0] > 50 && back[1] < 50, `t ${t}: sand ${back}`);
+      assert.ok(front[0] < 50 && front[1] > 50, `t ${t}: lagoon ${front}`);
+      // The light falls from the upper left: each form's gradient starts up left of its middle
+      for (const form of [frame.back, frame.front]) assert.ok(form.x1 < form.x2 && form.y1 < form.y2);
+    }
+    assert.equal(signFrame(4).halo.strength, 0);
+    assert.equal(signFrame(4, 0, true).halo.strength, 0.25);
+    assert.ok(Math.abs(signFrame(4, 1, true).halo.strength - 1.2) < 1e-9);
+    for (const energy of [0, 0.5, 1]) {
+      const { stops, r } = signFrame(2.1, energy, true).halo;
+      assert.ok(r > 50 && stops[0] > 0 && stops[0] < stops[1] && stops[1] < 1, `${energy}: ${stops} ${r}`);
+    }
+  });
+
+  test('its pace eases: calm it runs, thinking it runs 2.4 times as fast, resting it slows down and stops', async () => {
+    const { createSignMotion, fastOutSlowIn } = await load();
+    assert.equal(fastOutSlowIn(0), 0);
+    assert.equal(fastOutSlowIn(1), 1);
+    const curve = [0.1, 0.3, 0.5, 0.7, 0.9].map(fastOutSlowIn);
+    assert.ok(curve.every((y, i) => i === 0 || y > curve[i - 1]) && curve[2] > 0.7, `${curve}`);
+    const motion = createSignMotion(5);
+    let now = 0;
+    const run = (ms) => {
+      let last;
+      for (let step = 0; step < ms; step += 16) last = motion.advance((now += 16));
+      return last;
+    };
+    run(16);
+    const calm = run(1000);
+    assert.ok(Math.abs(calm.time - 5 - 1) < 0.05 && calm.moving && calm.energy === 0, JSON.stringify(calm));
+    motion.set('thinking', now);
+    const easing = run(1400);
+    assert.ok(easing.energy === 1, 'lively after 0.9 s');
+    const fast = run(1000);
+    assert.ok(Math.abs(fast.time - easing.time - 2.4) < 0.05, `${fast.time - easing.time}`);
+    motion.set('resting', now);
+    const slowing = run(700);
+    assert.ok(slowing.moving && slowing.energy < 1);
+    const rested = run(800);
+    assert.equal(rested.moving, false);
+    assert.equal(run(1000).time, rested.time, 'at rest it stays');
+    // Out of sight for a while: no jump when it is seen again
+    motion.set('calm', now);
+    run(1500);
+    const before = motion.time;
+    motion.advance((now += 60000));
+    assert.ok(motion.time - before <= 0.1);
+  });
+
+  test('every sign has gradients of its own; still signs and glow are marked for the page', async () => {
+    const { aiSignMarkup } = await load();
+    const [one, two] = [aiSignMarkup({ size: 28, seed: 7.3 }), aiSignMarkup({ size: 76 })];
+    for (const markup of [one, two]) assert.ok(ownReferences(markup), markup);
+    const ids = (markup) => [...markup.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
+    assert.equal(ids(one).filter((id) => ids(two).includes(id)).length, 0);
+    assert.match(one, /--ai-sign-size: 28px/);
+    assert.doesNotMatch(one, /data-glow/);
+    assert.match(two, /data-glow/, 'large signs glow at rest');
+    assert.match(aiSignMarkup({ size: 132, still: true, glow: false }), /data-still/);
+    // The halo: plain numbers every browser draws - its stops at full strength (polish.css), the circle's opacity how
+    // much of it shows (no calc() in stop-opacity, which not every browser takes there)
+    const haloOpacity = (markup) => Number(/class="ai-sign-halo"[^>]* opacity="([\d.]+)"/.exec(markup)[1]);
+    assert.equal(haloOpacity(one), 0, 'a small sign at rest has no halo');
+    assert.equal(haloOpacity(two), 0.21, 'a large one a soft one (0.25 of 1.2)');
+    const css = read('assets/polish.css');
+    assert.doesNotMatch(css.slice(css.indexOf('.ai-sign {'), css.indexOf('/* Room for the glow')), /stop-opacity:\s*calc/);
+  });
+});
+
+describe('motifs and painted fields (assets/motifs.js), as in the Android app', () => {
+  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'motifs.js')).href);
+
+  test('each motif draws with its own gradients only, however many are on the page', async () => {
+    const { motifSvg, MOTIF_SEEDS } = await load();
+    const all = Object.keys(MOTIF_SEEDS).map((motif) => motifSvg(motif));
+    for (const markup of all) {
+      assert.ok(ownReferences(markup), markup.slice(0, 200));
+      assert.match(markup, /^<svg class="motif" viewBox="0 0 100 100"/);
+    }
+    const ids = all.flatMap((markup) => [...markup.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(motifSvg('unknown').includes('<path'), true, 'an unknown motif is a document');
+  });
+
+  test('a document takes the colour of its kind; colours mix like the app\'s (Oklab)', async () => {
+    const { motifSvg, mixColor } = await load();
+    assert.equal(mixColor('#000000', '#ffffff', 0.5), '#636363');
+    assert.equal(mixColor('#4a7fd6', '#4a7fd6', 0.3), '#4a7fd6');
+    assert.equal(mixColor('#4a7fd6', '#ffffff', 1), '#ffffff');
+    const pdf = motifSvg('document', { accent: '#d6667c' });
+    assert.ok(pdf.includes('fill="#d6667c"'), 'the title line');
+    assert.ok(pdf.includes(`fill="${mixColor('#d6667c', '#ffffff', 0.62)}"`), 'the lines, lighter');
+    assert.ok(pdf.includes(`stop-color="${mixColor('#d6667c', '#ffffff', 0.3)}"`), 'the folded corner');
+  });
+
+  test('rounded corners never take more than half an edge', async () => {
+    const { roundedPolygon } = await load();
+    // A tab's short slope (9 × 9.5) with corners of 7: each corner takes at most half of it
+    const points = pathPoints(roundedPolygon([[38, 19], [47, 28.5], [93, 28.5], [93, 83], [7, 83], [7, 19]], 7));
+    const edge = Math.hypot(9, 9.5);
+    assert.ok(Math.hypot(points[2][0] - 38, points[2][1] - 19) <= edge / 2 + 0.01, `${points[2]}`);
+    assert.match(roundedPolygon([[0, 0], [10, 0], [10, 10]], 2), /^M.*Q.*Z$/);
+  });
+
+  test('a painted field: its colours, its still forms placed by every name as in the app', async () => {
+    const { paintedField, seedOf } = await load();
+    // The app's (name.hashCode() and 0xFFFF) / 6553.5
+    assert.equal(seedOf(''), 0);
+    assert.ok(Math.abs(seedOf('Fotos') - 6.398870832379645) < 1e-12);
+    assert.ok(Math.abs(seedOf('Sommerfest 2026') - 0.511635004196231) < 1e-12);
+    assert.ok(Math.abs(seedOf('Bühne') - 1.9099717708094912) < 1e-12);
+    assert.ok(Math.abs(seedOf('😀 Emoji') - 8.561074235141527) < 1e-12, 'UTF-16 like Java');
+    const field = paintedField({ light: '#f6c7a4', deep: '#e0874f', hint: '#f9da9e' }, seedOf('Fotos'), '<i>x</i>', 'media-folder-field');
+    assert.match(field, /^<span class="painted-field media-folder-field" style="--field-light: #f6c7a4; --field-deep: #e0874f; --field-hint: #f9da9e">/);
+    assert.equal((field.match(/<path class="painted-field-(upper|lower)"/g) || []).length, 2);
+    assert.ok(field.endsWith('<i>x</i></span>'));
+    assert.notEqual(paintedField({ light: '#fff', deep: '#000' }, 1), paintedField({ light: '#fff', deep: '#000' }, 2), 'another seed, other forms');
+    assert.match(paintedField({ light: '#aaaaaa', deep: '#000000' }, 1), /--field-hint: #aaaaaa/, 'without a hint the light tone');
+  });
+});
+
 describe('donations and expenses (assets/app.js)', () => {
   /** A function of app.js as it is written there (up to the brace that closes it). */
   const take = (name) => {
