@@ -471,7 +471,7 @@ describe('svgValidation', () => {
   }
 
   test('the bundled default logo passes', () => {
-    assert.equal(isSafeSvg(fs.readFileSync(path.join(__dirname, '..', 'assets', 'church-logo.svg'), 'utf8')), true);
+    assert.equal(isSafeSvg(fs.readFileSync(path.join(__dirname, '..', 'web', 'public', 'assets', 'church-logo.svg'), 'utf8')), true);
   });
 });
 

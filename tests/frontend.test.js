@@ -1,63 +1,61 @@
-// Static checks of the web app (no browser): syntax, translations, inline handlers and referenced files.
+// Static checks of the web app (web/, no browser): texts, the page shell, the service worker and referenced files;
+// and the pure modules the app shares with these tests (web/src/lib). The app's TypeScript, its Solid rules and its
+// build are checked by `npm run check`, `npm run lint` and `npm run build` in web/ (CI runs them).
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { pathToFileURL } = require('url');
 const { REPO_ROOT, tempDir } = require('./helpers');
 
-const read = (file) => fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
-const exists = (file) => fs.existsSync(path.join(REPO_ROOT, file.replace(/^\.?\//, '')));
-const app = read('assets/app.js');
+const WEB = path.join(REPO_ROOT, 'web');
+const read = (file) => fs.readFileSync(path.join(WEB, file), 'utf8');
+const lib = (name) => import(pathToFileURL(path.join(WEB, 'src', 'lib', name)).href);
+
+/** Every source file of the app (TypeScript and JavaScript under web/src). */
+function sourceFiles(dir = path.join(WEB, 'src')) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(full);
+    return /\.(tsx?|jsx?)$/.test(entry.name) && !entry.name.endsWith('.d.ts') ? [full] : [];
+  });
+}
+/** The app's stylesheets (Tailwind entry and the few feature stylesheets). */
+function cssFiles(dir = path.join(WEB, 'src')) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    return entry.isDirectory() ? cssFiles(full) : entry.name.endsWith('.css') ? [full] : [];
+  });
+}
+const sources = sourceFiles().map((file) => ({ file: path.relative(WEB, file), text: fs.readFileSync(file, 'utf8') }));
 const html = read('index.html');
+
 // en.json must be valid; translations are optional and only used to spot translated text in the code
-const locales = { en: JSON.parse(read('assets/locales/en.json')) };
-for (const file of fs.readdirSync(path.join(REPO_ROOT, 'assets', 'locales')).filter((f) => f.endsWith('.json') && f !== 'en.json')) {
-  try { locales[path.basename(file, '.json')] = JSON.parse(read(`assets/locales/${file}`)); } catch { /* a broken translation is not the tests' business */ }
+const locales = { en: JSON.parse(read('src/locales/en.json')) };
+for (const file of fs.readdirSync(path.join(WEB, 'src', 'locales')).filter((f) => f.endsWith('.json') && f !== 'en.json')) {
+  try { locales[path.basename(file, '.json')] = JSON.parse(read(`src/locales/${file}`)); } catch { /* a broken translation is not the tests' business */ }
 }
 
-/** Function names an inline handler (onclick="…", also inside app.js templates) calls. */
-function handlerCalls(text) {
-  const names = new Set();
-  const code = text.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
-  for (const m of code.matchAll(/\bon[a-z]+\s*=\s*(["'])([\s\S]*?)\1/g)) {
-    const handler = m[2].replace(/\$\{[^}]*\}/g, '');   // template placeholders are evaluated when rendering
-    for (const call of handler.matchAll(/(?:^|[^.\w$])(?:window\.)?([A-Za-z_$][\w$]*)\s*\(/g)) names.add(call[1]);
-  }
-  return names;
-}
-
-/** Names the page can call: exported via Object.assign(window, {...}) or window.x = …, or declared in inline scripts. */
-function globalNames() {
-  const names = new Set(['event', 'if', 'return', 'void', 'alert', 'confirm', 'setTimeout', 'Number', 'String', 'parseInt', 'parseFloat', 'encodeURIComponent']);
-  for (const block of app.matchAll(/Object\.assign\(window,\s*\{([\s\S]*?)\}\);/g)) {
-    let depth = 0;
-    let token = '';
-    for (const ch of block[1] + ',') {
-      if ('{(['.includes(ch)) depth++;
-      if ('})]'.includes(ch)) depth--;
-      if (depth === 0 && ch === ',') {
-        const name = token.trim().match(/^([A-Za-z_$][\w$]*)/);
-        if (name) names.add(name[1]);
-        token = '';
-      } else if (depth === 0) token += ch;
+/** t('key', 'fallback') and tHtml('key', 'fallback') calls in the code: [key, fallback (or null), file]. */
+function textCalls() {
+  const calls = [];
+  for (const { file, text } of sources) {
+    for (const m of text.matchAll(/\bt(?:Html)?\(\s*(['"`])([\w.-]+)\1(?:\s*,\s*(['"])((?:(?!\3)[^\\]|\\.)*)\3)?/g)) {
+      calls.push([m[2], m[4] === undefined ? null : m[4].replace(/\\(.)/g, '$1'), file]);
     }
   }
-  for (const m of app.matchAll(/window\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) names.add(m[1]);
-  for (const m of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) {
-    for (const f of m[1].matchAll(/function\s+([A-Za-z_$][\w$]*)/g)) names.add(f[1]);
-  }
-  return names;
+  return calls;
 }
 
-describe('frontend', () => {
-  test('app.js (ES module) and the service worker parse', (t) => {
-    const copy = path.join(tempDir(t, 'agora-frontend-'), 'app.mjs');
-    fs.writeFileSync(copy, app);
-    for (const file of [copy, path.join(REPO_ROOT, 'sw.js')]) {
-      const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
-      assert.equal(result.status, 0, `${path.basename(file)}:\n${result.stderr}`);
-    }
+describe('web app', () => {
+  test('the service worker template parses once the build filled it in', (t) => {
+    const worker = read('sw.template.js').replace('__CACHE_VERSION__', 'test').replace('__PRECACHE_LIST__', JSON.stringify(['./', './index.html']));
+    const copy = path.join(tempDir(t, 'agora-frontend-'), 'sw.js');
+    fs.writeFileSync(copy, worker);
+    const result = spawnSync(process.execPath, ['--check', copy], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(worker, /\/api\//, 'API answers are never cached');
   });
 
   // English (en.json) is the source of truth and has to be complete. Translations are not checked: like in most
@@ -65,76 +63,66 @@ describe('frontend', () => {
   test('English, the source language, has a text for every key and no key twice', () => {
     assert.deepEqual(Object.entries(locales.en).filter(([, v]) => typeof v !== 'string' || !v.trim()).map(([k]) => k), [], 'empty texts in en.json');
     const counts = {};
-    for (const m of read('assets/locales/en.json').matchAll(/^\s*"((?:[^"\\]|\\.)+)"\s*:/gm)) counts[m[1]] = (counts[m[1]] || 0) + 1;
+    for (const m of read('src/locales/en.json').matchAll(/^\s*"((?:[^"\\]|\\.)+)"\s*:/gm)) counts[m[1]] = (counts[m[1]] || 0) + 1;
     assert.deepEqual(Object.keys(counts).filter((key) => counts[key] > 1), [], 'keys that appear twice in en.json (JSON.parse keeps only the last one)');
   });
 
-  test('element ids in index.html are unique (getElementById only finds the first)', () => {
-    const counts = {};
-    for (const m of html.matchAll(/\sid="([^"${}]+)"/g)) counts[m[1]] = (counts[m[1]] || 0) + 1;
-    assert.ok(Object.keys(counts).length > 100, 'found the ids');
-    assert.deepEqual(Object.keys(counts).filter((id) => counts[id] > 1), []);
-  });
-
-  test('every translation key used in the pages and app.js exists in English (the source language)', () => {
-    const used = new Set();
-    for (const page of [html, read('setup.html')]) {
-      for (const m of page.matchAll(/data-i18n(?:-[\w-]+)?="([^"]+)"/g)) used.add(m[1]);
-      for (const m of page.matchAll(/\bt\(\s*'([\w.-]+)'/g)) used.add(m[1]);
-    }
-    for (const m of app.matchAll(/\bt\(\s*'([\w.-]+)'/g)) used.add(m[1]);
+  test('every translation key used in the code exists in English (the source language)', () => {
+    const used = new Set(textCalls().map(([key]) => key));
     assert.ok(used.size > 100, 'found the keys');
     assert.deepEqual([...used].filter((k) => !(k in locales.en)).sort(), []);
   });
 
-  test('the code is written in English: fallbacks and page defaults are the English texts', () => {
-    // t('key', 'fallback') and the default text of data-i18n elements are what readers of the code see
-    // (a fallback that lags behind an edited English text is fine; one in another language is not)
+  test('the code is written in English: fallbacks are the English texts', () => {
+    // t('key', 'fallback') is what readers of the code see (a fallback that lags behind an edited English text is
+    // fine; one in another language is not)
     const translated = [];
-    for (const source of [app, read('setup.html')]) {
-      for (const m of source.matchAll(/\bt\(\s*'([\w.-]+)'\s*,\s*'((?:[^'\\]|\\.)*)'/g)) {
-        const [key, fallback] = [m[1], m[2].replace(/\\(.)/g, '$1')];
-        for (const [lang, texts] of Object.entries(locales)) {
-          if (lang !== 'en' && texts[key] === fallback && locales.en[key] !== fallback) translated.push(`${key} (${lang}): ${fallback}`);
-        }
+    for (const [key, fallback, file] of textCalls()) {
+      if (fallback === null) continue;
+      for (const [lang, texts] of Object.entries(locales)) {
+        if (lang !== 'en' && texts[key] === fallback && locales.en[key] !== fallback) translated.push(`${file}: ${key} (${lang}): ${fallback}`);
       }
     }
     assert.deepEqual(translated, [], 't() fallbacks must be the English text');
     assert.match(html, /<html[^>]*\slang="en"/);
-    assert.match(read('setup.html'), /<html[^>]*\slang="en"/);
   });
 
-  test('inline handlers only call functions the page exposes', () => {
-    const known = globalNames();
-    const calls = new Set([...handlerCalls(html), ...handlerCalls(app)]);
-    assert.ok(calls.size > 50, 'found the handlers');
-    assert.deepEqual([...calls].filter((name) => !known.has(name)).sort(), [], 'onclick & co. call a function that is not on window');
+  test('the page: base address for deep paths, one title (link previews replace it), the theme before the first paint', () => {
+    assert.ok(html.includes('<base href="/">'), 'pages have their own paths (/events/...): files are found from the root');
+    assert.equal((html.match(/<title>[^<]*<\/title>/g) || []).length, 1, 'backend/server.js replaces the title of a shared event');
+    const themeScript = html.indexOf("localStorage.getItem('agora-theme')");
+    assert.ok(themeScript > 0 && themeScript < html.indexOf('</head>'), 'the dark theme is set before the body is painted');
+    assert.ok(html.includes('/assets/config.js'), 'the instance configuration is loaded beside the app');
   });
 
   test('signing out leaves nothing of the session behind for the next person on the device', () => {
-    const start = app.indexOf('async function logout()');
-    const logout = app.slice(start, app.indexOf('\n}\n', start));
+    const auth = read('src/app/auth.ts');
+    const start = auth.indexOf('export async function logout()');
+    const logout = auth.slice(start, auth.indexOf('\n}\n', start));
     assert.ok(start > 0, 'found logout()');
     // the AI chat, the last open conversation and the loaded lists used to stay in the page for the next account
     assert.match(logout, /location\.reload\(\)/);
     // pushes are sent per device: unsubscribed while the token still works, before signOut
-    assert.ok(logout.includes('unsubscribeDevicePush()') && logout.indexOf('unsubscribeDevicePush()') < logout.indexOf('signOut('));
+    assert.ok(logout.indexOf('beforeSignOutHooks') > 0 && logout.indexOf('beforeSignOutHooks') < logout.indexOf('signOut('));
+    assert.ok(sources.some(({ text }) => /onBeforeSignOut\(/.test(text) && /unsubscribe/i.test(text)), 'this device\'s push subscription is removed before signing out');
   });
 
-  test('files referenced by index.html, the manifest and the service worker exist', () => {
-    // Only files (with an extension): extensionless links like /privacy are server routes
-    const pageFiles = [...html.matchAll(/(?:src|href)="(?!https?:|data:|#|mailto:)([^"?#]+\.\w+)/g)].map((m) => m[1]);
-    const manifestFiles = (JSON.parse(read('manifest.json')).icons || []).map((icon) => icon.src);
-    const cached = (read('sw.js').match(/URLS_TO_CACHE\s*=\s*\[([\s\S]*?)\]/) || [, ''])[1];
-    const workerFiles = [...cached.matchAll(/'([^']+\.\w+)'/g)].map((m) => m[1]);
-    const all = [...pageFiles, ...manifestFiles, ...workerFiles];
-    assert.ok(all.length > 10, 'found the references');
+  test('files referenced by the page and the manifest exist', () => {
+    const exists = (file) => {
+      const clean = file.replace(/^\.?\//, '');
+      return [path.join(WEB, clean), path.join(WEB, 'public', clean)].some((candidate) => fs.existsSync(candidate));
+    };
+    // Only files (with an extension); /assets/config.js is written by the server for each instance
+    const pageFiles = [...html.matchAll(/(?:src|href)="(?!https?:|data:|#|mailto:)([^"?#]+\.\w+)/g)].map((m) => m[1]).filter((file) => file !== '/assets/config.js');
+    const manifestFiles = (JSON.parse(read('public/manifest.json')).icons || []).map((icon) => icon.src);
+    const all = [...pageFiles, ...manifestFiles];
+    assert.ok(all.length > 4, 'found the references');
     assert.deepEqual(all.filter((file) => !exists(file)), []);
   });
 });
 
-describe('songbook (assets/songbook.js)', () => {
-  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'songbook.js')).href);
+describe('songbook (web/src/lib/songbook.js)', () => {
+  const load = () => lib('songbook.js');
 
   test('semitones between two keys, like the song page counts them', async () => {
     const { keySteps } = await load();
@@ -201,8 +189,8 @@ describe('songbook (assets/songbook.js)', () => {
   });
 });
 
-describe('AI reply steps (assets/aiReply.js)', () => {
-  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'aiReply.js')).href);
+describe('AI reply steps (web/src/lib/aiReply.js)', () => {
+  const load = () => lib('aiReply.js');
 
   test('the live title: the newest heading of the thoughts, else the newest sentence, without filler words', async () => {
     const { liveTitle } = await load();
@@ -418,8 +406,8 @@ const pathPoints = (d) => [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(
 /** Every url(#…) of an SVG's markup points to an id of the same markup. */
 const ownReferences = (markup) => [...markup.matchAll(/url\(#([^)]+)\)/g)].every((m) => markup.includes(`id="${m[1]}"`));
 
-describe('the assistant\'s sign (assets/aiSign.js), as in the Android app', () => {
-  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'aiSign.js')).href);
+describe('the assistant\'s sign (web/src/lib/aiSign.js), as in the Android app', () => {
+  const load = () => lib('aiSign.js');
 
   test('a soft form at rest is a true circle; moving, its points keep their directions and only move in and out', async () => {
     const { softFormPath } = await load();
@@ -511,13 +499,14 @@ describe('the assistant\'s sign (assets/aiSign.js), as in the Android app', () =
     const haloOpacity = (markup) => Number(/class="ai-sign-halo"[^>]* opacity="([\d.]+)"/.exec(markup)[1]);
     assert.equal(haloOpacity(one), 0, 'a small sign at rest has no halo');
     assert.equal(haloOpacity(two), 0.21, 'a large one a soft one (0.25 of 1.2)');
-    const css = read('assets/polish.css');
-    assert.doesNotMatch(css.slice(css.indexOf('.ai-sign {'), css.indexOf('/* Room for the glow')), /stop-opacity:\s*calc/);
+    const styled = sources.map(({ text }) => text).concat(cssFiles().map((file) => fs.readFileSync(file, 'utf8'))).filter((text) => text.includes('ai-sign-halo'));
+    assert.ok(styled.length > 0, 'found the styles of the sign');
+    for (const text of styled) assert.doesNotMatch(text, /stop-opacity:\s*calc/);
   });
 });
 
-describe('motifs and painted fields (assets/motifs.js), as in the Android app', () => {
-  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'motifs.js')).href);
+describe('motifs and painted fields (web/src/lib/motifs.js), as in the Android app', () => {
+  const load = () => lib('motifs.js');
 
   test('each motif draws with its own gradients only, however many are on the page', async () => {
     const { motifSvg, MOTIF_SEEDS } = await load();
@@ -568,20 +557,14 @@ describe('motifs and painted fields (assets/motifs.js), as in the Android app', 
   });
 });
 
-describe('donations and expenses (assets/app.js)', () => {
-  /** A function of app.js as it is written there (up to the brace that closes it). */
-  const take = (name) => {
-    const start = app.indexOf(`async function ${name}(`);
-    assert.ok(start >= 0, `found ${name}()`);
-    return app.slice(start, app.indexOf('\n}\n', start) + 2);
-  };
+describe('donations and expenses (web/src/lib/collections.js)', () => {
   // The web app's way of changing a list (mutateCollection) against a stand-in server: the current one, or the
   // previous version, which serves while the upgrade waits and takes transactions of people only
-  function againstServer({ previous, refused = previous }) {
+  async function againstServer({ previous, refused = previous }) {
+    const { createMutateCollection, createIsPreviousServer } = await lib('collections.js');
     const server = { list: [{ id: 1, amount: 10, name: 'Anna' }] };
     const parts = {
       db: {},
-      API: '/api',
       ref: (database, name) => name,
       apiGet: async () => structuredClone(server.list),
       set: async (name, value) => { server.list = structuredClone(value); },
@@ -591,16 +574,18 @@ describe('donations and expenses (assets/app.js)', () => {
         if (next !== undefined) server.list = next;
       },
       // The previous version's status names no API versions
-      fetch: async () => ({ ok: true, json: async () => (previous ? { ready: true, upgrade: { state: 'waiting' } } : { ready: true, apiVersions: [1, 2] }) })
+      isPreviousServer: createIsPreviousServer({
+        api: '/api',
+        fetch: async () => ({ ok: true, json: async () => (previous ? { ready: true, upgrade: { state: 'waiting' } } : { ready: true, apiVersions: [1, 2] }) })
+      })
     };
-    const code = `${app.match(/^const safeList = .*$/m)[0]}\n${take('mutateCollection')}\n${take('isPreviousServer')}\nreturn mutateCollection;`;
-    return { server, mutateCollection: new Function(...Object.keys(parts), code)(...Object.values(parts)) };
+    return { server, mutateCollection: createMutateCollection(parts) };
   }
 
   test('while the upgrade waits, the previous version takes them too: added, changed and deleted', async () => {
     // It refused every change of the lists with 400 - nothing could be added, changed or deleted at all
     for (const previous of [false, true]) {
-      const { server, mutateCollection } = againstServer({ previous });
+      const { server, mutateCollection } = await againstServer({ previous });
       await mutateCollection('donations', (list) => [...list, { id: 2, amount: 25, name: 'Ben' }]);
       await mutateCollection('donations', (list) => list.map((entry) => (entry.id === 2 ? { ...entry, amount: 30 } : entry)));
       await mutateCollection('donations', (list) => list.filter((entry) => entry.id !== 1));
@@ -609,9 +594,12 @@ describe('donations and expenses (assets/app.js)', () => {
   });
 
   test('a refusal of the current server stands: the list is never written past it', async () => {
-    const { server, mutateCollection } = againstServer({ previous: false, refused: true });
+    const { server, mutateCollection } = await againstServer({ previous: false, refused: true });
     await assert.rejects(mutateCollection('expenses', (list) => [...list, { id: 3, amount: 5 }]), { status: 400 });
     assert.deepEqual(server.list, [{ id: 1, amount: 10, name: 'Anna' }]);
   });
-});
 
+  test('the app saves its lists this way', () => {
+    assert.match(read('src/app/data.ts'), /export const mutateCollection = createMutateCollection\(/);
+  });
+});

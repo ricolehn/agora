@@ -1,3 +1,13 @@
+# The web app (web/: Solid, Tailwind, Vite) is built once on the build machine; its dist/ is the same for every
+# platform. Debian (glibc), because some of the build tools ship native binaries only for it.
+FROM --platform=$BUILDPLATFORM node:24-slim AS web
+
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
 FROM node:24-alpine
 
 ARG POCKETBASE_VERSION=0.40.6
@@ -23,13 +33,8 @@ RUN apk add --no-cache curl unzip dos2unix tini && \
 # Copy the backend code
 COPY --chown=node:node backend/ ./backend/
 
-# Copy the frontend code into /app/html and keep a bundled seed copy for empty bind mounts
-COPY --chown=node:node assets/ ./html/assets/
-COPY --chown=node:node index.html ./html/
-COPY --chown=node:node manifest.json ./html/
-COPY --chown=node:node sw.js ./html/
-COPY --chown=node:node setup.html ./html/
-COPY --chown=node:node account-deletion.html privacy.html ./html/
+# The built web app into /app/html; a bundled seed copy is kept for empty bind mounts
+COPY --chown=node:node --from=web /web/dist/ ./html/
 
 # Create the directories and assign ownership to the bundled node user (UID 1000)
 RUN mkdir -p /app/data /app/db /app/html-seed && \
