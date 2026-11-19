@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete account – Agora</title>
+    <meta name="robots" content="noindex">
+    <script type="module" src="/src/public/app-name.ts"></script>
+</head>
+<body class="m-0 bg-page font-sans leading-[1.55] text-ink">
+<main class="mx-auto max-w-[680px] px-5 pt-8 pb-12">
+    <h1 class="mb-1.5 text-[1.7rem] font-bold">Delete account</h1>
+    <p class="my-4 text-muted"><span class="app-name">Agora</span> · Account deletion</p>
+
+    <h2 class="mt-7 mb-2 text-[1.1rem] font-bold">How to delete your account</h2>
+    <ul class="my-4 list-disc pl-10 text-muted">
+        <li><strong>In the Android app:</strong> Settings → “Delete account” → enter your password → confirm.</li>
+        <li><strong>In the browser:</strong> sign in → Settings → “Delete account”.</li>
+        <li><strong>Right here on this page:</strong> with the form below, without the app.</li>
+    </ul>
+
+    <h2 class="mt-7 mb-2 text-[1.1rem] font-bold">What is deleted</h2>
+    <ul class="my-4 list-disc pl-10 text-muted">
+        <li>Your access (login, e-mail address, name, settings) and your profile picture</li>
+        <li>Your registrations for appointments; your duties are released again</li>
+        <li>Your mentoring conversations including their messages and your mentor profile</li>
+        <li>Your prayer requests, also the anonymous ones</li>
+        <li>Your finance requests as well as device tokens for push notifications</li>
+    </ul>
+    <h2 class="mt-7 mb-2 text-[1.1rem] font-bold">What is kept</h2>
+    <p class="my-4 text-muted">Payments that have already been booked (amount, date, name) stay with the association or church, because they have to be kept for accounting by law. All other information about you in the member list is removed. The deletion happens immediately.</p>
+
+    <div class="mt-4 rounded-2xl border border-line bg-card p-5">
+        <strong>Delete account now</strong>
+        <form id="delete-form" autocomplete="on">
+            <label class="mt-3 mb-1.5 block text-[0.9rem] font-semibold" for="email">E-mail address</label>
+            <input class="w-full rounded-xl border border-line bg-page px-3.5 py-[11px] text-base text-ink" id="email" type="email" autocomplete="username" required>
+            <label class="mt-3 mb-1.5 block text-[0.9rem] font-semibold" for="password">Password</label>
+            <input class="w-full rounded-xl border border-line bg-page px-3.5 py-[11px] text-base text-ink" id="password" type="password" autocomplete="current-password" required>
+            <button class="mt-4 w-full cursor-pointer rounded-xl border-0 bg-danger p-3 text-base font-bold text-white disabled:cursor-default disabled:opacity-60" id="submit" type="submit">Delete account permanently</button>
+            <div id="msg" class="mt-3 font-semibold" role="status"></div>
+        </form>
+    </div>
+
+    <p class="mt-6 mb-4 text-muted">Forgot your password or have questions? Contact the administrators of your church or association – they can delete your account as well. <a class="text-link underline" href="/privacy">Privacy Policy</a></p>
+</main>
+<script type="module" src="/src/public/account-deletion.ts"></script>
+</body>
+</html>
