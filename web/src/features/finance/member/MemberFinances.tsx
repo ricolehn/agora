@@ -53,8 +53,9 @@ function FinanceHero(props: { person: Person }) {
     <div
       class={[
         'rounded-[26px] border border-[rgba(var(--hero-rgb),0.28)] px-5 pt-5 pb-[18px] shadow-card',
-        'bg-[radial-gradient(120%_140%_at_100%_0%,rgba(var(--hero-rgb),0.16)_0%,transparent_60%),var(--surface)]',
-        'dark:border-[rgba(var(--hero-rgb),0.18)] dark:bg-[radial-gradient(120%_140%_at_100%_0%,rgba(var(--hero-rgb),0.09)_0%,transparent_60%),var(--surface)]'
+        '[background:radial-gradient(120%_140%_at_100%_0%,rgba(var(--hero-rgb),0.16)_0%,transparent_60%),var(--surface)]',
+        // Tinted surfaces stay a whisper in the dark
+        'dark:border-[rgba(var(--hero-rgb),0.18)] dark:[background:radial-gradient(120%_140%_at_100%_0%,rgba(var(--hero-rgb),0.09)_0%,transparent_60%),var(--surface)]'
       ]}
       style={{ '--hero-accent': STATE_LOOK[state()].accent, '--hero-rgb': STATE_LOOK[state()].rgb }}
     >
@@ -91,13 +92,7 @@ function FinanceHero(props: { person: Person }) {
       </Show>
       <div class="grid grid-cols-2 gap-2 md:max-w-[420px]">
         <span class={[chip, 'font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text']}>
-          <span>
-            <BoldParam
-              text={t('user_fee_per_month', '{amount} a month')}
-              name="amount"
-              value={euro(props.person._monthlyFee ?? settings()[currentStatus()] ?? 0)}
-            />
-          </span>
+          <BoldParam text={t('user_fee_per_month', '{amount} a month')} name="amount" value={euro(props.person._monthlyFee ?? settings()[currentStatus()] ?? 0)} />
         </span>
         <button
           type="button"
