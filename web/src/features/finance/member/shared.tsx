@@ -34,7 +34,8 @@ export function AmountInput(props: { id: string; value: string; onInput: (value:
         placeholder={t('amount_placeholder', '0.00')}
         value={props.value}
         invalid={props.invalid}
-        class="!h-[38px] !rounded-[9px] !bg-surface !pl-7 !text-[1.15rem] !font-bold tracking-[-0.01em] !text-text"
+        // Bigger and bold, room for the sign; it keeps the surface even with the error frame (as before)
+        class="!h-[38px] !bg-surface !pl-7 !text-[1.15rem] font-bold tracking-[-0.01em]"
         onInput={e => props.onInput(e.currentTarget.value)}
       />
     </div>
