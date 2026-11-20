@@ -1,5 +1,6 @@
 // The finances tab of those who see the books (overview with the history, fee list), the open requests on the start
 // page, and the dialogs of requests, bookings and the report.
+import './finances.css';
 import { onDataLoaded } from '../../../app/data';
 import { registerHomeCard, registerRoot, registerTab } from '../../../app/registry';
 import { financeSubpageRequest, onTabEnter, registerRouteHandler, registerSubPath } from '../../../app/router';

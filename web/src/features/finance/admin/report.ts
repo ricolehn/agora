@@ -178,6 +178,8 @@ export async function downloadReportPdf(element: HTMLElement | undefined, appNam
   printContainer.style.cssText = 'position: absolute; left: 0; top: 0; width: 794px; pointer-events: none; z-index: -9999; background: #ffffff;';
   const clone = element.cloneNode(true) as HTMLElement;
   clone.style.cssText += 'transform: none; min-height: auto; width: 794px; margin: 0; box-sizing: border-box; background: #ffffff;';
+  // The canvas draws digits proportionally: tabular ones on the page left gaps behind narrow digits ("01 /01")
+  for (const el of [clone, ...clone.querySelectorAll<HTMLElement>('*')]) el.style.fontVariantNumeric = 'normal';
   printContainer.appendChild(clone);
   document.body.appendChild(printContainer);
   const done = () => {

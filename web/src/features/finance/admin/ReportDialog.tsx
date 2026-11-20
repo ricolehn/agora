@@ -240,7 +240,8 @@ const TH = 'border-b border-[#e7e5e4] bg-[#f5f5f4] px-3.5 py-2.5 text-left text-
 // Even rows a breath of blue; the last row of the body has no line (the table's frame closes it)
 const TR = 'break-inside-avoid even:bg-[#fbfdff] [&:last-child>td]:border-b-0';
 const AMOUNT = 'text-right font-bold whitespace-nowrap tabular-nums';
-const amountColor = (expense: boolean) => (expense ? 'text-[#dc2626]' : 'text-[#059669]');
+// The amounts always in their colour (the cells' own text colour gives way)
+const amountColor = (expense: boolean) => (expense ? '!text-[#dc2626]' : '!text-[#059669]');
 const signed = (value: number) => `${value >= 0 ? '+' : ''}${euro(value)}`;
 
 function TypePill(props: { type: string }) {
