@@ -5,11 +5,10 @@ import { t, tHtml } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';
 import { showToast } from '../../../../app/toast';
 import { Button } from '../../../../ui/Button';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
 import { applyStatusChangeToHistory } from '../../../../lib/finance.js';
 import { setStatusChoice, setStatusDate, statusChoice, statusDate, statusPersonId } from '../state';
-import { BADGE } from '../shared';
 
 /** The four statuses with their symbols, in the order of the fees. */
 export function StatusOptions() {
@@ -62,7 +61,7 @@ export function StatusDialog() {
       title={t('modal_change_status_title', 'Change Status')}
       subtitle={t('modal_change_status_subtitle', 'Adjust membership status')}
       icon="⚡"
-      iconClass={BADGE.person}
+      iconClass={MODAL_TINTS.person}
     >
       <ModalSection icon="💼" title={t('modal_new_status', 'New Status')}>
         <Field>

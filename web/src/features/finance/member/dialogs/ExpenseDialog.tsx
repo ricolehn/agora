@@ -8,10 +8,10 @@ import { closeModal } from '../../../../app/modals';
 import { showToast } from '../../../../app/toast';
 import { getTodayStr } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
-import { AmountInput, BADGE, PendingFileList, ReceiptDropzone, createPendingFiles, createRequired } from '../shared';
+import { AmountInput, PendingFileList, ReceiptDropzone, createPendingFiles, createRequired } from '../shared';
 
 export function ExpenseDialog() {
   const [amount, setAmount] = createSignal('');
@@ -62,7 +62,7 @@ export function ExpenseDialog() {
       title={t('modal_add_expense_title', 'Book Expense')}
       subtitle={t('modal_add_expense_subtitle', 'Record expense & receipts')}
       icon="🧾"
-      iconClass={BADGE.expense}
+      iconClass={MODAL_TINTS.expense}
     >
       <ModalSection icon="💶" title={t('modal_section_amount', 'Expense amount')}>
         <Field>

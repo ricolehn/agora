@@ -22,15 +22,6 @@ export function BoldParam(props: { text: string; name: string; value: string }) 
   );
 }
 
-/** Tints of the round badge in a dialog's header (.badge-person, .badge-donation, ...). */
-export const BADGE = {
-  person: 'bg-[#eef2ff] text-[#4f46e5] dark:bg-[rgba(79,70,229,0.25)] dark:text-[#818cf8]',
-  donation: 'bg-[#ecfdf5] text-[#059669] dark:bg-[rgba(16,185,129,0.25)] dark:text-[#34d399]',
-  expense: 'bg-[#fff1f2] text-[#e11d48] dark:bg-[rgba(244,63,94,0.25)] dark:text-[#fb7185]',
-  feeReset: 'bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-warning',
-  feeChange: 'bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success'
-};
-
 /** The amount field with the euro sign in front (.hero-amount-wrapper): typed as text, read with parseAmount. */
 export function AmountInput(props: { id: string; value: string; onInput: (value: string) => void; invalid?: boolean }) {
   return (
@@ -54,7 +45,7 @@ export function AmountInput(props: { id: string; value: string; onInput: (value:
 export function SwitchRow(props: { id: string; checked: boolean; onChange: (checked: boolean) => void; label: string }) {
   return (
     <div class="flex items-center gap-2 py-0.5">
-      <Switch id={props.id} checked={props.checked} onChange={props.onChange} />
+      <Switch id={props.id} size="sm" checked={props.checked} onChange={props.onChange} />
       <label for={props.id} class="m-0 cursor-pointer text-[0.85rem] font-semibold text-text">
         {props.label}
       </label>

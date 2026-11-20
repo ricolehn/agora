@@ -12,10 +12,9 @@ import { attempt, showToast } from '../../../../app/toast';
 import { once, pad2, safeList } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
-import { BADGE } from '../shared';
 import { DialogActions, FEE_KEYS, Facts, ImpactTile, addMonths, type FeeKey, type Fees } from './common';
 
 type FeeDraft = {
@@ -214,7 +213,7 @@ function FeeChangeForm() {
         <div class="grid grid-cols-3 gap-2.5 max-[480px]:grid-cols-1">
           <For each={FEE_KEYS}>
             {key => (
-              <Field class="!m-0 min-w-0" for={`fee-change-${key}`} label={<span class="block truncate">{`${labels()[key]} (€)`}</span>}>
+              <Field class="min-w-0" for={`fee-change-${key}`} label={<span class="block truncate">{`${labels()[key]} (€)`}</span>}>
                 <Input
                   type="text"
                   inputmode="decimal"
@@ -356,7 +355,7 @@ export function FeeChangeDialog() {
       title={title()}
       subtitle={subtitle()}
       icon={<Icon name="coin" size={18} strokeWidth={2.2} />}
-      iconClass={BADGE.feeChange}
+      iconClass={MODAL_TINTS.feeChange}
       class="!max-h-[min(90vh,760px)]"
     >
       <Show when={step() === 'review' && impact()} fallback={<FeeChangeForm />}>

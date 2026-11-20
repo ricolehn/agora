@@ -7,11 +7,11 @@ import { closeModal } from '../../../../app/modals';
 import { showToast } from '../../../../app/toast';
 import { getTodayStr, safeList } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
 import { paymentPersonId } from '../state';
-import { AmountInput, BADGE, FeeResetNote, SwitchRow, createRequired, feeResetPaymentHint, newId } from '../shared';
+import { AmountInput, FeeResetNote, SwitchRow, createRequired, feeResetPaymentHint, newId } from '../shared';
 
 export function PaymentDialog() {
   const [amount, setAmount] = createSignal('');
@@ -58,7 +58,7 @@ export function PaymentDialog() {
       title={t('modal_book_payment_title', 'Book Payment')}
       subtitle={t('modal_book_payment_subtitle', 'Record fee payment & deposit')}
       icon="💳"
-      iconClass={BADGE.donation}
+      iconClass={MODAL_TINTS.donation}
     >
       <ModalSection icon="💶" title={t('req_section_payment_amount', 'Payment amount')}>
         <Field>

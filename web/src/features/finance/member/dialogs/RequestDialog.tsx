@@ -10,38 +10,38 @@ import { showToast } from '../../../../app/toast';
 import { fullName, getTodayStr } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
 import { requestForm, startRequestForm, type RequestKind } from '../state';
 import {
-  AmountInput, BADGE, FeeResetNote, PendingFileList, ReceiptDropzone, SwitchRow, createPendingFiles, feeResetPaymentHint,
+  AmountInput, FeeResetNote, PendingFileList, ReceiptDropzone, SwitchRow, createPendingFiles, feeResetPaymentHint,
   newId
 } from '../shared';
 import { StatusDayNote, StatusOptions } from './StatusDialog';
 
 const HEADS: Record<RequestKind, { tint: string; emoji: string; title: () => string; subtitle: () => string }> = {
   payment: {
-    tint: BADGE.donation,
+    tint: MODAL_TINTS.donation,
     emoji: '💳',
     title: () => t('user_req_payment_title', 'Report payment'),
     subtitle: () => t('user_req_payment_subtitle', 'Report a fee payment or deposit to the admin')
   },
   status: {
-    tint: BADGE.person,
+    tint: MODAL_TINTS.person,
     emoji: '⚡',
     title: () => t('user_req_status_title', 'Request status change'),
     subtitle: () => t('user_req_status_subtitle', 'Request a new membership status')
   },
   expense: {
-    tint: BADGE.expense,
+    tint: MODAL_TINTS.expense,
     emoji: '🧾',
     title: () => t('user_req_expense_title', 'Report expense'),
     subtitle: () => t('user_req_expense_subtitle', 'Submit expense for reimbursement')
   }
 };
 const CHOICE_HEAD = {
-  tint: BADGE.donation,
+  tint: MODAL_TINTS.donation,
   emoji: '📝',
   title: () => t('user_request_modal_title', 'Request'),
   subtitle: () => t('user_req_select_subtitle', 'Select request type')

@@ -74,7 +74,7 @@ function FeePlanCard() {
         ? t('fees_log_set', '{name} set the fees from {month}: {fees}', { name, month: monthText(entry.from), fees: feeListText(entry.fees) })
         : t('fees_log_set_start', '{name} set the fees from the beginning: {fees}', { name, fees: feeListText(entry.fees) });
   return (
-    <Card id="card-rates">
+    <Card id="card-rates" bodyClass="p-5">
       <FeeCardHead icon={<Icon name="coin" size={20} />} tone="success" title={t('rates_title', 'Monthly Fees')} desc={t('fees_desc', 'What a month costs, by status.')} />
       <Show when={feePlan()}>
         {plan => (
@@ -139,7 +139,7 @@ function FeeResetCard() {
   return (
     // Treasurers see the days their lists count from; only system admins get the controls
     <Show when={admin() || feeResets().length > 0}>
-      <Card id="card-fee-reset" class="mt-4">
+      <Card id="card-fee-reset" class="mt-4" bodyClass="p-5">
         <FeeCardHead
           icon={<Icon name="rotate" size={20} />}
           tone="warning"
@@ -171,7 +171,7 @@ function FeeResetCard() {
           </Show>
         </div>
         <Show when={admin()} fallback={<FormHint id="fee-reset-readonly">{t('fee_reset_readonly', 'Only system admins can change this.')}</FormHint>}>
-          <Field class="!mb-0" for="fee-reset-date" label={t('fee_reset_date_label', 'Day of the fresh start')}>
+          <Field class="mb-0" for="fee-reset-date" label={t('fee_reset_date_label', 'Day of the fresh start')}>
             <div class="flex gap-2">
               <Input
                 type="date"

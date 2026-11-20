@@ -11,10 +11,9 @@ import { attempt, showToast } from '../../../../app/toast';
 import { once } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { typedDayMatches } from '../../../../lib/finance.js';
-import { BADGE } from '../shared';
 import { DialogActions, Facts, ImpactTile, type ImpactSide } from './common';
 
 type ResetImpact = { date: string; firstMonth: string; inEffect?: boolean; behind: ImpactSide; ahead: ImpactSide };
@@ -146,7 +145,7 @@ export function FeeResetDialog() {
       title={shown()?.remove ? t('fee_reset_remove_title', 'Take back the fresh start?') : t('fee_reset_set_title', 'Start the fees afresh?')}
       subtitle={shown() ? longDayText(shown()!.impact.date) : ''}
       icon={<Icon name="rotate" size={18} strokeWidth={2.4} />}
-      iconClass={BADGE.feeReset}
+      iconClass={MODAL_TINTS.feeReset}
       class="!max-h-[min(90vh,760px)]"
     >
       <Show when={shown()}>{view => <ResetEffects impact={view().impact} remove={view().remove} />}</Show>

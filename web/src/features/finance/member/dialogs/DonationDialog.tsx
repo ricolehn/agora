@@ -7,10 +7,10 @@ import { closeModal } from '../../../../app/modals';
 import { showToast } from '../../../../app/toast';
 import { getTodayStr } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
-import { AmountInput, BADGE, createRequired } from '../shared';
+import { AmountInput, createRequired } from '../shared';
 
 export function DonationDialog() {
   const [amount, setAmount] = createSignal('');
@@ -49,7 +49,7 @@ export function DonationDialog() {
       title={t('btn_add_donation', 'Donation')}
       subtitle={t('modal_add_donation_subtitle', 'Book a one-off or earmarked donation')}
       icon="💚"
-      iconClass={BADGE.donation}
+      iconClass={MODAL_TINTS.donation}
     >
       <ModalSection icon="💶" title={t('modal_section_donation_amount', 'Donation amount')}>
         <Field>

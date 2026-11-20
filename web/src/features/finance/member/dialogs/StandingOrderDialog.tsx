@@ -7,10 +7,10 @@ import { attempt, confirmAction, showToast } from '../../../../app/toast';
 import { safeList } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
-import { Modal, ModalSection } from '../../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { orderEndDate, orderTarget, setOrderEndDate } from '../state';
-import { BADGE, FieldNote, sumAmounts } from '../shared';
+import { FieldNote, sumAmounts } from '../shared';
 
 export function StandingOrderDialog() {
   async function saveStandingOrderEnd() {
@@ -58,7 +58,7 @@ export function StandingOrderDialog() {
       title={t('modal_end_so_title', 'Manage Standing Order')}
       subtitle={t('modal_end_so_desc', 'When should this standing order end?')}
       icon="🔄"
-      iconClass={BADGE.donation}
+      iconClass={MODAL_TINTS.donation}
     >
       <ModalSection icon="📅" title={t('modal_end_so_date', 'End Date')}>
         <Field>
@@ -78,7 +78,7 @@ export function StandingOrderDialog() {
       <Button
         block
         variant="danger"
-        class="!gap-1.5 border !border-danger !bg-transparent !text-danger"
+        class="!gap-1.5 border border-danger !bg-transparent"
         onClick={() => void deleteStandingOrderCompletely()}
       >
         <Icon name="trash" size={16} />
