@@ -32,9 +32,29 @@ function serviceWorker(): Plugin {
         }
       };
       if (fs.existsSync(publicDir)) walk(publicDir);
-      const files = [...Object.keys(bundle), ...publicFiles]
+      // The app's own files: what its entry (index.html) loads, directly or later; the other pages (setup, privacy,
+      // account deletion) are not part of the installed app
+      const reachable = new Set<string>();
+      const visit = (fileName: string) => {
+        const item: any = bundle[fileName];
+        if (!item || reachable.has(fileName)) return;
+        reachable.add(fileName);
+        if (item.type !== 'chunk') return;
+        for (const next of [...item.imports, ...item.dynamicImports]) visit(next);
+        for (const css of item.viteMetadata?.importedCss || []) reachable.add(css);
+        for (const asset of item.viteMetadata?.importedAssets || []) reachable.add(asset);
+      };
+      for (const [fileName, item] of Object.entries(bundle)) {
+        if (item.type === 'chunk' && item.isEntry && item.name === 'index') visit(fileName);
+      }
+      // Assets referenced from CSS (fonts) are reachable through the CSS file's own metadata
+      for (const [fileName, item] of Object.entries(bundle) as [string, any][]) {
+        if (item.type === 'asset' && reachable.has(fileName) && fileName.endsWith('.css')) {
+          for (const font of Object.keys(bundle).filter(name => /\.(woff2?|ttf)$/.test(name))) reachable.add(font);
+        }
+      }
+      const files = [...reachable, 'index.html', ...publicFiles.filter(file => !file.endsWith('.html'))]
         .filter(file => !file.endsWith('.map') && !file.endsWith('.txt') && file !== 'sw.js')
-        .filter(file => !file.endsWith('.html') || file === 'index.html')
         .filter(file => !LAZY_CHUNK.test(file))
         .sort();
       const list = ['./', ...files.map(file => `./${file}`)];
@@ -73,7 +93,11 @@ export default defineConfig({
       // The backend writes config.js for every instance (app name, features): it is loaded as it is, never bundled
       external: ['/assets/config.js'],
       input: {
-        index: path.join(root, 'index.html')
+        index: path.join(root, 'index.html'),
+        // The first-time setup and the public pages for the app stores (privacy, deleting an account without the app)
+        setup: path.join(root, 'setup.html'),
+        privacy: path.join(root, 'privacy.html'),
+        'account-deletion': path.join(root, 'account-deletion.html')
       }
     }
   }

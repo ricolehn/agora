@@ -5,7 +5,7 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { REPO_ROOT, BACKEND_DIR, tempDir, freePort, start, stop, waitFor, SERVER_ENTRY } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, tempDir, freePort, start, stop, waitFor, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN;
 const config = { appName: 'Gemeinde', defaultLanguage: 'de', pocketbase: { adminEmail: 'superuser@agora.local', adminPassword: 'p'.repeat(24) } };
@@ -24,7 +24,7 @@ async function boot(t, { configText, pocketbaseBin = '/nonexistent', pocketbaseP
   const server = start('backend', process.execPath, [SERVER_ENTRY], {
     PORT: String(port),
     DATA_DIR: dataDir,
-    FRONTEND_DIR: REPO_ROOT,
+    FRONTEND_DIR: FRONTEND_FIXTURE,
     POCKETBASE_BIN: pocketbaseBin,
     POCKETBASE_DIR: pocketbaseDir || path.join(root, 'pb'),
     POCKETBASE_PORT: String(pocketbasePort || await freePort())

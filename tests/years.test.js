@@ -25,7 +25,7 @@ const feeSchedule = require('../backend/feeSchedule');
 const feeState = require('../backend/feeState');
 const { checkAndExecuteStandingOrders } = require('../backend/standingOrders');
 
-const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'assets', 'finance.js')).href);
+const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
 const { cents, monthOf, addMonths, addDays } = books;
 
 const SEEDS = !process.env.YEARS_SEEDS ? [1, 6] : process.env.YEARS_SEEDS.split(',').flatMap((part) => {
@@ -575,7 +575,7 @@ describe('years of a community against a second set of books', () => {
 // planned must have come into effect, the standing orders must have been booked, and every number it serves - to
 // the treasury, to the member, on the fees page, to an older app - must be that of the second books.
 const fs = require('fs');
-const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop, SERVER_ENTRY } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
 const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
@@ -638,7 +638,7 @@ describe('years with the real server and database', { skip: !hasPocketBase && 's
     dataRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agora-years-'));
     const pbDir = path.join(dataRoot, 'pb');
     base = `http://127.0.0.1:${port}`;
-    backendEnv = { PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: REPO_ROOT, NODE_ENV: 'test' };
+    backendEnv = { PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: FRONTEND_FIXTURE, NODE_ENV: 'test' };
     processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
     await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
 

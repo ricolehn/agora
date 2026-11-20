@@ -4,13 +4,14 @@
 //
 // loadData() loads everything after signing in and on a live update of 'all'. Features add their own loads through
 // onDataLoadStart (in parallel, e.g. events, conversations) and onDataLoaded (after the finance data).
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import {
   apiGet, apiJson, child, db, equalTo, get, orderByChild, query, ref, runTransaction, set, update, isPreviousServer, auth,
   fetchWithTimeout, API
 } from './api';
 import { t } from './i18n';
 import { setReloadAll } from './live';
+import { createMutateCollection } from '../lib/collections.js';
 import { loadPictureVersions } from './pictures';
 import { activeTab, applyInitialRoute, isRouteReady, switchTab, takePendingAiRoute } from './router';
 import {
@@ -20,6 +21,7 @@ import {
 import { hideLoading, showLoading } from './shell';
 import { showToast } from './toast';
 import { compressImage, convertHeic, fullName, getTodayStr, parseUtcDate, safeList, toFormData } from './util';
+import { flushNow } from './flush';
 
 export type Person = {
   id: string;
@@ -59,7 +61,7 @@ export { people, requests, users, settings, feeResets, feeResetLog, feePlan, inv
 /** Writers apply at once (flush): imperative code may read the new value right after. */
 const applied = <T,>(setter: (value: T) => unknown) => (value: T) => {
   setter(value);
-  flush();
+  flushNow();
 };
 export const setPeople = applied<Person[]>(list => setPeopleSignal(list.map(preprocessPerson)));
 export const setRequests = applied<FinanceRequest[]>(setRequestsSignal);
@@ -68,12 +70,12 @@ export const setSettings = applied<FeeSettings>(setSettingsSignal);
 export const setInviteCode = applied<string>(setInviteCodeSignal);
 export function applyFeePlan(data: any) {
   if (data && Array.isArray(data.entries)) setFeePlanSignal(data);
-  flush();
+  flushNow();
 }
 export function applyFeeResets(data: any) {
   setFeeResets(safeList(data?.resets));
   setFeeResetLog(safeList(data?.log));
-  flush();
+  flushNow();
 }
 
 // --- People ---
@@ -168,7 +170,7 @@ export function replacePersonInMemory(record: any) {
   else if (!person.isDeleted) next = [...list, person];
   else return;
   setPeopleSignal(next);
-  flush();
+  flushNow();
 }
 
 /** Changes a record on the latest server copy (a transaction): writing this screen's copy could drop a payment
@@ -182,22 +184,9 @@ export async function mutatePerson(personId: string, mutator: (current: any) => 
   return updated;
 }
 
-/**
- * Donations & expenses are stored as whole lists: read the latest server copy with its version, apply `change`, write
- * it back - refused if someone else saved the list meanwhile, then read and applied again (runTransaction).
- * While the database upgrade waits, the previous version of the server serves the instance (/api/status names no API
- * versions, only the upgrade): it takes transactions of people only and refused every list with 400 - there they are
- * saved as that version always took them.
- */
-export async function mutateCollection(name: string, change: (list: any[]) => any[] | null | undefined | void): Promise<void> {
-  try {
-    await runTransaction(ref(db, name), current => change(safeList(current)) || undefined);
-  } catch (error: any) {
-    if (error?.status !== 400 || !(await isPreviousServer())) throw error;
-    const next = change(safeList(await apiGet(name)));
-    if (next) await set(ref(db, name), next);
-  }
-}
+/** Donations & expenses are stored as whole lists: see lib/collections.js (also while the previous server version
+ *  serves the instance during a waiting database upgrade). */
+export const mutateCollection = createMutateCollection({ db, ref, runTransaction, apiGet, set, isPreviousServer });
 
 /** A copy of [list] with the entry [id] changed by [fields] (null when there is no such entry). */
 export function replaceById<T extends { id?: unknown }>(list: T[], id: unknown, fields: Partial<T>): T[] | null {
@@ -253,7 +242,7 @@ export async function loadMediaStatus() {
   } catch {
     setMediaStatus({ enabled: false, canManage: false, hasAccess: false });
   }
-  flush();
+  flushNow();
   // No (more) access to the base folder: the library is closed, back to Extras
   if (!mediaStatus().hasAccess && activeTab() === 'media') switchTab('hub');
 }
@@ -373,7 +362,7 @@ export async function loadData(silent = false, { freshUser = false } = {}) {
       apiJson('/admin/ai-status')
         .then(data => {
           setAiEnabled(!!data.enabled);
-          flush();
+          flushNow();
           // Opened at /ai (a reload in the chat): the chat once the status says it is on
           if (takePendingAiRoute() && data.enabled && activeTab() === 'hub') switchTab('ai-chat');
         })
@@ -406,6 +395,8 @@ export async function loadData(silent = false, { freshUser = false } = {}) {
     if (!silent) hideLoading();
   }
 }
+// A live update of 'all' (app/live.ts) reloads quietly; a plain callback, not a reactive scope
+// eslint-disable-next-line solid/reactivity
 setReloadAll(() => loadData(true));
 
 /** For the sign-out: nothing of this session stays in memory. */
@@ -415,7 +406,7 @@ export function clearData() {
   setUsersSignal([]);
   setInviteCodeSignal('');
   setDataLoaded(false);
-  flush();
+  flushNow();
 }
 
 // The owner has the books too (isOwnerUser) - re-exported for views that decide on requests

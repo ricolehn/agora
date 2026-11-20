@@ -1,8 +1,9 @@
 // Groups and permissions (system settings, event audiences, the duty plan). System admins get all groups with their
 // members and the list of permissions; everyone else the groups they may see.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { api } from './api';
 import { currentUser, isSuperAdminUser } from './session';
+import { flushNow } from './flush';
 
 export const DEFAULT_PERMISSIONS = [
   { id: 'view_finances', name: 'Finance management (read only)', description: 'Allows viewing balances, history, transactions and reports without editing rights' },
@@ -48,13 +49,13 @@ async function fetchSystemGroups() {
       const res = await api('/admin/groups');
       if (res.ok) {
         setSystemGroups(await res.json());
-        flush();
+        flushNow();
         return;
       }
     }
     const res = await api('/groups');
     if (res.ok) setSystemGroups(await res.json());
-    flush();
+    flushNow();
   } catch (err) {
     console.error('Failed to load groups:', err);
   }

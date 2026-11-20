@@ -1,6 +1,6 @@
 // Signing in and out. The compat layer restores the session on start (/api/auth/me) and reports every change of the
 // signed-in account here; this module loads the profile and the data, or shows the sign-in.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import {
   api, apiJson, auth, createUserWithEmailAndPassword, db, get, onAuthStateChanged, ref, signInWithEmailAndPassword, signOut,
   updatePassword
@@ -13,6 +13,7 @@ import { resetRouting } from './router';
 import { currentUid, currentUser, patchCurrentUser, setCurrentUser, setIsAuthenticated, type User } from './session';
 import { hideLoading, setLoadingMessage, showLoading } from './shell';
 import { alertMessage, confirmAction, showToast } from './toast';
+import { flushNow } from './flush';
 
 // --- The sign-in screen ---
 export type AuthView = 'none' | 'login' | 'register';
@@ -104,13 +105,32 @@ function syncUserLanguage() {
 }
 onLanguageChange(() => syncUserLanguage());
 
+// The boot screen of index.html covers the page until the app shows its own screen (loading or sign-in)
+const removeBootScreen = () => document.getElementById('boot')?.remove();
+
+const storedSessionHint = () => {
+  try {
+    return localStorage.getItem('agora-is-logged-in') === 'true' || localStorage.getItem('nova-is-logged-in') === 'true';
+  } catch {
+    return false;
+  }
+};
+
 /** Wires the session to the app (once, at start). */
 export function startAuth() {
+  // Nobody signed in on this device and no shared event's link: the sign-in right away, without waiting for the server
+  if (!storedSessionHint() && !/[?&](share|guest)=/.test(window.location.search)) {
+    showAuthForm(true);
+    flushNow();
+    removeBootScreen();
+  }
   onAuthStateChanged(auth, async user => {
     setAuthResolved(true);
     if (user) {
       setAuthView('none');
       showLoading(t('auth_loading_profile', 'Loading profile...'));
+      flushNow();
+      removeBootScreen();
       setLoggedInFlag(true);
       // /auth/me carries the whole profile plus the computed fields (permissions, mentor status). Opening the app
       // already restored the session with it: no second round trip before the data; after a fresh login it is
@@ -138,11 +158,13 @@ export function startAuth() {
       // A shared event's link: visitors without an account see the event (members can sign in from there)
       if (signedOutHooks.some(fn => fn() === true)) {
         setAuthView('none');
-        return;
+      } else {
+        showAuthForm(true);
       }
-      showAuthForm(true);
+      flushNow();
+      removeBootScreen();
     }
-    flush();
+    flushNow();
   });
 }
 

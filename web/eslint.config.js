@@ -5,8 +5,12 @@ import solid from 'eslint-plugin-solid/configs/v2';
 export default [
   { ignores: ['dist/**', 'src/lib/**', 'src/app/pocketbase-compat.js'] },
   {
+    ...solid,
     files: ['src/**/*.{ts,tsx}'],
-    languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
-    ...solid
+    languageOptions: {
+      ...solid.languageOptions,
+      parser: tseslint.parser,
+      parserOptions: { ...solid.languageOptions?.parserOptions, ecmaFeatures: { jsx: true } }
+    }
   }
 ];

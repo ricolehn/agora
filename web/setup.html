@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#f5f4f1">
+    <link rel="icon" type="image/svg+xml" href="/assets/church-logo.svg">
+    <title>Setup - Agora</title>
+    <script>
+        // The setup follows the device's theme
+        try { document.documentElement.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
+    </script>
+</head>
+<body>
+<div id="setup"></div>
+<script type="module" src="/src/setup/main.tsx"></script>
+</body>
+</html>

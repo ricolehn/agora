@@ -1,4 +1,4 @@
-<!-- Linked from the Google Play listing. Same text as privacy.html (served by every Agora server under /privacy): keep both in sync. -->
+<!-- Linked from the Google Play listing. Same text as web/privacy.html (served by every Agora server under /privacy): keep both in sync. -->
 # Privacy Policy
 
 **Agora** – web app and Android app (`org.agora.app`)

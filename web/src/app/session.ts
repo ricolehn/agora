@@ -1,7 +1,8 @@
 // The signed-in account and what it may do. Every permission check is a function that reads the account signal, so
 // used in JSX (or a memo) it follows a change of the account (a reload of /auth/me, a new group).
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { inList } from './util';
+import { flushNow } from './flush';
 
 export type User = {
   uid: string;
@@ -30,18 +31,18 @@ export { currentUser, isAuthenticated, aiEnabled, setAiEnabled };
 /** Replaces the account (applied at once: imperative code may read it right after). */
 export function setCurrentUser(user: User | null) {
   setCurrentUserSignal(user);
-  flush();
+  flushNow();
 }
 /** Merges fields into the account. */
 export function patchCurrentUser(fields: Partial<User>) {
   const user = currentUser();
   if (!user) return;
   setCurrentUserSignal({ ...user, ...fields });
-  flush();
+  flushNow();
 }
 export function setIsAuthenticated(value: boolean) {
   setAuthenticated(value);
-  flush();
+  flushNow();
 }
 
 const hasPermission = (flag: string, permission: string) => {
