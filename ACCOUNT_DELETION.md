@@ -1,4 +1,4 @@
-<!-- Linked from the Google Play listing (account deletion). Same content as account-deletion.html (served by every Agora server under /account-deletion, with the deletion form): keep both in sync. -->
+<!-- Linked from the Google Play listing (account deletion). Same content as web/account-deletion.html (served by every Agora server under /account-deletion, with the deletion form): keep both in sync. -->
 # Delete your Agora account
 
 **Agora** – web app and Android app (`org.agora.app`)

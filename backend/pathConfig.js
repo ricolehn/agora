@@ -36,7 +36,8 @@ function resolveFrontendDirectory({ env = process.env, existsSync = fs.existsSyn
     return htmlDir;
   }
 
-  return path.join(__dirname, '..');
+  // Local development: the built web app (npm run build in web/)
+  return path.join(__dirname, '..', 'web', 'dist');
 }
 
 module.exports = {

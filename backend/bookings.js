@@ -1,4 +1,4 @@
-// What a booking does to a member's record or the expenses, by the rules the web app books with (assets/finance.js):
+// What a booking does to a member's record or the expenses, by the rules the web app books with (web/src/lib/finance.js):
 // an approved request, a status change from a day. API v2 books with these, so a booking through v2 is the very
 // booking the web app makes (tests/finance.test.js compares both, case by case).
 

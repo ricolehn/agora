@@ -104,13 +104,32 @@ function syncUserLanguage() {
 }
 onLanguageChange(() => syncUserLanguage());
 
+// The boot screen of index.html covers the page until the app shows its own screen (loading or sign-in)
+const removeBootScreen = () => document.getElementById('boot')?.remove();
+
+const storedSessionHint = () => {
+  try {
+    return localStorage.getItem('agora-is-logged-in') === 'true' || localStorage.getItem('nova-is-logged-in') === 'true';
+  } catch {
+    return false;
+  }
+};
+
 /** Wires the session to the app (once, at start). */
 export function startAuth() {
+  // Nobody signed in on this device and no shared event's link: the sign-in right away, without waiting for the server
+  if (!storedSessionHint() && !/[?&](share|guest)=/.test(window.location.search)) {
+    showAuthForm(true);
+    flush();
+    removeBootScreen();
+  }
   onAuthStateChanged(auth, async user => {
     setAuthResolved(true);
     if (user) {
       setAuthView('none');
       showLoading(t('auth_loading_profile', 'Loading profile...'));
+      flush();
+      removeBootScreen();
       setLoggedInFlag(true);
       // /auth/me carries the whole profile plus the computed fields (permissions, mentor status). Opening the app
       // already restored the session with it: no second round trip before the data; after a fresh login it is
@@ -138,9 +157,11 @@ export function startAuth() {
       // A shared event's link: visitors without an account see the event (members can sign in from there)
       if (signedOutHooks.some(fn => fn() === true)) {
         setAuthView('none');
-        return;
+      } else {
+        showAuthForm(true);
       }
-      showAuthForm(true);
+      flush();
+      removeBootScreen();
     }
     flush();
   });

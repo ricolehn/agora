@@ -6,6 +6,7 @@ import {
 } from './pocketbase-compat.js';
 import { API, config } from './config';
 import { t, uiLang } from './i18n';
+import { createIsPreviousServer } from '../lib/collections.js';
 
 export const db = getDatabase(initializeApp(config));
 export const auth = getAuth();
@@ -67,8 +68,5 @@ export async function fetchWithTimeout(resource: string, options: RequestInit = 
 }
 
 // While the database upgrade waits, the previous version of the server serves the instance: its /api/status names
-// no API versions, only the upgrade (see mutateCollection in data.ts)
-export async function isPreviousServer(): Promise<boolean> {
-  const status = await fetch(`${API}/status`).then(res => (res.ok ? res.json() : null)).catch(() => null);
-  return Boolean(status) && !Array.isArray(status.apiVersions);
-}
+// no API versions, only the upgrade (lib/collections.js)
+export const isPreviousServer = createIsPreviousServer({ fetch: (...args) => fetch(...args), api: API });

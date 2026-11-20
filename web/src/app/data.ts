@@ -11,6 +11,7 @@ import {
 } from './api';
 import { t } from './i18n';
 import { setReloadAll } from './live';
+import { createMutateCollection } from '../lib/collections.js';
 import { loadPictureVersions } from './pictures';
 import { activeTab, applyInitialRoute, isRouteReady, switchTab, takePendingAiRoute } from './router';
 import {
@@ -182,22 +183,9 @@ export async function mutatePerson(personId: string, mutator: (current: any) => 
   return updated;
 }
 
-/**
- * Donations & expenses are stored as whole lists: read the latest server copy with its version, apply `change`, write
- * it back - refused if someone else saved the list meanwhile, then read and applied again (runTransaction).
- * While the database upgrade waits, the previous version of the server serves the instance (/api/status names no API
- * versions, only the upgrade): it takes transactions of people only and refused every list with 400 - there they are
- * saved as that version always took them.
- */
-export async function mutateCollection(name: string, change: (list: any[]) => any[] | null | undefined | void): Promise<void> {
-  try {
-    await runTransaction(ref(db, name), current => change(safeList(current)) || undefined);
-  } catch (error: any) {
-    if (error?.status !== 400 || !(await isPreviousServer())) throw error;
-    const next = change(safeList(await apiGet(name)));
-    if (next) await set(ref(db, name), next);
-  }
-}
+/** Donations & expenses are stored as whole lists: see lib/collections.js (also while the previous server version
+ *  serves the instance during a waiting database upgrade). */
+export const mutateCollection = createMutateCollection({ db, ref, runTransaction, apiGet, set, isPreviousServer });
 
 /** A copy of [list] with the entry [id] changed by [fields] (null when there is no such entry). */
 export function replaceById<T extends { id?: unknown }>(list: T[], id: unknown, fields: Partial<T>): T[] | null {
@@ -406,6 +394,8 @@ export async function loadData(silent = false, { freshUser = false } = {}) {
     if (!silent) hideLoading();
   }
 }
+// A live update of 'all' (app/live.ts) reloads quietly; a plain callback, not a reactive scope
+// eslint-disable-next-line solid/reactivity
 setReloadAll(() => loadData(true));
 
 /** For the sign-out: nothing of this session stays in memory. */

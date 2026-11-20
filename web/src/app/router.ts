@@ -248,6 +248,8 @@ export function syncUrl() {
   const path = routePath();
   if (window.location.pathname !== path || window.location.hash) history.replaceState(history.state, '', path + window.location.search);
 }
+// Opening and closing dialogs changes the address (an open event, a song); a plain callback, not a reactive scope
+// eslint-disable-next-line solid/reactivity
 onModalChange(syncUrl);
 
 const decodePart = (part: string) => {

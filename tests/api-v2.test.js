@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { REPO_ROOT, freePort, waitFor, start, SERVER_ENTRY } = require('./helpers');
+const { REPO_ROOT, freePort, waitFor, start, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
 const { startFakeNextcloud } = require('./fakeNextcloud');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
@@ -88,7 +88,7 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
     processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
     await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
     processes.push(start('backend', process.execPath, [SERVER_ENTRY], {
-      PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: REPO_ROOT, NODE_ENV: 'test'
+      PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: FRONTEND_FIXTURE, NODE_ENV: 'test'
     }));
     await waitFor(`${base}/api/status`, 'backend', processes);
     const setup = await ok(call(null, 'POST', '/api/setup', {
@@ -305,7 +305,7 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
   });
 
   test('a status change from a day on rewrites the history as the web app does; before the membership it is refused', async () => {
-    const { applyStatusChangeToHistory } = await import(pathToFileURL(path.join(REPO_ROOT, 'assets', 'finance.js')).href);
+    const { applyStatusChangeToHistory } = await import(pathToFileURL(path.join(REPO_ROOT, 'web', 'src', 'lib', 'finance.js')).href);
     const uid = await account('status', 'Stella');
     const member = await memberOf(uid);
     const before = await ok(call('treasurer', 'GET', `/api/db?path=people/${uid}`));
