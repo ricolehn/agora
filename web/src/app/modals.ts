@@ -1,8 +1,9 @@
 // The stack of open dialogs, with the browser history: an open dialog has a history entry, so the back gesture
 // closes it (nested dialogs share one entry). Only the dialog on top can be reached by keyboard and screen readers.
 // The dialog frame (ui/Modal.tsx) reads this state; features open and close dialogs by id.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { programmaticBack } from './history';
+import { flushNow } from './flush';
 
 const [modalStack, setModalStack] = createSignal<string[]>([]);
 export { modalStack };
@@ -53,7 +54,7 @@ export function openModal(id: string) {
   if (!stack.includes(id)) {
     returnFocus.set(id, document.activeElement);
     setModalStack([...stack, id]);
-    flush();
+    flushNow();
     history[history.state?.isModal ? 'replaceState' : 'pushState']({ isModal: true, modalId: id }, '');
   }
   notify();
@@ -95,7 +96,7 @@ export function closeModal(id: string, fromPopstate = false, force = false) {
     return;
   }
   setModalStack(stack.filter(entry => entry !== id));
-  flush();
+  flushNow();
   if (!fromPopstate && history.state?.isModal) programmaticBack();
   restoreFocus(returnFocus.get(id));
   returnFocus.delete(id);
@@ -115,7 +116,7 @@ export function closeMultipleModals(ids: string[]) {
     returnFocus.delete(id);
   }
   setModalStack(stack.filter(id => !closing.includes(id)));
-  flush();
+  flushNow();
   restoreFocus(finalFocus);
   if (history.state?.isModal) programmaticBack();
   for (const id of closing) runCloseCallbacks(id);

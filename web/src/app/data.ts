@@ -4,7 +4,7 @@
 //
 // loadData() loads everything after signing in and on a live update of 'all'. Features add their own loads through
 // onDataLoadStart (in parallel, e.g. events, conversations) and onDataLoaded (after the finance data).
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import {
   apiGet, apiJson, child, db, equalTo, get, orderByChild, query, ref, runTransaction, set, update, isPreviousServer, auth,
   fetchWithTimeout, API
@@ -21,6 +21,7 @@ import {
 import { hideLoading, showLoading } from './shell';
 import { showToast } from './toast';
 import { compressImage, convertHeic, fullName, getTodayStr, parseUtcDate, safeList, toFormData } from './util';
+import { flushNow } from './flush';
 
 export type Person = {
   id: string;
@@ -60,7 +61,7 @@ export { people, requests, users, settings, feeResets, feeResetLog, feePlan, inv
 /** Writers apply at once (flush): imperative code may read the new value right after. */
 const applied = <T,>(setter: (value: T) => unknown) => (value: T) => {
   setter(value);
-  flush();
+  flushNow();
 };
 export const setPeople = applied<Person[]>(list => setPeopleSignal(list.map(preprocessPerson)));
 export const setRequests = applied<FinanceRequest[]>(setRequestsSignal);
@@ -69,12 +70,12 @@ export const setSettings = applied<FeeSettings>(setSettingsSignal);
 export const setInviteCode = applied<string>(setInviteCodeSignal);
 export function applyFeePlan(data: any) {
   if (data && Array.isArray(data.entries)) setFeePlanSignal(data);
-  flush();
+  flushNow();
 }
 export function applyFeeResets(data: any) {
   setFeeResets(safeList(data?.resets));
   setFeeResetLog(safeList(data?.log));
-  flush();
+  flushNow();
 }
 
 // --- People ---
@@ -169,7 +170,7 @@ export function replacePersonInMemory(record: any) {
   else if (!person.isDeleted) next = [...list, person];
   else return;
   setPeopleSignal(next);
-  flush();
+  flushNow();
 }
 
 /** Changes a record on the latest server copy (a transaction): writing this screen's copy could drop a payment
@@ -241,7 +242,7 @@ export async function loadMediaStatus() {
   } catch {
     setMediaStatus({ enabled: false, canManage: false, hasAccess: false });
   }
-  flush();
+  flushNow();
   // No (more) access to the base folder: the library is closed, back to Extras
   if (!mediaStatus().hasAccess && activeTab() === 'media') switchTab('hub');
 }
@@ -361,7 +362,7 @@ export async function loadData(silent = false, { freshUser = false } = {}) {
       apiJson('/admin/ai-status')
         .then(data => {
           setAiEnabled(!!data.enabled);
-          flush();
+          flushNow();
           // Opened at /ai (a reload in the chat): the chat once the status says it is on
           if (takePendingAiRoute() && data.enabled && activeTab() === 'hub') switchTab('ai-chat');
         })
@@ -405,7 +406,7 @@ export function clearData() {
   setUsersSignal([]);
   setInviteCodeSignal('');
   setDataLoaded(false);
-  flush();
+  flushNow();
 }
 
 // The owner has the books too (isOwnerUser) - re-exported for views that decide on requests

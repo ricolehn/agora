@@ -1,9 +1,10 @@
 // Cropping a picture before it is uploaded: profile pictures (square, 256x256) and event covers (16:9, 1280x720).
 // The dialog with the image, the frame, dragging, pinching and the zoom slider is ui/ImageCropper.tsx (mounted at the
 // root by the shell); this is how features ask for a crop.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { openModal } from '../app/modals';
 import { convertHeic, loadImage, readAsDataUrl } from '../app/util';
+import { flushNow } from '../app/flush';
 
 export type CropShape = 'square' | 'wide';
 export interface CropRequest {
@@ -42,7 +43,7 @@ async function prepare(request: CropRequest) {
   if (!size) return;
   setCropSource({ src, width: size[0], height: size[1] });
   setCropRequest(request);
-  flush();
+  flushNow();
   openModal(CROP_MODAL_ID);
 }
 
