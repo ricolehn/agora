@@ -3,7 +3,6 @@
 import { For, Match, Show, Switch } from 'solid-js';
 import { people, users } from '../../../app/data';
 import { euro, formatDateFast, t } from '../../../app/i18n';
-import { openModal } from '../../../app/modals';
 import { fullName } from '../../../app/util';
 import { Avatar } from '../../../ui/Avatar';
 import { Button } from '../../../ui/Button';
@@ -11,11 +10,12 @@ import { SearchInput, Skeleton } from '../../../ui/feedback';
 import { Icon, type IconName } from '../../../ui/Icon';
 import { RequestsCard } from './RequestsCard';
 import { pendingRequests } from './requests';
+import { openExportReport } from './report';
 import {
-  balance, historySearch, historyView, loadMoreHistory, setHistorySearch, transactionTotal, transactions, type Transaction
+  balance, historySearch, historyView, loadMoreHistory, setHistorySearch, transactionTotal, transactions, txColor, txSign,
+  type Transaction
 } from './state';
 import { showTransactionDetails } from './TransactionDetailsDialog';
-import { openExportReport } from './ReportDialog';
 
 const TX_ICONS: Record<string, IconName> = { pay: 'person', don: 'heart', exp: 'dollar' };
 const TX_TINTS: Record<string, string> = {
@@ -23,8 +23,6 @@ const TX_TINTS: Record<string, string> = {
   don: 'bg-[rgba(139,92,246,0.15)] text-[#8b5cf6]',
   exp: 'bg-[rgba(239,68,68,0.15)] text-danger'
 };
-export const txSign = (tx: Transaction) => (tx.type === 'exp' ? '-' : '+');
-export const txColor = (tx: Transaction) => (tx.type === 'exp' ? 'text-danger' : 'text-success');
 const txDateLabel = (tx: Transaction) => (tx.date ? formatDateFast(tx.date) : t('no_date', 'No date'));
 
 // Expenses only store the issuer's name: the account behind it, for the profile picture
@@ -226,4 +224,3 @@ export function HistoryPage() {
   );
 }
 
-export { openModal };

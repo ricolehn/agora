@@ -31,9 +31,17 @@ export interface Transaction {
   [key: string]: any;
 }
 
+/** How a booking counts: expenses go out (red), payments and donations come in (green). */
+export const txSign = (tx: Transaction) => (tx.type === 'exp' ? '-' : '+');
+export const txColor = (tx: Transaction) => (tx.type === 'exp' ? 'text-danger' : 'text-success');
+
 // --- Sub-page (the overview with the history is the default, as before) ---
 const [subpage, setSubpageSignal] = createSignal<FinanceSubpage>('history');
 export { subpage };
+export function setSubpage(page: FinanceSubpage) {
+  setSubpageSignal(page);
+  flush();
+}
 
 // --- The member whose card is open in the fee list (one at a time) ---
 const [openPersonId, setOpenPersonIdSignal] = createSignal<string | null>(null);
@@ -47,11 +55,11 @@ export function setOpenPersonId(id: string | null) {
 const [peopleSearch, setPeopleSearchSignal] = createSignal('');
 const [peopleTerm, setPeopleTerm] = createSignal('');
 export { peopleSearch, peopleTerm };
-const applyPeopleSearch = debounce(() => setPeopleTerm(peopleSearch().toLowerCase()), 300);
+const applyPeopleSearch = debounce((text: string) => setPeopleTerm(text.toLowerCase()), 300);
 export function setPeopleSearch(text: string) {
   setPeopleSearchSignal(text);
   flush();
-  applyPeopleSearch();
+  applyPeopleSearch(text);
 }
 
 /** Loads what the shown sub-page needs: the fee list is drawn from memory (its cards start closed), the overview
@@ -65,8 +73,7 @@ export function loadSubpage() {
 }
 
 export function switchFinanceSubpage(page: FinanceSubpage) {
-  setSubpageSignal(page);
-  flush();
+  setSubpage(page);
   loadSubpage();
   syncUrl();
 }
@@ -101,13 +108,13 @@ let transactionPage = 1;
 // A newer load replaces an older one still on its way (fast typing in the search)
 let historySeq = 0;
 
-const searchHistory = debounce(() => {
-  if (historySearch().trim() !== loadedQuery) void loadHistory(true);
+const searchHistory = debounce((text: string) => {
+  if (text.trim() !== loadedQuery) void loadHistory(true);
 }, 300);
 export function setHistorySearch(text: string) {
   setHistorySearchSignal(text);
   flush();
-  searchHistory();
+  searchHistory(text);
 }
 
 /**

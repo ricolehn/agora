@@ -16,8 +16,12 @@ const typeName = (type: string) =>
 
 const [shown, setShown] = createSignal<{ tx: Transaction; type: string } | null>(null);
 
-/** Opens a booked entry of the history with its details; type: pay | don | exp. */
-export function showTransactionDetails(id: string, type: string) {
+// The kinds as the history lists them; other parts may name them in full
+const KIND_IDS: Record<string, string> = { payment: 'pay', donation: 'don', expense: 'exp' };
+
+/** Opens a booked entry of the history with its details; type: pay | don | exp (or payment | donation | expense). */
+export function showTransactionDetails(id: string, kind: string) {
+  const type = KIND_IDS[kind] || kind;
   const tx = transactions()?.find(x => String(x.id) === String(id));
   if (!tx || !typeName(type)) return;
   setShown({ tx, type });
