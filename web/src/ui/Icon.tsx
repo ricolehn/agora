@@ -7,7 +7,7 @@ export interface IconProps {
   name: IconName;
   size?: number;
   strokeWidth?: number;
-  class?: string;
+  class?: JSX.ClassValue;
   style?: JSX.CSSProperties;
   'aria-hidden'?: boolean;
 }
@@ -27,6 +27,7 @@ export function Icon(props: IconProps) {
       class={props.class}
       style={props.style}
       aria-hidden={props['aria-hidden'] === false ? undefined : 'true'}
+      // eslint-disable-next-line solid/no-innerhtml -- the app's own icon set (ui/icons.ts), never user input
       innerHTML={ICONS[props.name]}
     />
   );
