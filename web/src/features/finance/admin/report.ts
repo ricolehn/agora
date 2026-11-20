@@ -1,6 +1,7 @@
 // The financial report (export-report-modal): all bookings are loaded when it opens; what goes into the report (a year,
 // a period, one member, hand-picked bookings) and how detailed it is decide the A4 preview, which becomes the PDF.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
+import { flushNow } from '../../../app/flush';
 import { api } from '../../../app/api';
 import { findPerson, people, type Person } from '../../../app/data';
 import { formatDateFast, t } from '../../../app/i18n';
@@ -49,23 +50,23 @@ export const bookingsCount = (count: number) =>
 
 export function setReportType(type: ReportType) {
   setReportTypeSignal(type);
-  flush();
+  flushNow();
 }
 export function setReportTier(tier: ReportTier) {
   setReportTierSignal(tier);
-  flush();
+  flushNow();
 }
 export function toggleReportTransaction(key: string) {
   const next = new Set(selectedKeys());
   if (!next.delete(key)) next.add(key);
   setSelectedKeys(next);
-  flush();
+  flushNow();
 }
 
 /** Loads every booking (page by page) and opens the report as an annual overview of the latest year. */
 export async function openExportReport() {
   setReportStatus('loading');
-  flush();
+  flushNow();
   openModal('export-report-modal');
   try {
     let all: Transaction[] = [];
@@ -95,7 +96,7 @@ export async function openExportReport() {
     console.error('Could not load the report transactions:', err);
     setReportStatus('error');
   }
-  flush();
+  flushNow();
 }
 
 const inDateRange = (tx: Transaction, from: string, to: string) => {
@@ -163,7 +164,7 @@ export function reportTotals(filtered: Transaction[]) {
 export async function downloadReportPdf(element: HTMLElement | undefined, appName: string) {
   if (!element) return;
   setGenerating(true);
-  flush();
+  flushNow();
   let html2pdf: any = null;
   try {
     ({ default: html2pdf } = await import('html2pdf.js'));

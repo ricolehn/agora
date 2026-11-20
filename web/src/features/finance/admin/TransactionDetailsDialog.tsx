@@ -1,13 +1,14 @@
 // A booking of the history with its details and receipts (transaction-details-modal); those who manage the finances
 // edit it from here.
-import { Show, createSignal, flush } from 'solid-js';
+import { Show, createSignal } from 'solid-js';
+import { flushNow } from '../../../app/flush';
 import { euro, formatDateFast, t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
 import { canManageFinances } from '../../../app/session';
+import { Button } from '../../../ui/Button';
 import { Icon } from '../../../ui/Icon';
-import { Modal, ModalSection } from '../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalBody, ModalHeader, ModalSection } from '../../../ui/Modal';
 import { openEditPayment } from './EditPaymentDialog';
-import { BADGE_TINTS, DIALOG_BODY, DialogHeader } from './parts';
 import { ReceiptList } from './Receipts';
 import { transactions, type Transaction } from './state';
 
@@ -25,7 +26,7 @@ export function showTransactionDetails(id: string, kind: string) {
   const tx = transactions()?.find(x => String(x.id) === String(id));
   if (!tx || !typeName(type)) return;
   setShown({ tx, type });
-  flush();
+  flushNow();
   openModal('transaction-details-modal');
 }
 
@@ -42,8 +43,8 @@ function editShown() {
 // The kind as a small pill above the amount: a payment plain, a donation green, an expense red
 const KIND_PILL: Record<string, [string, string]> = {
   pay: ['border border-border bg-surface text-text', '💳'],
-  don: [BADGE_TINTS.donation, '💚'],
-  exp: [BADGE_TINTS.expense, '🧾']
+  don: [MODAL_TINTS.donation, '💚'],
+  exp: [MODAL_TINTS.expense, '🧾']
 };
 
 function DetailRow(props: { label: string; value: string }) {
@@ -100,29 +101,30 @@ function TransactionDetails(props: { tx: Transaction; type: string }) {
 
 export function TransactionDetailsDialog() {
   return (
-    <Modal id="transaction-details-modal" plain maxWidth="420px">
-      <DialogHeader
+    <Modal id="transaction-details-modal" plain labelledBy="transaction-details-modal-title">
+      <ModalHeader
         id="transaction-details-modal"
         icon="📋"
-        iconClass={BADGE_TINTS.person}
+        iconClass={MODAL_TINTS.person}
         title={t('modal_details_title', 'Details')}
         subtitle={t('modal_details_subtitle', 'Transaction overview')}
-        actions={
-          <Show when={canManageFinances()}>
-            <button
-              type="button"
-              class="inline-flex items-center justify-center rounded-lg border border-hairline bg-surface p-1.5 text-text shadow-card transition-transform duration-150 ease-app active:scale-[0.97]"
-              aria-label={t('btn_edit', 'Edit')}
-              onClick={editShown}
-            >
-              <Icon name="edit" size={16} />
-            </button>
-          </Show>
-        }
-      />
-      <div class={DIALOG_BODY}>
+        onClose={() => closeModal('transaction-details-modal')}
+      >
+        <Show when={canManageFinances()}>
+          <Button
+            variant="secondary"
+            size="small"
+            class="mr-3 ml-auto !gap-2 !rounded-lg !p-1.5"
+            aria-label={t('btn_edit', 'Edit')}
+            onClick={editShown}
+          >
+            <Icon name="edit" size={16} />
+          </Button>
+        </Show>
+      </ModalHeader>
+      <ModalBody>
         <Show when={shown()}>{details => <TransactionDetails tx={details().tx} type={details().type} />}</Show>
-      </div>
+      </ModalBody>
     </Modal>
   );
 }

@@ -50,7 +50,7 @@ function TransactionIcon(props: { tx: Transaction }) {
     >
       {uid => (
         <div class="relative mr-4 size-10 shrink-0">
-          <Avatar uid={uid()} name={props.tx.who} size={40} class="!text-[0.85rem]" />
+          <Avatar uid={uid()} name={props.tx.who} size={40} initialsClass="text-[0.85rem]" />
           {/* Expenses keep a small red badge on the picture, so they stay recognisable at a glance */}
           <Show when={props.tx.type === 'exp'}>
             <span class="absolute -right-[3px] -bottom-[3px] flex size-[18px] items-center justify-center rounded-full border-2 border-surface bg-danger text-white">

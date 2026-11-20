@@ -1,6 +1,7 @@
 // Changing or deleting a booked entry (edit-payment-modal, confirm-delete-modal): a member's payment on the latest
 // copy of the member's record, a donation or an expense (with its receipts) in the stored list.
-import { For, Match, Show, Switch, createSignal, flush } from 'solid-js';
+import { For, Match, Show, Switch, createSignal } from 'solid-js';
+import { flushNow } from '../../../app/flush';
 import { findPerson, mutateCollection, mutatePerson, replaceById, uploadReceipt } from '../../../app/data';
 import { t } from '../../../app/i18n';
 import { closeModal, closeMultipleModals, openModal } from '../../../app/modals';
@@ -10,9 +11,9 @@ import { isPdfReceipt, parseReceipts, safeList } from '../../../app/util';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/feedback';
 import { Field, Input } from '../../../ui/form';
-import { Modal, ModalSection } from '../../../ui/Modal';
+import { MODAL_TINTS, Modal, ModalBody, ModalHeader, ModalSection } from '../../../ui/Modal';
 import { findPaymentIndex, parseAmount } from '../../../lib/finance.js';
-import { BADGE_TINTS, DIALOG_BODY, DialogHeader, FeeResetNote } from './parts';
+import { FeeResetNote } from './parts';
 import { feeResetPaymentHint } from './people';
 import { DownloadLink, OpenPdfLink, ReceiptFileRow, ReceiptThumb, useReceiptUrls } from './Receipts';
 import { refreshFinanceViews, type Transaction } from './state';
@@ -64,7 +65,7 @@ export function openEditPayment(tx: Transaction) {
   setIssuer(isExpense ? payment.issuer || payment.name || '' : '');
   setReceipts(isExpense ? parseReceipts(payment.receipt) : []);
   setSaving(false);
-  flush();
+  flushNow();
   openModal('edit-payment-modal');
 }
 
@@ -153,24 +154,21 @@ function deleteEditReceipt(filename: string) {
   setReceipts(receipts().filter(name => name !== filename));
 }
 
-const DELETE_RECEIPT =
-  'inline-flex items-center justify-center rounded-lg bg-danger/10 p-1.5 text-[0.85rem] font-semibold text-danger transition-transform duration-150 ease-app active:scale-[0.97]';
-
 /** A receipt of the edited expense: loading, then its preview with open (PDF), download and delete. */
 function EditReceiptRow(props: { filename: string }) {
   const state = useReceiptUrls(() => [props.filename]);
   const Remove = () => (
-    <button type="button" class={DELETE_RECEIPT} title={t('btn_delete', 'Delete')} onClick={() => deleteEditReceipt(props.filename)}>
+    <Button variant="danger" size="small" class="!rounded-lg !p-1.5" title={t('btn_delete', 'Delete')} onClick={() => deleteEditReceipt(props.filename)}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="3 6 5 6 21 6" />
         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       </svg>
-    </button>
+    </Button>
   );
   return (
     <Switch>
       <Match when={state().status === 'loading'}>
-        <ReceiptFileRow preview={<Spinner size={16} class="!m-0 !border-2" />} name={props.filename} muted />
+        <ReceiptFileRow preview={<Spinner size={16} stroke={2} class="m-0" />} name={props.filename} muted />
       </Match>
       <Match when={state().status === 'error'}>
         <ReceiptFileRow preview={<span class="text-[1.25rem]">⚠️</span>} name={props.filename} actions={<Remove />} />
@@ -247,7 +245,7 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
               {name => <EditReceiptRow filename={name} />}
             </For>
           </div>
-          <Field label={<span class="text-[0.78rem] text-text-secondary">{t('add_receipts', 'Add Receipt(s)')}</span>} for="edit-payment-new-receipt">
+          <Field label={t('add_receipts', 'Add Receipt(s)')} for="edit-payment-new-receipt">
             <Input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif,.pdf" multiple ref={el => (newReceiptsInput = el)} />
           </Field>
         </ModalSection>
@@ -262,39 +260,41 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
 export function EditPaymentDialog() {
   return (
     <>
-      <Modal id="edit-payment-modal" plain maxWidth="420px">
-        <DialogHeader
+      <Modal id="edit-payment-modal" plain labelledBy="edit-payment-modal-title">
+        <ModalHeader
           id="edit-payment-modal"
           icon="✏️"
-          iconClass={BADGE_TINTS.person}
+          iconClass={MODAL_TINTS.person}
           title={t('modal_edit_payment_title', 'Edit Payment')}
           subtitle={edited()?.label}
-          actions={
-            <button
-              type="button"
-              class="flex items-center justify-center bg-transparent p-1 text-danger transition-opacity duration-200 hover:opacity-70"
-              aria-label={t('btn_delete', 'Delete')}
-              onClick={() => {
-                if (canManageFinances() && edited()) openModal('confirm-delete-modal');
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                <line x1="10" y1="11" x2="10" y2="17" />
-                <line x1="14" y1="11" x2="14" y2="17" />
-              </svg>
-            </button>
-          }
-        />
-        <div class={DIALOG_BODY}>
+          onClose={() => closeModal('edit-payment-modal')}
+        >
+          <button
+            type="button"
+            class="mr-3 ml-auto flex cursor-pointer items-center justify-center border-0 bg-transparent p-1 text-danger transition-opacity duration-200 hover:opacity-70"
+            aria-label={t('btn_delete', 'Delete')}
+            onClick={() => {
+              if (canManageFinances() && edited()) openModal('confirm-delete-modal');
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+          </button>
+        </ModalHeader>
+        <ModalBody>
           <Show when={edited()}>{entry => <EditPaymentForm entry={entry()} />}</Show>
-        </div>
+        </ModalBody>
       </Modal>
-      <Modal id="confirm-delete-modal" plain maxWidth="380px">
+      <Modal id="confirm-delete-modal" plain maxWidth="380px" labelledBy="title-confirm-delete">
         <div class="p-5 text-center">
           <div class="mb-3 text-[2.2rem] text-danger">⚠️</div>
-          <h3 class="mb-2 text-[1.15rem] font-bold text-text">{t('modal_delete_trans_title', 'Delete Transaction?')}</h3>
+          <h3 id="title-confirm-delete" class="mb-2 text-[1.15rem] font-bold text-text">
+            {t('modal_delete_trans_title', 'Delete Transaction?')}
+          </h3>
           <p class="mb-5 text-[0.86rem] leading-[1.4] text-text-secondary">
             {t('modal_delete_trans_desc', 'Are you sure you want to permanently delete this payment? This cannot be undone.')}
           </p>
@@ -302,7 +302,7 @@ export function EditPaymentDialog() {
             <Button variant="secondary" class="h-[38px] flex-1" onClick={() => closeModal('confirm-delete-modal')}>
               {t('btn_cancel', 'Cancel')}
             </Button>
-            <Button variant="danger" class="h-[38px] flex-1" onClick={() => void confirmDeleteRecordedPayment()}>
+            <Button variant="danger-solid" class="h-[38px] flex-1" onClick={() => void confirmDeleteRecordedPayment()}>
               {t('btn_delete', 'Delete')}
             </Button>
           </div>

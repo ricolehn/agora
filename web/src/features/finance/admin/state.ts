@@ -1,7 +1,8 @@
 // State of the finances tab that lives as long as the app: the sub-page, the booked history (fetched page by page
 // from /api/transactions), the cash balance (/api/stats), the searches and the member whose card is open. Writers
 // apply at once (flush): the router reads the sub-page right after a switch to build the page address.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
+import { flushNow } from '../../../app/flush';
 import { api } from '../../../app/api';
 import { activeTab, syncUrl } from '../../../app/router';
 import { canViewFinances } from '../../../app/session';
@@ -40,7 +41,7 @@ const [subpage, setSubpageSignal] = createSignal<FinanceSubpage>('history');
 export { subpage };
 export function setSubpage(page: FinanceSubpage) {
   setSubpageSignal(page);
-  flush();
+  flushNow();
 }
 
 // --- The member whose card is open in the fee list (one at a time) ---
@@ -48,7 +49,7 @@ const [openPersonId, setOpenPersonIdSignal] = createSignal<string | null>(null);
 export { openPersonId };
 export function setOpenPersonId(id: string | null) {
   setOpenPersonIdSignal(id);
-  flush();
+  flushNow();
 }
 
 // --- The member search: the typed text, and the term the list shows (300 ms later) ---
@@ -58,7 +59,7 @@ export { peopleSearch, peopleTerm };
 const applyPeopleSearch = debounce((text: string) => setPeopleTerm(text.toLowerCase()), 300);
 export function setPeopleSearch(text: string) {
   setPeopleSearchSignal(text);
-  flush();
+  flushNow();
   applyPeopleSearch(text);
 }
 
@@ -113,7 +114,7 @@ const searchHistory = debounce((text: string) => {
 }, 300);
 export function setHistorySearch(text: string) {
   setHistorySearchSignal(text);
-  flush();
+  flushNow();
   searchHistory(text);
 }
 
@@ -149,7 +150,7 @@ export async function loadHistory(reset = true, { quiet = false } = {}) {
     console.error('Could not load the transactions:', err);
     setHistoryView('error');
   }
-  flush();
+  flushNow();
 }
 
 export function loadMoreHistory() {

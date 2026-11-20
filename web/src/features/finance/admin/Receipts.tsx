@@ -2,24 +2,24 @@
 // opens large in its own dialog (receipt-preview-modal), a PDF in the browser's viewer. ReceiptList shows the
 // receipts of a record, ReceiptFileRow is one receipt as a compact row (lists to manage receipts in).
 import type { JSX } from '@solidjs/web';
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, flush } from 'solid-js';
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js';
+import { flushNow } from '../../../app/flush';
 import { fetchReceiptImage } from '../../../app/data';
 import { t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
 import { isPdfReceipt, parseReceipts } from '../../../app/util';
-import { Button } from '../../../ui/Button';
+import { Button, buttonClass } from '../../../ui/Button';
 import { Spinner } from '../../../ui/feedback';
 import { Icon, type IconName } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
 
-/** The small outlined links of a receipt (download, open): a secondary button with a plain frame. */
-export const RECEIPT_LINK =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[0.85rem] font-semibold text-text no-underline shadow-card ' +
-  'transition-[transform,box-shadow] duration-150 ease-app active:scale-[0.97]';
-/** The same as a square symbol button. */
-export const RECEIPT_ICON_LINK =
-  'inline-flex items-center justify-center rounded-lg border border-border bg-surface p-1.5 text-[0.85rem] font-semibold text-text no-underline shadow-card ' +
-  'transition-[transform,box-shadow] duration-150 ease-app active:scale-[0.97]';
+/** The small links of a receipt (download, open): a small secondary button with a plain frame; compact: only the
+ *  symbol. */
+export const receiptLinkClass = (compact = false): JSX.ClassValue => [
+  buttonClass({ variant: 'secondary', size: 'small' }),
+  '!rounded-lg !border-border !bg-surface !text-text no-underline',
+  compact ? '!p-1.5' : '!gap-1.5 !px-3 !py-1.5'
+];
 
 // --- The large view of a picture ---
 const [preview, setPreview] = createSignal<{ title: string; url: string; filename: string } | null>(null);
@@ -27,7 +27,7 @@ const [preview, setPreview] = createSignal<{ title: string; url: string; filenam
 /** Opens a receipt picture large (receipt-preview-modal), with its download. */
 export function showReceiptImage(title: string, url: string, filename: string) {
   setPreview({ title: title || t('receipt', 'Receipt'), url, filename });
-  flush();
+  flushNow();
   openModal('receipt-preview-modal');
 }
 
@@ -80,7 +80,7 @@ function ReceiptLink(props: { href: string; download?: string; icon: IconName; l
       download={props.download}
       target={props.newTab ? '_blank' : undefined}
       rel={props.newTab ? 'noopener' : undefined}
-      class={props.compact ? RECEIPT_ICON_LINK : RECEIPT_LINK}
+      class={receiptLinkClass(props.compact)}
       title={props.label}
     >
       <Icon name={props.icon} />

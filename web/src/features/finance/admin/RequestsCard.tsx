@@ -25,7 +25,7 @@ function RequestRow(props: { req: FinanceRequest }) {
       style={{ '--req-color': requestColor(props.req) }}
       onClick={() => openRequestDetail(props.req.id)}
     >
-      <Avatar uid={requestPersonUid(props.req)} name={requestPersonName(props.req)} size={44} class="!text-[0.95rem]" />
+      <Avatar uid={requestPersonUid(props.req)} name={requestPersonName(props.req)} size={44} initialsClass="text-[0.95rem]" />
       <span class="flex min-w-0 flex-1 flex-col gap-px">
         <span class="flex min-w-0 items-center gap-2">
           <span class="min-w-0 flex-1 truncate font-extrabold text-text">{requestPersonName(props.req)}</span>

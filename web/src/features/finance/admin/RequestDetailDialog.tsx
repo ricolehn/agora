@@ -7,7 +7,7 @@ import { findPerson, isOwnRequest, requests, type FinanceRequest } from '../../.
 import { dateTimeFormatter, t } from '../../../app/i18n';
 import { canApproveRequests } from '../../../app/session';
 import { Button } from '../../../ui/Button';
-import { Field, Input } from '../../../ui/form';
+import { Input, Label } from '../../../ui/form';
 import { Icon, type IconName } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
 import { FeeResetNote } from './parts';
@@ -123,28 +123,29 @@ function Decision(props: { req: FinanceRequest }) {
       </Show>
       <Show when={rejectFormOpen()}>
         <div class="flex flex-col gap-2.5">
-          <Field label={t('request_reject_reason_label', 'Reason for rejecting')} for="reqd-reject-reason" class="!mb-0">
-            <Input
-              ref={el => (reasonInput = el)}
-              type="text"
-              id="reqd-reject-reason"
-              maxlength={200}
-              placeholder={t('request_reject_placeholder', 'Optional – shown to the member')}
-              value={rejectReason()}
-              onInput={e => setRejectReason(e.currentTarget.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void confirmRejectRequest();
-                }
-              }}
-            />
-          </Field>
+          <Label for="reqd-reject-reason" class="!mb-0">
+            {t('request_reject_reason_label', 'Reason for rejecting')}
+          </Label>
+          <Input
+            ref={el => (reasonInput = el)}
+            type="text"
+            id="reqd-reject-reason"
+            maxlength={200}
+            placeholder={t('request_reject_placeholder', 'Optional – shown to the member')}
+            value={rejectReason()}
+            onInput={e => setRejectReason(e.currentTarget.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void confirmRejectRequest();
+              }
+            }}
+          />
           <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-2.5">
             <Button variant="secondary" class={DECISION_BTN} disabled={requestBusy()} onClick={() => toggleRejectForm(false)}>
               {t('btn_cancel', 'Cancel')}
             </Button>
-            <Button variant="danger" class={`${DECISION_BTN} hover:brightness-106`} disabled={requestBusy()} onClick={() => void confirmRejectRequest()}>
+            <Button variant="danger-solid" class={`${DECISION_BTN} hover:brightness-106`} disabled={requestBusy()} onClick={() => void confirmRejectRequest()}>
               {t('request_btn_reject_confirm', 'Reject request')}
             </Button>
           </div>

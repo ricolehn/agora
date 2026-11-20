@@ -248,7 +248,7 @@ function PersonCard(props: { person: Person }) {
         }}
       >
         <div class="flex w-full items-center justify-start gap-3">
-          <Avatar uid={props.person.uid || props.person.data?.uid} name={props.person.name} size={42} class="!text-[0.82rem]" />
+          <Avatar uid={props.person.uid || props.person.data?.uid} name={props.person.name} size={42} initialsClass="text-[0.82rem]" />
           <div class="flex min-w-0 flex-auto flex-col gap-0.5">
             <div class="line-clamp-2 text-[0.98rem] leading-[1.25] font-[650] tracking-[-0.01em] [overflow-wrap:anywhere] text-text">{props.person.name}</div>
             <span class="text-[0.8rem] font-medium text-text-secondary">{statusLabel(currentStatus(props.person))}</span>
@@ -356,7 +356,7 @@ function UnlinkedUsers() {
   const options = createMemo(() => people().filter(p => !p.uid));
   return (
     <Show when={unlinked().length && canManageFinances()}>
-      <Card class="mb-5" title={t('unlinked_title', '🧩 Unlinked Users ({count})', { count: unlinked().length })}>
+      <Card title={t('unlinked_title', '🧩 Unlinked Users ({count})', { count: unlinked().length })}>
         <For each={unlinked()}>{user => <UnlinkedUser user={user} options={options()} />}</For>
       </Card>
     </Show>

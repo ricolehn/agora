@@ -12,7 +12,7 @@ import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/feedback';
 import { Input, Select } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
-import { Modal } from '../../../ui/Modal';
+import { CloseButton, Modal } from '../../../ui/Modal';
 import {
   REPORT_TIER_HINTS, REPORT_TYPE_LABELS, bookingsCount, customFrom, customTo, downloadReportPdf, generating, personFrom, personTo,
   reportKey, reportPeople, reportPersonId, reportStatus, reportTier, reportTotals, reportTransactions, reportType, reportYear, reportYears,
@@ -509,14 +509,7 @@ function ReportContent() {
             {t('report_modal_subtitle', 'Choose the period and level of detail – the preview shows the PDF.')}
           </span>
         </span>
-        <button
-          type="button"
-          class="flex shrink-0 items-center justify-center bg-transparent px-1 text-[1.8rem] leading-none text-text-secondary transition-colors duration-200 focus:text-danger focus:outline-none focus-visible:rounded focus-visible:outline-2 focus-visible:outline-danger"
-          aria-label={t('btn_close', 'Close')}
-          onClick={() => closeModal('export-report-modal')}
-        >
-          &times;
-        </button>
+        <CloseButton onClick={() => closeModal('export-report-modal')} />
       </div>
 
       <div class="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg md:flex-row md:overflow-hidden">

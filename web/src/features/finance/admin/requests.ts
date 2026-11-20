@@ -1,6 +1,7 @@
 // Members' requests (a payment, a status change, an expense, a standing order): how they read, and the decision on
 // them. The request dialog (RequestDetailDialog.tsx) and the lists of open requests show them.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
+import { flushNow } from '../../../app/flush';
 import { db, get, ref, update } from '../../../app/api';
 import { findPerson, loadData, mutateCollection, mutatePerson, requests, type FinanceRequest } from '../../../app/data';
 import { euro, formatDateFast, getStatusLabels, t, type MemberStatus } from '../../../app/i18n';
@@ -77,13 +78,13 @@ export function openRequestDetail(reqId: string) {
   setRejectFormOpen(false);
   setRejectReason('');
   setRequestBusy(false);
-  flush();
+  flushNow();
   openModal('request-detail-modal');
 }
 
 export function toggleRejectForm(open: boolean) {
   setRejectFormOpen(open);
-  flush();
+  flushNow();
 }
 
 // Another treasurer (or the same one on another device) may have decided the request since this screen was loaded
