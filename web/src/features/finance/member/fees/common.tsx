@@ -87,7 +87,7 @@ export function FeeCardHead(props: { icon: JSX.Element; tone: 'success' | 'warni
         {props.icon}
       </span>
       <div class="min-w-0">
-        <h3 class="m-0 mb-[3px] text-base font-bold tracking-[-0.01em] text-text">{props.title}</h3>
+        <h3 class="m-0 mb-[3px] text-[1rem] font-bold tracking-[-0.01em] text-text">{props.title}</h3>
         <p class="m-0 text-[0.84rem] leading-normal text-text-secondary">{props.desc}</p>
       </div>
     </div>
