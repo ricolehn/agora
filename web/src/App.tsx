@@ -16,10 +16,11 @@ export function App() {
         <Show when={isAuthenticated()}>
           <Shell />
         </Show>
-        <Show when={authView() !== 'none'}>
-          <Login />
-        </Show>
       </div>
+      {/* The sign-in stands on its own: a visitor's shared event (a dialog) can be open behind it */}
+      <Show when={authView() !== 'none'}>
+        <Login />
+      </Show>
       <For each={rootComponents}>{component => <Dynamic component={component} />}</For>
       <LoadingOverlay />
       <Toast />
