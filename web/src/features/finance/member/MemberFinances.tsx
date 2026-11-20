@@ -173,9 +173,9 @@ const ACTIONS: Array<{ kind: string; color: string; title: [string, string]; ico
   }
 ];
 
-function RequestActions() {
+function RequestActions(props: { class?: string }) {
   return (
-    <section class="mt-[22px] mb-6" aria-labelledby="req-actions-title">
+    <section class={['mt-[22px] mb-6', props.class]} aria-labelledby="req-actions-title">
       <h2 id="req-actions-title" class="mb-2.5 ml-0.5 text-[1.05rem] font-bold tracking-[-0.015em] text-text">
         {t('req_actions_title', 'What would you like to submit?')}
       </h2>
@@ -261,12 +261,12 @@ function MyRequestRow(props: { req: FinanceRequest }) {
   );
 }
 
-function MyRequests() {
+function MyRequests(props: { class?: string }) {
   const [showAll, setShowAll] = createSignal(false);
   const mine = createMemo(() => (currentUser() ? requests().filter(isOwnRequest).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)) : []));
   const shown = () => (showAll() ? mine() : mine().slice(0, MY_REQUESTS_SHOWN));
   return (
-    <div id="user-requests-list" class="mb-[22px]">
+    <div id="user-requests-list" class={['mb-[22px]', props.class]}>
       <Show
         when={mine().length > 0}
         fallback={
@@ -305,12 +305,15 @@ function MyRequests() {
   );
 }
 
+// Wide screens: status, actions and requests on the left, the history on the right
+const LEFT = 'min-w-0 min-[1100px]:col-start-1';
+
 /** The members' finances tab. */
 export function MemberFinancesPage() {
   const nonPaying = () => currentUser()?.pays === false;
   return (
-    <>
-      <div id="user-finances-status-card" class="mb-5">
+    <div class="min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] min-[1100px]:items-start min-[1100px]:gap-x-6">
+      <div id="user-finances-status-card" class={['mb-5', LEFT]}>
         <Show when={dataLoaded()}>
           <Switch fallback={<NoMemberRecord />}>
             <Match when={nonPaying()}>
@@ -320,9 +323,9 @@ export function MemberFinancesPage() {
           </Switch>
         </Show>
       </div>
-      <RequestActions />
-      <MyRequests />
-      <Card title={t('user_history_title', 'History')}>
+      <RequestActions class={LEFT} />
+      <MyRequests class={LEFT} />
+      <Card title={t('user_history_title', 'History')} class="min-w-0 min-[1100px]:col-start-2 min-[1100px]:row-span-3 min-[1100px]:row-start-1">
         <div id="user-payment-history">
           <Show when={dataLoaded() && !nonPaying()}>
             <Show
@@ -334,6 +337,6 @@ export function MemberFinancesPage() {
           </Show>
         </div>
       </Card>
-    </>
+    </div>
   );
 }
