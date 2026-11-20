@@ -184,6 +184,8 @@ export function FeeResetDialog() {
         <Button
           id="btn-fee-reset-confirm"
           variant="danger"
+          // Only once the day is typed and the password given: the full red of a dangerous step
+          class="enabled:bg-danger enabled:text-white"
           disabled={!canConfirm()}
           busy={confirmBusy()}
           busyText={t('setup_btn_saving', 'Saving...')}

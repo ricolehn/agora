@@ -302,7 +302,7 @@ function RequestHeadBadge() {
           <span class="max-md:hidden">{t('btn_back', 'Back')}</span>
         </Button>
       </Show>
-      <span class={['flex size-9 shrink-0 items-center justify-center rounded-[9px] text-[1.1rem]', head().tint]}>{head().emoji}</span>
+      <span class={['flex size-9 shrink-0 items-center justify-center rounded-[9px] text-[1.1rem] leading-[normal]', head().tint]}>{head().emoji}</span>
     </>
   );
 }
