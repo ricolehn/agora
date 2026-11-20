@@ -1,6 +1,6 @@
 // The events and the own duty requests, shared by the events tab, the event dialog, the plan, sharing and the start
 // page (owner: the events port; extend it there). Loaded with the data, on the events tab and on a live update.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { api } from '../../app/api';
 import { loadSystemGroups, userInGroup } from '../../app/groups';
 import { t } from '../../app/i18n';
@@ -8,6 +8,7 @@ import { whenPicturesReady } from '../../app/pictures';
 import { itemSlug } from '../../app/router';
 import { currentUid, currentUser } from '../../app/session';
 import { getTodayStr } from '../../app/util';
+import { flushNow } from '../../app/flush';
 
 export type AppEvent = {
   id: string;
@@ -56,12 +57,12 @@ export async function loadEventsData(): Promise<void> {
       setEventsLoadError(t('events_load_failed', 'Events could not be loaded'));
     }
     setMyDutyRequests(requestsRes?.ok ? await requestsRes.json() : []);
-    flush();
+    flushNow();
     for (const fn of afterLoad) fn();
   } catch (err) {
     console.warn('Failed to load events:', err);
     if (!eventsLoaded()) setEventsLoadError(t('error_connection', 'Connection error'));
-    flush();
+    flushNow();
   }
 }
 

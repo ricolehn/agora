@@ -154,7 +154,41 @@
 }
 @theme {
     --breakpoint-md: 769px;
+
+    /* Entrance of a page (tab), as before: from the side the tab lies on */
+    --animate-slide-in-right: slideInRight 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    --animate-slide-in-left: slideInLeft 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    /* The grey bar of something that loads (ui/feedback Skeleton) and a field that is missing (ui/form invalid) */
+    --animate-skeleton: skeleton-loading 2s ease-in-out infinite;
+    --animate-shake: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
+
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* weak:x - a default that any other class on the element overrides (zero specificity). The shared components use it
+   for what callers often adjust (outer margins, corners), so <Card class="mb-0"> simply wins. */
+@custom-variant weak (:where(&));
+/* The header slides away while scrolling down (shell): sticky heads inside pages follow it,
+   e.g. "top-[68px] header-hidden:top-0" */
+@custom-variant header-hidden (:where([data-header='hidden']) &);
+@custom-variant header-shown (:where([data-header='shown']) &);
 
 /* --- Base: what every element had before (no visible scrollbars, no tap flash, crisp type) --- */
 @layer base {
@@ -169,7 +203,14 @@
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;
+        /* The text metrics of before: the browser's normal line height (Tailwind's preflight would make it 1.5) */
+        line-height: normal;
     }
+    /* Form controls, scrollbars and the SVG logo in <img> follow the app's theme, not only the system's */
+    :root[data-theme="dark"] { color-scheme: dark; }
+    :root[data-theme="light"] { color-scheme: light; }
+    /* The browser's own placeholder grey, as before (the preflight would tint it with the text colour) */
+    ::placeholder { color: #757575; opacity: 1; }
     body {
         background-color: var(--bg);
         color: var(--text);

@@ -1,10 +1,7 @@
-// Entry points of the songbook other parts call (owner: the songbook port). Stubs until ported.
-import { createSignal } from 'solid-js';
-
-export type Song = { id: string; title: string; key?: string; content?: string; artist?: string; [key: string]: any };
-const [songs, setSongs] = createSignal<Song[]>([]);
-/** The songs (loaded with loadSongs; the duty plan finds songs while typing). */
-export { songs, setSongs };
-export async function loadSongs(): Promise<void> {}
+// Entry points of the songbook other parts call (the plan of an event finds songs while typing and opens a song of
+// the order of service in its planned key).
+export type { Song } from './store';
+/** The songs, sorted by title (loaded with loadSongs; the duty plan finds songs while typing). */
+export { songs, setSongs } from './store';
 /** Shows a song (song-view-modal); steps: semitones to transpose (the key the plan asks for). */
-export function openSong(_id: string, _opts: { steps?: number } = {}): void {}
+export { loadSongs, openSong } from './view';

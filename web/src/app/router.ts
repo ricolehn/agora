@@ -7,7 +7,7 @@
 //
 // Features plug in through the hooks below: what happens when their tab opens, their part of the address, how a
 // deeper address opens (an event, a song, a chat), and what "back" means inside them.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { FEATURES } from './config';
 import { consumeProgrammaticBack, programmaticBack } from './history';
 import { closeModal, onModalChange, topModal } from './modals';
@@ -16,6 +16,7 @@ import {
 } from './session';
 import { HOME_TAB, HUB_TABS, NAV_ORDER, TAB_PATHS, type TabId } from './tabs';
 import { getTodayStr, slugify } from './util';
+import { flushNow } from './flush';
 
 export { HOME_TAB, HUB_TABS, type TabId };
 
@@ -158,7 +159,7 @@ export function switchTab(requested: TabId | string, source?: 'history' | 'nav')
   setTabSlide(currentIndex > -1 && targetIndex > -1 && targetIndex < currentIndex ? 'left' : 'right');
   setActiveTabSignal(tab);
   setTabSwitchCount(n => n + 1);
-  flush();
+  flushNow();
   revealHeaderHook?.();
   if (source !== 'history' && isAuthenticated()) syncTabHistory(tab, previousTab);
   for (const fn of enterHooks.get(tab) || []) fn();
@@ -248,6 +249,8 @@ export function syncUrl() {
   const path = routePath();
   if (window.location.pathname !== path || window.location.hash) history.replaceState(history.state, '', path + window.location.search);
 }
+// Opening and closing dialogs changes the address (an open event, a song); a plain callback, not a reactive scope
+// eslint-disable-next-line solid/reactivity
 onModalChange(syncUrl);
 
 const decodePart = (part: string) => {

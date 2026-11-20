@@ -129,11 +129,11 @@ describe('pathConfig', () => {
     }), path.join(__dirname, '..', 'html'));
   });
 
-  test('resolveFrontendDirectory falls back to the repository root for local development', () => {
+  test('resolveFrontendDirectory falls back to the built web app for local development', () => {
     assert.equal(resolveFrontendDirectory({
       env: {},
       existsSync: () => false
-    }), path.join(__dirname, '..'));
+    }), path.join(__dirname, '..', 'web', 'dist'));
   });
 });
 
@@ -471,7 +471,7 @@ describe('svgValidation', () => {
   }
 
   test('the bundled default logo passes', () => {
-    assert.equal(isSafeSvg(fs.readFileSync(path.join(__dirname, '..', 'assets', 'church-logo.svg'), 'utf8')), true);
+    assert.equal(isSafeSvg(fs.readFileSync(path.join(__dirname, '..', 'web', 'public', 'assets', 'church-logo.svg'), 'utf8')), true);
   });
 });
 

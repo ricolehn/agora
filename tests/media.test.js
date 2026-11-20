@@ -206,7 +206,7 @@ describe('Nextcloud answers (backend/nextcloud.js)', () => {
 });
 
 describe('media helpers of the web app (assets/media.js)', () => {
-  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'assets', 'media.js')).href);
+  const load = () => import(require('url').pathToFileURL(path.join(REPO_ROOT, 'web', 'src', 'lib', 'media.js')).href);
 
   test('breadcrumb, parent and page addresses', async () => {
     const m = await load();

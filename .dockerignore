@@ -6,3 +6,4 @@ backend/.env
 backend/uploads
 **/firebase-service-account.json
 **/*firebase-adminsdk*.json
+web/dist

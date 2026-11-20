@@ -5,7 +5,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop, FRONTEND_FIXTURE } = require('./helpers');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
 const PASSWORD = 'test-Passwort-1';
@@ -33,7 +33,7 @@ async function startBackend(root, pbPort, { entry = CURRENT_SERVER, port, env = 
     POCKETBASE_BIN,
     POCKETBASE_DIR: path.join(root, 'pb'),
     DATA_DIR: path.join(root, 'data'),
-    FRONTEND_DIR: REPO_ROOT,
+    FRONTEND_DIR: FRONTEND_FIXTURE,
     AGORA_FEATURE_POLLS: '1',
     ...env
   });

@@ -5,7 +5,7 @@ const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { REPO_ROOT, BACKEND_DIR, assertHas, freePort, waitFor, start, SERVER_ENTRY } = require('./helpers');
+const { REPO_ROOT, BACKEND_DIR, assertHas, freePort, waitFor, start, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
 const { startFakeNextcloud } = require('./fakeNextcloud');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
@@ -153,7 +153,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
       POCKETBASE_BIN,
       POCKETBASE_DIR: pbDir,
       DATA_DIR: path.join(dataRoot, 'data'),
-      FRONTEND_DIR: REPO_ROOT,
+      FRONTEND_DIR: FRONTEND_FIXTURE,
       NODE_ENV: 'test',
       // Polls are switched off by default; their API is tested here all the same
       AGORA_FEATURE_POLLS: '1',
