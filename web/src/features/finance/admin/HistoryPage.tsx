@@ -72,7 +72,10 @@ function TransactionRow(props: { tx: Transaction }) {
     <div
       class={[
         TRANS_ITEM,
-        'cursor-pointer transition-[transform,box-shadow,border-color,background-color] duration-250 ease-app hover:-translate-y-px hover:shadow-card-md active:scale-[0.985] active:duration-100'
+        'cursor-pointer transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+        // A quiet lift on devices that hover, an honest press everywhere
+        '[@media(hover:hover)]:transition-[transform,box-shadow,border-color,background-color] [@media(hover:hover)]:duration-250 [@media(hover:hover)]:ease-app',
+        'hover:-translate-y-px hover:shadow-card-md active:scale-[0.985] active:duration-100'
       ]}
       role="button"
       tabindex="0"
@@ -175,7 +178,7 @@ function BalanceHero() {
     <div
       class={[
         'relative mb-[25px] cursor-default overflow-hidden rounded-[28px] bg-gradient-primary px-6 py-5 text-center text-white transition-transform duration-200 active:scale-[0.98]',
-        'shadow-[0_1px_2px_rgba(48,38,26,0.08),0_12px_28px_-16px_rgba(48,38,26,0.35)]',
+        'shadow-[0_1px_2px_rgba(48,38,26,0.08),0_12px_28px_-16px_rgba(48,38,26,0.35)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_14px_30px_-16px_rgba(0,0,0,0.75)]',
         "before:absolute before:-top-[50px] before:-left-[50px] before:size-[150px] before:rounded-full before:bg-white/10 before:content-['']",
         "after:absolute after:-right-5 after:-bottom-5 after:size-[100px] after:rounded-full after:bg-white/15 after:content-['']"
       ]}
