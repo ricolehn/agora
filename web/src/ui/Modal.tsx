@@ -51,7 +51,7 @@ export interface ModalProps {
   panelClass?: string;
   /** Replaces the dimmed, blurred backdrop (with its centring): e.g. 'bg-bg items-stretch justify-center'. */
   backdropClass?: string;
-  /** A tap on the backdrop closes the dialog; on by default, off with a custom backdrop (full pages). */
+  /** A tap on the backdrop closes the dialog: off by default, as in the previous app (a half-filled form stays). */
   closeOnBackdrop?: boolean;
   /** The id of the element that names the dialog, for plain and page dialogs with their own heading. */
   labelledBy?: string;
@@ -220,7 +220,8 @@ export function Modal(props: ModalProps) {
           ]}
           style={{ 'z-index': String(open() ? modalLayer(props.id) : 2000) }}
           onClick={e => {
-            if (e.target === e.currentTarget && (props.closeOnBackdrop ?? !backdrop())) close();
+            // Like the previous app: a tap beside the panel does not close it (a half-filled form stays); opt in per dialog
+            if (e.target === e.currentTarget && props.closeOnBackdrop === true) close();
           }}
         >
           <div

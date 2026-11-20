@@ -2,8 +2,9 @@
 // translations that may lag behind: missing texts fall back to English. Users get their system language by default.
 //
 // t(key, fallback, params) reads the loaded texts reactively: used in JSX, a text follows a change of the language.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import en from '../locales/en.json';
+import { flushNow } from './flush';
 
 export const SUPPORTED_LANGUAGES = ['en', 'de'] as const;
 export type Lang = (typeof SUPPORTED_LANGUAGES)[number];
@@ -61,7 +62,7 @@ export async function loadLanguage(lang: string): Promise<void> {
     setTranslations(withTranslation(en as Record<string, string>, own));
     setUiLang(resolved);
     setLangSetting(lang);
-    flush();
+    flushNow();
     document.documentElement.lang = resolved;
     try {
       localStorage.setItem('app_lang', lang);

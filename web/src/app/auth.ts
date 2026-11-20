@@ -1,6 +1,6 @@
 // Signing in and out. The compat layer restores the session on start (/api/auth/me) and reports every change of the
 // signed-in account here; this module loads the profile and the data, or shows the sign-in.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import {
   api, apiJson, auth, createUserWithEmailAndPassword, db, get, onAuthStateChanged, ref, signInWithEmailAndPassword, signOut,
   updatePassword
@@ -13,6 +13,7 @@ import { resetRouting } from './router';
 import { currentUid, currentUser, patchCurrentUser, setCurrentUser, setIsAuthenticated, type User } from './session';
 import { hideLoading, setLoadingMessage, showLoading } from './shell';
 import { alertMessage, confirmAction, showToast } from './toast';
+import { flushNow } from './flush';
 
 // --- The sign-in screen ---
 export type AuthView = 'none' | 'login' | 'register';
@@ -120,7 +121,7 @@ export function startAuth() {
   // Nobody signed in on this device and no shared event's link: the sign-in right away, without waiting for the server
   if (!storedSessionHint() && !/[?&](share|guest)=/.test(window.location.search)) {
     showAuthForm(true);
-    flush();
+    flushNow();
     removeBootScreen();
   }
   onAuthStateChanged(auth, async user => {
@@ -128,7 +129,7 @@ export function startAuth() {
     if (user) {
       setAuthView('none');
       showLoading(t('auth_loading_profile', 'Loading profile...'));
-      flush();
+      flushNow();
       removeBootScreen();
       setLoggedInFlag(true);
       // /auth/me carries the whole profile plus the computed fields (permissions, mentor status). Opening the app
@@ -160,10 +161,10 @@ export function startAuth() {
       } else {
         showAuthForm(true);
       }
-      flush();
+      flushNow();
       removeBootScreen();
     }
-    flush();
+    flushNow();
   });
 }
 

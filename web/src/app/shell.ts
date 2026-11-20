@@ -1,8 +1,9 @@
 // State of the app's frame that features may touch: the loading screen, the header that slides away while scrolling,
 // the scrolling page container, the profile menu, the floating action menu and the sign-in over a visitor's page.
-import { createSignal, flush } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { activeTab, setRevealHeaderHook } from './router';
 import type { TabId } from './tabs';
+import { flushNow } from './flush';
 
 // --- Loading screen (covers the app while data loads after signing in) ---
 // Signed in before (or a shared event's link): it shows from the start, like the boot screen of index.html, until
@@ -60,13 +61,13 @@ export function openProfileMenu(button: HTMLElement) {
   const box = button.getBoundingClientRect();
   setProfileMenuPosition({ top: Math.max(4, box.top - 4), right: Math.max(12, document.documentElement.clientWidth - box.right - 4) });
   setProfileMenuOpen(true);
-  flush();
+  flushNow();
 }
 /** Closes the profile menu; returnFocus: the focus goes back to the profile button (Escape). */
 export function closeProfileMenu(returnFocus = false) {
   if (!profileMenuOpen()) return;
   setProfileMenuOpen(false);
-  flush();
+  flushNow();
   if (returnFocus) profileButton?.focus();
 }
 
