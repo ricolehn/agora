@@ -131,35 +131,42 @@ function ReceiptCard(props: { url: string; filename: string }) {
   );
 }
 
+type ReceiptUrls = { status: 'loading' | 'done' | 'error'; urls: string[] };
+
 /** Object URLs of [filenames] while the caller is mounted ('loading' until all are there, 'error' if one failed). */
-export function useReceiptUrls(filenames: () => string[]) {
-  const [state, setState] = createSignal<{ status: 'loading' | 'done' | 'error'; urls: string[] }>({ status: 'loading', urls: [] });
+export function useReceiptUrls(filenames: () => string[]): () => ReceiptUrls {
   // The same names (as text) do not load again when the record is replaced by an equal one
   const key = createMemo(() => JSON.stringify(filenames()));
+  const [loaded, setLoaded] = createSignal<(ReceiptUrls & { key: string }) | null>(null);
   createEffect(key, json => {
     const names: string[] = JSON.parse(json);
     const urls: string[] = [];
     let current = true;
-    setState({ status: names.length ? 'loading' : 'done', urls: [] });
-    void (async () => {
-      try {
-        for (const name of names) {
-          const url = await fetchReceiptImage(name);
-          if (!current) return URL.revokeObjectURL(url);
-          urls.push(url);
+    if (names.length) {
+      void (async () => {
+        try {
+          for (const name of names) {
+            const url = await fetchReceiptImage(name);
+            if (!current) return URL.revokeObjectURL(url);
+            urls.push(url);
+          }
+          setLoaded({ key: json, status: 'done', urls: [...urls] });
+        } catch (err) {
+          console.error(err);
+          if (current) setLoaded({ key: json, status: 'error', urls: [] });
         }
-        setState({ status: 'done', urls: [...urls] });
-      } catch (err) {
-        console.error(err);
-        if (current) setState({ status: 'error', urls: [] });
-      }
-    })();
+      })();
+    }
     return () => {
       current = false;
       urls.forEach(url => URL.revokeObjectURL(url));
     };
   });
-  return state;
+  return () => {
+    const result = loaded();
+    if (result && result.key === key()) return result;
+    return { status: filenames().length ? 'loading' : 'done', urls: [] };
+  };
 }
 
 export interface ReceiptListProps {

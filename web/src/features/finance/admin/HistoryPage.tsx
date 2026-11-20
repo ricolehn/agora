@@ -192,14 +192,14 @@ export function HistoryPage() {
   return (
     <div>
       <Show when={pendingRequests().length}>
-        <div class="mb-5">
+        <div id="admin-requests-inline" class="mb-5">
           <RequestsCard context="fin" items={pendingRequests()} total={pendingRequests().length} />
         </div>
       </Show>
       <BalanceHero />
       <div class="mb-5 flex items-center justify-between">
         <h2 class="text-[1.2rem] font-extrabold">{t('nav_history', 'History')}</h2>
-        <Button variant="secondary" size="small" class="!gap-1.5" onClick={() => void openExportReport()}>
+        <Button id="btn-open-export-report" variant="secondary" size="small" class="!gap-1.5" onClick={() => void openExportReport()}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />

@@ -390,7 +390,7 @@ function ReportPage(props: { selection: ReturnType<typeof selectReportTransactio
     <>
       <div class="-mx-12 mb-[34px] h-2 bg-[linear-gradient(90deg,#06b6d4,#10b981)]" />
       <div class="preview-header flex items-center justify-between border-b border-[#e2e8f0] pb-[18px] mb-[26px]">
-        <div class="flex items-center gap-3 text-[20px] font-extrabold text-[#0f172a]">
+        <div class="flex items-center gap-3 text-[20px] font-extrabold text-[#1e3a8a]">
           <img class="size-10 object-contain" src="/assets/church-logo.svg" alt="" onError={e => e.currentTarget.remove()} />
           <span>{appName()}</span>
         </div>
@@ -470,9 +470,10 @@ function Placeholder(props: { icon: JSX.Element; text: string; danger?: boolean 
 
 const placeholderIcon = (icon: JSX.Element) => <div class="mb-[15px] text-[0px] text-[#d6d3d1]">{icon}</div>;
 
-export function ReportDialog() {
-  let viewport: HTMLDivElement | undefined;
-  let canvas: HTMLDivElement | undefined;
+/** The dialog's content: mounted while it is open (the page is measured and scaled while it is on screen). */
+function ReportContent() {
+  let viewport!: HTMLDivElement;
+  let canvas!: HTMLDivElement;
   const [scale, setScale] = createSignal(1);
   const [pageHeight, setPageHeight] = createSignal(1120);
   const selection = createMemo(selectReportTransactions);
@@ -480,26 +481,18 @@ export function ReportDialog() {
   const count = () => (ready() ? selection().filtered.length : 0);
 
   // The page keeps its A4 width and is scaled down to the space there is
-  const resize = () => {
-    if (!viewport || !canvas) return;
-    setScale(Math.min(1, (viewport.clientWidth - 40) / PAGE_WIDTH));
-    setPageHeight(canvas.offsetHeight || 1120);
-  };
-  const observe = (el: HTMLElement) => {
-    onSettled(() => {
-      const observer = new ResizeObserver(resize);
-      observer.observe(el);
-      return () => observer.disconnect();
+  onSettled(() => {
+    const observer = new ResizeObserver(() => {
+      setScale(Math.min(1, (viewport.clientWidth - 40) / PAGE_WIDTH));
+      setPageHeight(canvas.offsetHeight || 1120);
     });
-  };
+    observer.observe(viewport);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  });
 
   return (
-    <Modal
-      id="export-report-modal"
-      plain
-      maxWidth="1240px"
-      class="!h-[100dvh] !max-h-[100dvh] !w-screen !rounded-none md:!h-[88vh] md:!max-h-[88vh] md:!w-[90vw] md:!rounded-[24px]"
-    >
+    <>
       <div class="flex items-center gap-3.5 border-b border-border-light bg-surface px-4 py-3.5 md:px-[22px] md:py-[18px]">
         <span class="inline-flex size-[42px] shrink-0 items-center justify-center rounded-[13px] bg-gradient-primary text-white">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -528,10 +521,7 @@ export function ReportDialog() {
       <div class="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg md:flex-row md:overflow-hidden">
         <ConfigPanel onTypeChange={() => viewport && (viewport.scrollTop = 0)} />
         <div
-          ref={el => {
-            viewport = el;
-            observe(el);
-          }}
+          ref={viewport}
           class="flex flex-1 flex-col items-center justify-start gap-3 overflow-visible bg-bg px-4 pt-3.5 pb-5 md:overflow-x-hidden md:overflow-y-auto md:px-6 md:pt-[18px] md:pb-7"
         >
           <div class="flex items-center justify-between self-stretch text-[0.72rem] font-extrabold tracking-[0.06em] text-text-secondary uppercase">
@@ -548,10 +538,7 @@ export function ReportDialog() {
             >
               <div
                 id="report-print-preview"
-                ref={el => {
-                  canvas = el;
-                  observe(el);
-                }}
+                ref={canvas}
                 class="relative box-border min-h-[1120px] bg-white px-12 pb-10 font-sans text-[13px] leading-[1.5] text-[#334155] [color-scheme:light]"
               >
                 <Switch>
@@ -601,6 +588,19 @@ export function ReportDialog() {
           </Button>
         </div>
       </div>
+    </>
+  );
+}
+
+export function ReportDialog() {
+  return (
+    <Modal
+      id="export-report-modal"
+      plain
+      maxWidth="1240px"
+      class="!h-[100dvh] !max-h-[100dvh] !w-screen !rounded-none md:!h-[88vh] md:!max-h-[88vh] md:!w-[90vw] md:!rounded-[24px]"
+    >
+      <ReportContent />
     </Modal>
   );
 }

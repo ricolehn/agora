@@ -2,7 +2,7 @@
 // phones), up to date on the right - searchable by name. A member's card opens to the fee state, the standing orders,
 // the actions of the treasury and the history.
 import type { JSX } from '@solidjs/web';
-import { For, Show, createEffect, createMemo, createSignal } from 'solid-js';
+import { For, Show, createMemo, createSignal } from 'solid-js';
 import { db, ref, update } from '../../../app/api';
 import { dataLoaded, findPerson, people, replacePersonInMemory, settings, users, type Person } from '../../../app/data';
 import { euro, formatDateFast, getStatusLabels, t, translateStatusText, type MemberStatus } from '../../../app/i18n';
@@ -220,10 +220,7 @@ function PersonDetails(props: { person: Person }) {
 function PersonCard(props: { person: Person }) {
   const open = () => openPersonId() === props.person.id;
   // The details are drawn the first time the card opens (most cards are never opened)
-  const [drawn, setDrawn] = createSignal(false);
-  createEffect(open, isOpen => {
-    if (isOpen) setDrawn(true);
-  });
+  const drawn = createMemo<boolean>(prev => !!prev || open());
   const meta = () => statusMeta(props.person);
   const covered = () => standingOrderCovers(meta());
   const toggle = () => setOpenPersonId(open() ? null : props.person.id);
@@ -387,7 +384,7 @@ export function MembersPage() {
       />
       <UnlinkedUsers />
       <Show when={paying().length}>
-        <div class="flex flex-col gap-5 md:grid md:grid-cols-2 md:items-start md:gap-[30px]">
+        <div id="peopleList" class="flex flex-col gap-5 md:grid md:grid-cols-2 md:items-start md:gap-[30px]">
           <PeopleColumn people={overdue()} title={t('overdue_header', 'Overdue')} color="var(--danger)" />
           <PeopleColumn people={current()} title={t('current_members_header', 'Current Members')} color="var(--success)" />
         </div>
