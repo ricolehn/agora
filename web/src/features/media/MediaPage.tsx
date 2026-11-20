@@ -8,7 +8,6 @@ import { mediaStatus } from '../../app/data';
 import { t, uiLang, uiLocale } from '../../app/i18n';
 import { anyModalOpen } from '../../app/modals';
 import { activeTab } from '../../app/router';
-import { headerHidden } from '../../app/shell';
 import { Button } from '../../ui/Button';
 import { Spinner } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
@@ -90,7 +89,7 @@ function MediaTop() {
       class={[
         'sticky z-[7] -mx-2 mb-1.5 rounded-b-2xl bg-[var(--frost-bg)] p-2 [-webkit-backdrop-filter:var(--frost)] [backdrop-filter:var(--frost)]',
         'transition-[top] duration-[280ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
-        headerHidden() ? 'top-0 md:top-[calc(0px-var(--desktop-header-offset))]' : 'top-[var(--mobile-header-h,68px)] md:top-[calc(72px-var(--desktop-header-offset))]'
+        'top-[var(--mobile-header-h,68px)] header-hidden:top-0 md:top-[calc(72px-var(--desktop-header-offset))] md:header-hidden:top-[calc(0px-var(--desktop-header-offset))]'
       ]}
     >
       <MediaHead />

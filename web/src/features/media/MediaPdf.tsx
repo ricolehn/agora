@@ -6,10 +6,10 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { API } from '../../app/api';
 import { t, uiLocale } from '../../app/i18n';
 import { onModalClosed, openModal } from '../../app/modals';
+import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { fileUrl, formatSize } from '../../lib/media.js';
-import { ZoomIcon } from './icons';
-import { VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
+import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
 import type { MediaFile } from './types';
 
 type PdfJs = typeof import('pdfjs-dist');
@@ -178,7 +178,7 @@ export function MediaPdf() {
     return [pages === 1 ? t('media_pdf_pages_one', '1 page') : t('media_pdf_pages', '{count} pages', { count: pages }), size].join(' · ');
   };
   return (
-    <Modal id={ID} plain class={VIEWER_PANEL}>
+    <Modal id={ID} plain panelClass={VIEWER_PANEL} backdropClass={VIEWER_BACKDROP} labelledBy="media-pdf-name">
       <Show when={file()}>
         {current => (
           <div class="relative flex size-full flex-col text-[#f5f5f4]">
@@ -186,10 +186,10 @@ export function MediaPdf() {
               <Show when={!native()}>
                 <div id="media-pdf-zoom" class="flex gap-1.5">
                   <button type="button" class={viewerButton()} aria-label={t('media_zoom_out', 'Zoom out')} onClick={() => zoomPdf(-1)}>
-                    <ZoomIcon out />
+                    <Icon name="zoomOut" size={20} strokeWidth={2} />
                   </button>
                   <button type="button" class={viewerButton()} aria-label={t('media_zoom_in', 'Zoom in')} onClick={() => zoomPdf(1)}>
-                    <ZoomIcon />
+                    <Icon name="zoomIn" size={20} strokeWidth={2} />
                   </button>
                 </div>
               </Show>

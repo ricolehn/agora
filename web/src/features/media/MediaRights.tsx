@@ -265,7 +265,7 @@ function RightsDialog() {
       title={t('media_rights_title', 'Folder rights')}
       subtitle={<span class="font-mono text-[0.8rem] break-all">{folderLabel(rights()?.path ?? '')}</span>}
       maxWidth="560px"
-      bodyClass="flex flex-col gap-3.5"
+      bodyClass="gap-3.5"
       footer={<SheetFooter modal={RIGHTS_ID} id="media-rights-save" label={t('btn_save', 'Save')} busy={saving()} onConfirm={() => void saveRights()} />}
     >
       <p class="m-0 mb-3.5 text-[0.82rem] leading-[1.5] text-text-secondary">
@@ -319,7 +319,7 @@ function RulesDialog() {
     void openMediaRights(path);
   };
   return (
-    <Modal id={RULES_ID} title={t('media_rules_overview', 'All folder rights')} maxWidth="460px" bodyClass="flex flex-col gap-3.5">
+    <Modal id={RULES_ID} title={t('media_rules_overview', 'All folder rights')} maxWidth="460px" bodyClass="gap-3.5">
       <Show
         when={rules()?.rules.length}
         fallback={

@@ -8,7 +8,7 @@ import { Modal } from '../../ui/Modal';
 import { Icon } from '../../ui/Icon';
 import { fileUrl, previewUrl, viewerSize } from '../../lib/media.js';
 import { fileMeta } from './files';
-import { VIEWER_PANEL, ViewerError, ViewerTop } from './viewerChrome';
+import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerTop } from './viewerChrome';
 import type { MediaFile } from './types';
 
 const ID = 'media-player-modal';
@@ -68,7 +68,7 @@ function Player(props: { file: MediaFile }) {
 
 export function MediaPlayer() {
   return (
-    <Modal id={ID} plain class={VIEWER_PANEL}>
+    <Modal id={ID} plain panelClass={VIEWER_PANEL} backdropClass={VIEWER_BACKDROP} labelledBy="media-player-name">
       <Show when={file()}>
         {current => (
           <div class="relative flex size-full flex-col text-[#f5f5f4]">

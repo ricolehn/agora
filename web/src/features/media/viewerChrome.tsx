@@ -3,13 +3,14 @@
 import type { JSX } from '@solidjs/web';
 import { closeModal } from '../../app/modals';
 import { t } from '../../app/i18n';
-import { Button } from '../../ui/Button';
+import { buttonClass } from '../../ui/Button';
 import { Icon, type IconName } from '../../ui/Icon';
-import { downloadUrl, saveMediaLink } from './files';
+import { downloadUrl } from './files';
 import type { MediaFile } from './types';
 
-/** The dialog's panel as the whole screen (instead of a sheet). */
-export const VIEWER_PANEL = 'h-full! max-h-none! rounded-none! bg-[#0b0b0d]! text-[#f5f5f4]! shadow-none! md:max-w-none! md:rounded-none!';
+/** The dialog as the whole screen: its backdrop is the dark around what it shows, the panel fills it. */
+export const VIEWER_BACKDROP = 'items-stretch justify-stretch bg-[#0b0b0d]';
+export const VIEWER_PANEL = 'size-full';
 
 /** A round button on the dark top bar ([on]: pressed). */
 export const viewerButton = (on = false) => [
@@ -46,15 +47,15 @@ export function ViewerTop(props: { id: string; modal: string; name: string; meta
   );
 }
 
-/** What cannot be shown here: a word and the download. */
+/** What cannot be shown here: a word and the download (a link button, underlined like the old ones). */
 export function ViewerError(props: { icon: IconName; text: string; file: MediaFile; class?: string }) {
   return (
     <div class={['m-auto flex flex-col items-center gap-3 p-6 text-center text-[rgba(245,245,244,0.8)]', props.class]}>
       <Icon name={props.icon} size={34} strokeWidth={1.6} />
       <span>{props.text}</span>
-      <Button variant="secondary" size="small" onClick={() => saveMediaLink(downloadUrl(props.file), props.file.name)}>
+      <a class={[buttonClass({ variant: 'secondary', size: 'small' }), 'underline']} href={downloadUrl(props.file)} download={props.file.name}>
         {t('media_download', 'Download')}
-      </Button>
+      </a>
     </div>
   );
 }

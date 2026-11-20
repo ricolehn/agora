@@ -43,7 +43,7 @@ export function MediaFolderDialog() {
       id={ID}
       title={t('media_new_folder', 'New folder')}
       maxWidth="460px"
-      bodyClass="flex flex-col gap-3.5"
+      bodyClass="gap-3.5"
       footer={<SheetFooter modal={ID} id="media-folder-create" label={t('media_create', 'Create')} busy={creating()} onConfirm={() => void createMediaFolder()} />}
     >
       <label for="media-folder-name" class="text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase">

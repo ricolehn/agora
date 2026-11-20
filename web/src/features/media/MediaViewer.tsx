@@ -12,9 +12,8 @@ import {
   LARGEST_PREVIEW_SIZE, browserShowsOriginal, clampView, fileUrl, neighbourIndex, opensInViewer, pinchView, previewUrl, zoomAt
 } from '../../lib/media.js';
 import { fileMeta, mediaTileSize } from './files';
-import { ZoomIcon } from './icons';
 import { mediaShown } from './library';
-import { VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
+import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
 import type { MediaFile } from './types';
 
 const ID = 'media-viewer-modal';
@@ -258,7 +257,7 @@ export function MediaViewer() {
   });
   const several = () => pictures().length > 1;
   return (
-    <Modal id={ID} plain class={VIEWER_PANEL}>
+    <Modal id={ID} plain panelClass={VIEWER_PANEL} backdropClass={VIEWER_BACKDROP} labelledBy="media-viewer-name">
       <Show when={current()}>
         {file => (
           <div class="relative flex size-full flex-col text-[#f5f5f4]">
@@ -272,7 +271,7 @@ export function MediaViewer() {
                 aria-label={t('media_zoom', 'Zoom')}
                 onClick={toggleZoom}
               >
-                <ZoomIcon />
+                <Icon name="zoomIn" size={20} strokeWidth={2} />
               </button>
             </ViewerTop>
             {/* The app handles every finger on the picture itself (zoom, move, swipe): the browser must not zoom the page */}
