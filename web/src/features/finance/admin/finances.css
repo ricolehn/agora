@@ -1,0 +1,7 @@
+/* The finances tab: what utilities cannot express. */
+
+/* The PDF export (html2canvas) measures where text sits on its line with a tiny picture in a hidden box at the end of
+   the page; the base styles make pictures blocks, which moved every text of the PDF down */
+body > div[style*="visibility: hidden"] > img {
+    display: inline;
+}
