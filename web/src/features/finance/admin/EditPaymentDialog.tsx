@@ -10,7 +10,7 @@ import { confirmAction, showToast } from '../../../app/toast';
 import { isPdfReceipt, parseReceipts, safeList } from '../../../app/util';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/feedback';
-import { Field, Input } from '../../../ui/form';
+import { Field, Input, Label } from '../../../ui/form';
 import { MODAL_TINTS, Modal, ModalBody, ModalHeader, ModalSection } from '../../../ui/Modal';
 import { findPaymentIndex, parseAmount } from '../../../lib/finance.js';
 import { FeeResetNote } from './parts';
@@ -239,15 +239,23 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
         </Show>
       </ModalSection>
       <Show when={isExpense()}>
-        <ModalSection icon="📎" title={t('manage_receipts', 'Manage Receipts')}>
+        {/* Its parts sit close together, without the sections' gaps (as before) */}
+        <ModalSection icon="📎" title={t('manage_receipts', 'Manage Receipts')} class="!block">
           <div class="mb-1.5 flex flex-col gap-2">
             <For each={receipts()} fallback={<div class="text-[0.85rem] text-text-secondary">{t('no_receipts', 'No receipts available.')}</div>}>
               {name => <EditReceiptRow filename={name} />}
             </For>
           </div>
-          <Field label={t('add_receipts', 'Add Receipt(s)')} for="edit-payment-new-receipt">
-            <Input type="file" id="edit-payment-new-receipt" accept="image/*,.heic,.heif,.pdf" multiple ref={el => (newReceiptsInput = el)} />
-          </Field>
+          <Label for="edit-payment-new-receipt">{t('add_receipts', 'Add Receipt(s)')}</Label>
+          {/* The browser's own "Choose files" button, as before (the base styles strip it) */}
+          <Input
+            type="file"
+            id="edit-payment-new-receipt"
+            accept="image/*,.heic,.heif,.pdf"
+            multiple
+            class="file:[all:revert]"
+            ref={el => (newReceiptsInput = el)}
+          />
         </ModalSection>
       </Show>
       <Button block busy={saving()} busyText={t('setup_btn_saving', 'Saving...')} onClick={() => void saveEditedPayment()}>

@@ -56,7 +56,7 @@ export function ReceiptPreviewDialog() {
       <Show when={preview()}>
         {shown => (
           <div class="text-center">
-            <img src={shown().url} alt={t('receipt', 'Receipt')} class="inline max-w-full rounded-lg border border-border" />
+            <img src={shown().url} alt={t('receipt', 'Receipt')} class="inline max-w-full rounded-lg border border-border align-baseline" />
           </div>
         )}
       </Show>

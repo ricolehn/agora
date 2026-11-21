@@ -61,7 +61,8 @@ function TransactionDetails(props: { tx: Transaction; type: string }) {
   const who = () => (props.type === 'don' ? props.tx.name || props.tx.who : props.tx.who);
   const description = () => props.tx.description || props.tx.note;
   return (
-    <>
+    // One block like before (#transaction-details-content): its parts keep their own margins, not the body's gap
+    <div id="transaction-details-content">
       <div class="mb-2.5 flex flex-col items-center gap-[5px] rounded-[14px] border border-border-light bg-surface-alt px-3.5 py-3 text-center">
         <div class={['inline-flex items-center gap-[5px] rounded-[18px] px-2.5 py-[3px] text-[0.75rem] font-bold', pill()[0]]}>
           <span>{pill()[1]}</span> {typeName(props.type)}
@@ -95,7 +96,7 @@ function TransactionDetails(props: { tx: Transaction; type: string }) {
           <ReceiptList receipt={props.tx.receipt} variant="details" />
         </Show>
       </div>
-    </>
+    </div>
   );
 }
 
