@@ -3,6 +3,7 @@
 // every picture is asked for like before.
 import { createSignal } from 'solid-js';
 import { API, api, apiJson } from './api';
+import { flushNow } from './flush';
 import { currentUid } from './session';
 
 const [pictureVersions, setPictureVersions] = createSignal<Record<string, string | number> | null>(null);
@@ -17,6 +18,15 @@ export function loadPictureVersions(): Promise<void> {
     .then(data => void setPictureVersions(data || null))
     .catch(() => void setPictureVersions(null));
   return picturesReady;
+}
+
+/** A new picture of [uid] (just uploaded): its new version gives it a new address, so no list shows the old one from
+ *  the browser's cache. Applied at once (the own picture is fetched right after). Nothing while no versions are known. */
+export function setPictureVersion(uid: string, version: string | number) {
+  const versions = pictureVersions();
+  if (!versions) return;
+  setPictureVersions({ ...versions, [uid]: version });
+  flushNow();
 }
 
 /** The address of a person's picture ('' when they have none). Reactive: follows the loaded versions. */
