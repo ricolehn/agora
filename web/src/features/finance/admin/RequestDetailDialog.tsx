@@ -91,7 +91,7 @@ function RequestBody(props: { req: FinanceRequest }) {
         <FeeResetNote text={resetHint()} class="mt-3" />
       </Show>
       <Show when={data().receipt}>
-        <div class="mt-3.5 [&_img]:max-w-full [&_img]:rounded-xl">
+        <div class="mt-3.5">
           <ReceiptList receipt={data().receipt} variant="request" />
         </div>
       </Show>

@@ -118,7 +118,7 @@ function SkeletonRows() {
       {() => (
         <div class={[TRANS_ITEM, 'pointer-events-none']}>
           <div class="flex flex-1 items-center">
-            <Skeleton class="mr-4 size-10 shrink-0 !rounded-full" />
+            <Skeleton class="mr-4 size-10 shrink-0 rounded-full" />
             <div class="flex min-w-0 flex-1 flex-col gap-1.5">
               <Skeleton class="h-4 w-[140px]" />
               <Skeleton class="mt-1 h-3 w-[100px]" />

@@ -61,12 +61,14 @@ const TIERS: { tier: ReportTier; label: [string, string] }[] = [
   { tier: 'detailed', label: ['report_tier_detailed', 'Detailed'] }
 ];
 
-function Section(props: { title: string; for?: string; children: JSX.Element }) {
+/** A part of the settings. The parts that depend on the report type are blocks, as before: their title runs inline
+ *  and the controls follow without a gap. */
+function Section(props: { title: string; for?: string; block?: boolean; children: JSX.Element }) {
   const titleClass = 'text-[0.72rem] font-extrabold tracking-[0.06em] text-text-secondary uppercase';
   return (
-    <section class="flex flex-col gap-2.5">
-      <Show when={props.for} fallback={<span class={titleClass}>{props.title}</span>}>
-        <label class={titleClass} for={props.for}>
+    <section class={props.block ? 'block' : 'flex flex-col gap-2.5'}>
+      <Show when={props.for} fallback={<span class={[titleClass, { inline: !!props.block }]}>{props.title}</span>}>
+        <label class={[titleClass, { inline: !!props.block }]} for={props.for}>
           {props.title}
         </label>
       </Show>
@@ -176,7 +178,7 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
       </Section>
 
       <Show when={reportType() === 'annual'}>
-        <Section title={t('report_year', 'Year')} for="report-year-select">
+        <Section title={t('report_year', 'Year')} for="report-year-select" block>
           <Select id="report-year-select" value={reportYear()} onChange={e => setReportYear(e.currentTarget.value)}>
             <For each={reportYears()}>{year => <option value={String(year)}>{year}</option>}</For>
           </Select>
@@ -184,13 +186,13 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
       </Show>
 
       <Show when={reportType() === 'custom'}>
-        <Section title={t('report_period', 'Period')}>
+        <Section title={t('report_period', 'Period')} block>
           <DateRow from={customFrom()} to={customTo()} setFrom={setCustomFrom} setTo={setCustomTo} />
         </Section>
       </Show>
 
       <Show when={reportType() === 'person'}>
-        <Section title={t('report_person', 'Member / Person')} for="report-person-select">
+        <Section title={t('report_person', 'Member / Person')} for="report-person-select" block>
           <Select id="report-person-select" value={reportPersonId()} onChange={e => setReportPersonId(e.currentTarget.value)}>
             <For each={reportPeople()}>{(p: Person) => <option value={String(p.id)}>{p.name}</option>}</For>
           </Select>
@@ -199,7 +201,7 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
       </Show>
 
       <Show when={reportType() === 'manual'}>
-        <Section title={t('report_transactions_select', 'Select bookings')}>
+        <Section title={t('report_transactions_select', 'Select bookings')} block>
           <Checklist />
         </Section>
       </Show>

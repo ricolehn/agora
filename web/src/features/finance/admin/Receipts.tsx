@@ -116,7 +116,7 @@ function ReceiptCard(props: { url: string; filename: string }) {
         <img
           src={props.url}
           alt={title()}
-          class={['w-full cursor-pointer rounded-lg transition-opacity duration-300 ease-in', loaded() ? 'opacity-100' : 'opacity-0']}
+          class={['inline w-full cursor-pointer rounded-lg align-baseline transition-opacity duration-300 ease-in', loaded() ? 'opacity-100' : 'opacity-0']}
           onLoad={() => setLoaded(true)}
           onClick={() => showReceiptImage(title(), props.url, props.filename)}
         />
