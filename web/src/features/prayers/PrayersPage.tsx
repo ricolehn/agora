@@ -96,7 +96,7 @@ function PrayerRow(props: { prayer: Prayer }) {
           </span>
         }
       >
-        {author => <Avatar uid={author().uid} name={prayerName(props.prayer)} size={36} />}
+        {author => <Avatar uid={author().uid} name={prayerName(props.prayer)} size={36} initialsClass="text-[0.76rem]" />}
       </Show>
       <span class={['flex min-w-0 flex-col gap-1.5', { 'col-[2/4]': !editable() }]}>
         <span class="flex min-w-0 items-baseline gap-1.5">

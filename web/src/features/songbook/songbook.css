@@ -7,6 +7,7 @@
 @media print {
     body.printing-song > *:not(#song-view-modal) { display: none !important; }
     body.printing-song #song-view-modal { position: static; display: block; opacity: 1; visibility: visible; background: #ffffff; }
+    body.printing-song #song-view-modal > .modal-content { height: auto; max-width: none !important; background: #ffffff; }
     body.printing-song [data-song-view] { height: auto; max-width: none; }
     body.printing-song [data-song-controls], body.printing-song [data-song-top] button { display: none !important; }
     body.printing-song [data-song-top] { border: none; }

@@ -1,16 +1,14 @@
 // Parts the three small apps of Extras share (polls, songbook, prayer requests): the page head with the way back to
-// Extras, the filter pills, the empty / loading / error states of a list, and the full-screen pages that open over
-// the app (the editors of a poll and of a song, the song itself).
+// Extras, the filter pills, the empty / loading / error states of a list, and the editor pages that open over the app
+// (a new poll, a song).
 import type { JSX } from '@solidjs/web';
-import { For, Show, createEffect, createSignal, onSettled } from 'solid-js';
-import { Portal } from '@solidjs/web';
+import { For, Show } from 'solid-js';
 import { t } from '../../app/i18n';
-import { isModalOpen, isTopModal, modalLayer } from '../../app/modals';
 import { switchTab } from '../../app/router';
-import { headerHidden } from '../../app/shell';
 import { Button } from '../../ui/Button';
-import { Spinner } from '../../ui/feedback';
+import { EmptyState, Spinner } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
+import { Modal } from '../../ui/Modal';
 
 /** The round "back" button of a sub-page or a full-screen page (.hub-back-btn, .poll-editor-back). */
 export function BackButton(props: { onClick: () => void; large?: boolean }) {
@@ -41,7 +39,7 @@ export function AppHead(props: { title: JSX.Element; sticky?: boolean; class?: s
         props.class ?? 'mb-1.5',
         props.sticky && [
           'sticky z-[7] -mx-2 rounded-b-2xl bg-[var(--frost-bg)] p-2 backdrop-blur-[14px] backdrop-saturate-150 transition-[top] duration-[280ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
-          headerHidden() ? 'top-0 md:top-[calc(0px-var(--desktop-header-offset))]' : 'top-[68px] md:top-[calc(72px-var(--desktop-header-offset))]'
+          'top-[var(--mobile-header-h,68px)] header-hidden:top-0 md:top-[calc(72px-var(--desktop-header-offset))] md:header-hidden:top-[calc(0px-var(--desktop-header-offset))]'
         ]
       ]}
     >
@@ -90,23 +88,22 @@ const EMPTY_TONES: Record<EmptyTone, string> = {
   rose: 'bg-[color-mix(in_srgb,#e11d48_10%,var(--surface))] text-[#e11d48]'
 };
 
-/** An empty list (or a first load that failed, with "Try again"): a soft card with a round symbol. */
+/** An empty list (or a first load that failed, with "Try again"): the soft card with a round symbol (.polls-empty). */
 export function ListEmpty(props: { icon: IconName; tone: EmptyTone; title: JSX.Element; hint?: JSX.Element; onRetry?: () => void }) {
   return (
-    <div class="flex flex-col items-center gap-2 rounded-[20px] border border-hairline bg-surface px-5 py-10 text-center text-text-secondary shadow-card">
-      <span class={['mb-1.5 inline-flex size-[52px] items-center justify-center rounded-full', EMPTY_TONES[props.tone]]}>
-        <Icon name={props.icon} size={26} strokeWidth={1.8} />
-      </span>
-      <span class="font-[650] tracking-[-0.015em] text-text">{props.title}</span>
-      <Show when={props.hint}>
-        <span class="text-[0.84rem]">{props.hint}</span>
-      </Show>
-      <Show when={props.onRetry}>
-        <Button variant="secondary" onClick={() => props.onRetry?.()}>
-          {t('btn_retry', 'Try again')}
-        </Button>
-      </Show>
-    </div>
+    <EmptyState
+      icon={<Icon name={props.icon} size={26} strokeWidth={1.8} />}
+      iconClass={EMPTY_TONES[props.tone]}
+      title={props.title}
+      text={props.hint}
+      action={
+        <Show when={props.onRetry}>
+          <Button variant="secondary" onClick={() => props.onRetry?.()}>
+            {t('btn_retry', 'Try again')}
+          </Button>
+        </Show>
+      }
+    />
   );
 }
 
@@ -116,70 +113,6 @@ export function ListLoading() {
     <div class="flex justify-center py-12">
       <Spinner />
     </div>
-  );
-}
-
-/**
- * A dialog that covers the whole window like a page of its own (.modal.poll-editor-page, .modal.song-page): no scrim,
- * the page background, its column in the middle. Opened and closed by id like every dialog (app/modals.ts: the back
- * gesture and Escape close it); its content is rendered while it is open and during the closing fade.
- */
-export function PageDialog(props: { id: string; labelledBy: string; class?: string; children: JSX.Element }) {
-  const open = () => isModalOpen(props.id);
-  const [mounted, setMounted] = createSignal(false);
-  // One frame after it is mounted, so it fades in; closing fades it out at once (it stays mounted for the fade)
-  const [entered, setEntered] = createSignal(false);
-  const shown = () => open() && entered();
-  let root: HTMLDivElement | undefined;
-  let closeTimer: ReturnType<typeof setTimeout> | undefined;
-
-  createEffect(open, (isOpen, wasOpen) => {
-    clearTimeout(closeTimer);
-    if (isOpen) {
-      setMounted(true);
-      requestAnimationFrame(() => {
-        setEntered(true);
-        // Keyboard and screen readers start on the page (its panel: no keyboard pops up on phones)
-        const panel = (root?.querySelector('[autofocus]') as HTMLElement | null) || (root?.firstElementChild as HTMLElement | null);
-        if (panel && !(root?.contains(document.activeElement) && document.activeElement !== root)) {
-          try {
-            panel.focus({ preventScroll: true });
-          } catch {
-            /* not focusable */
-          }
-        }
-      });
-    } else if (wasOpen) {
-      closeTimer = setTimeout(() => {
-        setMounted(false);
-        setEntered(false);
-      }, 300);
-    }
-  });
-  onSettled(() => () => clearTimeout(closeTimer));
-
-  return (
-    <Show when={mounted()}>
-      <Portal mount={document.body}>
-        <div
-          ref={root}
-          id={props.id}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={props.labelledBy}
-          inert={!isTopModal(props.id)}
-          class={[
-            'fixed inset-0 flex items-stretch justify-center bg-bg text-text transition-opacity duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]',
-            // A closed page is only transparent: nothing inside may catch taps (not even parts that turn them back on)
-            shown() ? 'opacity-100' : 'pointer-events-none opacity-0 [&_*]:!pointer-events-none',
-            props.class
-          ]}
-          style={{ 'z-index': String(open() ? modalLayer(props.id) : 2000) }}
-        >
-          {props.children}
-        </div>
-      </Portal>
-    </Show>
   );
 }
 
@@ -198,11 +131,8 @@ export function EditorPage(props: {
 }) {
   const titleId = () => `${props.id.replace(/-modal$/, '')}-title`;
   return (
-    <PageDialog id={props.id} labelledBy={titleId()}>
-      <div
-        tabindex="-1"
-        class="flex h-full w-full max-w-[760px] flex-col gap-4 overflow-y-auto px-5 pt-[calc(12px+env(safe-area-inset-top,0px))] outline-none [--pe-field:var(--surface-alt)] dark:[--pe-field:rgba(28,25,23,0.55)]"
-      >
+    <Modal id={props.id} page labelledBy={titleId()}>
+      <div class="flex h-full w-full flex-col gap-4 overflow-y-auto px-5 pt-[calc(12px+env(safe-area-inset-top,0px))] [--pe-field:var(--surface-alt)] dark:[--pe-field:rgba(28,25,23,0.55)]">
         <div class="sticky top-[calc(-12px-env(safe-area-inset-top,0px))] z-[5] -mx-5 -mt-3 flex items-center gap-3 bg-[var(--frost-bg)] px-5 pt-3 pb-2 backdrop-blur-[14px] backdrop-saturate-150">
           <BackButton large onClick={() => props.onBack()} />
           <h2 id={titleId()} class="m-0 text-[1.15rem] font-extrabold text-text">
@@ -219,7 +149,7 @@ export function EditorPage(props: {
           {props.savebar}
         </div>
       </div>
-    </PageDialog>
+    </Modal>
   );
 }
 
@@ -269,9 +199,9 @@ export function DeleteButton(props: { id?: string; size?: 'md' | 'small'; class?
   return (
     <Button
       id={props.id}
-      variant="ghost"
+      variant="none"
       size={props.size}
-      class={['border border-[color-mix(in_srgb,var(--danger)_35%,transparent)] !bg-transparent !text-danger', props.class]}
+      class={['border border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-transparent text-danger', props.class]}
       onClick={() => props.onClick()}
     >
       {props.children}
