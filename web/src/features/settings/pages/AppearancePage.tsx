@@ -69,7 +69,7 @@ function Choice<T extends string>(props: { id: string; label: string; value: T; 
 /** Colour scheme and language. */
 export function AppearancePage() {
   return (
-    <Card>
+    <Card bodyClass="pt-5">
       <Choice
         id="settings-theme"
         label={t('theme_title', 'Colour scheme')}

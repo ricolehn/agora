@@ -17,11 +17,11 @@ export function ProfilePage() {
     const file = input.files?.[0];
     // The same file can be chosen again
     input.value = '';
-    void openProfileCrop(file);
+    openProfileCrop(file);
   };
   return (
     <Card bodyClass="flex flex-col items-center px-5 pt-5 pb-6 text-center">
-      <Avatar uid={currentUid()} name={profileName()} size={96} ring={avatarRing(currentUser())} src={ownPicture() ?? ''} class="text-[1.9rem]!" />
+      <Avatar uid={currentUid()} name={profileName()} size={96} ring={avatarRing(currentUser())} src={ownPicture() ?? ''} initialsClass="text-[1.9rem]" />
       <div class="mt-3.5 text-[1.2rem] font-extrabold text-text [overflow-wrap:anywhere]">{profileName()}</div>
       <Show when={email() !== profileName() && email()}>
         <div class="text-[0.9rem] text-text-secondary [overflow-wrap:anywhere]">{email()}</div>

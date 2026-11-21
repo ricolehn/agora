@@ -3,7 +3,6 @@ import { Show } from 'solid-js';
 import { Dynamic } from '@solidjs/web';
 import { t } from '../../app/i18n';
 import { settingsPages } from '../../app/registry';
-import { headerHidden } from '../../app/shell';
 import { Icon } from '../../ui/Icon';
 import { SettingsMenu } from './Menu';
 import { AccountPage } from './pages/AccountPage';
@@ -29,11 +28,9 @@ function PageHead() {
   return (
     <div
       class={[
-        'sticky z-[7] -mx-2 mb-3 max-w-[760px] rounded-b-2xl bg-(--frost-bg) p-2 backdrop-blur-[14px] backdrop-saturate-150',
+        'sticky z-[7] -mx-2 mb-3 max-w-[760px] rounded-b-2xl bg-[var(--frost-bg)] p-2 [-webkit-backdrop-filter:var(--frost)] [backdrop-filter:var(--frost)]',
         'transition-[top] duration-[280ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
-        headerHidden()
-          ? 'max-md:top-0 md:top-[calc(0px-var(--desktop-header-offset))]'
-          : 'max-md:top-[var(--mobile-header-h,68px)] md:top-[calc(72px-var(--desktop-header-offset))]'
+        'top-[var(--mobile-header-h,68px)] header-hidden:top-0 md:top-[calc(72px-var(--desktop-header-offset))] md:header-hidden:top-[calc(0px-var(--desktop-header-offset))]'
       ]}
     >
       <div class="flex items-center gap-3">

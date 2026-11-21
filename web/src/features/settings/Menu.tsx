@@ -11,7 +11,7 @@ import { MENU_ID, availablePages, openSettingsPage, profileName, type SettingsPa
 function ProfileRow() {
   return (
     <button type="button" data-key="profile" class={[ROW, 'text-text']} onClick={() => openSettingsPage('profile')}>
-      <Avatar uid={currentUid()} name={profileName()} size={40} ring={avatarRing(currentUser())} class="text-[0.85rem]!" />
+      <Avatar uid={currentUid()} name={profileName()} size={40} ring={avatarRing(currentUser())} initialsClass="text-[0.85rem]" />
       <RowText title={profileName()} desc={currentUser()?.email} />
       <RowChevron />
     </button>

@@ -15,18 +15,17 @@ export function PasswordPage() {
     setNewPassword('');
   };
   return (
-    <Card>
+    <Card bodyClass="pt-5">
       <div class="mb-[15px]">
-        <div class="mb-3">
-          <PasswordInput
-            id="old-password"
-            value={oldPassword()}
-            onInput={e => setOldPassword(e.currentTarget.value)}
-            placeholder={t('old_password', 'Old password')}
-            aria-label={t('old_password', 'Old password')}
-            autocomplete="current-password"
-          />
-        </div>
+        <PasswordInput
+          id="old-password"
+          wrapperClass="mb-3"
+          value={oldPassword()}
+          onInput={e => setOldPassword(e.currentTarget.value)}
+          placeholder={t('old_password', 'Old password')}
+          aria-label={t('old_password', 'Old password')}
+          autocomplete="current-password"
+        />
         <PasswordInput
           id="new-password"
           value={newPassword()}
