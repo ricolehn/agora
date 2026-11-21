@@ -68,11 +68,12 @@ export function PrayerEditModal() {
       id="prayer-edit-modal"
       title={t('prayers_new', 'Share a prayer request')}
       maxWidth="460px"
-      bodyClass="flex flex-col gap-3.5"
+      // The sheet's parts sit a little further apart than in other dialogs (.plan-sheet-body)
+      bodyClass="!gap-3.5"
       footer={
         // Share takes the room Cancel leaves (.plan-sheet-footer)
-        <div class="flex w-full gap-2">
-          <Button variant="secondary" onClick={() => closeModal('prayer-edit-modal')}>
+        <div class="flex w-full items-center gap-2">
+          <Button variant="secondary" class="shrink-0" onClick={() => closeModal('prayer-edit-modal')}>
             {t('btn_cancel', 'Cancel')}
           </Button>
           <Button id="prayer-submit" class="flex-auto" disabled={sharing()} onClick={() => void submitPrayer()}>
@@ -84,7 +85,7 @@ export function PrayerEditModal() {
       <Textarea
         ref={el => (textField = el)}
         id="prayer-text"
-        class="min-h-[120px] resize-y text-[0.95rem] leading-normal"
+        class="min-h-[120px] resize-y leading-[1.5]"
         rows="5"
         maxlength="1000"
         placeholder={t('prayers_text_ph', 'What can we pray for?')}
@@ -173,7 +174,8 @@ function deletePrayer(id: string) {
   });
 }
 
-const ACTION = 'w-full';
+// Full width, the symbol close to the text (.prayer-options-actions .btn)
+const ACTION = 'w-full !gap-1.5';
 
 export function PrayerOptionsModal() {
   // A request that was just removed stays on screen while the dialog fades out

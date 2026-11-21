@@ -24,7 +24,8 @@ export function PollDetailModal() {
       title={poll()?.title}
       subtitle={poll() ? `${pollTimeLabel(poll()!)} · ${pollVotes(poll()!)}` : ''}
       icon={<Icon name="poll" size={20} />}
-      iconClass="bg-surface-alt text-text-secondary"
+      // The poll badge (.poll-modal-badge) is larger than the dialogs' usual one
+      iconClass="!size-[42px] !rounded-[13px] !text-[1rem] bg-surface-alt text-text-secondary"
       maxWidth="520px"
     >
       <Show when={poll()}>{current => <PollBody poll={current()} />}</Show>
@@ -150,7 +151,7 @@ function PollBody(props: { poll: Poll }) {
             <Icon name="shield" class="text-[#10b981]" />
             {t('polls_anon_note', 'Your choice is only counted – nobody in the app can see what you chose.')}
           </p>
-          <Button id="poll-vote-btn" block class="mt-0.5 h-10" disabled={voting()} onClick={() => void vote()}>
+          <Button id="poll-vote-btn" block disabled={voting()} onClick={() => void vote()}>
             {t('polls_vote_btn', 'Vote anonymously')}
           </Button>
         </Match>

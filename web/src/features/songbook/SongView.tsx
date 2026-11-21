@@ -3,11 +3,13 @@
 import type { JSX } from '@solidjs/web';
 import { For, Show, createMemo } from 'solid-js';
 import { t, uiLocale } from '../../app/i18n';
+import { isModalOpen } from '../../app/modals';
 import { transposedKey } from '../../lib/songbook.js';
 import { Button } from '../../ui/Button';
 import { Switch } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
-import { BackButton, PageDialog } from '../polls/ui';
+import { Modal } from '../../ui/Modal';
+import { BackButton } from '../polls/ui';
 import { openSongEditor } from './SongEditor';
 import { SongLines } from './SongLines';
 import { type Song, canManageSongs, songbookLicense, songs } from './store';
@@ -42,20 +44,26 @@ const PANEL_LABEL = 'flex flex-col items-start gap-0.5 text-[0.92rem] font-bold 
 // Two or three buttons in one pill, and one of them
 const STEPPER = 'inline-flex shrink-0 items-center gap-0.5 rounded-[14px] border border-border-light bg-surface-alt p-0.5';
 const STEP =
-  'inline-flex h-[38px] min-w-[42px] items-center justify-center rounded-xl border-0 px-2 text-[0.9rem] font-extrabold text-text transition-[background-color,color] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'inline-flex h-[38px] min-w-[42px] items-center justify-center rounded-xl border-0 px-2 font-extrabold text-text transition-[background-color,color] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+// Its text size: the symbols, the two "A" of the text size, the speed
+const STEP_TEXT = 'text-[0.9rem]';
 const STEP_IDLE = 'bg-transparent hover:bg-brand/12';
 const STEP_ACTIVE = 'bg-gradient-primary text-white';
 // The gradient pills at the bottom right (.song-pill)
 const PILL =
-  'inline-flex h-12 items-center gap-2 rounded-full border text-[0.95rem] font-extrabold shadow-[0_8px_22px_rgba(var(--glow-rgb),0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'inline-flex h-12 items-center gap-2 rounded-full border text-[0.95rem] font-extrabold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+const PILL_GRADIENT = 'border-transparent bg-gradient-primary text-white shadow-[0_8px_22px_rgba(var(--glow-rgb),0.35)]';
+
+// Only the shown page takes taps: while it fades out, its floating controls must not catch them
+const pageOpen = () => isModalOpen('song-view-modal');
 
 export function SongViewModal() {
   // A song that was just deleted stays on screen while the page fades out
   const song = createMemo<Song | null>(prev => songs().find(s => s.id === openSongId()) ?? prev ?? null);
   return (
-    <PageDialog id="song-view-modal" labelledBy="song-view-title">
+    <Modal id="song-view-modal" page maxWidth="860px" labelledBy="song-view-title">
       <Show when={song()}>{current => <SongPage song={current()} />}</Show>
-    </PageDialog>
+    </Modal>
   );
 }
 
@@ -83,7 +91,7 @@ function SongPage(props: { song: Song }) {
     ].filter(Boolean);
 
   return (
-    <div data-song-view tabindex="-1" class="relative flex h-full w-full max-w-[860px] flex-col outline-none">
+    <div data-song-view class="relative flex h-full w-full flex-col">
       <div
         data-song-top
         class="flex items-start gap-3 border-b border-border-light px-5 pt-[calc(14px+env(safe-area-inset-top,0px))] pb-3.5 max-[480px]:px-3.5 md:px-6"
@@ -163,14 +171,14 @@ function SongPage(props: { song: Song }) {
         <div
           class={[
             'flex gap-2 transition-[translate,opacity,visibility] duration-[250ms] ease-[ease]',
-            songControlsShown() ? 'pointer-events-auto' : 'invisible translate-y-[calc(100%+24px)] opacity-0'
+            songControlsShown() ? { 'pointer-events-auto': pageOpen() } : 'invisible translate-y-[calc(100%+24px)] opacity-0'
           ]}
         >
           <Show when={songScrolling()}>
             <button
               type="button"
               id="song-quick-scroll"
-              class={[PILL, 'w-12 justify-center border-transparent bg-gradient-primary p-0 text-white']}
+              class={[PILL, PILL_GRADIENT, 'w-12 justify-center p-0']}
               aria-label={t('songbook_pause', 'Pause scrolling')}
               onClick={toggleSongScroll}
             >
@@ -183,7 +191,7 @@ function SongPage(props: { song: Song }) {
             class={[
               PILL,
               'pr-5 pl-4',
-              songPanelOpen() ? 'border-border bg-surface !shadow-card-lg text-text' : 'border-transparent bg-gradient-primary text-white'
+              songPanelOpen() ? 'border-border bg-surface text-text shadow-card-lg' : PILL_GRADIENT
             ]}
             aria-expanded={songPanelOpen() ? 'true' : 'false'}
             aria-controls="song-panel"
@@ -217,7 +225,10 @@ function SongPanel(props: { songKey: string; shift: string }) {
       role="group"
       aria-labelledby="song-panel-title"
       hidden={!songPanelOpen()}
-      class="pointer-events-auto w-[min(360px,calc(100vw-32px))] animate-[song-panel-in_0.2s_ease-out] rounded-card border border-border bg-surface px-4 pt-3 pb-4 shadow-card-lg"
+      class={[
+        'w-[min(360px,calc(100vw-32px))] animate-[song-panel-in_0.2s_ease-out] rounded-card border border-border bg-surface px-4 pt-3 pb-4 shadow-card-lg',
+        { 'pointer-events-auto': pageOpen() }
+      ]}
     >
       <div class="flex items-center justify-between gap-3 pb-1.5">
         <span id="song-panel-title" class="text-[1rem] font-extrabold text-text">
@@ -252,7 +263,7 @@ function SongPanel(props: { songKey: string; shift: string }) {
           </Show>
         </div>
         <div class={STEPPER}>
-          <button type="button" class={[STEP, STEP_IDLE]} aria-label={t('songbook_down', 'Semitone down')} onClick={() => transposeSong(-1)}>
+          <button type="button" class={[STEP, STEP_TEXT, STEP_IDLE]} aria-label={t('songbook_down', 'Semitone down')} onClick={() => transposeSong(-1)}>
             <Glyph size={16} strokeWidth={2.6}>
               <line x1="5" y1="12" x2="19" y2="12" />
             </Glyph>
@@ -270,7 +281,7 @@ function SongPanel(props: { songKey: string; shift: string }) {
           >
             {props.songKey || (shifted() ? props.shift : '♪')}
           </button>
-          <button type="button" class={[STEP, STEP_IDLE]} aria-label={t('songbook_up', 'Semitone up')} onClick={() => transposeSong(1)}>
+          <button type="button" class={[STEP, STEP_TEXT, STEP_IDLE]} aria-label={t('songbook_up', 'Semitone up')} onClick={() => transposeSong(1)}>
             <Icon name="plus" size={16} strokeWidth={2.6} />
           </button>
         </div>
@@ -284,10 +295,10 @@ function SongPanel(props: { songKey: string; shift: string }) {
       <div class={PANEL_ROW}>
         <span class={PANEL_LABEL}>{t('songbook_text_size', 'Text size')}</span>
         <div class={STEPPER}>
-          <button type="button" class={[STEP, STEP_IDLE, '!text-[0.76rem]']} aria-label={t('songbook_smaller', 'Smaller text')} onClick={() => sizeSong(-1)}>
+          <button type="button" class={[STEP, STEP_IDLE, 'text-[0.76rem]']} aria-label={t('songbook_smaller', 'Smaller text')} onClick={() => sizeSong(-1)}>
             A
           </button>
-          <button type="button" class={[STEP, STEP_IDLE, '!text-[1.05rem]']} aria-label={t('songbook_larger', 'Larger text')} onClick={() => sizeSong(1)}>
+          <button type="button" class={[STEP, STEP_IDLE, 'text-[1.05rem]']} aria-label={t('songbook_larger', 'Larger text')} onClick={() => sizeSong(1)}>
             A
           </button>
         </div>
@@ -298,14 +309,14 @@ function SongPanel(props: { songKey: string; shift: string }) {
           <button
             type="button"
             id="song-scroll-btn"
-            class={[STEP, songScrolling() ? STEP_ACTIVE : STEP_IDLE]}
+            class={[STEP, STEP_TEXT, songScrolling() ? STEP_ACTIVE : STEP_IDLE]}
             aria-pressed={songScrolling() ? 'true' : 'false'}
             aria-label={t('songbook_autoscroll', 'Scroll automatically')}
             onClick={toggleSongScroll}
           >
             <Icon name={songScrolling() ? 'pause' : 'play'} size={16} strokeWidth={2.4} />
           </button>
-          <button type="button" id="song-speed-btn" class={[STEP, STEP_IDLE, '!text-[0.8rem]']} aria-label={t('songbook_speed', 'Speed')} onClick={cycleSongSpeed}>
+          <button type="button" id="song-speed-btn" class={[STEP, STEP_IDLE, 'text-[0.8rem]']} aria-label={t('songbook_speed', 'Speed')} onClick={cycleSongSpeed}>
             {songSpeed().toLocaleString(uiLocale())}×
           </button>
         </div>
