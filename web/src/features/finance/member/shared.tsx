@@ -124,7 +124,7 @@ export function ReceiptDropzone(props: { id: string; onChange: (input: HTMLInput
         id={props.id}
         accept="image/*,.heic,.heif,.pdf"
         multiple
-        class="max-w-full text-[13.3333px] file:[all:revert]"
+        class="max-w-full text-[13.3333px]"
         onChange={e => props.onChange(e.currentTarget)}
       />
     </div>

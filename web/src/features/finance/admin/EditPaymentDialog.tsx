@@ -253,7 +253,7 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
             id="edit-payment-new-receipt"
             accept="image/*,.heic,.heif,.pdf"
             multiple
-            class="file:[all:revert]"
+           
             ref={el => (newReceiptsInput = el)}
           />
         </ModalSection>

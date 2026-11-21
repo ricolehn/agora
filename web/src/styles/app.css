@@ -192,6 +192,21 @@
 
 /* --- Base: what every element had before (no visible scrollbars, no tap flash, crisp type) --- */
 @layer base {
+    /* Form controls keep the browser's own parts, as in the previous app (Tailwind's base resets them): the file
+       button and the inner spacing of date and time fields */
+    ::file-selector-button { all: revert; }
+    ::-webkit-date-and-time-value { min-height: revert; text-align: revert; }
+    ::-webkit-datetime-edit { display: revert; }
+    ::-webkit-datetime-edit-fields-wrapper { padding: revert; }
+    ::-webkit-datetime-edit,
+    ::-webkit-datetime-edit-year-field,
+    ::-webkit-datetime-edit-month-field,
+    ::-webkit-datetime-edit-day-field,
+    ::-webkit-datetime-edit-hour-field,
+    ::-webkit-datetime-edit-minute-field,
+    ::-webkit-datetime-edit-second-field,
+    ::-webkit-datetime-edit-millisecond-field,
+    ::-webkit-datetime-edit-meridiem-field { padding-block: revert; }
     * {
         -webkit-tap-highlight-color: transparent;
         scrollbar-width: none;

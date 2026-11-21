@@ -55,7 +55,7 @@ export function ConfigPanel() {
         <div class="mb-1.5 text-[1rem] font-bold">{t('superadmin_logo_title', 'Replace Logo')}</div>
         <Field label={t('superadmin_logo_desc', 'church-icon.svg / church-logo.svg (.svg format)')} for="super-admin-logo-file" class="!mb-0">
           <div class="flex flex-wrap gap-2.5">
-            <Input id="super-admin-logo-file" type="file" accept=".svg,image/svg+xml" class="min-w-[200px] flex-1 file:[all:revert]" ref={el => (logoInput = el)} />
+            <Input id="super-admin-logo-file" type="file" accept=".svg,image/svg+xml" class="min-w-[200px] flex-1" ref={el => (logoInput = el)} />
             <Button variant="secondary" class={SUPER_ADMIN_BTN} onClick={() => void uploadChurchLogo(logoInput)}>
               {t('btn_upload_logo', 'Upload Logo')}
             </Button>

@@ -180,7 +180,7 @@ export function Setup() {
             <Hint>{t('setup_app_name_desc', 'This name will be displayed in the app and in emails.')}</Hint>
           </Field>
           <Field label={t('setup_logo', 'Custom Logo (SVG, optional)')} for="setupLogo">
-            <Input type="file" id="setupLogo" name="setupLogo" accept=".svg,image/svg+xml" class="file:mr-1 file:rounded-[3px] file:border file:border-solid file:border-[#767676] file:bg-[#efefef] file:px-1.5 file:py-px file:text-[0.9rem] file:text-[#1a1917]" />
+            <Input type="file" id="setupLogo" name="setupLogo" accept=".svg,image/svg+xml" />
             <Hint>{t('setup_logo_desc', 'Optionally, you can save your own SVG logo directly in the initial setup.')}</Hint>
           </Field>
           <Button type="submit" block class="mt-[30px]">
