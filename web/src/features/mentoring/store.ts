@@ -9,7 +9,7 @@ import { t, uiLocale } from '../../app/i18n';
 import { closeModal, openModal } from '../../app/modals';
 import { setNavBadge } from '../../app/nav';
 import { whenPicturesReady } from '../../app/pictures';
-import { HOME_TAB, activeTab, switchTab, syncUrl } from '../../app/router';
+import { HOME_TAB, activeTab, forgetTabHistory, switchTab, syncUrl } from '../../app/router';
 import { canManageMentoring, canUseMentoring, currentUid, isCurrentUser } from '../../app/session';
 import { confirmAction, showToast } from '../../app/toast';
 import { isMobile, once } from '../../app/util';
@@ -418,7 +418,11 @@ export function closeMentoringChatMobile(fromHistory = false, userBack = !fromHi
   chatHistoryPushed = false;
   if (steps > 0) programmaticBack(steps);
   syncUrl();
-  if (returnHome) switchTab(HOME_TAB, 'history');
+  if (returnHome) {
+    // Both entries are gone: the router's "not home" entry too (as the old code reset it)
+    forgetTabHistory();
+    switchTab(HOME_TAB, 'history');
+  }
   // Only a chat that was open changes the unread counts; never pick a new chat while closing
   else if (hadOpenChat) void loadMentoringThreads(false, null, false);
 }

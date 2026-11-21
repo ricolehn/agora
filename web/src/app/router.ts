@@ -96,6 +96,12 @@ let tabHistoryPushed = false;
 // 'folder' (in the media library), 'page' (a settings page)
 const historyLevels: string[] = [];
 
+/** The "somewhere other than home" entry was left by the feature itself (mentoring: back from a chat opened on the
+ *  start page goes home over both entries): the router no longer counts it. */
+export function forgetTabHistory() {
+  tabHistoryPushed = false;
+}
+
 /** Called on a tap that goes one level down: the entry is made while the tap counts as the member's own. */
 export function pushHistoryLevel(kind: 'app' | 'folder' | 'page') {
   if (!tabHistoryPushed) return;
