@@ -28,11 +28,14 @@ const STATE_LOOK = {
   ok: { accent: 'var(--success)', rgb: '16,185,129' }
 };
 
+// The chips below the state (.user-finance-chip): fee, status, a fresh start
+const CHIP = 'flex min-w-0 items-center justify-center truncate rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-[0.86rem]';
+
 // The chip is a notice: it shows from the day on for about two months (lib/finance.js), the history keeps the day
 function FeeResetChip(props: { person: Person }) {
   return (
     <Show when={props.person._feeReset && feeResetIsNews(props.person._feeReset, getTodayStr())}>
-      <span class="col-span-full flex min-w-0 items-center justify-center gap-1.5 truncate rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-[0.86rem] font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text">
+      <span class={[CHIP, 'col-span-full gap-1.5 font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text']}>
         <Icon name="rotate" size={13} strokeWidth={2.4} class="shrink-0 text-warning" />
         <span>
           <BoldParam text={t('fee_reset_chip', 'Fresh start on {date}')} name="date" value={formatDateFast(props.person._feeReset)} />
@@ -48,7 +51,6 @@ function FinanceHero(props: { person: Person }) {
   const state = () => (meta().isOverdue ? 'overdue' : meta().isSoonDue ? 'soon' : 'ok');
   const currentStatus = () => props.person._currentStatus || props.person.status;
   const requestStatus = () => t('user_req_status_tooltip', 'Request status change');
-  const chip = 'flex min-w-0 items-center justify-center gap-1 truncate rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-[0.86rem]';
   return (
     <div
       class={[
@@ -91,12 +93,12 @@ function FinanceHero(props: { person: Person }) {
         </div>
       </Show>
       <div class="grid grid-cols-2 gap-2 md:max-w-[420px]">
-        <span class={[chip, 'font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text']}>
+        <span class={[CHIP, 'gap-1 font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text']}>
           <BoldParam text={t('user_fee_per_month', '{amount} a month')} name="amount" value={euro(props.person._monthlyFee ?? settings()[currentStatus()] ?? 0)} />
         </span>
         <button
           type="button"
-          class={[chip, 'cursor-pointer font-semibold text-text transition-colors duration-150 ease-app hover:bg-border-light [&_svg]:opacity-55']}
+          class={[CHIP, 'cursor-pointer gap-1 font-semibold text-text transition-colors duration-150 ease-app hover:bg-border-light [&_svg]:opacity-55']}
           title={requestStatus()}
           aria-label={requestStatus()}
           onClick={() => openUserRequestModal('status')}
