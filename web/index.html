@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#181817">
+    <meta name="theme-color" content="#f5f4f1">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <!-- Pages have their own paths (/events/...): relative files are always found from the root -->
+    <base href="/">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/assets/church-logo.svg">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    <title>Agora</title>
+    <!-- Written by the backend for this instance (name, features): fetched beside the app, not after it -->
+    <link rel="modulepreload" href="/assets/config.js">
+    <script>
+        // The theme before the first paint (no light flash in the dark theme)
+        (function () {
+            try {
+                var stored = localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system';
+                var theme = stored === 'system' ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : stored;
+                if (theme) document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {}
+        })();
+    </script>
+    <style>
+        /* The boot screen until the app has started (the same as the app's own loading screen) */
+        html { background: #f5f4f1; }
+        html[data-theme="dark"] { background: #181817; }
+        #boot { position: fixed; inset: 0; z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; background: inherit; }
+        #boot.on { display: flex; }
+        /* The loading screen's spinner (ui/feedback.tsx Spinner) with its two inner rings, at its place above the line of
+           text (the empty .boot-line): it does not jump or change when the loading screen takes over */
+        #boot .boot-spinner { position: relative; width: 60px; height: 60px; margin-bottom: 15px; border: 4px solid rgba(13, 158, 148, 0.1); border-left-color: #0c8d84; border-radius: 50%; animation: boot-spin 1s linear infinite; }
+        #boot .boot-spinner::before, #boot .boot-spinner::after { content: ''; position: absolute; border: 4px solid transparent; border-radius: 50%; }
+        #boot .boot-spinner::before { inset: -4px; border-top-color: #14a87c; animation: boot-spin 2s linear infinite reverse; }
+        #boot .boot-spinner::after { inset: 6px; border-right-color: #0a6f68; animation: boot-spin 1.5s linear infinite; }
+        #boot .boot-line { height: 20px; margin-top: 20px; }
+        html[data-theme="dark"] #boot .boot-spinner { border-left-color: #63c0b4; }
+        html[data-theme="dark"] #boot .boot-spinner::before { border-top-color: #3fae84; }
+        html[data-theme="dark"] #boot .boot-spinner::after { border-right-color: #2ea398; }
+        /* A dark system: the loading screen's warm black (shell/Overlays.tsx) */
+        @media (prefers-color-scheme: dark) { html[data-theme="dark"] #boot { background: #1c1917; } }
+        @keyframes boot-spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div id="boot" aria-hidden="true"><div class="boot-spinner"></div><div class="boot-line"></div></div>
+<script>
+    // Signed in before (or a shared event's link): the loading screen right away instead of a flash of the sign-in.
+    // Nobody signed in: the sign-in comes with the app's script (the previous app had it in this page); on a slow
+    // connection the loading screen shows meanwhile - after a moment, so a quick start does not flash it
+    try {
+        var boot = document.getElementById('boot');
+        if (localStorage.getItem('agora-is-logged-in') === 'true' || localStorage.getItem('nova-is-logged-in') === 'true' || /[?&](share|guest)=/.test(window.location.search)) {
+            boot.className = 'on';
+        } else {
+            setTimeout(function () { boot.className = 'on'; }, 400);
+        }
+    } catch (e) {}
+</script>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
