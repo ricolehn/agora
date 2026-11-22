@@ -1,0 +1,160 @@
+/* Events: what utilities cannot express - the glass spheres of events without a picture, the keyframes and the
+   typography of the description (Markdown rendered into the page). */
+
+/* --- Events without a picture: large glass spheres on a soft pastel wash (like Microsoft wallpapers) - hair-thin
+   rims, an almost clear inside, a breath of refraction. The wash comes from the element (bg-* utilities); the
+   spheres drift slowly. Also usable by the start page's cards (class "event-spheres"). --- */
+@keyframes sphere-drift {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(-1.5cqw, 1cqw, 0) scale(1.03); }
+}
+.event-spheres {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    container-type: inline-size;
+}
+.event-spheres > * { position: relative; z-index: 2; }
+.event-spheres::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    --rim: rgba(255, 255, 255, 0.75);
+    --glint: rgba(255, 255, 255, 0.3);
+    --blue: rgba(150, 200, 255, 0.22);
+    --pink: rgba(255, 196, 226, 0.16);
+    --fill: rgba(255, 255, 255, 0.1);
+    --fill-soft: rgba(255, 255, 255, 0.033);
+    background:
+        radial-gradient(ellipse 22.0cqw 12.8cqw at 0.0cqw 30.8cqw, var(--glint) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 40cqw at 12cqw 50cqw, rgba(255, 255, 255, 0) calc(40cqw - 1.4px), var(--rim) calc(40cqw - 0.7px), rgba(255, 255, 255, 0) 40cqw),
+        radial-gradient(circle 40cqw at 14.0cqw 48.4cqw, rgba(150, 200, 255, 0) 84%, var(--blue) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 40cqw at 10.0cqw 52.0cqw, rgba(255, 196, 226, 0) 86%, var(--pink) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 40cqw at 12cqw 50cqw, var(--fill) 0%, var(--fill-soft) 72%, rgba(255, 255, 255, 0) 100%),
+        radial-gradient(ellipse 16.5cqw 9.6cqw at 83.0cqw -12.4cqw, var(--glint) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 30cqw at 92cqw 2cqw, rgba(255, 255, 255, 0) calc(30cqw - 1.4px), var(--rim) calc(30cqw - 0.7px), rgba(255, 255, 255, 0) 30cqw),
+        radial-gradient(circle 30cqw at 93.5cqw 0.8cqw, rgba(150, 200, 255, 0) 84%, var(--blue) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 30cqw at 90.5cqw 3.5cqw, rgba(255, 196, 226, 0) 86%, var(--pink) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 30cqw at 92cqw 2cqw, var(--fill) 0%, var(--fill-soft) 72%, rgba(255, 255, 255, 0) 100%),
+        radial-gradient(ellipse 5.5cqw 3.2cqw at 63.0cqw 37.2cqw, var(--glint) 0%, rgba(255, 255, 255, 0) 70%),
+        radial-gradient(circle 10cqw at 66cqw 42cqw, rgba(255, 255, 255, 0) calc(10cqw - 1.4px), var(--rim) calc(10cqw - 0.7px), rgba(255, 255, 255, 0) 10cqw),
+        radial-gradient(circle 10cqw at 66.5cqw 41.6cqw, rgba(150, 200, 255, 0) 84%, var(--blue) 96%, rgba(150, 200, 255, 0) 100%),
+        radial-gradient(circle 10cqw at 65.5cqw 42.5cqw, rgba(255, 196, 226, 0) 86%, var(--pink) 97%, rgba(255, 196, 226, 0) 100%),
+        radial-gradient(circle 10cqw at 66cqw 42cqw, var(--fill) 0%, var(--fill-soft) 72%, rgba(255, 255, 255, 0) 100%);
+    animation: sphere-drift 18s ease-in-out infinite alternate;
+}
+[data-theme="dark"] .event-spheres::before {
+    --rim: rgba(255, 255, 255, 0.32);
+    --glint: rgba(255, 255, 255, 0.12);
+    --blue: rgba(150, 200, 255, 0.14);
+    --pink: rgba(255, 196, 226, 0.1);
+    --fill: rgba(255, 255, 255, 0.05);
+    --fill-soft: rgba(255, 255, 255, 0.017);
+}
+@media (prefers-reduced-motion: reduce) {
+    .event-spheres::before { animation: none; }
+}
+
+/* The pastel wash under the spheres of the event page (--wash: the tint, the brand by default) */
+.event-wash {
+    background:
+        radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--wash, var(--brand)) 26%, transparent) 0%, transparent 62%),
+        radial-gradient(80% 110% at 100% 0%, rgba(167, 139, 250, 0.18) 0%, transparent 60%),
+        radial-gradient(70% 90% at 70% 100%, rgba(125, 211, 192, 0.16) 0%, transparent 65%),
+        linear-gradient(135deg, color-mix(in srgb, var(--wash, var(--brand)) 10%, var(--surface)) 0%, var(--surface-alt) 100%);
+}
+[data-theme="dark"] .event-wash {
+    background:
+        radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--wash, var(--brand)) 22%, transparent) 0%, transparent 62%),
+        radial-gradient(80% 110% at 100% 0%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
+        linear-gradient(135deg, color-mix(in srgb, var(--wash, var(--brand)) 8%, var(--surface)) 0%, var(--surface-alt) 100%);
+}
+
+/* --- An appointment the month calendar jumped to lights up briefly --- */
+@keyframes termine-jump {
+    0%, 35% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent); }
+    100% { box-shadow: 0 0 0 3px transparent; }
+}
+.event-jump-target { animation: termine-jump 1.6s ease; }
+
+/* --- The description: Markdown typography --- */
+.event-markdown p { margin: 0 0 8px 0; }
+.event-markdown p:last-child { margin-bottom: 0; }
+.event-markdown :is(h1, h2, h3, h4, h5, h6) { font-weight: 700; color: var(--text); margin: 10px 0 4px 0; line-height: 1.3; }
+.event-markdown h1 { font-size: 1.15rem; }
+.event-markdown h2 { font-size: 1.05rem; }
+.event-markdown h3 { font-size: 0.96rem; }
+.event-markdown h4 { font-size: 0.9rem; }
+.event-markdown h5 { font-size: 0.83em; }
+.event-markdown h6 { font-size: 0.67em; }
+.event-markdown :is(ul, ol) { margin: 4px 0 8px 18px; padding: 0; }
+.event-markdown ul { list-style: disc; }
+.event-markdown ol { list-style: decimal; }
+.event-markdown li { margin-bottom: 3px; line-height: 1.5; }
+.event-markdown a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.event-markdown a:hover { opacity: 0.85; }
+.event-markdown strong { font-weight: bolder; }
+.event-markdown hr { margin: 8px 0; border: 0; border-top: 1px solid var(--border-light); }
+.event-markdown blockquote {
+    border-left: 3px solid var(--primary);
+    margin: 8px 0;
+    padding: 4px 0 4px 12px;
+    color: var(--text-secondary);
+    background: var(--surface-alt);
+    border-radius: 0 6px 6px 0;
+}
+.event-markdown code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82em;
+    background: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--text);
+}
+.event-markdown pre {
+    background: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+.event-markdown pre { font-size: 0.85rem; line-height: 1.5; white-space: pre; }
+.event-markdown pre code { background: transparent; border: none; padding: 0; font-size: 0.84rem; }
+.event-markdown .md-table { overflow-x: auto; margin: 10px 0; }
+.event-markdown .md-math-display {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: auto;
+    padding: 10px 14px;
+    margin: 8px 0;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.1rem;
+    line-height: 1.4;
+}
+.event-markdown .md-math-inline {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.05em;
+    padding: 0 2px;
+    line-height: 1.2;
+}
+.event-markdown .md-math-frac { display: inline-flex; flex-direction: column; vertical-align: -0.55em; text-align: center; padding: 0 3px; font-size: 0.88em; line-height: 1.1; }
+.event-markdown .md-math-num { border-bottom: 1.5px solid currentColor; padding: 0 2px 1px 2px; display: block; }
+.event-markdown .md-math-den { padding: 1px 2px 0 2px; display: block; }
+.event-markdown .md-math-sqrt { display: inline-flex; align-items: center; vertical-align: baseline; }
+.event-markdown .md-math-root-deg { font-size: 0.65em; margin-right: -2px; margin-bottom: 4px; }
+.event-markdown .md-math-sqrt-rad { font-size: 1.1em; margin-right: 1px; }
+.event-markdown .md-math-sqrt-stem { border-top: 1.5px solid currentColor; padding: 0 3px; display: inline-block; }
+.event-markdown .md-math-text { font-family: system-ui, -apple-system, sans-serif; font-style: normal; }
+.event-markdown :is(.md-math-sup, .md-math-sub) { font-size: 0.75em; line-height: 0; }
+.event-markdown .md-math-sup { vertical-align: super; }
+.event-markdown .md-math-sub { vertical-align: sub; }

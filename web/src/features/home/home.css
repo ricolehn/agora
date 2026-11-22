@@ -1,0 +1,18 @@
+/* The start page on wider screens (as before): one grid over the page's width, every part across both columns,
+   except own duties and unread messages, which sit side by side from 900px - one of them alone takes the whole
+   width (a part with nothing to show renders nothing) */
+@media (min-width: 769px) {
+    .home-page {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 28px;
+        align-items: start;
+    }
+    .home-page > * { grid-column: 1 / -1; min-width: 0; }
+}
+@media (min-width: 900px) {
+    .home-page > #user-duties-home-card { grid-column: 1; }
+    .home-page > #user-mentoring-home-card { grid-column: 2; }
+    .home-page:not(:has(> #user-mentoring-home-card)) > #user-duties-home-card,
+    .home-page:not(:has(> #user-duties-home-card)) > #user-mentoring-home-card { grid-column: 1 / -1; }
+}
