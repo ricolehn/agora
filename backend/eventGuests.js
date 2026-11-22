@@ -78,7 +78,7 @@ function publicEventView(event, counts, today = localToday()) {
   };
 }
 
-// Same readable name as the web app gives an event (assets/app.js slugify); the share key finds the event
+// Same readable name as the web app gives an event (web/src/app/util.ts slugify); the share key finds the event
 const slugify = (text) => String(text || '').normalize('NFC').trim().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 80);
 
 /** Address of an event's page for the guest with [key] (their e-mails link it: see, share or cancel). */

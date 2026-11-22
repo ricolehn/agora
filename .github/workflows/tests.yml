@@ -29,7 +29,22 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            web/package-lock.json
+
+      # The web app: TypeScript, the Solid 2 rules and the production build
+      - name: Install web app dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Check the web app
+        working-directory: web
+        run: npm run check && npm run lint
+
+      - name: Build the web app
+        working-directory: web
+        run: npm run build
 
       - name: Install backend dependencies
         working-directory: backend
