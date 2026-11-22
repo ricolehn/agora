@@ -10,7 +10,7 @@
   </p>
 </div>
 
-Agora is a web-based financial management application for small groups, clubs, or flatshares. It provides features to track income, expenses, donations, and individual members' contributions. The app consists of a frontend written in HTML/JS, a Node.js backend for handling file uploads, email notifications, and configuration, and an embedded PocketBase instance for authentication and data storage.
+Agora is a web-based financial management application for small groups, clubs, or flatshares. It provides features to track income, expenses, donations, and individual members' contributions. The app consists of a web app written in [Solid](https://www.solidjs.com) and [Tailwind CSS](https://tailwindcss.com) (`web/`), a Node.js backend for handling file uploads, email notifications, and configuration, and an embedded PocketBase instance for authentication and data storage.
 
 ## ✨ Features
 
@@ -67,7 +67,7 @@ docker run -d \
 
 ### Optional: Frontend Volume Mapping
 
-The frontend files are bundled directly in `/app/html` inside the container. If you want to customize the frontend (e.g. replace `index.html` or static assets), you can optionally map this path as well:
+The frontend files are bundled directly in `/app/html` inside the container: the production build of the web app in `web/` (its scripts and styles carry a hash of their content in the name, e.g. `assets/index-B1x2y3z4.js`, so the names change with every version). If you want the files on the host, you can optionally map this path as well:
 
 ```bash
 docker run -d \
@@ -81,7 +81,7 @@ docker run -d \
   ghcr.io/ricolehn/agora:latest
 ```
 
-*When mapping `/app/html`, Agora automatically syncs the bundled frontend files from the image into that directory on every start so that image upgrades take effect without removing the volume. Files that were removed in a newer image version are cleaned up automatically.*
+*When mapping `/app/html`, Agora automatically syncs the bundled frontend files from the image into that directory on every start so that image upgrades take effect without removing the volume. Files that were removed in a newer image version are cleaned up automatically. Changes made to these files are replaced on the next start as well: to change the web app for good, change `web/` and build your own image (see [The web app](#-the-web-app)).*
 
 > **Custom logo storage:** The admin SVG upload is persisted in `/app/data/church-logo.svg`, not in `/app/html/assets/church-logo.svg`. The app serves `/assets/church-logo.svg` dynamically so the uploaded logo keeps working even when `/app/html` is mapped.
 
@@ -413,16 +413,30 @@ the change log full of removals and additions) the first time an app sent the li
 
 ## 🌍 Languages
 
-English is the source language of the code: every text is written in English, and `assets/locales/en.json` (web app) is always complete. Other languages are optional translations: texts nobody has translated yet are simply left empty (or missing) and show in English. The tests only check English; translations never make them fail.
+English is the source language of the code: every text is written in English, and `web/src/locales/en.json` (web app) is always complete. Other languages are optional translations: texts nobody has translated yet are simply left empty (or missing) and show in English. The tests only check English; translations never make them fail.
 
 - **Web app:** users get their system language by default (or pick one in the settings); unsupported languages show English.
 - **Server:** error messages are written in English in the code and translated by `backend/locales/<lang>.json` (English text → translation, `{placeholders}` kept) - those of API v2 too, in the language the app asks for (`Accept-Language`), else the member's own, else the instance's default; the error `code` stays the same in every language. Push messages and e-mails go out in each member's language: the language their app reported, otherwise the instance's default language (System configuration), otherwise English.
 
 Adding a language (e.g. French):
 
-1. Copy `assets/locales/en.json` to `assets/locales/fr.json`, translate what you can and leave the rest empty (`""`).
+1. Copy `web/src/locales/en.json` to `web/src/locales/fr.json`, translate what you can and leave the rest empty (`""`).
 2. Optionally create `backend/locales/fr.json` with `"English text": "texte français"` pairs for server texts.
-3. Add `'fr'` to `SUPPORTED_LANGUAGES` in `assets/app.js` and `setup.html`, and an option to the language selects in `index.html` (the server picks up new catalogs by itself).
+3. Add `'fr'` to `SUPPORTED_LANGUAGES` in `web/src/app/i18n.ts` (the settings and the setup offer the languages listed there; the server picks up new catalogs by itself).
+
+## 🖥 The web app
+
+The web app lives in `web/` (Solid 2, Tailwind CSS 4, Vite, TypeScript); its structure, conventions and how a part of
+the app plugs in are described in [`web/README.md`](web/README.md). The Docker image builds it; for local development:
+
+```bash
+cd web && npm ci
+npm run dev     # http://localhost:5173, the API forwarded to a backend on :3000 (BACKEND=... to change it)
+npm run build   # web/dist - what `node backend/server.js` serves when no FRONTEND_DIR is set
+npm run check && npm run lint   # TypeScript and the Solid rules
+```
+
+The backend tests do not need the build: they serve a stand-in page (`tests/fixtures/frontend`).
 
 ## 🧪 Tests
 
@@ -433,14 +447,14 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `platform.test.js` | paths, logo, compression, security headers, proxy, SVG validation, Docker entrypoint |
 | `accounts.test.js` | users, groups and permissions (PocketBase layer), account deletion, reports |
 | `notifications.test.js` | Web Push, FCM, e-mail, notification settings, duty groups, duty reminders |
-| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, the monthly fees over time (their rules, and what is stored about them), what the web app books (`assets/finance.js`) - and that the server books the same with its copy of these rules (`backend/bookings.js`, API v2) |
+| `finance.test.js` | standing orders, request retention, derived finance data, the fresh start of the fee accounts, the monthly fees over time (their rules, and what is stored about them), what the web app books (`web/src/lib/finance.js`) - and that the server books the same with its copy of these rules (`backend/bookings.js`, API v2) |
 | `community.test.js` | events, guests and shared places, mentoring (capacity, encryption), AI input sanitising, polls, songbook, prayer requests, order of service |
 | `eventContext.test.js` | what the AI learns about events: only what the asking member may see, checked with the real access rules |
-| `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`assets/media.js`) |
+| `media.test.js` | media library: folder rights and their inheritance, clean paths, the stored password, Nextcloud's answers, the web app's helpers (`web/src/lib/media.js`) |
 | `api.test.js` | the real server with PocketBase over HTTP: setup, login, permissions, finances, the fresh start of the fee accounts, the monthly fees over time, requests, receipts, events, sharing and guests, prayer requests, order of service, songbook, media (against a stand-in Nextcloud, `tests/fakeNextcloud.js`), page addresses, API v2 (its money as the app's statistics count it), the AI assistant and its lookups against stand-in AI providers (only when the model asks, the effort levels, permissions on every lookup, size caps, categories, providers without tool calls; Anthropic, OpenAI and Gemini through their own protocols, with what they refuse) |
 | `api-v2.test.js` | API v2 with its own server and PocketBase: lists saved as a whole keep every record (a map of donations an older version kept, sent back as a list; expenses without ids that moved), errors in the language of the request with the field that did not fit, the members' fee accounts, standing orders booked at once and ended, status changes as the web app makes them, receipts (pictures and PDFs), search, requests decided and booked in one step, the fees and fresh starts, member records linked to accounts, events with places, waiting list and the duty roster, mentoring, the songbook, prayer requests, media |
 | `ai.test.js` | what the server passes on from the AI provider's stream, and how tool calls arrive in it |
-| `frontend.test.js` | web app: syntax, translations, inline handlers, referenced files; donations and expenses are saved on the previous version too, while the upgrade waits |
+| `frontend.test.js` | web app: translations (every key in English, fallbacks in English), the page shell (deep paths, link previews, theme before the first paint), sign-out, referenced files, the service worker; its pure modules (`web/src/lib`: songbook, AI reply steps, the assistant's sign, motifs); donations and expenses are saved on the previous version too, while the upgrade waits |
 | `codecs.test.js` | the exact round trip between what the apps write and the new tables: 5000 random records per kind, odd values included |
 | `database.test.js` | the rules of the database structure (names, help texts, money in cents), what a write makes the server read again, and that docs/DATABASE.md is up to date |
 | `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; older data the previous version kept as it was (holes in the donations list, times written as text, a sign-up of a deleted event) upgrades; a server stopped during the upgrade is no failed attempt; the dry run; after the switch nothing is undone - a cleanup that fails or is interrupted, or a read of the upgrade's record that fails, is tried again until it is through, and what would stop it for good (something of one's own in PocketBase that depends on an old table) is found before anything changes |
@@ -453,7 +467,7 @@ YEARS_SEEDS=1-200 node --test ../tests/years.test.js   # a long look: 200 other 
 POCKETBASE_BIN=/path/to/pocketbase node ../tests/benchmark.js 300:30   # the books of 300 members over 30 years, before and after the upgrade: read again, first after a change, and API v2
 ```
 
-Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
+Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` checks, lints and builds the web app, runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
 
 Writing tests that protect without getting in the way:
 
