@@ -1,0 +1,151 @@
+/* The AI chat: its keyframes and the markup it draws without JSX - the assistant's sign (lib/aiSign.js) and the
+   replies' Markdown. Everything else is Tailwind on the components. */
+
+@keyframes aiChatFadeIn { from { opacity: 0; } }
+@keyframes aiWelcomeOut { to { opacity: 0; transform: translateY(-24px) scale(0.97); filter: blur(2px); } }
+@keyframes aiWelcomeUp { from { opacity: 0; transform: translateY(10px); } }
+@keyframes aiWelcomeSign { from { opacity: 0; } }
+@keyframes aiMsgIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+@keyframes aiShimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+/* --- The assistant's sign: sand behind, lagoon in front (a little translucent where they overlap); the halo in
+       both, at its strongest - the circle's opacity (aiSign.js) says how much of it shows --- */
+.ai-sign {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: var(--ai-sign-size, 28px);
+    height: var(--ai-sign-size, 28px);
+    vertical-align: middle;
+}
+/* The halo reaches beyond the sign */
+.ai-sign > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ai-sign-b0 { stop-color: #f0dec2; }
+.ai-sign-b1 { stop-color: #dab98d; }
+.ai-sign-f0 { stop-color: #4fa597; }
+.ai-sign-f1 { stop-color: #1f6a62; }
+.ai-sign-front { fill-opacity: 0.86; }
+.ai-sign-h0, .ai-sign-h1 { stop-color: #e2be8a; }
+.ai-sign-h2, .ai-sign-h3 { stop-color: #8cc7bb; }
+.ai-sign-h0, .ai-sign-h3 { stop-opacity: 0; }
+.ai-sign-h1 { stop-opacity: 0.312; }
+.ai-sign-h2 { stop-opacity: 0.12; }
+[data-theme='dark'] .ai-sign-b0 { stop-color: #e3c99f; }
+[data-theme='dark'] .ai-sign-b1 { stop-color: #bf9868; }
+[data-theme='dark'] .ai-sign-f0 { stop-color: #86c2b6; }
+[data-theme='dark'] .ai-sign-f1 { stop-color: #4c8c82; }
+[data-theme='dark'] .ai-sign-h1 { stop-opacity: 0.168; }
+[data-theme='dark'] .ai-sign-h2 { stop-opacity: 0.06; }
+
+/* --- Markdown in the replies (the answer and the steps' thoughts), drawn by the app's Markdown renderer
+       (ui/markdown.ts: the event descriptions use the same one, as before) --- */
+.ai-chat-bubble-assistant p { margin: 0 0 8px; }
+.ai-chat-bubble-assistant p:last-child { margin-bottom: 0; }
+.ai-chat-bubble-assistant :is(h1, h2, h3, h4, h5, h6) { margin: 10px 0 4px; font-weight: 700; line-height: 1.3; }
+.ai-chat-bubble-assistant h1 { font-size: 1.15rem; }
+.ai-chat-bubble-assistant h2 { font-size: 1.05rem; }
+.ai-chat-bubble-assistant h3 { font-size: 0.98rem; }
+.ai-chat-bubble-assistant :is(h4, h5, h6) { font-size: 0.9rem; }
+.ai-chat-bubble-assistant blockquote {
+    margin: 8px 0;
+    padding: 6px 12px;
+    border-left: 3px solid var(--primary);
+    border-radius: 0 8px 8px 0;
+    background: rgba(14, 165, 233, 0.08);
+    color: var(--text-secondary);
+}
+.ai-chat-bubble-assistant blockquote p { margin: 4px 0; }
+.ai-chat-bubble-assistant blockquote p:first-child { margin-top: 0; }
+.ai-chat-bubble-assistant blockquote p:last-child { margin-bottom: 0; }
+.ai-chat-bubble-assistant a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.ai-chat-bubble-assistant a:hover { opacity: 0.85; }
+.ai-chat-bubble-assistant :is(ul, ol) { margin: 6px 0; padding-left: 20px; }
+.ai-chat-bubble-assistant ul { list-style: disc; }
+.ai-chat-bubble-assistant ol { list-style: decimal; }
+.ai-chat-bubble-assistant li { margin: 2px 0; }
+.ai-chat-bubble-assistant hr { margin: 10px 0; border: none; border-top: 1px solid var(--border-light); }
+.ai-chat-bubble-assistant .md-table { overflow-x: auto; margin: 10px 0; }
+.ai-chat-bubble-assistant table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+.ai-chat-bubble-assistant :is(th, td) { padding: 8px 12px; border: 1px solid var(--border-light); }
+.ai-chat-bubble-assistant th { background: var(--surface-alt); font-weight: 600; }
+/* Code blocks in the app's type (as before), code in a line in monospace */
+.ai-chat-bubble-assistant pre {
+    margin: 6px 0;
+    padding: 10px 12px;
+    overflow-x: auto;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    background: var(--surface);
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre;
+}
+.ai-chat-bubble-assistant pre code { font-family: inherit; }
+.ai-chat-bubble-assistant :not(pre) > code {
+    padding: 1px 5px;
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    background: var(--surface);
+    font-family: monospace;
+    font-size: 0.875em;
+}
+/* Blank lines between blocks: the paragraphs and lists keep their own spacing, no extra empty line on top */
+.ai-answer > br { display: none; }
+.ai-answer > p { margin-bottom: 10px; }
+.ai-answer > :is(ul, ol) { margin: 4px 0 12px; }
+.ai-answer > :last-child { margin-bottom: 0; }
+.ai-step-text > br { display: none; }
+.ai-step-text > p { margin: 0 0 6px; }
+.ai-step-text > :last-child { margin-bottom: 0; }
+.ai-step-text strong { color: var(--text); font-weight: 600; }
+
+/* --- Math --- */
+.ai-chat-bubble-assistant .md-math-display {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: auto;
+    margin: 8px 0;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-alt);
+    color: var(--text);
+    font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.1rem;
+    line-height: 1.4;
+}
+.ai-chat-bubble-assistant .md-math-inline {
+    display: inline-flex;
+    align-items: baseline;
+    padding: 0 2px;
+    color: var(--text);
+    font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Times New Roman', Georgia, serif;
+    font-size: 1.05em;
+    line-height: 1.2;
+}
+/* Only what stands directly in the formula is in the math font: its parts (fractions, roots, indices) keep the app's,
+   as they always did */
+.ai-chat-bubble-assistant :is(.md-math-display, .md-math-inline) * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+.ai-chat-bubble-assistant .md-math-frac {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: -0.55em;
+    padding: 0 3px;
+    font-size: 0.88em;
+    line-height: 1.1;
+    text-align: center;
+}
+.ai-chat-bubble-assistant .md-math-num { display: block; padding: 0 2px 1px; border-bottom: 1.5px solid currentColor; }
+.ai-chat-bubble-assistant .md-math-den { display: block; padding: 1px 2px 0; }
+.ai-chat-bubble-assistant .md-math-sqrt { display: inline-flex; align-items: center; vertical-align: baseline; }
+.ai-chat-bubble-assistant .md-math-root-deg { margin-right: -2px; margin-bottom: 4px; font-size: 0.65em; }
+.ai-chat-bubble-assistant .md-math-sqrt-rad { margin-right: 1px; font-size: 1.1em; }
+.ai-chat-bubble-assistant .md-math-sqrt-stem { display: inline-block; padding: 0 3px; border-top: 1.5px solid currentColor; }
+.ai-chat-bubble-assistant .md-math-text { font-family: var(--font-family, system-ui, -apple-system, sans-serif); font-style: normal; }
+/* sup and sub as the browser draws them (the base styles move them by position instead) */
+.ai-chat-bubble-assistant :is(.md-math-sup, .md-math-sub, .md-math-root-deg) { position: static; }
+.ai-chat-bubble-assistant .md-math-root-deg { vertical-align: super; }
+.ai-chat-bubble-assistant .md-math-sup { font-size: 0.75em; vertical-align: super; line-height: 0; }
+.ai-chat-bubble-assistant .md-math-sub { font-size: 0.75em; vertical-align: sub; line-height: 0; }

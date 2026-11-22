@@ -1,0 +1,45 @@
+/* Extras: the tiles' entrance and the painted fields of lib/motifs.js. Everything else is Tailwind on the components. */
+
+@keyframes hubTileIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+}
+
+/* A painted field, as in the Android app: a small 3D motif in a field softly painted in the app's colours - a fall of
+   its light tone, lighter up left, a breath of a neighbouring hue down right, two still soft forms - deep and quiet in
+   the dark theme. (The tiles of Extras: the media library draws its own.) */
+.hub-app-field {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
+    background:
+        radial-gradient(55% 55% at 8% 0%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)),
+        radial-gradient(62% 62% at 95% 100%, color-mix(in srgb, var(--field-hint) 60%, transparent), transparent),
+        linear-gradient(135deg, color-mix(in oklab, var(--field-light), #ffffff 50%), color-mix(in oklab, var(--field-light), #ffffff 8%));
+}
+/* A fine light edge over everything in it */
+.hub-app-field::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+}
+.hub-app-field > .painted-field-forms { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; }
+.hub-app-field .painted-field-upper { fill: #ffffff; fill-opacity: 0.3; }
+.hub-app-field .painted-field-lower { fill: var(--field-deep); fill-opacity: 0.07; }
+.hub-app-field > .motif { grid-area: 1 / 1; display: block; width: 60%; height: 60%; }
+[data-theme='dark'] .hub-app-field {
+    background:
+        radial-gradient(55% 55% at 8% 0%, color-mix(in srgb, var(--field-light) 14%, transparent), transparent),
+        radial-gradient(62% 62% at 95% 100%, color-mix(in srgb, var(--field-hint) 16%, transparent), transparent),
+        linear-gradient(135deg, color-mix(in oklab, var(--surface), var(--field-deep) 38%), color-mix(in oklab, var(--surface), var(--field-deep) 16%));
+}
+[data-theme='dark'] .hub-app-field::after { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
+[data-theme='dark'] .hub-app-field .painted-field-upper { fill-opacity: 0.035; }
+[data-theme='dark'] .hub-app-field .painted-field-lower { fill: var(--field-light); fill-opacity: 0.06; }

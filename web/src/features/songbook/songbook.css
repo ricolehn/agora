@@ -1,0 +1,19 @@
+/* The song page's "Display" panel opens with a short rise (SongView.tsx) */
+@keyframes song-panel-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+
+/* Printing a song (view.ts printSong): only the song, chords included, the CCLI notes at the end */
+@media print {
+    body.printing-song > *:not(#song-view-modal) { display: none !important; }
+    body.printing-song #song-view-modal { position: static; display: block; opacity: 1; visibility: visible; background: #ffffff; }
+    body.printing-song #song-view-modal > .modal-content { height: auto; max-width: none !important; background: #ffffff; }
+    body.printing-song [data-song-view] { height: auto; max-width: none; }
+    body.printing-song [data-song-controls], body.printing-song [data-song-top] button { display: none !important; }
+    body.printing-song [data-song-top] { border: none; }
+    body.printing-song [data-song-fact] { padding: 0; background: none; color: #000000; }
+    body.printing-song [data-song-body] { overflow: visible; padding: 0; font-size: 12pt; color: #000000; }
+    body.printing-song [data-song-chord], body.printing-song [data-song-section] { color: #000000; }
+    body.printing-song [data-song-end] { display: none; }
+    body.printing-song [data-song-line] { break-inside: avoid; }
+}

@@ -1,0 +1,6 @@
+/* The media library's moves (features/media): the keyframes its animate-[...] classes name */
+@keyframes mediaFadeIn { from { opacity: 0; } }
+@keyframes mediaContentIn { from { opacity: 0; transform: translateY(6px); } }
+@keyframes mediaSelectbarIn { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes mediaMenuIn { from { opacity: 0; transform: scale(0.97); } }
+@keyframes mediaSpin { to { transform: rotate(360deg); } }

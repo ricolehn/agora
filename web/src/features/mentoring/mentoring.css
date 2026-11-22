@@ -1,0 +1,11 @@
+/* The chat opened on a phone covers the screen (ChatPane.tsx, position: fixed). The tab's entrance movement
+   (a transform on the page) would hold it inside the moving page for 0.4 s, under the header and the navigation, and
+   then let it jump - opened from the start page, the tab and the chat arrive together. The movement ends at once
+   then (the previous app hid the header and the navigation under the chat). Its duration, not the animation itself:
+   taking the animation away and back would play the entrance again when the chat is left. */
+@media (max-width: 768px) {
+    .tab-content:has([data-chat-fullscreen]) { animation-duration: 0s !important; }
+    /* Under it the header and the navigation are gone, as in the previous app (body.mentoring-mobile-chat-open): only
+       covered, the keyboard and screen readers still went through their buttons behind the chat */
+    body:has([data-chat-fullscreen]) :is(.header, .bottom-nav) { display: none !important; }
+}
