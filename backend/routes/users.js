@@ -97,18 +97,10 @@ router.get('/api/profile/picture/:uid', pictureRateLimit, verifyToken, (req, res
   }
 });
 
-router.get('/api/groups', verifyToken, async (req, res) => {
-  try {
-    const groups = await listGroupRecords(context.appConfig);
-    res.json(groups.map(g => ({
-      id: g.id,
-      name: g.name
-    })));
-  } catch (error) {
-    console.error('Failed to list groups:', error);
-    res.status(500).json({ error: error.message || 'Failed to list groups' });
-  }
-});
+router.get('/api/groups', verifyToken, route('Failed to list groups', async (req, res) => {
+  const groups = await listGroupRecords(context.appConfig);
+  res.json(groups.map((g) => ({ id: g.id, name: g.name })));
+}));
 
 // Report an AI reply or a chat message (Google Play AIGC / UGC policies); admins are notified
 router.post('/api/reports', protectedActionRateLimit, verifyToken, route('The report could not be saved.', async (req, res) => {

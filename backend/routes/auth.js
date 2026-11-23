@@ -180,7 +180,7 @@ function unusedEntriesNamed(people, fullName) {
   return people.filter(p => !p.uid && !p.data?.uid && !(p.isDeleted || p.data?.isDeleted) && String(p.name || '').trim().toLowerCase() === name);
 }
 
-router.post('/api/auth/register', authRateLimit, async (req, res) => {
+router.post('/api/auth/register', authRateLimit, route('The account could not be created.', async (req, res) => {
   if (context.setupMode) {
     return res.status(503).json({ error: 'App is in setup mode. Please complete setup first.' });
   }
@@ -203,79 +203,75 @@ router.post('/api/auth/register', authRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'First and last name are required.' });
   }
 
-  try {
-    // The code is good for one registration: checking it, creating the account and making the next code run as one
-    // step - two people sending the same code at the same moment used to both get in
-    const result = await queueRecordWrite(SYSTEM_STATE_LOCK, async () => {
-      const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-      // No code set (or none sent): nobody registers; compared in constant time
-      const validInviteCode = String(system?.inviteCode || '');
-      const sent = Buffer.from(inviteCode);
-      const valid = Buffer.from(validInviteCode);
-      const matches = valid.length > 0 && sent.length === valid.length && crypto.timingSafeEqual(sent, valid);
-      if (!matches) return { status: 403, error: 'Invalid registration code.' };
+  // The code is good for one registration: checking it, creating the account and making the next code run as one
+  // step - two people sending the same code at the same moment used to both get in
+  const result = await queueRecordWrite(SYSTEM_STATE_LOCK, async () => {
+    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+    // No code set (or none sent): nobody registers; compared in constant time
+    const validInviteCode = String(system?.inviteCode || '');
+    const sent = Buffer.from(inviteCode);
+    const valid = Buffer.from(validInviteCode);
+    const matches = valid.length > 0 && sent.length === valid.length && crypto.timingSafeEqual(sent, valid);
+    if (!matches) return { status: 403, error: 'Invalid registration code.' };
 
-      const normFirst = firstName.toLowerCase();
-      const normLast = lastName.toLowerCase();
-      const fullName = `${firstName} ${lastName}`.trim();
+    const normFirst = firstName.toLowerCase();
+    const normLast = lastName.toLowerCase();
+    const fullName = `${firstName} ${lastName}`.trim();
 
-      const existingUsers = await listUserRecords(context.appConfig);
-      const matchingUnclaimedUser = existingUsers.find((u) => {
-        const uFirst = String(u.firstName || '').trim().toLowerCase();
-        const uLast = String(u.lastName || '').trim().toLowerCase();
-        const uName = String(u.name || '').trim().toLowerCase();
-        const isUnclaimed = u.isClaimed === false || isPlaceholderEmail(u.email);
-        if (!isUnclaimed) return false;
-        return (uFirst === normFirst && uLast === normLast) || (uName === `${normFirst} ${normLast}`.trim());
-      });
-
-      let auth;
-      if (matchingUnclaimedUser) {
-        await claimUserAccount(context.appConfig, matchingUnclaimedUser.id, email, password);
-        await updateUserRecord(context.appConfig, matchingUnclaimedUser.id, {
-          firstName,
-          lastName,
-          name: fullName
-        });
-        auth = await loginUser(email, password);
-
-        // The account keeps its own finance entry. Only an account without one gets the entry with its name that no
-        // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
-        const uid = matchingUnclaimedUser.id;
-        const people = await listPeopleRecords(context.appConfig);
-        const unused = unusedEntriesNamed(people, fullName);
-        if (!people.some(p => p.uid === uid || p.data?.uid === uid) && unused.length === 1) {
-          await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
-        }
-      } else {
-        auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
-
-        // A member the treasury kept before they had an account (an entry with their name that no account uses) gets
-        // that entry, with its payments and history - a new one beside it was charged from today and the apps showed
-        // it instead. Two such entries are two people: the account gets none, the treasury assigns it ("Unlinked users")
-        const uid = auth.user.id;
-        const unused = unusedEntriesNamed(await listPeopleRecords(context.appConfig), fullName);
-        if (unused.length === 1) {
-          await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
-        } else if (unused.length === 0) {
-          const today = new Date().toISOString().slice(0, 10);
-          await upsertPeopleRecord(context.appConfig, uid, newPersonRecord(uid, fullName, today));
-        }
-      }
-
-      // The next code, into the settings as they are now (not as they were read at the start)
-      const newCode = String(crypto.randomInt(100000, 1000000));
-      await upsertStateValue(context.appConfig, 'system', { ...(await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE)), inviteCode: newCode });
-      return { auth };
+    const existingUsers = await listUserRecords(context.appConfig);
+    const matchingUnclaimedUser = existingUsers.find((u) => {
+      const uFirst = String(u.firstName || '').trim().toLowerCase();
+      const uLast = String(u.lastName || '').trim().toLowerCase();
+      const uName = String(u.name || '').trim().toLowerCase();
+      const isUnclaimed = u.isClaimed === false || isPlaceholderEmail(u.email);
+      if (!isUnclaimed) return false;
+      return (uFirst === normFirst && uLast === normLast) || (uName === `${normFirst} ${normLast}`.trim());
     });
-    if (result.error) return res.status(result.status).json({ error: result.error });
-    broadcastDataUpdate();
-    setAuthCookie(req, res, result.auth.token);
-    res.json(result.auth);
-  } catch (error) {
-    res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
-  }
-});
+
+    let auth;
+    if (matchingUnclaimedUser) {
+      await claimUserAccount(context.appConfig, matchingUnclaimedUser.id, email, password);
+      await updateUserRecord(context.appConfig, matchingUnclaimedUser.id, {
+        firstName,
+        lastName,
+        name: fullName
+      });
+      auth = await loginUser(email, password);
+
+      // The account keeps its own finance entry. Only an account without one gets the entry with its name that no
+      // account uses yet: the entry of a namesake (or a deleted one) must never move over to this account
+      const uid = matchingUnclaimedUser.id;
+      const people = await listPeopleRecords(context.appConfig);
+      const unused = unusedEntriesNamed(people, fullName);
+      if (!people.some(p => p.uid === uid || p.data?.uid === uid) && unused.length === 1) {
+        await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
+      }
+    } else {
+      auth = await registerUser({ email, password, firstName, lastName, isClaimed: true }, context.appConfig);
+
+      // A member the treasury kept before they had an account (an entry with their name that no account uses) gets
+      // that entry, with its payments and history - a new one beside it was charged from today and the apps showed
+      // it instead. Two such entries are two people: the account gets none, the treasury assigns it ("Unlinked users")
+      const uid = auth.user.id;
+      const unused = unusedEntriesNamed(await listPeopleRecords(context.appConfig), fullName);
+      if (unused.length === 1) {
+        await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
+      } else if (unused.length === 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        await upsertPeopleRecord(context.appConfig, uid, newPersonRecord(uid, fullName, today));
+      }
+    }
+
+    // The next code, into the settings as they are now (not as they were read at the start)
+    const newCode = String(crypto.randomInt(100000, 1000000));
+    await upsertStateValue(context.appConfig, 'system', { ...(await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE)), inviteCode: newCode });
+    return { auth };
+  });
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  broadcastDataUpdate();
+  setAuthCookie(req, res, result.auth.token);
+  res.json(result.auth);
+}));
 
 // Runs on every page load: the page limiter, not the strict login one (members behind one NAT got locked out)
 router.get('/api/auth/me', pageRateLimit, verifyToken, (req, res) => {
@@ -288,7 +284,7 @@ router.post('/api/auth/logout', pageRateLimit, (req, res) => {
   res.json({ success: true });
 });
 
-router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) => {
+router.post('/api/auth/password', authRateLimit, verifyToken, route('Failed to update password.', async (req, res) => {
   const oldPassword = String(req.body?.oldPassword || '');
   const password = String(req.body?.password || '');
 
@@ -300,14 +296,10 @@ router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) =
     return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
   }
 
-  try {
-    await updateOwnPassword(context.appConfig, req.user.rawEmail || req.user.email, req.user.uid, oldPassword, password);
-    clearAuthCookie(req, res);
-    res.json({ success: true, loggedOut: true });
-  } catch (error) {
-    res.status(error.status || 400).json({ error: error.message || 'Failed to update password.' });
-  }
-});
+  await updateOwnPassword(context.appConfig, req.user.rawEmail || req.user.email, req.user.uid, oldPassword, password);
+  clearAuthCookie(req, res);
+  res.json({ success: true, loggedOut: true });
+}));
 
 // Users delete their own account (web UI + app settings, Google Play account deletion policy).
 // The password confirms it; the owner account has to stay (like in the admin deletion).

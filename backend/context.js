@@ -1,5 +1,5 @@
 const { runAs } = require('./actor');
-const { conflict, forbidden, invalid, notFound, unauthorized } = require('./httpError');
+const { conflict, forbidden, invalid, notFound, unauthorized, unavailable } = require('./httpError');
 const multer = require('multer');
 const crypto = require('crypto');
 const path = require('path');
@@ -200,7 +200,7 @@ function setRuntimeConfig(config, { retry = true, attempt = 0 } = {}) {
       restartTimer.unref?.();
     }
     if (!retry) throw error;
-    throw Object.assign(new Error('The server is starting. Please try again in a moment.'), { status: 503, cause: error });
+    throw unavailable('The server is starting. Please try again in a moment.', { cause: error });
   });
   return context.runtimeReady;
 }

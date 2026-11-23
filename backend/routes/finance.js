@@ -70,124 +70,88 @@ const { httpError, invalid, notFound, conflict } = require('../httpError');
 
 const router = express.Router();
 
-router.get('/api/db', dbRateLimit, async (req, res) => {
+router.get('/api/db', dbRateLimit, route('Failed to read data', async (req, res) => {
   if (context.setupMode) {
     return res.status(503).json({ error: 'App is in setup mode. Please complete setup first.' });
   }
+  await context.runtimeReady;
+  const authState = await verifyOptionalUser(req);
+  const result = await readLogicalPath(req.query.path, {
+    orderByChild: req.query.orderByChild,
+    equalTo: req.query.equalTo
+  }, authState?.user || null);
+  res.json(req.query.raw === '1' ? result : result.value);
+}));
 
-  try {
-    await context.runtimeReady;
-    const authState = await verifyOptionalUser(req);
-    const result = await readLogicalPath(req.query.path, {
-      orderByChild: req.query.orderByChild,
-      equalTo: req.query.equalTo
-    }, authState?.user || null);
+router.put('/api/db', dbRateLimit, verifyToken, route('Failed to write data', async (req, res) => {
+  await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'set', { origin: originOf(req), version: req.body?.version });
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
 
-    if (req.query.raw === '1') {
-      return res.json(result);
-    }
-    return res.json(result.value);
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || 'Failed to read data' });
+router.patch('/api/db', dbRateLimit, verifyToken, route('Failed to update data', async (req, res) => {
+  await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'patch', { origin: originOf(req) });
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
+
+router.delete('/api/db', dbRateLimit, verifyToken, route('Failed to delete data', async (req, res) => {
+  await removeLogicalPath(req.body?.path, req.user);
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
+
+router.get('/api/stats', dbRateLimit, verifyToken, route('Failed to fetch stats', async (req, res) => {
+  if (!req.user.canViewFinances) {
+    return res.status(403).json({ error: 'Finance access rights required' });
   }
-});
+  res.json(await aggregateStats(context.appConfig));
+}));
 
-router.put('/api/db', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'set', { origin: originOf(req), version: req.body?.version });
+router.get('/api/transactions', dbRateLimit, verifyToken, route('Failed to fetch transactions', async (req, res) => {
+  if (!req.user.canViewFinances) {
+    return res.status(403).json({ error: 'Finance access rights required' });
+  }
+  const page = parseInt(req.query.page, 10) || 1;
+  const perPage = parseInt(req.query.perPage, 10) || 150;
+  const search = req.query.search || '';
+  res.json(await getPaginatedTransactions(context.appConfig, page, perPage, search));
+}));
+
+router.post('/api/db/transaction', dbRateLimit, verifyToken, route('Transaction failed', async (req, res) => {
+  const targetPath = normalizeDataPath(req.body?.path);
+  const [root, id] = targetPath.split('/');
+  // Donations and expenses: the whole list, saved only if it is still the version the app read
+  if ((root === 'donations' || root === 'expenses') && !id) {
+    if (!req.user.canManageFinances) return res.status(403).json({ error: 'Finance management rights required' });
+    const read = await readLogicalPath(root, {}, req.user);
+    if ((req.body?.currentVersion || null) !== read.version) return res.status(409).json({ error: 'Conflict' });
+    await writeLogicalPath(root, req.body?.value, req.user, 'set', { origin: originOf(req), version: read.version });
     broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || 'Failed to write data' });
+    const saved = await readLogicalPath(root, {}, req.user);
+    return res.json({ value: saved.value, version: saved.version });
   }
-});
-
-router.patch('/api/db', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    await writeLogicalPath(req.body?.path, req.body?.value, req.user, 'patch', { origin: originOf(req) });
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update data' });
+  if (root !== 'people' || !id) {
+    return res.status(400).json({ error: 'Only people, donations and expenses transactions are supported.' });
   }
-});
 
-router.delete('/api/db', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    await removeLogicalPath(req.body?.path, req.user);
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || 'Failed to delete data' });
+  const existing = await getPeopleRecord(context.appConfig, id);
+  const currentVersion = existing?.updated || null;
+  if ((req.body?.currentVersion || null) !== currentVersion) {
+    return res.status(409).json({ error: 'Conflict' });
   }
-});
 
-router.get('/api/stats', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    if (!req.user.canViewFinances) {
-      return res.status(403).json({ error: 'Finance access rights required' });
-    }
-    const stats = await aggregateStats(context.appConfig);
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to fetch stats' });
+  const nextValue = req.body?.value;
+  if (!req.user.canManageFinances) {
+    return res.status(403).json({ error: 'Finance management rights required' });
   }
-});
 
-router.get('/api/transactions', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    if (!req.user.canViewFinances) {
-      return res.status(403).json({ error: 'Finance access rights required' });
-    }
-    const page = parseInt(req.query.page, 10) || 1;
-    const perPage = parseInt(req.query.perPage, 10) || 150;
-    const search = req.query.search || '';
-    const transactions = await getPaginatedTransactions(context.appConfig, page, perPage, search);
-    res.json(transactions);
-  } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to fetch transactions' });
-  }
-});
-
-router.post('/api/db/transaction', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    const targetPath = normalizeDataPath(req.body?.path);
-    const [root, id] = targetPath.split('/');
-    // Donations and expenses: the whole list, saved only if it is still the version the app read
-    if ((root === 'donations' || root === 'expenses') && !id) {
-      if (!req.user.canManageFinances) return res.status(403).json({ error: 'Finance management rights required' });
-      const read = await readLogicalPath(root, {}, req.user);
-      if ((req.body?.currentVersion || null) !== read.version) return res.status(409).json({ error: 'Conflict' });
-      await writeLogicalPath(root, req.body?.value, req.user, 'set', { origin: originOf(req), version: read.version });
-      broadcastDataUpdate();
-      const saved = await readLogicalPath(root, {}, req.user);
-      return res.json({ value: saved.value, version: saved.version });
-    }
-    if (root !== 'people' || !id) {
-      return res.status(400).json({ error: 'Only people, donations and expenses transactions are supported.' });
-    }
-
-    const existing = await getPeopleRecord(context.appConfig, id);
-    const currentVersion = existing?.updated || null;
-    if ((req.body?.currentVersion || null) !== currentVersion) {
-      return res.status(409).json({ error: 'Conflict' });
-    }
-
-    const nextValue = req.body?.value;
-    if (!req.user.canManageFinances) {
-      return res.status(403).json({ error: 'Finance management rights required' });
-    }
-
-    // The version this write is based on, checked again in the write queue (an empty one included: records from
-    // before the version field)
-    const updated = await upsertPeopleRecord(context.appConfig, id, nextValue, existing ? existing.updated || '' : null);
-    broadcastDataUpdate();
-    res.json({ value: updated.data, version: updated.updated });
-  } catch (error) {
-    console.error('Transaction endpoint error:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Transaction failed' });
-  }
-});
+  // The version this write is based on, checked again in the write queue (an empty one included: records from
+  // before the version field)
+  const updated = await upsertPeopleRecord(context.appConfig, id, nextValue, existing ? existing.updated || '' : null);
+  broadcastDataUpdate();
+  res.json({ value: updated.data, version: updated.updated });
+}));
 
 // --- CALDERA: a fresh start for all fee accounts on a chosen day (feeReset.js) ---
 // Open fees are dropped on that day, credit is carried over, and from then on months and payments count anew. Every

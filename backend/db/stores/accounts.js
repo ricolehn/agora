@@ -5,7 +5,7 @@ const client = require('../client');
 const codecs = require('../codecs/accounts');
 const { usersGroupsField, table } = require('../tables');
 const { queueRecordWrite } = require('../writeQueue');
-const { notFound } = require('../../httpError');
+const { invalid, notFound } = require('../../httpError');
 
 const USERS = 'users';
 const GROUPS = 'user_groups';
@@ -19,6 +19,17 @@ async function groupContext(appConfig) {
 }
 
 const decode = (row) => codecs.decodeUser(row, usersGroupsField());
+
+// An e-mail address PocketBase turns down is for the person to fix; its own texts ("Value must be unique.") are not
+const EMAIL_REFUSALS = {
+  validation_not_unique: 'This e-mail address is already in use.',
+  validation_is_email: 'Please enter a valid e-mail address.'
+};
+/** [write] of an account, with PocketBase's refusal of the e-mail address as an error meant for the person. */
+const withEmailChecked = (write) => write.catch((error) => {
+  const refusal = error?.status === 400 ? EMAIL_REFUSALS[error.response?.data?.email?.code] : null;
+  throw refusal ? invalid(refusal) : error;
+});
 
 async function getUserRecord(appConfig, uid) {
   const token = await client.authenticateSuperuser(appConfig);
@@ -44,18 +55,18 @@ function updateUserRecord(appConfig, uid, body) {
   return queueRecordWrite(`users:${uid}`, async () => {
     const current = await getUserRecord(appConfig, uid);
     if (!current) throw notFound('User not found');
-    return decode(await client.updateRecord(USERS, uid, await writeBody(appConfig, current, body || {}), appConfig));
+    return decode(await withEmailChecked(client.updateRecord(USERS, uid, await writeBody(appConfig, current, body || {}), appConfig)));
   });
 }
 
 /** Creates an account from [body] in the old shape (registerUser). Returns the raw record in its old shape. */
 async function createUserRecord(appConfig, body, { token } = {}) {
   const defaults = { name: '', avatar: '', firstName: '', lastName: '', admin: false, owner: false, superAdmin: false, pays: false, groups: [], emailNotifications: true, notificationSettings: null, language: '', timeZone: '', isClaimed: false, calendarToken: '' };
-  const record = await client.pocketBaseRequest(`/api/collections/${USERS}/records`, {
+  const record = await withEmailChecked(client.pocketBaseRequest(`/api/collections/${USERS}/records`, {
     method: 'POST',
     token: token || await client.authenticateSuperuser(appConfig),
     body: await writeBody(appConfig, defaults, body)
-  });
+  }));
   return decode(record);
 }
 

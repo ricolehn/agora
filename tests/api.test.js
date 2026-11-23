@@ -676,8 +676,20 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     assert.equal(me.canViewFinances, false);
     assert.equal((await register('zweiter@test.local', String(code))).status, 403, 'the used code no longer works');
 
-    // Sent by three people at the same moment, the code still lets exactly one in
+    // An address in use or no address at all is the person's to fix (not PocketBase's "Value must be unique."), and
+    // the code stays good for the next try; an admin creating the account is told the same
     const next = String(await read('owner', 'system/inviteCode'));
+    const taken = await call(null, 'POST', '/api/auth/register', { email: 'neu@test.local', password: PASSWORD, firstName: 'Nora', lastName: 'Doppelt', inviteCode: next }, { lang: 'de' });
+    assert.deepEqual([taken.status, taken.body], [400, { error: 'Diese E-Mail-Adresse wird bereits verwendet.' }]);
+    assert.equal(String(await read('owner', 'system/inviteCode')), next, 'a refused registration does not use up the code');
+    const byAdmin = async (email) => {
+      const answer = await call('owner', 'POST', '/api/admin/users', { firstName: 'Nora', lastName: 'Doppelt', email, password: PASSWORD });
+      return [answer.status, answer.body];
+    };
+    assert.deepEqual(await byAdmin('neu@test.local'), [400, { error: 'This e-mail address is already in use.' }]);
+    assert.deepEqual(await byAdmin('keine-adresse'), [400, { error: 'Please enter a valid e-mail address.' }]);
+
+    // Sent by three people at the same moment, the code still lets exactly one in
     const answers = await Promise.all(['gleich1', 'gleich2', 'gleich3'].map((name) => register(`${name}@test.local`, next)));
     assert.deepEqual(answers.map((answer) => answer.status).sort(), [200, 403, 403]);
     assert.notEqual(String(await read('owner', 'system/inviteCode')), next, 'and a new code is set');

@@ -293,84 +293,57 @@ router.get('/api/admin/permissions', verifyToken, verifyAdmin, (req, res) => {
   res.json(SYSTEM_PERMISSIONS.map((p) => ({ ...p, name: translate(lang, p.name), description: translate(lang, p.description) })));
 });
 
-router.get('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const groups = await listGroupRecords(context.appConfig);
-    const users = await listUserRecords(context.appConfig);
+router.get('/api/admin/groups', verifyToken, verifyAdmin, route('Failed to list groups', async (req, res) => {
+  const groups = await listGroupRecords(context.appConfig);
+  const users = await listUserRecords(context.appConfig);
+  res.json(groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    permissions: Array.isArray(g.permissions) ? g.permissions : [],
+    memberCount: users.filter((u) => Array.isArray(u.groups) && (u.groups.includes(g.id) || u.groups.includes(g.name))).length
+  })));
+}));
 
-    const formatted = groups.map(g => {
-      const memberCount = users.filter(u => Array.isArray(u.groups) && (u.groups.includes(g.id) || u.groups.includes(g.name))).length;
-      return {
-        id: g.id,
-        name: g.name,
-        permissions: Array.isArray(g.permissions) ? g.permissions : [],
-        memberCount
-      };
-    });
+router.post('/api/admin/groups', verifyToken, verifyAdmin, route('Failed to create group', async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Group name is required.' });
 
-    res.json(formatted);
-  } catch (error) {
-    console.error('Failed to list groups:', error);
-    res.status(500).json({ error: error.message || 'Failed to list groups' });
+  const existingGroups = await listGroupRecords(context.appConfig);
+  if (existingGroups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+    return res.status(400).json({ error: 'A group with this name already exists.' });
   }
-});
 
-router.post('/api/admin/groups', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const name = String(req.body?.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'Group name is required.' });
+  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  const group = await createGroupRecord(context.appConfig, { name, permissions });
+  broadcastDataUpdate();
+  res.json(group);
+}));
 
-    const existingGroups = await listGroupRecords(context.appConfig);
-    if (existingGroups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
-      return res.status(400).json({ error: 'A group with this name already exists.' });
-    }
-
-    const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
-    const group = await createGroupRecord(context.appConfig, { name, permissions });
-    broadcastDataUpdate();
-    res.json(group);
-  } catch (error) {
-    console.error('Failed to create group:', error);
-    res.status(500).json({ error: error.message || 'Failed to create group' });
-  }
-});
-
-router.put('/api/admin/groups/:id', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
-    if (name !== undefined && !name) return res.status(400).json({ error: 'The group name must not be empty.' });
-    const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : undefined;
-    const previousName = (await listGroupRecords(context.appConfig)).find((g) => g.id === id)?.name;
-    const group = await updateGroupRecord(context.appConfig, id, { name, permissions });
-    // Events keep their target groups by name: they move along, so the group keeps seeing them (editing such an
-    // event used to drop the unknown old name, and the event was then visible to everyone)
-    if (previousName && group.name !== previousName) {
-      for (const ev of await listEvents(context.appConfig)) {
-        if (Array.isArray(ev.targetGroups) && ev.targetGroups.includes(previousName)) {
-          await updateEventRecord(context.appConfig, ev.id, { targetGroups: ev.targetGroups.map((g) => (g === previousName ? group.name : g)) });
-        }
+router.put('/api/admin/groups/:id', verifyToken, verifyAdmin, route('Failed to update group', async (req, res) => {
+  const { id } = req.params;
+  const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
+  if (name !== undefined && !name) return res.status(400).json({ error: 'The group name must not be empty.' });
+  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : undefined;
+  const previousName = (await listGroupRecords(context.appConfig)).find((g) => g.id === id)?.name;
+  const group = await updateGroupRecord(context.appConfig, id, { name, permissions });
+  // Events keep their target groups by name: they move along, so the group keeps seeing them (editing such an
+  // event used to drop the unknown old name, and the event was then visible to everyone)
+  if (previousName && group.name !== previousName) {
+    for (const ev of await listEvents(context.appConfig)) {
+      if (Array.isArray(ev.targetGroups) && ev.targetGroups.includes(previousName)) {
+        await updateEventRecord(context.appConfig, ev.id, { targetGroups: ev.targetGroups.map((g) => (g === previousName ? group.name : g)) });
       }
     }
-    broadcastDataUpdate();
-    res.json(group);
-  } catch (error) {
-    console.error('Failed to update group:', error);
-    res.status(500).json({ error: error.message || 'Failed to update group' });
   }
-});
+  broadcastDataUpdate();
+  res.json(group);
+}));
 
-router.delete('/api/admin/groups/:id', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    await deleteGroupRecord(context.appConfig, id);
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to delete group:', error);
-    res.status(500).json({ error: error.message || 'Failed to delete group' });
-  }
-});
+router.delete('/api/admin/groups/:id', verifyToken, verifyAdmin, route('Failed to delete group', async (req, res) => {
+  await deleteGroupRecord(context.appConfig, req.params.id);
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
 
 // True (and answered with 403) when a non-owner admin tries to change the owner's account
 async function blockOwnerChange(req, res, uid) {
@@ -385,77 +358,67 @@ async function blockOwnerChange(req, res, uid) {
   return false;
 }
 
-router.put('/api/admin/users/:uid/groups', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    if (await blockOwnerChange(req, res, uid)) return;
-    const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
-    await updateUserRecord(context.appConfig, uid, { groups });
-    broadcastDataUpdate();
-    res.json({ success: true, groups });
-  } catch (error) {
-    console.error('Failed to update user groups:', error);
-    res.status(500).json({ error: error.message || 'Failed to update user groups' });
+router.put('/api/admin/users/:uid/groups', verifyToken, verifyAdmin, route('Failed to update user groups', async (req, res) => {
+  const { uid } = req.params;
+  if (await blockOwnerChange(req, res, uid)) return;
+  const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
+  await updateUserRecord(context.appConfig, uid, { groups });
+  broadcastDataUpdate();
+  res.json({ success: true, groups });
+}));
+
+router.post('/api/admin/users', verifyToken, verifyAdmin, route('Failed to create user', async (req, res) => {
+  const { email, password, firstName, lastName, admin, pays, groups, status, memberSince } = req.body || {};
+  const normalizedEmail = String(email || '').trim();
+  const normalizedPassword = String(password || '');
+  const normalizedFirst = String(firstName || '').trim();
+  const normalizedLast = String(lastName || '').trim();
+
+  if (!normalizedFirst || !normalizedLast) {
+    return res.status(400).json({ error: 'First and last name required.' });
   }
-});
 
-router.post('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { email, password, firstName, lastName, admin, pays, groups, status, memberSince } = req.body || {};
-    const normalizedEmail = String(email || '').trim();
-    const normalizedPassword = String(password || '');
-    const normalizedFirst = String(firstName || '').trim();
-    const normalizedLast = String(lastName || '').trim();
-
-    if (!normalizedFirst || !normalizedLast) {
-      return res.status(400).json({ error: 'First and last name required.' });
-    }
-
-    if (normalizedPassword && normalizedPassword.length < 6) {
-      return res.status(400).json({ error: 'The password must be at least 6 characters long.' });
-    }
-
-    const hasRealCredentials = Boolean(normalizedEmail && normalizedPassword);
-
-    const createdAuth = await registerUser({
-      email: normalizedEmail,
-      password: normalizedPassword,
-      firstName: normalizedFirst,
-      lastName: normalizedLast,
-      admin: admin === true,
-      owner: false,
-      pays: pays !== false,
-      groups: Array.isArray(groups) ? groups : [],
-      isClaimed: hasRealCredentials
-    }, context.appConfig);
-
-    const userUid = createdAuth.user.id || createdAuth.user.uid;
-    const fullName = `${normalizedFirst} ${normalizedLast}`.trim();
-    const today = new Date().toISOString().slice(0, 10);
-    const startDate = String(memberSince || today).trim() || today;
-    const memberStatus = String(status || 'vollverdiener').trim() || 'vollverdiener';
-
-    const personKey = userUid;
-    await upsertPeopleRecord(context.appConfig, personKey, {
-      id: personKey,
-      uid: userUid,
-      name: fullName,
-      status: memberStatus,
-      memberSince: startDate,
-      originalMemberSince: startDate,
-      totalPaid: 0,
-      pays: pays !== false,
-      standingOrders: [],
-      statusHistory: [{ status: memberStatus, startDate }]
-    });
-
-    broadcastDataUpdate();
-    res.json({ success: true, user: createdAuth.user });
-  } catch (error) {
-    console.error('Failed to create user:', error);
-    res.status(error.status || 400).json({ error: error.message || 'Failed to create user' });
+  if (normalizedPassword && normalizedPassword.length < 6) {
+    return res.status(400).json({ error: 'The password must be at least 6 characters long.' });
   }
-});
+
+  const hasRealCredentials = Boolean(normalizedEmail && normalizedPassword);
+
+  const createdAuth = await registerUser({
+    email: normalizedEmail,
+    password: normalizedPassword,
+    firstName: normalizedFirst,
+    lastName: normalizedLast,
+    admin: admin === true,
+    owner: false,
+    pays: pays !== false,
+    groups: Array.isArray(groups) ? groups : [],
+    isClaimed: hasRealCredentials
+  }, context.appConfig);
+
+  const userUid = createdAuth.user.id || createdAuth.user.uid;
+  const fullName = `${normalizedFirst} ${normalizedLast}`.trim();
+  const today = new Date().toISOString().slice(0, 10);
+  const startDate = String(memberSince || today).trim() || today;
+  const memberStatus = String(status || 'vollverdiener').trim() || 'vollverdiener';
+
+  const personKey = userUid;
+  await upsertPeopleRecord(context.appConfig, personKey, {
+    id: personKey,
+    uid: userUid,
+    name: fullName,
+    status: memberStatus,
+    memberSince: startDate,
+    originalMemberSince: startDate,
+    totalPaid: 0,
+    pays: pays !== false,
+    standingOrders: [],
+    statusHistory: [{ status: memberStatus, startDate }]
+  });
+
+  broadcastDataUpdate();
+  res.json({ success: true, user: createdAuth.user });
+}));
 
 router.put('/api/admin/users/:uid/admin', verifyToken, verifyAdmin, route('Failed to update admin role', async (req, res) => {
   const { uid } = req.params;
@@ -530,7 +493,7 @@ router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, route
     }
     await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
   } else {
-          const user = await getUserRecord(context.appConfig, uid);
+    const user = await getUserRecord(context.appConfig, uid);
     const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
     const personKey = uid;
     await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, memberSince, user?.pays !== false));
@@ -540,22 +503,17 @@ router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, route
   res.json({ success: true, memberSince });
 }));
 
-router.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    if (await blockOwnerChange(req, res, uid)) return;
-    const newPassword = String(req.body?.password || '');
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'The password must be at least 6 characters long.' });
-    }
-
-    await adminResetUserPassword(context.appConfig, uid, newPassword);
-    res.json({ success: true, message: 'Password changed successfully.' });
-  } catch (error) {
-    console.error('Failed to reset user password:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Resetting the password failed' });
+router.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, route('Resetting the password failed', async (req, res) => {
+  const { uid } = req.params;
+  if (await blockOwnerChange(req, res, uid)) return;
+  const newPassword = String(req.body?.password || '');
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'The password must be at least 6 characters long.' });
   }
-});
+
+  await adminResetUserPassword(context.appConfig, uid, newPassword);
+  res.json({ success: true, message: 'Password changed successfully.' });
+}));
 
 router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, route('Failed to delete user', async (req, res) => {
   const { uid } = req.params;

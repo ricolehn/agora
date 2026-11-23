@@ -79,6 +79,24 @@ describe('i18n', () => {
   });
 });
 
+describe('route errors', () => {
+  const { route } = require(path.join(BACKEND_DIR, 'routes', 'http'));
+  const { conflict } = require(path.join(BACKEND_DIR, 'httpError'));
+  const answer = async (handler, { sent = false } = {}) => {
+    const res = { headersSent: sent, code: 200, body: null, status(code) { this.code = code; return this; }, json(body) { this.body = body; this.headersSent = true; return this; } };
+    await route('The list could not be loaded', handler)({ method: 'GET', originalUrl: '/api/list' }, res);
+    return [res.code, res.body];
+  };
+
+  test("an error meant for the person keeps its status and text; anything else is the route's text, never the server's", async (t) => {
+    t.mock.method(console, 'error', () => {});
+    assert.deepEqual(await answer(() => { throw conflict('This changed meanwhile.'); }), [409, { error: 'This changed meanwhile.' }]);
+    assert.deepEqual(await answer(async () => { throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8090'), { status: 400 }); }), [500, { error: 'The list could not be loaded' }]);
+    assert.equal(console.error.mock.callCount(), 1, 'only the unexpected error is logged');
+    assert.deepEqual(await answer(() => { throw new Error('late'); }, { sent: true }), [200, null], 'an answer already sent stays');
+  });
+});
+
 describe('pathConfig', () => {
   const { resolveDataDirectory, resolvePocketBaseDirectory, resolveFrontendDirectory } = require('../backend/pathConfig');
 
