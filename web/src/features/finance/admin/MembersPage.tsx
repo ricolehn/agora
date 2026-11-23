@@ -1,10 +1,9 @@
 // The fee list: accounts without a finance record to assign, then the paying members - overdue on the left (above on
 // phones), up to date on the right - searchable by name. A member's card opens to the fee state, the standing orders,
 // the actions of the treasury and the history.
-import type { JSX } from '@solidjs/web';
 import { For, Show, createMemo, createSignal } from 'solid-js';
 import { db, ref, update } from '../../../app/api';
-import { dataLoaded, findPerson, people, replacePersonInMemory, settings, users, type Person } from '../../../app/data';
+import { dataLoaded, findPerson, people, replacePersonInMemory, users, type Person } from '../../../app/data';
 import { euro, formatDateFast, getStatusLabels, t, translateStatusText, type MemberStatus } from '../../../app/i18n';
 import { canManageFinances } from '../../../app/session';
 import { attempt, showToast } from '../../../app/toast';
@@ -16,44 +15,32 @@ import { SearchInput } from '../../../ui/feedback';
 import { Select } from '../../../ui/form';
 import { Icon, type IconName } from '../../../ui/Icon';
 import { openChangeStatusModal, openEndStandingOrderModal, openPaymentModal, sendStatusEmail } from '../member/api';
-import { paidUntilText, standingOrderCovers } from '../common';
+import {
+  BoldParam, FeeChip, FeeChips, PAY_ACCENT, PayStateIcon, ROW_FACTS, Row, RowButton, Rows, StatePill, TILE_SYMBOL, TINTED_TILE, currentStatusOf,
+  paidUntilText, payStateOf, standingOrderCovers, statusMetaOf, type PayState
+} from '../common';
 import { Timeline } from '../Timeline';
-import { currentStatus, feeResetIsShown, isPayingPerson, personPaidUntil, statusMeta } from './people';
 import { openPersonId, peopleSearch, peopleTerm, setOpenPersonId, setPeopleSearch } from './state';
 import { onActivateKey } from '../../../ui/keys';
 
-/** A translation with one value set in bold ("<strong>€50.00</strong> a month"). */
-function WithStrong(props: { text: string; param: string; value: JSX.Element; class?: string }) {
-  const parts = () => props.text.split(`{${props.param}}`);
-  return (
-    <>
-      {parts()[0]}
-      <strong class={props.class}>{props.value}</strong>
-      {parts().slice(1).join('')}
-    </>
-  );
-}
+/** Members without a fee (an account that does not pay, deleted ones) are not in the fee list. */
+const isPayingPerson = (p: Person) => !(p.isDeleted || p.data?.isDeleted || p.pays === false || p.data?.pays === false);
 
-type PayState = 'ok' | 'warn' | 'err';
-const payState = (p: Person): PayState => (statusMeta(p).isOverdue ? 'err' : statusMeta(p).isSoonDue ? 'warn' : 'ok');
+// The date in the list in the colour of the state
 const PAY_PILL: Record<PayState, string> = {
   ok: 'bg-[color-mix(in_srgb,var(--success)_14%,var(--surface))] text-[color-mix(in_srgb,var(--success)_85%,var(--text))]',
-  warn: 'bg-[color-mix(in_srgb,var(--warning)_18%,var(--surface))] text-[color-mix(in_srgb,var(--warning)_80%,var(--text))]',
-  err: 'bg-[color-mix(in_srgb,var(--danger)_14%,var(--surface))] text-danger'
+  soon: 'bg-[color-mix(in_srgb,var(--warning)_18%,var(--surface))] text-[color-mix(in_srgb,var(--warning)_80%,var(--text))]',
+  overdue: 'bg-[color-mix(in_srgb,var(--danger)_14%,var(--surface))] text-danger'
 };
-const HERO_ACCENT: Record<PayState, string> = { ok: 'var(--success)', warn: 'var(--warning)', err: 'var(--danger)' };
 const statusLabel = (status: string) => getStatusLabels(false)[status as MemberStatus] || status;
 
 const SECTION_LABEL =
   "flex items-center gap-2 text-[0.74rem] font-bold tracking-[0.1em] text-text-secondary uppercase after:h-px after:flex-1 after:bg-border after:opacity-50 after:content-['']";
-const CHIP =
-  'flex min-w-0 items-center justify-center gap-1 overflow-hidden rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-[0.86rem] font-medium text-ellipsis whitespace-nowrap text-text-secondary';
 
 // --- The opened member ---
 function MemberHero(props: { person: Person }) {
-  const meta = () => statusMeta(props.person);
-  const state = () => payState(props.person);
-  const status = () => currentStatus(props.person);
+  const meta = () => statusMetaOf(props.person);
+  const state = () => payStateOf(props.person);
   return (
     <div
       class={[
@@ -61,21 +48,19 @@ function MemberHero(props: { person: Person }) {
         'border-[color-mix(in_srgb,var(--hero-accent)_24%,transparent)] [background:radial-gradient(120%_140%_at_100%_0%,color-mix(in_srgb,var(--hero-accent)_13%,transparent)_0%,transparent_60%),var(--surface)]',
         'dark:border-[color-mix(in_srgb,var(--hero-accent)_18%,transparent)] dark:[background:radial-gradient(120%_140%_at_100%_0%,color-mix(in_srgb,var(--hero-accent)_8%,transparent)_0%,transparent_60%),var(--surface)]'
       ]}
-      style={{ '--hero-accent': HERO_ACCENT[state()] }}
+      style={{ '--hero-accent': PAY_ACCENT[state()] }}
     >
       <div class="mb-3 flex items-center gap-3">
         <span
           class="inline-flex size-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--hero-accent)] text-white dark:bg-[color-mix(in_srgb,var(--hero-accent)_85%,var(--surface))] dark:text-bg"
           aria-hidden="true"
         >
-          <Show when={state() !== 'ok'} fallback={<Icon name="check" size={22} strokeWidth={2.8} />}>
-            <Icon name={state() === 'err' ? 'alert' : 'clock'} size={20} strokeWidth={2.4} />
-          </Show>
+          <PayStateIcon state={state()} size={20} />
         </span>
         <div class="min-w-0">
           <div class="text-[1.12rem] leading-[1.2] font-bold tracking-[-0.02em] text-[var(--hero-accent)]">{translateStatusText(meta().text)}</div>
           <div class="text-[0.86rem] text-text-secondary">
-            {t('paid_until', 'Paid until')} <strong class="font-[650] text-text">{paidUntilText(personPaidUntil(props.person))}</strong>
+            {t('paid_until', 'Paid until')} <strong class="font-[650] text-text">{paidUntilText(props.person._paidUntil)}</strong>
           </div>
         </div>
       </div>
@@ -85,25 +70,8 @@ function MemberHero(props: { person: Person }) {
           <strong class="text-[1.15rem] font-[750] tracking-[-0.02em] tabular-nums">{euro(props.person._overdueAmount || 0)}</strong>
         </div>
       </Show>
-      <div class="grid grid-cols-2 gap-2">
-        <span class={CHIP}>
-          <WithStrong
-            text={t('user_fee_per_month', '{amount} a month')}
-            param="amount"
-            value={euro(props.person._monthlyFee ?? settings()[status()] ?? 0)}
-            class="font-bold text-text"
-          />
-        </span>
-        <span class={CHIP}>{statusLabel(props.person.status || '')}</span>
-        <Show when={feeResetIsShown(props.person)}>
-          <span class={[CHIP, 'col-span-full gap-1.5']}>
-            <Icon name="rotate" size={13} strokeWidth={2.4} class="shrink-0 text-warning" />
-            <span>
-              <WithStrong text={t('fee_reset_chip', 'Fresh start on {date}')} param="date" value={formatDateFast(props.person._feeReset)} class="font-bold text-text" />
-            </span>
-          </span>
-        </Show>
-      </div>
+      {/* The status as set (as in the previous app), the fee as of today */}
+      <FeeChips person={props.person} status={<FeeChip>{statusLabel(props.person.status || '')}</FeeChip>} />
     </div>
   );
 }
@@ -114,7 +82,7 @@ function StandingOrders(props: { person: Person }) {
     <Show when={orders().length}>
       <div class="mb-3.5">
         <div class={[SECTION_LABEL, 'mb-2.5']}>{t('modal_standing_order', 'Standing Order')}</div>
-        <div class="overflow-hidden rounded-2xl border border-hairline bg-surface">
+        <Rows>
           <For each={orders()}>
             {so => {
               const ended = () => !!so.endDate && new Date(so.endDate) < new Date();
@@ -129,7 +97,7 @@ function StandingOrders(props: { person: Person }) {
                   .join(' · ');
               };
               return (
-                <div class={['flex items-center gap-3 py-[11px] pr-3 pl-3.5 [&+&]:border-t [&+&]:border-hairline', { 'opacity-60': ended() }]}>
+                <Row ended={ended()} class="pl-3.5">
                   <span
                     class="inline-flex size-[34px] shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--brand)_12%,var(--surface))] text-primary"
                     aria-hidden="true"
@@ -138,36 +106,23 @@ function StandingOrders(props: { person: Person }) {
                   </span>
                   <div class="min-w-0 flex-auto">
                     <div class="text-[0.92rem] text-text-secondary">
-                      <WithStrong text={t('user_fee_per_month', '{amount} a month')} param="amount" value={euro(so.amount)} class="font-bold text-text" />
+                      <BoldParam text={t('user_fee_per_month', '{amount} a month')} name="amount" value={euro(so.amount)} class="font-bold text-text" />
                     </div>
-                    <div class="line-clamp-2 text-[0.78rem] text-text-secondary">{facts()}</div>
+                    <div class={[ROW_FACTS, 'line-clamp-2']}>{facts()}</div>
                   </div>
-                  <span
-                    class={[
-                      'shrink-0 rounded-full px-[9px] py-[3px] text-[0.72rem] font-[650]',
-                      ended()
-                        ? 'bg-surface-alt text-text-secondary'
-                        : 'bg-[color-mix(in_srgb,var(--success)_13%,var(--surface))] text-[color-mix(in_srgb,var(--success)_85%,var(--text))]'
-                    ]}
-                  >
-                    {ended() ? t('status_ended', 'Ended') : t('status_active', 'Active')}
-                  </span>
+                  <StatePill look={ended() ? 'ended' : 'active'}>{ended() ? t('status_ended', 'Ended') : t('status_active', 'Active')}</StatePill>
                   <Show when={canManageFinances()}>
-                    <button
-                      type="button"
-                      class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-hairline bg-surface-alt text-text-secondary hover:bg-border-light hover:text-text"
-                      title={t('edit_end_title', 'Edit/End')}
-                      aria-label={t('edit_end_title', 'Edit/End')}
+                    <RowButton
+                      icon={<Icon name="edit" size={15} />}
+                      label={t('edit_end_title', 'Edit/End')}
                       onClick={() => openEndStandingOrderModal(props.person.id, so.id)}
-                    >
-                      <Icon name="edit" size={15} />
-                    </button>
+                    />
                   </Show>
-                </div>
+                </Row>
               );
             }}
           </For>
-        </div>
+        </Rows>
       </div>
     </Show>
   );
@@ -178,16 +133,11 @@ function MemberAction(props: { icon: IconName; color: string; label: string; onC
   return (
     <button
       type="button"
-      class={[
-        'flex w-full min-w-0 cursor-pointer items-center justify-center gap-[7px] rounded-[14px] border px-2 py-[9px] text-center shadow-card transition-[transform,border-color,box-shadow] duration-150 active:scale-[0.96]',
-        'border-[color-mix(in_srgb,var(--req-color)_16%,var(--border-light))] bg-[color-mix(in_srgb,var(--req-color)_5%,var(--surface))]',
-        'hover:border-[color-mix(in_srgb,var(--req-color)_28%,var(--border-light))] hover:bg-[color-mix(in_srgb,var(--req-color)_9%,var(--surface))] hover:shadow-card-md',
-        'dark:border-[color-mix(in_srgb,var(--req-color)_20%,var(--border-light))] dark:bg-[color-mix(in_srgb,var(--req-color)_7%,var(--surface))]'
-      ]}
+      class={[TINTED_TILE, 'flex w-full min-w-0 cursor-pointer items-center justify-center gap-[7px] rounded-[14px] px-2 py-[9px] text-center']}
       style={{ '--req-color': props.color }}
       onClick={() => props.onClick()}
     >
-      <span class="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--req-color)_14%,var(--surface))] text-[var(--req-color)] max-[380px]:hidden dark:bg-[color-mix(in_srgb,var(--req-color)_20%,var(--surface))]">
+      <span class={[TILE_SYMBOL, 'size-7 max-[380px]:hidden dark:bg-[color-mix(in_srgb,var(--req-color)_20%,var(--surface))]']}>
         <Icon name={props.icon} size={15} />
       </span>
       <span class="flex min-w-0 flex-1 basis-0 flex-col items-center gap-0.5">
@@ -221,7 +171,7 @@ function PersonCard(props: { person: Person }) {
   const open = () => openPersonId() === props.person.id;
   // The details are drawn the first time the card opens (most cards are never opened)
   const drawn = createMemo<boolean>(prev => !!prev || open());
-  const meta = () => statusMeta(props.person);
+  const meta = () => statusMetaOf(props.person);
   const covered = () => standingOrderCovers(meta());
   const toggle = () => setOpenPersonId(open() ? null : props.person.id);
   return (
@@ -246,12 +196,12 @@ function PersonCard(props: { person: Person }) {
           <Avatar uid={props.person.uid || props.person.data?.uid} name={props.person.name} size={42} initialsClass="text-[0.82rem]" />
           <div class="flex min-w-0 flex-auto flex-col gap-0.5">
             <div class="line-clamp-2 text-[0.98rem] leading-[1.25] font-[650] tracking-[-0.01em] [overflow-wrap:anywhere] text-text">{props.person.name}</div>
-            <span class="text-[0.8rem] font-medium text-text-secondary">{statusLabel(currentStatus(props.person))}</span>
+            <span class="text-[0.8rem] font-medium text-text-secondary">{statusLabel(currentStatusOf(props.person))}</span>
           </div>
           <div class="flex max-w-[34%] min-w-0 flex-none flex-col items-end gap-[3px]">
             <Show when={!covered()}>
-              <span class={['inline-block rounded-[99px] px-2.5 py-[3px] text-[0.76rem] font-[650] whitespace-nowrap', PAY_PILL[payState(props.person)]]}>
-                {paidUntilText(personPaidUntil(props.person))}
+              <span class={['inline-block rounded-[99px] px-2.5 py-[3px] text-[0.76rem] font-[650] whitespace-nowrap', PAY_PILL[payStateOf(props.person)]]}>
+                {paidUntilText(props.person._paidUntil)}
               </span>
             </Show>
             {/* Phones: the coloured date already tells the state, so its repeat in words gives way to the name */}
@@ -363,8 +313,8 @@ export function MembersPage() {
   const byName = (a: Person, b: Person) => String(a.name || '').localeCompare(String(b.name || ''));
   const matches = (p: Person) => String(p.name || '').toLowerCase().includes(peopleTerm());
   // Search: the counts in the headings follow what is shown, an empty group hides, and nothing found says so
-  const overdue = createMemo(() => paying().filter(p => statusMeta(p).isOverdue && matches(p)).sort(byName));
-  const current = createMemo(() => paying().filter(p => !statusMeta(p).isOverdue && matches(p)).sort(byName));
+  const overdue = createMemo(() => paying().filter(p => statusMetaOf(p).isOverdue && matches(p)).sort(byName));
+  const current = createMemo(() => paying().filter(p => !statusMetaOf(p).isOverdue && matches(p)).sort(byName));
   return (
     <div>
       <div class="mb-5 flex items-center justify-between">

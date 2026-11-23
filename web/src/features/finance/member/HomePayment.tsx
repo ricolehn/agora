@@ -7,8 +7,8 @@ import { euro, t, translateStatusText } from '../../../app/i18n';
 import { switchTab } from '../../../app/router';
 import { currentUser } from '../../../app/session';
 import { Icon } from '../../../ui/Icon';
-import { paidUntilText, standingOrderCovers } from '../common';
-import { ownPerson, statusMetaOf } from './MemberFinances';
+import { paidUntilText, standingOrderCovers, statusMetaOf } from '../common';
+import { ownPerson } from './MemberFinances';
 
 function HomePayment(props: { overdue: boolean }) {
   const state = createMemo(() => {

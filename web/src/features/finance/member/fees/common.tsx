@@ -1,9 +1,11 @@
 // What the two cards of the fees page and their dialogs share: the fees in the order of the settings, the state of a
-// change or a fresh start, the rows, the log of who changed what, and the numbers of a dialog as tiles.
+// change or a fresh start, the log of who changed what, and the numbers of a dialog as tiles (the rows of the cards
+// are ../../common.tsx: a member's standing orders are such rows too).
 import type { JSX } from '@solidjs/web';
 import { For, Show } from 'solid-js';
 import { dateTimeFormatter, euro, t } from '../../../../app/i18n';
 import { pad2 } from '../../../../app/util';
+import { StatePill } from '../../common';
 
 export const FEE_KEYS = ['vollverdiener', 'geringverdiener', 'keinverdiener'] as const;
 export type FeeKey = (typeof FEE_KEYS)[number];
@@ -31,44 +33,7 @@ export function feeStateLabel(state: string | undefined) {
 
 /** The state as a small pill (.so-row-state). */
 export function StateBadge(props: { state: string | undefined }) {
-  return (
-    <span
-      class={[
-        'shrink-0 rounded-full px-[9px] py-[3px] text-[0.72rem] font-[650]',
-        {
-          active: 'bg-[color-mix(in_srgb,var(--success)_13%,var(--surface))] text-[color-mix(in_srgb,var(--success)_85%,var(--text))]',
-          planned: 'bg-[color-mix(in_srgb,var(--warning)_15%,var(--surface))] text-[color-mix(in_srgb,var(--warning)_70%,var(--text))]',
-          ended: 'bg-surface-alt text-text-secondary'
-        }[feeStateOf(props.state)]
-      ]}
-    >
-      {feeStateLabel(props.state)}
-    </span>
-  );
-}
-
-/** The rows of a card (.so-rows) and one row (.so-row.fee-reset-row): a replaced one is quieter. */
-export function Rows(props: { class?: string; children?: JSX.Element }) {
-  return <div class={['overflow-hidden rounded-2xl border border-hairline bg-surface [&>*+*]:border-t [&>*+*]:border-hairline', props.class]}>{props.children}</div>;
-}
-export function Row(props: { ended: boolean; children?: JSX.Element }) {
-  return <div class={['flex items-center gap-3 py-[11px] pr-3 pl-4', { 'opacity-60': props.ended }]}>{props.children}</div>;
-}
-export const ROW_FACTS = 'text-[0.78rem] text-text-secondary';
-
-/** The round button at the end of a row (.so-row-edit): edit or take back. */
-export function RowButton(props: { icon: JSX.Element; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-hairline bg-surface-alt text-text-secondary hover:bg-border-light hover:text-text [&+&]:-ml-1"
-      title={props.label}
-      aria-label={props.label}
-      onClick={() => props.onClick()}
-    >
-      {props.icon}
-    </button>
-  );
+  return <StatePill look={feeStateOf(props.state)}>{feeStateLabel(props.state)}</StatePill>;
 }
 
 /** The head of a card: its symbol in a tinted square, the title and a line about it (.fee-reset-head). */

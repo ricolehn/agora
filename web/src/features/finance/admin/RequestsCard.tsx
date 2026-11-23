@@ -7,8 +7,8 @@ import { switchTab } from '../../../app/router';
 import { canApproveRequests } from '../../../app/session';
 import { Avatar } from '../../../ui/Avatar';
 import { Icon } from '../../../ui/Icon';
-import { requestAmount, requestTypeLabel } from '../common';
-import { openRequestDetail, pendingRequests, requestColor, requestDateLabel, requestPersonName, requestPersonUid } from './requests';
+import { requestAmount, requestColor, requestTypeLabel } from '../common';
+import { openRequestDetail, pendingRequests, requestDateLabel, requestPersonName, requestPersonUid } from './requests';
 import { badgeText } from '../../../ui/feedback';
 
 const HOME_REQUEST_COUNT = 3;

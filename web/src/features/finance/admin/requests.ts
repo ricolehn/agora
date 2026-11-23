@@ -7,14 +7,9 @@ import { findPerson, loadData, mutateCollection, mutatePerson, requests, type Fi
 import { formatDateFast, t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
 import { attempt, showToast } from '../../../app/toast';
-import type { IconName } from '../../../ui/icons';
-import { REQUEST_COLORS, REQUEST_TYPES } from '../common';
 import {
   addApprovedExpense, applyApprovedRequest, withoutApprovedExpense, withoutApprovedRequest
 } from '../../../lib/finance.js';
-
-export const requestColor = (req: FinanceRequest) => REQUEST_COLORS[req.type || ''] || 'var(--primary)';
-export const requestIcon = (req: FinanceRequest): IconName => REQUEST_TYPES[req.type || '']?.icon || 'file';
 
 /** The open requests, newest first. */
 export const pendingRequests = () => requests().filter(r => r.status === 'pending').sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -29,18 +24,6 @@ export function requestDateLabel(req: FinanceRequest): string {
     ? t('request_from_date', 'from {date}', { date: formatDateFast(date) })
     : t('request_on_date', 'on {date}', { date: formatDateFast(date) });
 }
-
-export const USER_REQUEST_STATES: Record<string, [string, string, string]> = {
-  pending: ['#f59e0b', 'req_status_pending', 'Pending'],
-  approved: ['#10b981', 'req_status_approved', 'Approved'],
-  rejected: ['#ef4444', 'req_status_rejected', 'Rejected']
-};
-export const requestState = (req: FinanceRequest) => USER_REQUEST_STATES[req.status || ''] || USER_REQUEST_STATES.pending;
-export const requestStateLabel = (req: FinanceRequest) => {
-  const [, key, fallback] = requestState(req);
-  return t(key, fallback);
-};
-
 
 // --- The request dialog: which request, the reject form, the decision being saved ---
 const [openRequestId, setOpenRequestId] = createSignal<string | null>(null);

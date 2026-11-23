@@ -1,24 +1,12 @@
-// Pieces the member finance page and the finance dialogs share: texts with a bold value, the amount field with the
-// euro sign, the switch row, the receipt drop zone with the chosen files, required fields and the dialog badges (what
-// the treasury's views show too - the texts of a request, the amber note of a fresh start - is in ../common.tsx).
+// Pieces the finance dialogs share: the amount field with the euro sign, the switch row, the receipt drop zone with
+// the chosen files, required fields and the note below a field (what the treasury's views show too - the texts of a
+// request, the amber note of a fresh start - is in ../common.tsx).
 import type { JSX } from '@solidjs/web';
 import { For, Show, createSignal, onSettled } from 'solid-js';
 import { t } from '../../../app/i18n';
 import { Button } from '../../../ui/Button';
 import { Icon } from '../../../ui/Icon';
 import { Input, Switch } from '../../../ui/form';
-
-/** A translated text whose {name} is shown in bold ("{amount} a month", "Fresh start on {date}"). */
-export function BoldParam(props: { text: string; name: string; value: string }) {
-  const parts = () => props.text.split(`{${props.name}}`);
-  return (
-    <>
-      {parts()[0]}
-      <strong>{props.value}</strong>
-      {parts().slice(1).join(props.value)}
-    </>
-  );
-}
 
 /** The amount field with the euro sign in front (.hero-amount-wrapper): typed as text, read with parseAmount. */
 export function AmountInput(props: { id: string; value: string; onInput: (value: string) => void; invalid?: boolean }) {

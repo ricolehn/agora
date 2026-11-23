@@ -7,6 +7,7 @@ import { escapeHtml, euro, getStatusLabels, monthYearFormatter, t, type MemberSt
 import { canManageFinances } from '../../../app/session';
 import { attempt, showToast } from '../../../app/toast';
 import { calculatePaidUntil } from '../../../lib/finance.js';
+import { statusMetaOf } from '../common';
 
 export async function sendStatusEmail(personId: string): Promise<void> {
   if (!canManageFinances()) return;
@@ -16,7 +17,7 @@ export async function sendStatusEmail(personId: string): Promise<void> {
   if (!email) return showToast(t('toast_no_email', 'No email address found for this person'), 'error');
 
   const app = appName();
-  const meta = person._statusMeta || { text: '', isOverdue: false, isSoonDue: false };
+  const meta = statusMetaOf(person);
   const status = person._currentStatus || person.status;
   const readableStatus = getStatusLabels(false)[status as MemberStatus] || status;
   // The server normally sends _paidUntil; without it the same rule is worked out here (lib/finance.js)

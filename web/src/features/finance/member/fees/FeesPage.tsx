@@ -9,9 +9,8 @@ import { Button } from '../../../../ui/Button';
 import { Card } from '../../../../ui/Card';
 import { Icon } from '../../../../ui/Icon';
 import { Field, Input } from '../../../../ui/form';
-import {
-  FEE_KEYS, FeeCardHead, FeeLog, FormHint, ROW_FACTS, Row, RowButton, Rows, StateBadge, feeListText, feeStateOf, type Fees
-} from './common';
+import { ROW_FACTS, Row, RowButton, Rows } from '../../common';
+import { FEE_KEYS, FeeCardHead, FeeLog, FormHint, StateBadge, feeListText, feeStateOf, type Fees } from './common';
 import { openFeeChange, reviewFeeRemoval } from './FeeChangeDialog';
 import { feeResetReviewBusy, resetDay, reviewFeeReset, setResetDay } from './FeeResetDialog';
 

@@ -10,11 +10,14 @@ import { Button } from '../../../ui/Button';
 import { Input, Label } from '../../../ui/form';
 import { Icon, type IconName } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
-import { FeeResetNote, feeResetPaymentHint, rejectionReasonOf, requestAmount, requestTypeLabel } from '../common';
+import {
+  FeeResetNote, feeResetPaymentHint, rejectionReasonOf, requestAmount, requestColor, requestIcon, requestStateColor, requestStateLabel,
+  requestTypeLabel
+} from '../common';
 import { ReceiptList } from './Receipts';
 import {
-  approveRequest, confirmRejectRequest, openRequestId, rejectFormOpen, rejectReason, requestBusy, requestColor, requestDateLabel,
-  requestIcon, requestPersonName, requestState, requestStateLabel, setRejectReason, toggleRejectForm
+  approveRequest, confirmRejectRequest, openRequestId, rejectFormOpen, rejectReason, requestBusy, requestDateLabel, requestPersonName,
+  setRejectReason, toggleRejectForm
 } from './requests';
 
 // The badge in the colour of the request's type (the dialog frame takes classes, so one string per type)
@@ -74,7 +77,7 @@ function RequestBody(props: { req: FinanceRequest }) {
         </Show>
         <Show when={props.req.status !== 'pending' || !canApproveRequests()}>
           <DetailRow icon="check" label={t('request_detail_status', 'Status')}>
-            <span class="font-extrabold" style={{ color: requestState(props.req)[0] }}>
+            <span class="font-extrabold" style={{ color: requestStateColor(props.req) }}>
               {requestStateLabel(props.req)}
             </span>
           </DetailRow>

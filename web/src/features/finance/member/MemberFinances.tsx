@@ -2,54 +2,33 @@
 // can submit, the own requests, then the history.
 import type { JSX } from '@solidjs/web';
 import { For, Match, Show, Switch, createMemo, createSignal } from 'solid-js';
-import { dataLoaded, findLinkedPerson, isOwnRequest, people, requests, settings, type FinanceRequest, type Person } from '../../../app/data';
+import { dataLoaded, findLinkedPerson, isOwnRequest, people, requests, type FinanceRequest, type Person } from '../../../app/data';
 import { euro, formatDateFast, getStatusLabels, t, tHtml, translateStatusText, type MemberStatus } from '../../../app/i18n';
 import { currentUser } from '../../../app/session';
-import { getTodayStr } from '../../../app/util';
 import { Card } from '../../../ui/Card';
 import { Icon } from '../../../ui/Icon';
 import { openRequestDetail } from '../admin/api';
-import { feeResetIsNews } from '../../../lib/finance.js';
 import { openUserRequestModal } from './api';
-import { REQUEST_COLORS, REQUEST_TYPES, paidUntilText, rejectionReasonOf, requestAmount, requestTypeLabel, standingOrderCovers } from '../common';
+import {
+  FEE_CHIP, FeeChips, PAY_ACCENT, PayStateIcon, TILE_SYMBOL, TINTED_TILE, currentStatusOf, paidUntilText, payStateOf, rejectionReasonOf,
+  requestAmount, requestColor, requestIcon, requestStateColor, requestStateLabel, requestTypeLabel, standingOrderCovers, statusMetaOf,
+  type PayState
+} from '../common';
 import { Timeline } from '../Timeline';
-import { BoldParam } from './shared';
 import { badgeText } from '../../../ui/feedback';
 
-// --- The state of a fee account (also the start page's payment line) ---
-export type StatusMeta = { text?: string; isOverdue?: boolean; isSoonDue?: boolean; isActiveStandingOrder?: boolean };
-export const statusMetaOf = (p: Person): StatusMeta => p._statusMeta || { text: t('status_unknown', 'Unknown'), isOverdue: false, isSoonDue: false };
+// --- The state of the own fee account (also the start page's payment line) ---
 /** The own record of the signed-in member (none without finance records). */
 export const ownPerson = () => (people().length > 0 ? findLinkedPerson(currentUser()?.uid) || null : null);
 
-const STATE_LOOK = {
-  overdue: { accent: 'var(--danger)', rgb: '239,68,68' },
-  soon: { accent: 'var(--warning)', rgb: '245,158,11' },
-  ok: { accent: 'var(--success)', rgb: '16,185,129' }
-};
-
-// The chips below the state (.user-finance-chip): fee, status, a fresh start
-const CHIP = 'flex min-w-0 items-center justify-center truncate rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-[0.86rem]';
-
-// The chip is a notice: it shows from the day on for about two months (lib/finance.js), the history keeps the day
-function FeeResetChip(props: { person: Person }) {
-  return (
-    <Show when={props.person._feeReset && feeResetIsNews(props.person._feeReset, getTodayStr())}>
-      <span class={[CHIP, 'col-span-full gap-1.5 font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text']}>
-        <Icon name="rotate" size={13} strokeWidth={2.4} class="shrink-0 text-warning" />
-        <span>
-          <BoldParam text={t('fee_reset_chip', 'Fresh start on {date}')} name="date" value={formatDateFast(props.person._feeReset)} />
-        </span>
-      </span>
-    </Show>
-  );
-}
+// The glow of the card in the colour of the state (rgb: the glow fades it)
+const HERO_RGB: Record<PayState, string> = { overdue: '239,68,68', soon: '245,158,11', ok: '16,185,129' };
 
 /** One glance: a big symbol, the state in plain words, then fee and status as two chips. */
 function FinanceHero(props: { person: Person }) {
   const meta = () => statusMetaOf(props.person);
-  const state = () => (meta().isOverdue ? 'overdue' : meta().isSoonDue ? 'soon' : 'ok');
-  const currentStatus = () => props.person._currentStatus || props.person.status;
+  const state = () => payStateOf(props.person);
+  const status = () => currentStatusOf(props.person);
   const requestStatus = () => t('user_req_status_tooltip', 'Request status change');
   return (
     <div
@@ -59,21 +38,14 @@ function FinanceHero(props: { person: Person }) {
         // Tinted surfaces stay a whisper in the dark
         'dark:border-[rgba(var(--hero-rgb),0.18)] dark:[background:radial-gradient(120%_140%_at_100%_0%,rgba(var(--hero-rgb),0.09)_0%,transparent_60%),var(--surface)]'
       ]}
-      style={{ '--hero-accent': STATE_LOOK[state()].accent, '--hero-rgb': STATE_LOOK[state()].rgb }}
+      style={{ '--hero-accent': PAY_ACCENT[state()], '--hero-rgb': HERO_RGB[state()] }}
     >
       <div class="mb-4 flex items-center gap-3.5 text-left">
         <span
           class="inline-flex size-[52px] shrink-0 items-center justify-center rounded-full bg-[var(--hero-accent)] text-white shadow-[0_6px_16px_-6px_rgba(var(--hero-rgb),0.7)] dark:shadow-none"
           aria-hidden="true"
         >
-          <Switch fallback={<Icon name="check" size={28} strokeWidth={2.8} />}>
-            <Match when={state() === 'overdue'}>
-              <Icon name="alert" size={26} strokeWidth={2.4} />
-            </Match>
-            <Match when={state() === 'soon'}>
-              <Icon name="clock" size={26} strokeWidth={2.4} />
-            </Match>
-          </Switch>
+          <PayStateIcon state={state()} size={26} />
         </span>
         <div class="w-full">
           <div class="mb-0.5 text-[1.45rem] leading-[1.2] font-[750] tracking-[-0.025em] text-[var(--hero-accent)] dark:brightness-[0.92] dark:saturate-[0.75]">
@@ -92,22 +64,22 @@ function FinanceHero(props: { person: Person }) {
           <div class="text-[1.6rem] font-extrabold text-danger">{euro(props.person._overdueAmount || 0)}</div>
         </div>
       </Show>
-      <div class="grid grid-cols-2 gap-2 md:max-w-[420px]">
-        <span class={[CHIP, 'gap-1 font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text']}>
-          <BoldParam text={t('user_fee_per_month', '{amount} a month')} name="amount" value={euro(props.person._monthlyFee ?? settings()[currentStatus()] ?? 0)} />
-        </span>
-        <button
-          type="button"
-          class={[CHIP, 'cursor-pointer gap-1 font-semibold text-text transition-colors duration-150 ease-app hover:bg-border-light [&_svg]:opacity-55']}
-          title={requestStatus()}
-          aria-label={requestStatus()}
-          onClick={() => openUserRequestModal('status')}
-        >
-          {getStatusLabels(false)[currentStatus() as MemberStatus] || currentStatus()}
-          <Icon name="chevronRight" size={14} strokeWidth={2.5} />
-        </button>
-        <FeeResetChip person={props.person} />
-      </div>
+      <FeeChips
+        person={props.person}
+        class="md:max-w-[420px]"
+        status={
+          <button
+            type="button"
+            class={[FEE_CHIP, 'cursor-pointer gap-1 font-semibold text-text transition-colors duration-150 ease-app hover:bg-border-light [&_svg]:opacity-55']}
+            title={requestStatus()}
+            aria-label={requestStatus()}
+            onClick={() => openUserRequestModal('status')}
+          >
+            {getStatusLabels(false)[status() as MemberStatus] || status()}
+            <Icon name="chevronRight" size={14} strokeWidth={2.5} />
+          </button>
+        }
+      />
     </div>
   );
 }
@@ -182,17 +154,14 @@ function RequestActions(props: { class?: string }) {
             <button
               type="button"
               class={[
-                'flex min-h-[108px] w-full min-w-0 cursor-pointer flex-col items-center justify-start gap-[9px] rounded-[22px] px-1.5 pt-3.5 pb-3 text-center text-inherit shadow-card',
-                'border border-[color-mix(in_srgb,var(--req-color)_16%,var(--border-light))] bg-[color-mix(in_srgb,var(--req-color)_5%,var(--surface))]',
-                'transition-[transform,border-color,box-shadow] duration-150 ease-[ease] active:scale-[0.96]',
-                'hover:border-[color-mix(in_srgb,var(--req-color)_28%,var(--border-light))] hover:bg-[color-mix(in_srgb,var(--req-color)_9%,var(--surface))] hover:shadow-card-md',
-                'dark:border-[color-mix(in_srgb,var(--req-color)_20%,var(--border-light))] dark:bg-[color-mix(in_srgb,var(--req-color)_7%,var(--surface))]',
+                TINTED_TILE,
+                'flex min-h-[108px] w-full min-w-0 cursor-pointer flex-col items-center justify-start gap-[9px] rounded-[22px] px-1.5 pt-3.5 pb-3 text-center text-inherit ease-[ease]',
                 'md:min-h-0 md:flex-row md:gap-3 md:px-3.5 md:py-3 md:text-left'
               ]}
               style={{ '--req-color': action.color }}
               onClick={() => openUserRequestModal(action.kind)}
             >
-              <span class="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--req-color)_14%,var(--surface))] text-[var(--req-color)] dark:bg-[color-mix(in_srgb,var(--req-color)_16%,var(--surface))] dark:[&_svg]:opacity-85">
+              <span class={[TILE_SYMBOL, 'size-11 dark:bg-[color-mix(in_srgb,var(--req-color)_16%,var(--surface))] dark:[&_svg]:opacity-85']}>
                 {action.icon()}
               </span>
               <span class="flex min-w-0 flex-1 flex-col items-center gap-0.5 md:items-start">
@@ -207,12 +176,6 @@ function RequestActions(props: { class?: string }) {
 }
 
 // --- The own requests: calm rows like the treasurers' list; a tap opens the request (state, reason) ---
-const REQUEST_STATES: Record<string, [string, string, string]> = {
-  pending: ['#f59e0b', 'req_status_pending', 'Pending'],
-  approved: ['#10b981', 'req_status_approved', 'Approved'],
-  rejected: ['#ef4444', 'req_status_rejected', 'Rejected']
-};
-const stateOf = (req: FinanceRequest) => REQUEST_STATES[req.status || ''] || REQUEST_STATES.pending;
 const MY_REQUESTS_SHOWN = 3;
 
 function MyRequestRow(props: { req: FinanceRequest }) {
@@ -226,11 +189,11 @@ function MyRequestRow(props: { req: FinanceRequest }) {
     <button
       type="button"
       class="flex w-full cursor-pointer items-center gap-3 border-t border-border-light px-4 py-[11px] text-left transition-colors duration-150 ease-[ease] hover:bg-surface-alt"
-      style={{ '--req-color': REQUEST_COLORS[props.req.type || ''] || 'var(--primary)', '--state-color': stateOf(props.req)[0] }}
+      style={{ '--req-color': requestColor(props.req), '--state-color': requestStateColor(props.req) }}
       onClick={() => openRequestDetail(props.req.id)}
     >
       <span class="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--req-color)_13%,transparent)] text-[var(--req-color)]">
-        <Icon name={REQUEST_TYPES[props.req.type || '']?.icon || 'file'} size={18} strokeWidth={2.2} />
+        <Icon name={requestIcon(props.req)} size={18} strokeWidth={2.2} />
       </span>
       <span class="flex min-w-0 flex-1 flex-col gap-px">
         <span class="flex min-w-0 items-center gap-2">
@@ -239,7 +202,7 @@ function MyRequestRow(props: { req: FinanceRequest }) {
         </span>
         <span class="inline-flex items-center gap-1.5 text-[0.72rem] font-extrabold text-[var(--state-color)]">
           <span class="size-[7px] shrink-0 rounded-full bg-[var(--state-color)]" />
-          {t(stateOf(props.req)[1], stateOf(props.req)[2])}
+          {requestStateLabel(props.req)}
           {props.req.timestamp ? ` · ${formatDateFast(props.req.timestamp)}` : ''}
           <Show when={data().receipt}>
             {' · '}
