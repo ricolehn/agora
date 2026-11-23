@@ -85,12 +85,12 @@ function createCodec({ fields, canonicalKeys }) {
 
 // --- Money -------------------------------------------------------------------------------------------------------
 
-/**
- * An amount the way the server has always read it (feeReset.paymentAmount, calculateTotalPaid): a number, or text
- * like "1.234,50" or "50,00"; anything else counts as 0.
- */
+/** An amount as it is stored: a number, or text like "1.234,50" or "50,00" - NaN for anything else. */
+const readAmount = (value) => Number(String(value || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+
+/** An amount the way the server reads it everywhere (totals, fees, statistics): what is no amount counts as 0. */
 function amountValue(value) {
-  const amount = Number(String(value || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+  const amount = readAmount(value);
   return Number.isFinite(amount) ? amount : 0;
 }
 
@@ -204,6 +204,7 @@ const isCanonical = (encoded) => encoded.original === null;
 module.exports = {
   createCodec,
   fieldKinds,
+  readAmount,
   amountValue,
   toCents,
   fromCents,

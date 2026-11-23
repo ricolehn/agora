@@ -1,4 +1,5 @@
 const { listPeopleRecords, upsertPeopleRecord } = require('./pocketbase');
+const { amountValue } = require('./db/codec');
 
 function parseUtcDate(str) {
     if (!str) return new Date();
@@ -79,7 +80,7 @@ function checkAndExecuteStandingOrders(person) {
             if (!existingPaymentIds.has(paymentId)) {
                 payments.push({
                     id: paymentId,
-                    amount: Number(String(currentSO.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')),
+                    amount: amountValue(currentSO.amount),
                     date: executionDateStr,
                     description: (currentSO.note || 'Dauerauftrag') + ' (Auto)',
                     isAuto: true

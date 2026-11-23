@@ -1,4 +1,5 @@
-const { feePeriods, feesOfMonth, feesBeforeDay, settledFeeResets, monthIndexOf, memberStartDay, paymentAmount } = require('./feeReset');
+const { feePeriods, feesOfMonth, feesBeforeDay, settledFeeResets, monthIndexOf, memberStartDay } = require('./feeReset');
+const { amountValue } = require('./db/codec');
 const { schedulePeriods, feesInMonth, changedFees } = require('./feeSchedule');
 const { toDateStr } = require('./utils/date');
 
@@ -81,7 +82,7 @@ function feeAccount(person, settings = {}, feeResets = [], today = getTodayStr()
     const settled = person.isDeleted === true || joined === null ? [] : settledFeeResets(resets, today).filter((day) => day > joined);
     if (!settled.length) return account;
 
-    const payments = (person.payments || []).map((payment) => ({ day: toDateStr(payment?.date), amount: paymentAmount(payment?.amount) }));
+    const payments = (person.payments || []).map((payment) => ({ day: toDateStr(payment?.date), amount: amountValue(payment?.amount) }));
     const paidBetween = (from, before) => payments.reduce((sum, payment) => (
         (from === null || payment.day >= from) && (before === null || payment.day < before) ? sum + payment.amount : sum
     ), 0);
@@ -274,7 +275,7 @@ function isPaymentInCurrentMonth(paymentDate, today) {
 
 function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
     const payments = person.payments || [];
-    const soAmount = Number(String(standingOrder.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+    const soAmount = amountValue(standingOrder.amount);
     const soIdPrefix = standingOrder.id ? `auto_${standingOrder.id}_` : null;
 
     return payments.some((payment) => {
@@ -287,7 +288,7 @@ function hasStandingOrderPaidThisMonth(person, standingOrder, today) {
         }
 
         const isAutoLike = payment.isAuto === true || String(payment.description || '').includes('(Auto)');
-        const amountMatches = Math.abs(Number(String(payment.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) - soAmount) < AMOUNT_COMPARISON_EPSILON;
+        const amountMatches = Math.abs(amountValue(payment.amount) - soAmount) < AMOUNT_COMPARISON_EPSILON;
         return isAutoLike && amountMatches;
     });
 }
@@ -322,7 +323,7 @@ function calculateAnticipatedStandingOrderPayment(person, today = new Date()) {
 
         // Grace period only for upcoming (or today) executions in the current month.
         if (dueDate >= todayStart) {
-            anticipated += Number(String(so.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+            anticipated += amountValue(so.amount);
         }
     }
 
@@ -451,7 +452,7 @@ function payingMembers(people) {
         const person = {
             ...record,
             payments,
-            totalPaid: payments.reduce((sum, payment) => sum + paymentAmount(payment?.amount), 0),
+            totalPaid: payments.reduce((sum, payment) => sum + amountValue(payment?.amount), 0),
             statusHistory: (record.statusHistory || []).map((entry) => ({ ...entry }))
         };
         prepareStatusHistory(person);

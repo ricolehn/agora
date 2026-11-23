@@ -35,12 +35,6 @@ function parseDay(value) {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? value : null;
 }
 
-/** An amount as it is stored (a number, or old text like "1.234,50"); anything else counts as nothing. */
-function paymentAmount(value) {
-  const amount = Number(String(value || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
-  return Number.isFinite(amount) ? amount : 0;
-}
-
 /**
  * The monthly fees in the fee settings (status → amount): the entries the fee calculation reads, in whole cents (a
  * fee an app worked out can carry a fraction of a cent that nobody entered).
@@ -170,7 +164,6 @@ function withLogEntry(log, entry) {
 module.exports = {
   FEE_RESET_STATE_KEY,
   parseDay,
-  paymentAmount,
   monthlyFees,
   normalizeFeeResets,
   normalizeFeeResetLog,

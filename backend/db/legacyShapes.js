@@ -4,6 +4,7 @@
 // shapes from its tables and runs the same functions on them, so every number comes out exactly as before.
 const crypto = require('crypto');
 const { preprocessPersonServerSide } = require('../derivedData');
+const { amountValue } = require('./codec');
 
 function normalizeRecordListInput(value) {
   if (!value) return [];
@@ -28,8 +29,7 @@ function calculateTotalPaid(payments) {
   const list = normalizeRecordListInput(payments);
   let sum = 0;
   for (let i = 0; i < list.length; i++) {
-    const amount = Number(String(list[i]?.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
-    if (Number.isFinite(amount)) sum += amount;
+    sum += amountValue(list[i]?.amount);
   }
   return sum;
 }

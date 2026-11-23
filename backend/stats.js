@@ -4,15 +4,13 @@ const {
   getStateRecord
 } = require('./pocketbase');
 const { toDateStr } = require('./utils/date');
+const { readAmount, amountValue } = require('./db/codec');
 
 // An amount as the books read it: a number, or text like "1.234,50"; one nobody can read ("fünfzig") counts 0, as in a
 // member's total (calculateTotalPaid) and the cents of the new structure. Counted as NaN, one such old amount made the
 // totals and every day of the chart empty (null). [asBefore]: as the previous version counted it - the upgrade
 // compares the new tables with that version's answers.
-const amountOf = (value, asBefore) => {
-  const amount = Number(String(value || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
-  return asBefore || Number.isFinite(amount) ? amount : 0;
-};
+const amountOf = (value, asBefore) => (asBefore ? readAmount(value) : amountValue(value));
 
 async function aggregateStats(appConfig, { asBefore = false } = {}) {
   // ⚡ Bolt: Fetch independent records concurrently to reduce endpoint latency.

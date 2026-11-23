@@ -1,9 +1,13 @@
 const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson, getFeeState } = require('./pocketbase');
 const { queueRecordWrite } = require('./db/writeQueue');
 const { toDateStr } = require('./utils/date');
+const { amountValue } = require('./db/codec');
 const { buildEventContext } = require('./eventContext');
 const { describeFeeResets } = require('./feeReset');
 const { describeFeeSchedule } = require('./feeSchedule');
+
+/** An amount to the cent, as the assistant is told the figures. */
+const euros = (value) => Math.round(amountValue(value) * 100) / 100;
 
 const AI_STATE_KEY = 'ai_config';
 // The AI settings are read and written one change at a time (the admins' saves, and what the chat remembers about
@@ -224,7 +228,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
         for (const pay of payments) {
           const payDateStr = toDateStr(pay.date);
           if (payDateStr <= todayStr) {
-            totalPaidAcrossMembers += Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+            totalPaidAcrossMembers += amountValue(pay.amount);
           }
         }
       }
@@ -235,7 +239,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
       for (const e of expenses) {
         const eDateStr = toDateStr(e.date);
         if (eDateStr <= todayStr) {
-          totalExpenses += Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+          totalExpenses += amountValue(e.amount);
         }
       }
     }
@@ -245,7 +249,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
       for (const d of Object.values(donations || {})) {
         const dDateStr = toDateStr(d.date);
         if (dDateStr <= todayStr) {
-          totalDonations += Number(String(d.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.'));
+          totalDonations += amountValue(d.amount);
         }
       }
     }
@@ -264,20 +268,20 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
         status: p.status || '',
         memberSince: p.memberSince || '',
         originalMemberSince: p.originalMemberSince || p.memberSince || '',
-        totalPaid: Math.round(Number(String(p.totalPaid || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+        totalPaid: euros(p.totalPaid),
         feeAccount: feeAccountOf(p.data),
         // The whole history would not fit into a question after some years: the newest payments, the count and the
         // first day (totalPaid, feeAccount and monthlyTotals count all of them)
         paymentCount: payments.length,
         firstPaymentDate: byDate.length ? byDate[byDate.length - 1].date || '' : '',
         recentPayments: byDate.slice(0, RECENT_PER_MEMBER).map((pay) => ({
-          amount: Math.round(Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+          amount: euros(pay.amount),
           date: pay.date || '',
           description: pay.description || ''
         })),
         standingOrders: (Array.isArray(p.data?.standingOrders) ? p.data.standingOrders : []).map((so) => ({
           id: so.id || '',
-          amount: Math.round(Number(String(so.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+          amount: euros(so.amount),
           startDate: so.startDate || '',
           endDate: so.endDate || '',
           note: so.note || '',
@@ -296,7 +300,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
     const deletedPeoplePayments = canViewFinances ? deletedPeople.flatMap((p) => (Array.isArray(p.data?.payments) ? p.data.payments : [])
       .map((pay) => ({
         name: p.name || '',
-        amount: Math.round(Number(String(pay.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+        amount: euros(pay.amount),
         date: pay.date || '',
         description: pay.description || ''
       }))).sort(newestFirst).slice(0, RECENT_ENTRIES) : [];
@@ -304,7 +308,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
     // Build expense records (empty if not authorized): the newest (the totals count all of them)
     const expenseRecords = canViewFinances ? expenses.map((e) => ({
       id: e.expenseKey,
-      amount: Math.round(Number(String(e.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+      amount: euros(e.amount),
       date: e.date || '',
       issuer: e.issuer || '',
       description: e.description || ''
@@ -383,7 +387,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
       snapshot.paymentsOfDeletedMembers = deletedPeoplePayments;
       const donationList = Object.values(donations || {}).filter((d) => d && typeof d === 'object');
       snapshot.donations = donationList.map((d) => ({
-        amount: Math.round(Number(String(d.amount || 0).replace(/\.(?=.*,)/g, '').replace(',', '.')) * 100) / 100,
+        amount: euros(d.amount),
         name: d.name || '',
         date: d.date || '',
         description: d.description || ''
