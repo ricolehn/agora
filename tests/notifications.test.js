@@ -569,4 +569,15 @@ describe('push texts', () => {
     assert.equal(pushLine('Gottesdienst', '', 'So., 1. Nov., 10:00', null, 'Saal'), 'Gottesdienst · So., 1. Nov., 10:00 · Saal');
     assert.equal(pushLine('', undefined), '');
   });
+
+  test('the amount of a decided request reads as the books read it - "1.234,50" too', () => {
+    const { requestAmountLabel } = require('../backend/requestMessages');
+    const label = (type, amount, lang = 'de') => requestAmountLabel({ type, data: { amount } }, lang).replace(/\s/g, ' ');
+    assert.equal(label('payment', '1.234,50'), '1.234,50 €');
+    assert.equal(label('expense', 50), '50,00 €');
+    assert.equal(label('payment', '12,5', 'en'), '€12.50');
+    assert.equal(label('standing_order', '25,00'), '25,00 € / Monat');
+    assert.equal(label('payment', 'viel'), 'viel', 'what is no amount is shown as it was written');
+    assert.equal(requestAmountLabel({ type: 'status', data: { newStatus: 'geringverdiener' } }, 'de'), 'geringverdiener');
+  });
 });

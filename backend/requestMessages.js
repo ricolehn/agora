@@ -5,6 +5,7 @@ const { translator, userLanguage, localeOf } = require('./i18n');
 const { pushLine } = require('./eventTexts');
 const { notifyUsers } = require('./notify');
 const { getUserRecord } = require('./pocketbase');
+const { readAmount } = require('./db/codec');
 
 // The kinds of finance request (English source texts, translated per recipient)
 const REQUEST_TYPE_LABELS = { payment: 'Payment', expense: 'Expense', status: 'Status change', standing_order: 'Standing order' };
@@ -13,7 +14,8 @@ function requestAmountLabel(request, lang) {
   const tr = translator(lang);
   const data = request.data || {};
   if (request.type === 'status') return data.newStatus || '';
-  const amount = Number.parseFloat(String(data.amount || '0').replace(',', '.'));
+  // As the books read it: "1.234,50" is 1234.5
+  const amount = readAmount(data.amount);
   const text = Number.isFinite(amount) ? amount.toLocaleString(localeOf(lang), { style: 'currency', currency: 'EUR' }) : String(data.amount || '');
   return request.type === 'standing_order' ? tr('{amount} / month', { amount: text }) : text;
 }
@@ -69,4 +71,4 @@ async function notifyRequestDecision(request, origin = '') {
   });
 }
 
-module.exports = { REQUEST_TYPE_LABELS, NO_REASON_GIVEN, rejectionReasonText, notifyRequestDecision };
+module.exports = { REQUEST_TYPE_LABELS, NO_REASON_GIVEN, rejectionReasonText, requestAmountLabel, notifyRequestDecision };
