@@ -66,6 +66,7 @@ const {
 const { isFcmEnabled, getClientConfig } = require('../fcmNotifications');
 
 const features = require('../features');
+const { route } = require('./http');
 
 const router = express.Router();
 
@@ -121,34 +122,29 @@ router.get('/api/stream', verifyToken, (req, res) => {
   });
 });
 
-router.post('/api/admin/bootstrap-super-admin', verifyToken, async (req, res) => {
-  try {
-    // Without a recorded owner only an admin takes it over, never a member (pocketbase.js ownerClaim) - decided and
-    // written in one step: two admins at the same moment cannot both become the owner
-    let claimed = null;
-    await updateSystemState(context.appConfig, (system) => {
-      claimed = ownerClaim(system, req.user);
-      return claimed.claim ? { ...system, ownerUid: claimed.ownerUid, superAdminUid: claimed.ownerUid } : null;
-    });
-    const { ownerUid, claim: createdNow } = claimed;
+router.post('/api/admin/bootstrap-super-admin', verifyToken, route('Failed to bootstrap owner', async (req, res) => {
+  // Without a recorded owner only an admin takes it over, never a member (pocketbase.js ownerClaim) - decided and
+  // written in one step: two admins at the same moment cannot both become the owner
+  let claimed = null;
+  await updateSystemState(context.appConfig, (system) => {
+    claimed = ownerClaim(system, req.user);
+    return claimed.claim ? { ...system, ownerUid: claimed.ownerUid, superAdminUid: claimed.ownerUid } : null;
+  });
+  const { ownerUid, claim: createdNow } = claimed;
 
-    const isOwner = ownerUid !== null && ownerUid === req.user.uid;
-    if (isOwner) {
-      await updateUserRecord(context.appConfig, req.user.uid, { admin: true, owner: true, superAdmin: true, pays: true });
-    }
-
-    res.json({
-      isOwner,
-      ownerUid,
-      isSuperAdmin: isOwner,
-      superAdminUid: ownerUid,
-      createdNow
-    });
-  } catch (error) {
-    console.error('Failed to bootstrap owner:', error);
-    res.status(500).json({ error: 'Failed to bootstrap owner' });
+  const isOwner = ownerUid !== null && ownerUid === req.user.uid;
+  if (isOwner) {
+    await updateUserRecord(context.appConfig, req.user.uid, { admin: true, owner: true, superAdmin: true, pays: true });
   }
-});
+
+  res.json({
+    isOwner,
+    ownerUid,
+    isSuperAdmin: isOwner,
+    superAdminUid: ownerUid,
+    createdNow
+  });
+}));
 
 router.get('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res) => {
   if (!context.appConfig) {
@@ -171,136 +167,126 @@ router.get('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res
   });
 });
 
-router.put('/api/admin/system-config', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const appName = String(req.body?.appName || '').trim();
-    if (!appName) {
-      return res.status(400).json({ error: 'Missing required config fields' });
+router.put('/api/admin/system-config', verifyToken, verifyAdmin, route('Failed to update system config', async (req, res) => {
+  const appName = String(req.body?.appName || '').trim();
+  if (!appName) {
+    return res.status(400).json({ error: 'Missing required config fields' });
+  }
+
+  let smtp = null;
+  if (req.body?.smtp && typeof req.body.smtp === 'object' && String(req.body.smtp.host || '').trim()) {
+    let pass = String(req.body.smtp.pass || '');
+    if (pass === '***' && context.appConfig.smtp?.pass) {
+      pass = context.appConfig.smtp.pass;
     }
 
-    let smtp = null;
-    if (req.body?.smtp && typeof req.body.smtp === 'object' && String(req.body.smtp.host || '').trim()) {
-      let pass = String(req.body.smtp.pass || '');
-      if (pass === '***' && context.appConfig.smtp?.pass) {
-        pass = context.appConfig.smtp.pass;
-      }
-
-      smtp = {
-        host: String(req.body.smtp.host || '').trim(),
-        port: Number.isFinite(Number(req.body.smtp.port)) ? parseInt(req.body.smtp.port, 10) : 465,
-        secure: req.body.smtp.secure === true,
-        user: String(req.body.smtp.user || '').trim(),
-        pass: pass
-      };
-    }
-
-    // Address of the app for links in e-mails (recommended; otherwise the request's host is used)
-    let publicUrl = context.appConfig.publicUrl || '';
-    if (req.body?.publicUrl !== undefined) {
-      publicUrl = normalizePublicUrl(req.body.publicUrl);
-      if (publicUrl === null) {
-        return res.status(400).json({ error: 'The app address must start with http:// or https://.' });
-      }
-    }
-
-    // Language for members without an own setting (push, e-mail) and for suggested defaults
-    let defaultLanguage = instanceLanguage();
-    if (req.body?.defaultLanguage !== undefined) {
-      defaultLanguage = normalizeLanguage(req.body.defaultLanguage);
-      if (!defaultLanguage) {
-        return res.status(400).json({ error: 'Unsupported language.' });
-      }
-    }
-
-    // CCLI licence number of the church (shown with every song of the songbook)
-    let ccliLicense = context.appConfig.ccliLicense || '';
-    if (req.body?.ccliLicense !== undefined) {
-      ccliLicense = cleanCcli(req.body.ccliLicense);
-      if (ccliLicense === null) {
-        return res.status(400).json({ error: 'The CCLI licence number consists of digits only.' });
-      }
-    }
-
-    const newConfig = {
-      ...context.appConfig,
-      appName,
-      publicUrl,
-      defaultLanguage,
-      ccliLicense,
-      smtp
+    smtp = {
+      host: String(req.body.smtp.host || '').trim(),
+      port: Number.isFinite(Number(req.body.smtp.port)) ? parseInt(req.body.smtp.port, 10) : 465,
+      secure: req.body.smtp.secure === true,
+      user: String(req.body.smtp.user || '').trim(),
+      pass: pass
     };
-
-    await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), 'utf8');
-    context.appConfig = newConfig;
-    context.transporter = buildSmtpTransport(newConfig.smtp || null);
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to update system config:', error);
-    res.status(500).json({ error: 'Failed to update system config' });
   }
-});
 
-router.get('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const users = await listUserRecords(context.appConfig);
-    const people = await listPeopleRecords(context.appConfig);
-    const groups = await listGroupRecords(context.appConfig);
-    const approvedMentors = await listMentorRecords(context.appConfig, 'status = "approved"').catch(() => []);
-    const approvedMentorUserIds = new Set(approvedMentors.map(m => m.user));
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  // Address of the app for links in e-mails (recommended; otherwise the request's host is used)
+  let publicUrl = context.appConfig.publicUrl || '';
+  if (req.body?.publicUrl !== undefined) {
+    publicUrl = normalizePublicUrl(req.body.publicUrl);
+    if (publicUrl === null) {
+      return res.status(400).json({ error: 'The app address must start with http:// or https://.' });
+    }
+  }
 
-    const formatted = users.map((u) => {
-      const isOwner = u.id === ownerUid || u.owner === true || u.superAdmin === true;
-      const isPlaceholder = isPlaceholderEmail(u.email);
-      const isClaimed = !isPlaceholder;
-      const linkedPerson = people.find(p => p.uid === u.id || (p.data && p.data.uid === u.id));
-      const memberSince = linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
-      const status = linkedPerson?.status || linkedPerson?.data?.status || '';
-      const userGroupIds = Array.isArray(u.groups) ? u.groups : (u.groups ? [String(u.groups)] : []);
-      const userGroupObjects = userGroupIds.map(gid => {
-        const match = groups.find(g => g.id === gid || g.name === gid);
-        return match ? { id: match.id, name: match.name, permissions: match.permissions } : { id: gid, name: gid, permissions: [] };
-      });
-      const resolved = resolveUserPermissions(userGroupIds, groups);
+  // Language for members without an own setting (push, e-mail) and for suggested defaults
+  let defaultLanguage = instanceLanguage();
+  if (req.body?.defaultLanguage !== undefined) {
+    defaultLanguage = normalizeLanguage(req.body.defaultLanguage);
+    if (!defaultLanguage) {
+      return res.status(400).json({ error: 'Unsupported language.' });
+    }
+  }
 
-      return {
-        uid: u.id,
-        id: u.id,
-        email: isPlaceholder ? '' : (u.email || ''),
-        rawEmail: u.email || '',
-        firstName: u.firstName || '',
-        lastName: u.lastName || '',
-        name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt',
-        admin: u.admin === true || isOwner,
-        owner: isOwner,
-        superAdmin: isOwner,
-        pays: u.pays !== false,
-        groups: userGroupIds,
-        groupObjects: userGroupObjects,
-        permissions: resolved.permissions,
-        canManageFinances: resolved.canManageFinances,
-        canViewFinances: resolved.canViewFinances,
-        canManageRegistrationCode: resolved.canManageRegistrationCode === true,
-        canAccessAi: resolved.canAccessAi,
-        canParticipateMentoring: resolved.canParticipateMentoring,
-        canManageMentoring: resolved.canManageMentoring,
-        canManageEvents: resolved.canManageEvents === true,
-        isApprovedMentor: approvedMentorUserIds.has(u.id),
-        emailNotifications: u.emailNotifications !== false,
-        isClaimed,
-        memberSince,
-        status
-      };
+  // CCLI licence number of the church (shown with every song of the songbook)
+  let ccliLicense = context.appConfig.ccliLicense || '';
+  if (req.body?.ccliLicense !== undefined) {
+    ccliLicense = cleanCcli(req.body.ccliLicense);
+    if (ccliLicense === null) {
+      return res.status(400).json({ error: 'The CCLI licence number consists of digits only.' });
+    }
+  }
+
+  const newConfig = {
+    ...context.appConfig,
+    appName,
+    publicUrl,
+    defaultLanguage,
+    ccliLicense,
+    smtp
+  };
+
+  await fs.promises.writeFile(configFile, JSON.stringify(newConfig, null, 2), 'utf8');
+  context.appConfig = newConfig;
+  context.transporter = buildSmtpTransport(newConfig.smtp || null);
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
+
+router.get('/api/admin/users', verifyToken, verifyAdmin, route('Failed to list users', async (req, res) => {
+  const users = await listUserRecords(context.appConfig);
+  const people = await listPeopleRecords(context.appConfig);
+  const groups = await listGroupRecords(context.appConfig);
+  const approvedMentors = await listMentorRecords(context.appConfig, 'status = "approved"').catch(() => []);
+  const approvedMentorUserIds = new Set(approvedMentors.map(m => m.user));
+  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+
+  const formatted = users.map((u) => {
+    const isOwner = u.id === ownerUid || u.owner === true || u.superAdmin === true;
+    const isPlaceholder = isPlaceholderEmail(u.email);
+    const isClaimed = !isPlaceholder;
+    const linkedPerson = people.find(p => p.uid === u.id || (p.data && p.data.uid === u.id));
+    const memberSince = linkedPerson?.memberSince || linkedPerson?.data?.memberSince || '';
+    const status = linkedPerson?.status || linkedPerson?.data?.status || '';
+    const userGroupIds = Array.isArray(u.groups) ? u.groups : (u.groups ? [String(u.groups)] : []);
+    const userGroupObjects = userGroupIds.map(gid => {
+      const match = groups.find(g => g.id === gid || g.name === gid);
+      return match ? { id: match.id, name: match.name, permissions: match.permissions } : { id: gid, name: gid, permissions: [] };
     });
+    const resolved = resolveUserPermissions(userGroupIds, groups);
 
-    res.json(formatted);
-  } catch (error) {
-    console.error('Failed to list admin users:', error);
-    res.status(500).json({ error: 'Failed to list users' });
-  }
-});
+    return {
+      uid: u.id,
+      id: u.id,
+      email: isPlaceholder ? '' : (u.email || ''),
+      rawEmail: u.email || '',
+      firstName: u.firstName || '',
+      lastName: u.lastName || '',
+      name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt',
+      admin: u.admin === true || isOwner,
+      owner: isOwner,
+      superAdmin: isOwner,
+      pays: u.pays !== false,
+      groups: userGroupIds,
+      groupObjects: userGroupObjects,
+      permissions: resolved.permissions,
+      canManageFinances: resolved.canManageFinances,
+      canViewFinances: resolved.canViewFinances,
+      canManageRegistrationCode: resolved.canManageRegistrationCode === true,
+      canAccessAi: resolved.canAccessAi,
+      canParticipateMentoring: resolved.canParticipateMentoring,
+      canManageMentoring: resolved.canManageMentoring,
+      canManageEvents: resolved.canManageEvents === true,
+      isApprovedMentor: approvedMentorUserIds.has(u.id),
+      emailNotifications: u.emailNotifications !== false,
+      isClaimed,
+      memberSince,
+      status
+    };
+  });
+
+  res.json(formatted);
+}));
 
 router.get('/api/admin/permissions', verifyToken, verifyAdmin, (req, res) => {
   const lang = requestLanguage(req);
@@ -471,103 +457,88 @@ router.post('/api/admin/users', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-router.put('/api/admin/users/:uid/admin', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    const makeAdmin = req.body?.admin === true;
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+router.put('/api/admin/users/:uid/admin', verifyToken, verifyAdmin, route('Failed to update admin role', async (req, res) => {
+  const { uid } = req.params;
+  const makeAdmin = req.body?.admin === true;
+  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
 
-    if (uid === ownerUid && !makeAdmin) {
-      return res.status(400).json({ error: 'The owner cannot lose administrator rights.' });
-    }
-
-    const isTargetOwner = uid === ownerUid;
-    await updateUserRecord(context.appConfig, uid, {
-      admin: isTargetOwner ? true : makeAdmin,
-      owner: isTargetOwner,
-      superAdmin: isTargetOwner
-    });
-
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to update admin role:', error);
-    res.status(500).json({ error: 'Failed to update admin role' });
+  if (uid === ownerUid && !makeAdmin) {
+    return res.status(400).json({ error: 'The owner cannot lose administrator rights.' });
   }
-});
 
-router.put('/api/admin/users/:uid/pays', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    if (await blockOwnerChange(req, res, uid)) return;
-    const pays = req.body?.pays !== false;
+  const isTargetOwner = uid === ownerUid;
+  await updateUserRecord(context.appConfig, uid, {
+    admin: isTargetOwner ? true : makeAdmin,
+    owner: isTargetOwner,
+    superAdmin: isTargetOwner
+  });
 
-    await updateUserRecord(context.appConfig, uid, { pays });
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
 
-    const people = await listPeopleRecords(context.appConfig);
-    const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
-    if (pays) {
-      if (linkedPerson) {
-        const existingData = linkedPerson.data || {};
-        existingData.pays = true;
-        await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
-      } else {
-                const user = await getUserRecord(context.appConfig, uid);
-        const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
-        const today = new Date().toISOString().slice(0, 10);
-        const personKey = uid;
-        await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, today));
-      }
-    } else {
-      if (linkedPerson) {
-        const existingData = linkedPerson.data || {};
-        existingData.pays = false;
-        await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
-      }
-    }
+router.put('/api/admin/users/:uid/pays', verifyToken, verifyAdmin, route('Failed to update pays status', async (req, res) => {
+  const { uid } = req.params;
+  if (await blockOwnerChange(req, res, uid)) return;
+  const pays = req.body?.pays !== false;
 
-    broadcastDataUpdate();
-    res.json({ success: true, pays });
-  } catch (error) {
-    console.error('Failed to update pays status:', error);
-    res.status(500).json({ error: 'Failed to update pays status' });
-  }
-});
+  await updateUserRecord(context.appConfig, uid, { pays });
 
-router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    if (await blockOwnerChange(req, res, uid)) return;
-    const memberSince = String(req.body?.memberSince || '').trim();
-    if (!memberSince) {
-      return res.status(400).json({ error: 'Date required.' });
-    }
-
-    const people = await listPeopleRecords(context.appConfig);
-    const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+  const people = await listPeopleRecords(context.appConfig);
+  const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+  if (pays) {
     if (linkedPerson) {
       const existingData = linkedPerson.data || {};
-      existingData.memberSince = memberSince;
-      existingData.originalMemberSince = memberSince;
-      if (Array.isArray(existingData.statusHistory) && existingData.statusHistory.length > 0) {
-        existingData.statusHistory[0].startDate = memberSince;
-      }
+      existingData.pays = true;
       await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
     } else {
-            const user = await getUserRecord(context.appConfig, uid);
+              const user = await getUserRecord(context.appConfig, uid);
       const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
+      const today = new Date().toISOString().slice(0, 10);
       const personKey = uid;
-      await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, memberSince, user?.pays !== false));
+      await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, today));
     }
-
-    broadcastDataUpdate();
-    res.json({ success: true, memberSince });
-  } catch (error) {
-    console.error('Failed to update memberSince:', error);
-    res.status(500).json({ error: 'Failed to update memberSince' });
+  } else {
+    if (linkedPerson) {
+      const existingData = linkedPerson.data || {};
+      existingData.pays = false;
+      await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
+    }
   }
-});
+
+  broadcastDataUpdate();
+  res.json({ success: true, pays });
+}));
+
+router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, route('Failed to update memberSince', async (req, res) => {
+  const { uid } = req.params;
+  if (await blockOwnerChange(req, res, uid)) return;
+  const memberSince = String(req.body?.memberSince || '').trim();
+  if (!memberSince) {
+    return res.status(400).json({ error: 'Date required.' });
+  }
+
+  const people = await listPeopleRecords(context.appConfig);
+  const linkedPerson = people.find(p => p.uid === uid || (p.data && p.data.uid === uid));
+  if (linkedPerson) {
+    const existingData = linkedPerson.data || {};
+    existingData.memberSince = memberSince;
+    existingData.originalMemberSince = memberSince;
+    if (Array.isArray(existingData.statusHistory) && existingData.statusHistory.length > 0) {
+      existingData.statusHistory[0].startDate = memberSince;
+    }
+    await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
+  } else {
+          const user = await getUserRecord(context.appConfig, uid);
+    const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
+    const personKey = uid;
+    await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, memberSince, user?.pays !== false));
+  }
+
+  broadcastDataUpdate();
+  res.json({ success: true, memberSince });
+}));
 
 router.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, async (req, res) => {
   try {
@@ -586,27 +557,22 @@ router.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, async (re
   }
 });
 
-router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, route('Failed to delete user', async (req, res) => {
+  const { uid } = req.params;
+  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
 
-    if (uid === ownerUid) {
-      return res.status(400).json({ error: 'The owner account cannot be deleted.' });
-    }
-
-    // By uid only (matching by name also deleted other members with the same name)
-    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
-    console.log(`[Account] Admin ${req.user.uid} deleted user ${uid}`, summary);
-
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to delete user:', error);
-    res.status(500).json({ error: 'Failed to delete user' });
+  if (uid === ownerUid) {
+    return res.status(400).json({ error: 'The owner account cannot be deleted.' });
   }
-});
+
+  // By uid only (matching by name also deleted other members with the same name)
+  const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
+  console.log(`[Account] Admin ${req.user.uid} deleted user ${uid}`, summary);
+
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
 
 router.post('/api/admin/logo', verifyToken, verifySuperAdmin, (req, res) => {
   logoUpload.single('logo')(req, res, async (uploadError) => {
@@ -653,89 +619,69 @@ router.post('/api/admin/logo', verifyToken, verifySuperAdmin, (req, res) => {
   });
 });
 
-router.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { to, subject, text, html } = req.body;
-    if (!to || !subject) {
-      return res.status(400).json({ error: 'Missing required fields: to, subject' });
-    }
-
-    if (!context.transporter || !context.appConfig?.smtp?.user) {
-      return res.status(500).json({ error: 'SMTP not configured' });
-    }
-
-    const info = await context.transporter.sendMail({
-      from: `"${context.appConfig.appName}" <${context.appConfig.smtp.user}>`,
-      to,
-      subject,
-      text,
-      html
-    });
-
-    // The member also gets a push - only once the e-mail went out, and only if they want finance messages by push
-    try {
-      const allUsers = await listUserRecords(context.appConfig);
-      const recipientUser = allUsers.find(u => u.email && u.email.toLowerCase() === String(to).toLowerCase());
-      if (recipientUser && wantsNotification(recipientUser, 'finances', 'push')) {
-        const tr = translator(userLanguage(recipientUser));
-        sendPushToUser(context.appConfig, recipientUser.id, {
-          title: subject || tr('New message'),
-          body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : tr('You received a new notification.'),
-          data: { url: '/' }
-        }).catch(e => console.warn('[WebPush] Send-email push error:', e.message));
-      }
-    } catch (e) {
-      console.warn('[WebPush] Error checking user for send-email push:', e.message);
-    }
-
-    console.log('Email sent: %s', info.messageId);
-    res.status(200).json({ success: true, messageId: info.messageId });
-  } catch (error) {
-    console.error('Error sending email:', error);
-    res.status(500).json({ error: 'Failed to send email' });
+router.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmin, route('Failed to send email', async (req, res) => {
+  const { to, subject, text, html } = req.body;
+  if (!to || !subject) {
+    return res.status(400).json({ error: 'Missing required fields: to, subject' });
   }
-});
 
-router.get('/api/push/vapid-public-key', verifyToken, async (req, res) => {
-  try {
-    const publicKey = await getVapidPublicKey(context.appConfig);
-    res.json({ publicKey });
-  } catch (error) {
-    console.error('Failed to get VAPID public key:', error);
-    res.status(500).json({ error: 'Failed to retrieve VAPID key' });
+  if (!context.transporter || !context.appConfig?.smtp?.user) {
+    return res.status(500).json({ error: 'SMTP not configured' });
   }
-});
 
-router.post('/api/push/subscribe', verifyToken, async (req, res) => {
+  const info = await context.transporter.sendMail({
+    from: `"${context.appConfig.appName}" <${context.appConfig.smtp.user}>`,
+    to,
+    subject,
+    text,
+    html
+  });
+
+  // The member also gets a push - only once the e-mail went out, and only if they want finance messages by push
   try {
-    const { subscription, userAgent, installed } = req.body || {};
-    if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
-      return res.status(400).json({ error: 'Invalid push subscription payload' });
+    const allUsers = await listUserRecords(context.appConfig);
+    const recipientUser = allUsers.find(u => u.email && u.email.toLowerCase() === String(to).toLowerCase());
+    if (recipientUser && wantsNotification(recipientUser, 'finances', 'push')) {
+      const tr = translator(userLanguage(recipientUser));
+      sendPushToUser(context.appConfig, recipientUser.id, {
+        title: subject || tr('New message'),
+        body: text ? (text.length > 150 ? text.slice(0, 147) + '...' : text) : tr('You received a new notification.'),
+        data: { url: '/' }
+      }).catch(e => console.warn('[WebPush] Send-email push error:', e.message));
     }
-    const currentUid = req.user.uid || req.user.id;
-    // Only the installed app (PWA) gets pushes, not a browser tab (iOS sends web push to home screen apps only anyway)
-    await upsertPushSubscription(context.appConfig, currentUid, subscription, userAgent || req.headers['user-agent'] || '', installed === true);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to save push subscription:', error);
-    res.status(500).json({ error: 'Failed to save subscription' });
+  } catch (e) {
+    console.warn('[WebPush] Error checking user for send-email push:', e.message);
   }
-});
 
-router.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
-  try {
-    const { endpoint } = req.body || {};
-    if (!endpoint) {
-      return res.status(400).json({ error: 'Endpoint is required' });
-    }
-    // Only the own device: another person's subscription stays (the answer is the same, so it tells nothing)
-    await deletePushSubscription(context.appConfig, endpoint, req.user.uid || req.user.id);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to delete push subscription:', error);
-    res.status(500).json({ error: 'Failed to unsubscribe' });
+  console.log('Email sent: %s', info.messageId);
+  res.status(200).json({ success: true, messageId: info.messageId });
+}));
+
+router.get('/api/push/vapid-public-key', verifyToken, route('Failed to retrieve VAPID key', async (req, res) => {
+  const publicKey = await getVapidPublicKey(context.appConfig);
+  res.json({ publicKey });
+}));
+
+router.post('/api/push/subscribe', verifyToken, route('Failed to save subscription', async (req, res) => {
+  const { subscription, userAgent, installed } = req.body || {};
+  if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+    return res.status(400).json({ error: 'Invalid push subscription payload' });
   }
-});
+  const currentUid = req.user.uid || req.user.id;
+  // Only the installed app (PWA) gets pushes, not a browser tab (iOS sends web push to home screen apps only anyway)
+  await upsertPushSubscription(context.appConfig, currentUid, subscription, userAgent || req.headers['user-agent'] || '', installed === true);
+  res.json({ success: true });
+}));
+
+router.post('/api/push/unsubscribe', verifyToken, route('Failed to unsubscribe', async (req, res) => {
+  const { endpoint } = req.body || {};
+  if (!endpoint) {
+    return res.status(400).json({ error: 'Endpoint is required' });
+  }
+  // Only the own device: another person's subscription stays (the answer is the same, so it tells nothing)
+  await deletePushSubscription(context.appConfig, endpoint, req.user.uid || req.user.id);
+  res.json({ success: true });
+}));
 
 // The Android app initialises Firebase with this public client config, so each instance can use its own project
 router.get('/api/push/fcm', verifyToken, (req, res) => {
@@ -743,49 +689,34 @@ router.get('/api/push/fcm', verifyToken, (req, res) => {
   res.json({ enabled, config: enabled ? getClientConfig() : null });
 });
 
-router.post('/api/push/fcm/subscribe', verifyToken, async (req, res) => {
-  try {
-    const { token, platform } = req.body || {};
-    if (!token || typeof token !== 'string' || token.length > 4096) {
-      return res.status(400).json({ error: 'Invalid FCM token' });
-    }
-    const currentUid = req.user.uid || req.user.id;
-    await upsertFcmToken(context.appConfig, currentUid, token, typeof platform === 'string' && platform ? platform.slice(0, 32) : 'android');
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to save FCM token:', error);
-    res.status(500).json({ error: 'Failed to save FCM token' });
+router.post('/api/push/fcm/subscribe', verifyToken, route('Failed to save FCM token', async (req, res) => {
+  const { token, platform } = req.body || {};
+  if (!token || typeof token !== 'string' || token.length > 4096) {
+    return res.status(400).json({ error: 'Invalid FCM token' });
   }
-});
+  const currentUid = req.user.uid || req.user.id;
+  await upsertFcmToken(context.appConfig, currentUid, token, typeof platform === 'string' && platform ? platform.slice(0, 32) : 'android');
+  res.json({ success: true });
+}));
 
-router.post('/api/push/fcm/unsubscribe', verifyToken, async (req, res) => {
-  try {
-    const { token } = req.body || {};
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ error: 'Token is required' });
-    }
-    const currentUid = req.user.uid || req.user.id;
-    await deleteFcmToken(context.appConfig, token, currentUid);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to delete FCM token:', error);
-    res.status(500).json({ error: 'Failed to unsubscribe' });
+router.post('/api/push/fcm/unsubscribe', verifyToken, route('Failed to unsubscribe', async (req, res) => {
+  const { token } = req.body || {};
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Token is required' });
   }
-});
+  const currentUid = req.user.uid || req.user.id;
+  await deleteFcmToken(context.appConfig, token, currentUid);
+  res.json({ success: true });
+}));
 
-router.post('/api/push/test', verifyToken, async (req, res) => {
-  try {
-    const currentUid = req.user.uid || req.user.id;
-    await sendPushToUser(context.appConfig, currentUid, {
-      title: `${context.appConfig?.appName || 'Agora'} Test`,
-      body: translate(requestLanguage(req), 'Push notifications are set up successfully!'),
-      data: { url: '/' }
-    });
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to send test push notification:', error);
-    res.status(500).json({ error: 'Failed to send test notification' });
-  }
-});
+router.post('/api/push/test', verifyToken, route('Failed to send test notification', async (req, res) => {
+  const currentUid = req.user.uid || req.user.id;
+  await sendPushToUser(context.appConfig, currentUid, {
+    title: `${context.appConfig?.appName || 'Agora'} Test`,
+    body: translate(requestLanguage(req), 'Push notifications are set up successfully!'),
+    data: { url: '/' }
+  });
+  res.json({ success: true });
+}));
 
 module.exports = router;

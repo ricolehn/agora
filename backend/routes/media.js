@@ -17,7 +17,7 @@ const {
   broadcastDataUpdate
 } = require('../context');
 const { getStateValue, upsertStateValue, listGroupRecords, listUserRecords, queueRecordWrite } = require('../pocketbase');
-const { loadSecret } = require('../polls');
+const { instanceSecret } = require('../instanceSecret');
 const media = require('../media');
 const nextcloud = require('../nextcloud');
 const { translate, requestLanguage } = require('../i18n');
@@ -35,8 +35,8 @@ const MAX_SELECTED = 500;
 /** Nextcloud makes previews one by one per request; a grid of 200 pictures must not start 200 at once. */
 const MAX_PARALLEL_PREVIEWS = 8;
 
-let secret = null;
-const mediaSecret = () => (secret ||= loadSecret(dataDir, 'media-secret'));
+// A damaged secret makes Media unusable, it is never silently replaced (instanceSecret.js)
+const mediaSecret = instanceSecret(dataDir, 'media-secret', 'Media is not available right now.');
 
 // Settings and rules are read for every thumbnail: kept in memory, read again after a change or a minute
 const CACHE_MS = 60_000;
@@ -66,12 +66,13 @@ async function connection() {
 
 const userId = (req) => req.user?.uid || req.user?.id;
 
+/**
+ * Media's answer to what went wrong: nothing when the person left (an aborted transfer), an error meant for them (a
+ * damaged secret, httpError.js) and Nextcloud's refusals with their status and text, anything else as [fallback].
+ */
 function sendError(res, err, fallback) {
   if (err?.name === 'AbortError') return;
-  if (/media-secret/.test(err?.message || '')) {
-    console.error('[Media]', err.message);
-    return res.status(503).json({ error: 'Media is not available right now.' });
-  }
+  if (err?.expose) return res.status(err.status).json({ error: err.message });
   if (err instanceof nextcloud.NextcloudError) {
     if (err.status >= 500) console.warn('[Media]', err.message);
     return res.status(err.status).json({ error: err.message });
@@ -79,6 +80,15 @@ function sendError(res, err, fallback) {
   console.error(fallback, err);
   return res.status(500).json({ error: fallback });
 }
+
+/** A route of Media: what it throws is answered as sendError does. */
+const mediaRoute = (fallback, handler) => async (req, res) => {
+  try {
+    await handler(req, res);
+  } catch (err) {
+    if (!res.headersSent) sendError(res, err, fallback);
+  }
+};
 
 /** The request's path parameter as a clean path, or null after answering 400. */
 function pathParam(req, res, value = req.query.path) {
@@ -132,45 +142,37 @@ const mediaFileRateLimit = rateLimit({ windowMs: 60 * 1000, max: 3000, standardH
 
 // --- For everyone: is there anything to see? ---
 
-router.get('/api/media/status', verifyToken, async (req, res) => {
-  try {
-    const enabled = !!(await connection());
-    const rules = enabled ? await storedRules() : {};
-    res.json({
-      enabled,
-      canManage: media.canManageMedia(req.user),
-      hasAccess: enabled && media.hasAnyAccess(rules, req.user)
-    });
-  } catch (err) {
-    sendError(res, err, 'Media could not be loaded');
-  }
-});
+router.get('/api/media/status', verifyToken, mediaRoute('Media could not be loaded', async (req, res) => {
+  const enabled = !!(await connection());
+  const rules = enabled ? await storedRules() : {};
+  res.json({
+    enabled,
+    canManage: media.canManageMedia(req.user),
+    hasAccess: enabled && media.hasAnyAccess(rules, req.user)
+  });
+}));
 
 // --- Browse ---
 
-router.get('/api/media/list', verifyToken, async (req, res) => {
+router.get('/api/media/list', verifyToken, mediaRoute('The folder could not be loaded', async (req, res) => {
   const folder = pathParam(req, res);
   if (folder === null) return;
-  try {
-    const setup = await ready(res);
-    if (!setup) return;
-    // Not visible: the same answer as a folder that is not there
-    if (!media.canSeeFolder(setup.rules, folder, req.user)) return res.status(404).json({ error: 'Folder not found' });
-    const listing = await nextcloud.listFolder(setup.conn, folder, { signal: abortOnClose(req, res) });
-    const view = media.filterListing(setup.rules, folder, req.user, listing);
-    res.setHeader('Cache-Control', 'private, no-cache');
-    res.json({
-      path: folder,
-      name: folder ? media.nameOf(folder) : '',
-      access: view.access,
-      canManage: media.canManageMedia(req.user),
-      folders: view.folders.map(({ etag, fileId, ...folderEntry }) => folderEntry),
-      files: view.files.map(({ fileId, ...file }) => ({ ...file, kind: media.fileKind(file.contentType, file.name) }))
-    });
-  } catch (err) {
-    sendError(res, err, 'The folder could not be loaded');
-  }
-});
+  const setup = await ready(res);
+  if (!setup) return;
+  // Not visible: the same answer as a folder that is not there
+  if (!media.canSeeFolder(setup.rules, folder, req.user)) return res.status(404).json({ error: 'Folder not found' });
+  const listing = await nextcloud.listFolder(setup.conn, folder, { signal: abortOnClose(req, res) });
+  const view = media.filterListing(setup.rules, folder, req.user, listing);
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.json({
+    path: folder,
+    name: folder ? media.nameOf(folder) : '',
+    access: view.access,
+    canManage: media.canManageMedia(req.user),
+    folders: view.folders.map(({ etag, fileId, ...folderEntry }) => folderEntry),
+    files: view.files.map(({ fileId, ...file }) => ({ ...file, kind: media.fileKind(file.contentType, file.name) }))
+  });
+}));
 
 /** The file [p] if [req.user] may read it (in a folder they may read), else answers and returns null. */
 async function readableFile(req, res) {
@@ -189,56 +191,48 @@ async function readableFile(req, res) {
   return { file, conn: setup.conn };
 }
 
-router.get('/api/media/preview', mediaFileRateLimit, verifyToken, async (req, res) => {
-  try {
-    const target = await readableFile(req, res);
-    if (!target) return;
-    const size = media.previewSize(req.query.size);
-    const crop = req.query.crop === '1';
-    const signal = abortOnClose(req, res);
-    const upstream = await withPreviewSlot(() => {
-      if (signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
-      return nextcloud.preview(target.conn, target.file, { size, crop, signal });
-    });
-    res.setHeader('Content-Type', upstream.headers.get('content-type'));
-    const length = upstream.headers.get('content-length');
-    if (length) res.setHeader('Content-Length', length);
-    // The app adds the file's version (?v=etag): the same address always shows the same picture
-    res.setHeader('Cache-Control', req.query.v ? 'private, max-age=2592000, immutable' : 'private, max-age=300');
-    await pipeBody(upstream, res);
-  } catch (err) {
-    sendError(res, err, 'The preview could not be loaded');
-  }
-});
+router.get('/api/media/preview', mediaFileRateLimit, verifyToken, mediaRoute('The preview could not be loaded', async (req, res) => {
+  const target = await readableFile(req, res);
+  if (!target) return;
+  const size = media.previewSize(req.query.size);
+  const crop = req.query.crop === '1';
+  const signal = abortOnClose(req, res);
+  const upstream = await withPreviewSlot(() => {
+    if (signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    return nextcloud.preview(target.conn, target.file, { size, crop, signal });
+  });
+  res.setHeader('Content-Type', upstream.headers.get('content-type'));
+  const length = upstream.headers.get('content-length');
+  if (length) res.setHeader('Content-Length', length);
+  // The app adds the file's version (?v=etag): the same address always shows the same picture
+  res.setHeader('Cache-Control', req.query.v ? 'private, max-age=2592000, immutable' : 'private, max-age=300');
+  await pipeBody(upstream, res);
+}));
 
 /** "Grüße.pdf" for Content-Disposition (RFC 6266 with an ASCII fallback). */
 const dispositionName = (name) => `filename="${name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 
-router.get('/api/media/file', mediaFileRateLimit, verifyToken, async (req, res) => {
-  try {
-    const target = await readableFile(req, res);
-    if (!target) return;
-    const range = typeof req.headers.range === 'string' && /^bytes=[\d,\s-]+$/.test(req.headers.range) ? req.headers.range : null;
-    const upstream = await nextcloud.download(target.conn, target.file, { range, signal: abortOnClose(req, res) });
-    const type = String(upstream.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
-    // Pictures, PDFs, video and music open in the browser; anything else (HTML, SVG, scripts …) is only ever a
-    // download, so a file in the cloud can never run as a page of the app
-    const inline = media.INLINE_TYPES.has(type) && req.query.download !== '1';
-    res.status(upstream.status);
-    res.setHeader('Content-Type', inline ? type : 'application/octet-stream');
-    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; ${dispositionName(media.nameOf(target.file))}`);
-    // Opened on its own, nothing in it runs (the browsers' PDF viewers do not work with a sandbox)
-    if (type !== 'application/pdf') res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
-    res.setHeader('Cache-Control', 'private, no-cache');
-    for (const header of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
-      const value = upstream.headers.get(header);
-      if (value) res.setHeader(header, value);
-    }
-    await pipeBody(upstream, res);
-  } catch (err) {
-    sendError(res, err, 'The file could not be loaded');
+router.get('/api/media/file', mediaFileRateLimit, verifyToken, mediaRoute('The file could not be loaded', async (req, res) => {
+  const target = await readableFile(req, res);
+  if (!target) return;
+  const range = typeof req.headers.range === 'string' && /^bytes=[\d,\s-]+$/.test(req.headers.range) ? req.headers.range : null;
+  const upstream = await nextcloud.download(target.conn, target.file, { range, signal: abortOnClose(req, res) });
+  const type = String(upstream.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  // Pictures, PDFs, video and music open in the browser; anything else (HTML, SVG, scripts …) is only ever a
+  // download, so a file in the cloud can never run as a page of the app
+  const inline = media.INLINE_TYPES.has(type) && req.query.download !== '1';
+  res.status(upstream.status);
+  res.setHeader('Content-Type', inline ? type : 'application/octet-stream');
+  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; ${dispositionName(media.nameOf(target.file))}`);
+  // Opened on its own, nothing in it runs (the browsers' PDF viewers do not work with a sandbox)
+  if (type !== 'application/pdf') res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+  res.setHeader('Cache-Control', 'private, no-cache');
+  for (const header of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+    const value = upstream.headers.get(header);
+    if (value) res.setHeader(header, value);
   }
-});
+  await pipeBody(upstream, res);
+}));
 
 // --- Add: upload files and create folders (write access); nothing is ever replaced ---
 
@@ -324,22 +318,18 @@ router.post('/api/media/upload', protectedActionRateLimit, verifyToken, async (r
   });
 });
 
-router.post('/api/media/folder', protectedActionRateLimit, verifyToken, async (req, res) => {
-  try {
-    const name = media.cleanName(req.body?.name);
-    if (!name || name.startsWith('.')) return res.status(400).json({ error: 'Invalid folder name' });
-    const target = await writableFolder(req, res, req.body?.path);
-    if (!target) return;
-    const folderPath = media.joinPath(target.folder, name);
-    if (!(await nextcloud.createFolder(target.conn, folderPath))) {
-      return res.status(409).json({ error: 'There is already something with this name.' });
-    }
-    broadcastDataUpdate('media');
-    res.status(201).json({ name, path: folderPath });
-  } catch (err) {
-    sendError(res, err, 'The folder could not be created');
+router.post('/api/media/folder', protectedActionRateLimit, verifyToken, mediaRoute('The folder could not be created', async (req, res) => {
+  const name = media.cleanName(req.body?.name);
+  if (!name || name.startsWith('.')) return res.status(400).json({ error: 'Invalid folder name' });
+  const target = await writableFolder(req, res, req.body?.path);
+  if (!target) return;
+  const folderPath = media.joinPath(target.folder, name);
+  if (!(await nextcloud.createFolder(target.conn, folderPath))) {
+    return res.status(409).json({ error: 'There is already something with this name.' });
   }
-});
+  broadcastDataUpdate('media');
+  res.status(201).json({ name, path: folderPath });
+}));
 
 // --- Several at once: the app selects entries of one folder ({ path, names }) to delete or to download ---
 
@@ -372,58 +362,54 @@ async function entriesByName(conn, folder) {
 }
 
 // Delete: files where the member may write, folders only when they may write everywhere in them
-router.post('/api/media/delete', protectedActionRateLimit, verifyToken, async (req, res) => {
-  try {
-    const names = selectedNames(req, res);
-    if (!names) return;
-    const target = await writableFolder(req, res, req.body?.path, 'You may not delete anything in this folder.');
-    if (!target) return;
-    const tr = (text) => translate(requestLanguage(req), text);
-    const deleted = [];
-    const failed = [];
-    const deletedFolders = [];
-    const present = await entriesByName(target.conn, target.folder);
-    for (const name of names) {
-      const entryPath = media.joinPath(target.folder, name);
-      const entry = present.get(name);
-      // Already gone (deleted on another device): what was asked for is done
-      if (!entry) {
-        deleted.push(name);
-        continue;
-      }
-      if (entry.isFolder && !media.canDeleteFolder(target.rules, entryPath, req.user)) {
-        failed.push({ name, status: 403, error: tr('You may not delete everything in this folder.') });
-        continue;
-      }
-      try {
-        await nextcloud.remove(target.conn, entryPath);
-        deleted.push(name);
-        if (entry.isFolder) deletedFolders.push(entryPath);
-      } catch (err) {
-        if (!(err instanceof nextcloud.NextcloudError)) throw err;
-        failed.push({ name, status: err.status, error: tr(err.message) });
-      }
+router.post('/api/media/delete', protectedActionRateLimit, verifyToken, mediaRoute('Could not delete', async (req, res) => {
+  const names = selectedNames(req, res);
+  if (!names) return;
+  const target = await writableFolder(req, res, req.body?.path, 'You may not delete anything in this folder.');
+  if (!target) return;
+  const tr = (text) => translate(requestLanguage(req), text);
+  const deleted = [];
+  const failed = [];
+  const deletedFolders = [];
+  const present = await entriesByName(target.conn, target.folder);
+  for (const name of names) {
+    const entryPath = media.joinPath(target.folder, name);
+    const entry = present.get(name);
+    // Already gone (deleted on another device): what was asked for is done
+    if (!entry) {
+      deleted.push(name);
+      continue;
     }
-    // A new folder of the same name starts without the rights of the deleted one
-    if (deletedFolders.length) {
-      await queueRecordWrite(RULES_KEY, async () => {
-        const current = (await getStateValue(context.appConfig, RULES_KEY, { rules: {} }))?.rules || {};
-        const next = deletedFolders.reduce((rules, folder) => media.rulesWithout(rules, folder), current);
-        if (Object.keys(next).length !== Object.keys(current).length) await upsertStateValue(context.appConfig, RULES_KEY, { rules: next });
-        cache.rules = null;
-      });
+    if (entry.isFolder && !media.canDeleteFolder(target.rules, entryPath, req.user)) {
+      failed.push({ name, status: 403, error: tr('You may not delete everything in this folder.') });
+      continue;
     }
-    if (deleted.length) {
-      console.log(`[Media] ${userId(req)} deleted ${deleted.length} item(s) in "/${target.folder}"`);
-      broadcastDataUpdate('media');
+    try {
+      await nextcloud.remove(target.conn, entryPath);
+      deleted.push(name);
+      if (entry.isFolder) deletedFolders.push(entryPath);
+    } catch (err) {
+      if (!(err instanceof nextcloud.NextcloudError)) throw err;
+      failed.push({ name, status: err.status, error: tr(err.message) });
     }
-    const failures = failed.map(({ status, ...entry }) => entry);
-    if (!deleted.length && failed.length) return res.status(failed[0].status || 502).json({ error: failed[0].error, failed: failures });
-    res.json({ deleted, failed: failures });
-  } catch (err) {
-    sendError(res, err, 'Could not delete');
   }
-});
+  // A new folder of the same name starts without the rights of the deleted one
+  if (deletedFolders.length) {
+    await queueRecordWrite(RULES_KEY, async () => {
+      const current = (await getStateValue(context.appConfig, RULES_KEY, { rules: {} }))?.rules || {};
+      const next = deletedFolders.reduce((rules, folder) => media.rulesWithout(rules, folder), current);
+      if (Object.keys(next).length !== Object.keys(current).length) await upsertStateValue(context.appConfig, RULES_KEY, { rules: next });
+      cache.rules = null;
+    });
+  }
+  if (deleted.length) {
+    console.log(`[Media] ${userId(req)} deleted ${deleted.length} item(s) in "/${target.folder}"`);
+    broadcastDataUpdate('media');
+  }
+  const failures = failed.map(({ status, ...entry }) => entry);
+  if (!deleted.length && failed.length) return res.status(failed[0].status || 502).json({ error: failed[0].error, failed: failures });
+  res.json({ deleted, failed: failures });
+}));
 
 /**
  * What a download of [names] in [folder] holds for [user]: the files (with their place in the archive) and the
@@ -473,25 +459,21 @@ function keepDownload(ticket) {
   return id;
 }
 
-router.post('/api/media/download', protectedActionRateLimit, verifyToken, async (req, res) => {
+router.post('/api/media/download', protectedActionRateLimit, verifyToken, mediaRoute('The download could not be prepared', async (req, res) => {
   const folder = pathParam(req, res, req.body?.path);
   if (folder === null) return;
   const names = selectedNames(req, res);
   if (!names) return;
-  try {
-    const setup = await ready(res);
-    if (!setup) return;
-    if (!media.canSeeFolder(setup.rules, folder, req.user)) return res.status(404).json({ error: 'Folder not found' });
-    const entries = await downloadEntries(setup.conn, setup.rules, req.user, folder, names);
-    if (!entries.some((entry) => !entry.folder)) return res.status(404).json({ error: 'There is nothing to download here.' });
-    // One folder: the archive is named after it; several entries after the folder they are in
-    const base = names.length === 1 && entries[0].folder ? names[0] : (folder ? media.nameOf(folder) : 'Media');
-    const id = keepDownload({ uid: userId(req), entries, name: `${base}.zip` });
-    res.json({ id, url: `/api/media/download/${id}`, files: entries.filter((entry) => !entry.folder).length });
-  } catch (err) {
-    sendError(res, err, 'The download could not be prepared');
-  }
-});
+  const setup = await ready(res);
+  if (!setup) return;
+  if (!media.canSeeFolder(setup.rules, folder, req.user)) return res.status(404).json({ error: 'Folder not found' });
+  const entries = await downloadEntries(setup.conn, setup.rules, req.user, folder, names);
+  if (!entries.some((entry) => !entry.folder)) return res.status(404).json({ error: 'There is nothing to download here.' });
+  // One folder: the archive is named after it; several entries after the folder they are in
+  const base = names.length === 1 && entries[0].folder ? names[0] : (folder ? media.nameOf(folder) : 'Media');
+  const id = keepDownload({ uid: userId(req), entries, name: `${base}.zip` });
+  res.json({ id, url: `/api/media/download/${id}`, files: entries.filter((entry) => !entry.folder).length });
+}));
 
 router.get('/api/media/download/:id', mediaFileRateLimit, verifyToken, async (req, res) => {
   const ticket = downloads.get(String(req.params.id));
@@ -579,64 +561,52 @@ function folderRules(rules, folder) {
   return { path: folder, own, inherited };
 }
 
-router.get('/api/media/rules', verifyToken, verifyManageMedia, async (req, res) => {
-  try {
-    const [rules, { choices, known }] = await Promise.all([storedRules(), ruleTargets()]);
-    const current = media.pruneRules(rules, known);
-    const body = {
-      choices,
-      rules: Object.keys(current).sort((a, b) => a.localeCompare(b)).map((folder) => ({ path: folder, groups: current[folder] }))
-    };
-    if (typeof req.query.path === 'string') {
-      const folder = pathParam(req, res);
-      if (folder === null) return;
-      body.folder = folderRules(current, folder);
-    }
-    res.setHeader('Cache-Control', 'private, no-cache');
-    res.json(body);
-  } catch (err) {
-    sendError(res, err, 'The folder rights could not be loaded');
+router.get('/api/media/rules', verifyToken, verifyManageMedia, mediaRoute('The folder rights could not be loaded', async (req, res) => {
+  const [rules, { choices, known }] = await Promise.all([storedRules(), ruleTargets()]);
+  const current = media.pruneRules(rules, known);
+  const body = {
+    choices,
+    rules: Object.keys(current).sort((a, b) => a.localeCompare(b)).map((folder) => ({ path: folder, groups: current[folder] }))
+  };
+  if (typeof req.query.path === 'string') {
+    const folder = pathParam(req, res);
+    if (folder === null) return;
+    body.folder = folderRules(current, folder);
   }
-});
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.json(body);
+}));
 
-router.put('/api/media/rules', protectedActionRateLimit, verifyToken, verifyManageMedia, async (req, res) => {
+router.put('/api/media/rules', protectedActionRateLimit, verifyToken, verifyManageMedia, mediaRoute('The folder rights could not be saved', async (req, res) => {
   const folder = pathParam(req, res, req.body?.path);
   if (folder === null) return;
-  try {
-    const { known } = await ruleTargets();
-    const result = await queueRecordWrite(RULES_KEY, async () => {
-      const current = media.pruneRules((await getStateValue(context.appConfig, RULES_KEY, { rules: {} }))?.rules || {}, known);
-      const next = media.setFolderRules(current, folder, req.body?.groups, known);
-      if (next.error) return next;
-      await upsertStateValue(context.appConfig, RULES_KEY, { rules: next.rules });
-      cache.rules = null;
-      return next;
-    });
-    if (result.error) return res.status(400).json({ error: result.error });
-    console.log(`[Media] ${userId(req)} set the rights of "/${folder}"`);
-    broadcastDataUpdate('media');
-    res.json({ folder: folderRules(result.rules, folder) });
-  } catch (err) {
-    sendError(res, err, 'The folder rights could not be saved');
-  }
-});
+  const { known } = await ruleTargets();
+  const result = await queueRecordWrite(RULES_KEY, async () => {
+    const current = media.pruneRules((await getStateValue(context.appConfig, RULES_KEY, { rules: {} }))?.rules || {}, known);
+    const next = media.setFolderRules(current, folder, req.body?.groups, known);
+    if (next.error) return next;
+    await upsertStateValue(context.appConfig, RULES_KEY, { rules: next.rules });
+    cache.rules = null;
+    return next;
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  console.log(`[Media] ${userId(req)} set the rights of "/${folder}"`);
+  broadcastDataUpdate('media');
+  res.json({ folder: folderRules(result.rules, folder) });
+}));
 
 // --- System settings: the connection to Nextcloud (administrators) ---
 
-router.get('/api/admin/media-config', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const settings = await storedSettings();
-    res.json({
-      enabled: settings.enabled === true,
-      url: settings.url || '',
-      user: settings.user || '',
-      password: settings.password ? '***' : '',
-      root: settings.root || ''
-    });
-  } catch (err) {
-    sendError(res, err, 'The media settings could not be loaded');
-  }
-});
+router.get('/api/admin/media-config', verifyToken, verifyAdmin, mediaRoute('The media settings could not be loaded', async (req, res) => {
+  const settings = await storedSettings();
+  res.json({
+    enabled: settings.enabled === true,
+    url: settings.url || '',
+    user: settings.user || '',
+    password: settings.password ? '***' : '',
+    root: settings.root || ''
+  });
+}));
 
 /**
  * The settings from the form, checked; the stored password ('***') only goes to the address and account it was
@@ -661,25 +631,21 @@ async function settingsFromBody(body = {}) {
   return { settings: { enabled: body.enabled === true, url, user, root }, password };
 }
 
-router.put('/api/admin/media-config', protectedActionRateLimit, verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const parsed = await settingsFromBody(req.body);
-    if (parsed.error) return res.status(400).json({ error: parsed.error });
-    const { settings, password } = parsed;
-    if (settings.enabled && (!settings.url || !settings.user || !password)) {
-      return res.status(400).json({ error: 'Address, account and app password are needed to switch Media on.' });
-    }
-    await upsertStateValue(context.appConfig, SETTINGS_KEY, {
-      ...settings,
-      password: password ? media.encryptSecret(password, mediaSecret()) : ''
-    });
-    cache.settings = null;
-    broadcastDataUpdate('media');
-    res.json({ success: true });
-  } catch (err) {
-    sendError(res, err, 'The media settings could not be saved');
+router.put('/api/admin/media-config', protectedActionRateLimit, verifyToken, verifyAdmin, mediaRoute('The media settings could not be saved', async (req, res) => {
+  const parsed = await settingsFromBody(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const { settings, password } = parsed;
+  if (settings.enabled && (!settings.url || !settings.user || !password)) {
+    return res.status(400).json({ error: 'Address, account and app password are needed to switch Media on.' });
   }
-});
+  await upsertStateValue(context.appConfig, SETTINGS_KEY, {
+    ...settings,
+    password: password ? media.encryptSecret(password, mediaSecret()) : ''
+  });
+  cache.settings = null;
+  broadcastDataUpdate('media');
+  res.json({ success: true });
+}));
 
 router.post('/api/admin/media-config/test', protectedActionRateLimit, verifyToken, verifyAdmin, async (req, res) => {
   try {

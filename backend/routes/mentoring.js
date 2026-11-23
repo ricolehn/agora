@@ -32,498 +32,449 @@ const { translate, requestLanguage, instanceLanguage } = require('../i18n');
 const {
   DEFAULT_MAX_MENTEES, isBlockedStatus, isClosedStatus, maxMenteesOf, openConversationsByMentor, isFull, mentorNameOf, readableText
 } = require('../mentoring');
+const { route } = require('./http');
 
 const router = express.Router();
 
-router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const isManager = req.user?.canManageMentoring === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('manage_mentoring'));
+router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, route('Failed to list mentors', async (req, res) => {
+  const isManager = req.user?.canManageMentoring === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('manage_mentoring'));
 
-    let filter = 'status = "approved"';
-    if (isManager && req.query.status) {
-      if (req.query.status === 'all') {
-        filter = '';
-      } else {
-        filter = pbFilterEquals('status', String(req.query.status));
-      }
-    } else if (isManager && req.query.all === 'true') {
+  let filter = 'status = "approved"';
+  if (isManager && req.query.status) {
+    if (req.query.status === 'all') {
       filter = '';
+    } else {
+      filter = pbFilterEquals('status', String(req.query.status));
     }
-
-    const mentors = await listMentorRecords(context.appConfig, filter);
-    const users = await listUserRecords(context.appConfig);
-    const userMap = new Map(users.map(u => [u.id, u]));
-
-    // Without the conversations (a failed read) every mentor counts as free
-    const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentors.map(m => m.user)).catch(() => []));
-
-    const formatted = mentors.map(m => {
-      const u = userMap.get(m.user);
-      const activeMenteesCount = open.get(m.user) || 0;
-      const maxMentees = maxMenteesOf(m);
-      const mentorName = mentorNameOf(u);
-
-      const item = {
-        id: m.id,
-        user: m.user,
-        user_id: m.user,
-        name: mentorName,
-        mentorName,
-        mentorFirstName: u?.firstName || '',
-        status: m.status,
-        bio: m.bio || '',
-        maxMentees,
-        max_mentees: maxMentees,
-        activeMentees: activeMenteesCount,
-        active_mentees: activeMenteesCount,
-        activeMenteesCount,
-        isFull: isFull(m, activeMenteesCount),
-        isAccepting: m.is_accepting !== false,
-        created: m.created
-      };
-
-      // Contact details only for mentoring managers (?all=true alone no longer reveals them)
-      if (isManager) {
-        item.email = u?.email || '';
-        item.userEmail = u?.email || '';
-        item.userName = mentorName;
-      }
-
-      return item;
-    });
-
-    // Members see who takes someone new (and themselves); managers and ?all=true see every mentor
-    const everyone = isManager || req.query.all === 'true';
-    res.json(everyone ? formatted : formatted.filter(item => item.user === req.user.uid || !item.isFull));
-  } catch (err) {
-    console.error('Failed to list mentors:', err);
-    res.status(500).json({ error: 'Failed to list mentors' });
+  } else if (isManager && req.query.all === 'true') {
+    filter = '';
   }
-});
 
-router.get('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const mentor = await getMentorByUserId(context.appConfig, req.user.uid);
-    if (!mentor) {
-      return res.json({ exists: false, mentor: null });
-    }
-    const profile = {
-      id: mentor.id,
-      status: mentor.status,
-      bio: mentor.bio || '',
-      maxMentees: maxMenteesOf(mentor),
-      max_mentees: maxMenteesOf(mentor),
-      isAccepting: mentor.is_accepting !== false
+  const mentors = await listMentorRecords(context.appConfig, filter);
+  const users = await listUserRecords(context.appConfig);
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  // Without the conversations (a failed read) every mentor counts as free
+  const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentors.map(m => m.user)).catch(() => []));
+
+  const formatted = mentors.map(m => {
+    const u = userMap.get(m.user);
+    const activeMenteesCount = open.get(m.user) || 0;
+    const maxMentees = maxMenteesOf(m);
+    const mentorName = mentorNameOf(u);
+
+    const item = {
+      id: m.id,
+      user: m.user,
+      user_id: m.user,
+      name: mentorName,
+      mentorName,
+      mentorFirstName: u?.firstName || '',
+      status: m.status,
+      bio: m.bio || '',
+      maxMentees,
+      max_mentees: maxMentees,
+      activeMentees: activeMenteesCount,
+      active_mentees: activeMenteesCount,
+      activeMenteesCount,
+      isFull: isFull(m, activeMenteesCount),
+      isAccepting: m.is_accepting !== false,
+      created: m.created
     };
-    res.json({
-      exists: true,
-      mentor: profile,
-      ...profile
-    });
-  } catch (err) {
-    console.error('Failed to get mentor profile:', err);
-    res.status(500).json({ error: 'Failed to get mentor profile' });
-  }
-});
 
-router.post('/api/mentoring/apply', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const { bio, maxMentees, max_mentees } = req.body || {};
-    const parsedMax = Number(max_mentees || maxMentees) > 0 ? Number(max_mentees || maxMentees) : DEFAULT_MAX_MENTEES;
-
-    const existing = await getMentorByUserId(context.appConfig, req.user.uid);
-    if (existing) {
-      const updated = await updateMentorRecord(context.appConfig, existing.id, {
-        status: 'pending',
-        bio: String(bio || '').trim(),
-        max_mentees: parsedMax,
-        is_accepting: true
-      });
-      broadcastDataUpdate();
-      return res.json({ success: true, mentor: updated });
+    // Contact details only for mentoring managers (?all=true alone no longer reveals them)
+    if (isManager) {
+      item.email = u?.email || '';
+      item.userEmail = u?.email || '';
+      item.userName = mentorName;
     }
 
-    const created = await createMentorRecord(context.appConfig, {
-      user: req.user.uid,
+    return item;
+  });
+
+  // Members see who takes someone new (and themselves); managers and ?all=true see every mentor
+  const everyone = isManager || req.query.all === 'true';
+  res.json(everyone ? formatted : formatted.filter(item => item.user === req.user.uid || !item.isFull));
+}));
+
+router.get('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate, route('Failed to get mentor profile', async (req, res) => {
+  const mentor = await getMentorByUserId(context.appConfig, req.user.uid);
+  if (!mentor) {
+    return res.json({ exists: false, mentor: null });
+  }
+  const profile = {
+    id: mentor.id,
+    status: mentor.status,
+    bio: mentor.bio || '',
+    maxMentees: maxMenteesOf(mentor),
+    max_mentees: maxMenteesOf(mentor),
+    isAccepting: mentor.is_accepting !== false
+  };
+  res.json({
+    exists: true,
+    mentor: profile,
+    ...profile
+  });
+}));
+
+router.post('/api/mentoring/apply', verifyToken, verifyMentoringParticipate, route('Failed to apply as mentor', async (req, res) => {
+  const { bio, maxMentees, max_mentees } = req.body || {};
+  const parsedMax = Number(max_mentees || maxMentees) > 0 ? Number(max_mentees || maxMentees) : DEFAULT_MAX_MENTEES;
+
+  const existing = await getMentorByUserId(context.appConfig, req.user.uid);
+  if (existing) {
+    const updated = await updateMentorRecord(context.appConfig, existing.id, {
       status: 'pending',
       bio: String(bio || '').trim(),
       max_mentees: parsedMax,
       is_accepting: true
     });
     broadcastDataUpdate();
-    res.json({ success: true, mentor: created });
-  } catch (err) {
-    console.error('Failed to apply as mentor:', err);
-    res.status(500).json({ error: 'Failed to apply as mentor' });
+    return res.json({ success: true, mentor: updated });
   }
-});
 
-router.put('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const existing = await getMentorByUserId(context.appConfig, req.user.uid);
-    if (!existing) {
-      return res.status(404).json({ error: 'Mentor profile not found' });
-    }
-    const { bio, maxMentees, max_mentees, isAccepting } = req.body || {};
-    const updates = {};
-    if (typeof bio === 'string') updates.bio = bio.trim();
-    if (Number(max_mentees || maxMentees) > 0) updates.max_mentees = Number(max_mentees || maxMentees);
-    if (typeof isAccepting === 'boolean') updates.is_accepting = isAccepting;
+  const created = await createMentorRecord(context.appConfig, {
+    user: req.user.uid,
+    status: 'pending',
+    bio: String(bio || '').trim(),
+    max_mentees: parsedMax,
+    is_accepting: true
+  });
+  broadcastDataUpdate();
+  res.json({ success: true, mentor: created });
+}));
 
-    const updated = await updateMentorRecord(context.appConfig, existing.id, updates);
-    broadcastDataUpdate();
-    res.json({ success: true, mentor: updated });
-  } catch (err) {
-    console.error('Failed to update mentor profile:', err);
-    res.status(500).json({ error: 'Failed to update mentor profile' });
+router.put('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate, route('Failed to update mentor profile', async (req, res) => {
+  const existing = await getMentorByUserId(context.appConfig, req.user.uid);
+  if (!existing) {
+    return res.status(404).json({ error: 'Mentor profile not found' });
   }
-});
+  const { bio, maxMentees, max_mentees, isAccepting } = req.body || {};
+  const updates = {};
+  if (typeof bio === 'string') updates.bio = bio.trim();
+  if (Number(max_mentees || maxMentees) > 0) updates.max_mentees = Number(max_mentees || maxMentees);
+  if (typeof isAccepting === 'boolean') updates.is_accepting = isAccepting;
 
-router.post('/api/mentoring/manage/:id/status', verifyToken, verifyManageMentoring, async (req, res) => {
-  try {
-    const { status } = req.body || {};
-    if (status !== 'approved' && status !== 'rejected' && status !== 'pending') {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-    const mentor = await getMentorRecord(context.appConfig, req.params.id);
-    if (!mentor) {
-      return res.status(404).json({ error: 'Mentor not found' });
-    }
-    await updateMentorRecord(context.appConfig, mentor.id, { status });
-    broadcastDataUpdate();
-    res.json({ success: true, status });
-  } catch (err) {
-    console.error('Failed to update mentor status:', err);
-    res.status(500).json({ error: 'Failed to update mentor status' });
+  const updated = await updateMentorRecord(context.appConfig, existing.id, updates);
+  broadcastDataUpdate();
+  res.json({ success: true, mentor: updated });
+}));
+
+router.post('/api/mentoring/manage/:id/status', verifyToken, verifyManageMentoring, route('Failed to update mentor status', async (req, res) => {
+  const { status } = req.body || {};
+  if (status !== 'approved' && status !== 'rejected' && status !== 'pending') {
+    return res.status(400).json({ error: 'Invalid status' });
   }
-});
-
-router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
-    const threads = await listMentoringThreadsForUser(context.appConfig, userIds);
-    const users = await listUserRecords(context.appConfig);
-    const userMap = new Map(users.map(u => [u.id, u]));
-
-    const formatted = await Promise.all(threads.map(async (t) => {
-      try {
-        const isMentor = userIds.includes(t.mentor);
-        const isMentee = userIds.includes(t.mentee);
-        if (!isMentor && !isMentee) return null;
-
-        const otherRole = isMentor ? 'mentee' : 'mentor';
-        const { unreadCount, lastMessage } = await getMentoringThreadSummary(context.appConfig, t.id, otherRole)
-          .catch(() => ({ unreadCount: 0, lastMessage: null }));
-
-        const mentorName = mentorNameOf(userMap.get(t.mentor));
-        const lastText = lastMessage && readableText(lastMessage.text, requestLanguage(req)).slice(0, 240);
-
-        return {
-          id: t.id,
-          mentor: t.mentor,
-          mentee: isMentor ? null : t.mentee,
-          status: isClosedStatus(t.status) ? 'closed' : (t.status || 'active'),
-          blocked: isBlockedStatus(t.status),
-          blockedByMe: t.status === `blocked_${isMentor ? 'mentor' : 'mentee'}`,
-          created: t.created,
-          updated: t.updated || t.created,
-          unreadCount,
-          unread_count: unreadCount,
-          last_message: lastMessage ? lastText : (t.last_message || ''),
-          lastMessage: lastMessage ? {
-            text: lastText,
-            created: lastMessage.created,
-            senderRole: lastMessage.sender_role
-          } : null,
-          myRole: isMentor ? 'mentor' : 'mentee',
-          mentor_name: mentorName,
-          mentorName,
-          mentee_alias: t.mentee_alias,
-          menteeAlias: t.mentee_alias,
-          title: isMentor ? (t.mentee_alias || translate(requestLanguage(req), 'Anonymous seeker')) : mentorName
-        };
-      } catch (threadErr) {
-        console.warn('Error formatting thread:', t?.id, threadErr);
-        return null;
-      }
-    }));
-
-    res.json(formatted.filter(Boolean));
-  } catch (err) {
-    console.error('Failed to list mentoring threads:', err);
-    res.status(500).json({ error: 'Failed to list mentoring threads' });
+  const mentor = await getMentorRecord(context.appConfig, req.params.id);
+  if (!mentor) {
+    return res.status(404).json({ error: 'Mentor not found' });
   }
-});
+  await updateMentorRecord(context.appConfig, mentor.id, { status });
+  broadcastDataUpdate();
+  res.json({ success: true, status });
+}));
 
-router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const currentUid = req.user.uid || req.user.id;
-    const mentorId = req.body?.mentorId || req.body?.mentor;
-    const initialMessage = req.body?.initialMessage || req.body?.message;
-    if (!mentorId) {
-      return res.status(400).json({ error: 'mentorId is required' });
-    }
+router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, route('Failed to list mentoring threads', async (req, res) => {
+  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+  const threads = await listMentoringThreadsForUser(context.appConfig, userIds);
+  const users = await listUserRecords(context.appConfig);
+  const userMap = new Map(users.map(u => [u.id, u]));
 
-    let mentorRec = await getMentorByUserId(context.appConfig, mentorId);
-    if (!mentorRec) {
-      mentorRec = await getMentorRecord(context.appConfig, mentorId).catch(() => null);
-    }
-
-    if (!mentorRec || mentorRec.status !== 'approved') {
-      return res.status(400).json({ error: 'The mentor is currently not available' });
-    }
-    if (mentorRec.user === currentUid) {
-      return res.status(400).json({ error: 'You cannot mentor yourself' });
-    }
-    if (mentorRec.is_accepting === false) {
-      return res.status(400).json({ error: 'This mentor is currently not accepting new mentees' });
-    }
-
-    const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentorRec.user));
-    if ((open.get(mentorRec.user) || 0) >= maxMenteesOf(mentorRec)) {
-      return res.status(400).json({ error: 'This mentor has reached the maximum number of mentees' });
-    }
-
-    const userThreads = await listMentoringThreadsForUser(context.appConfig, currentUid);
-    const existingThread = userThreads.find(t =>
-      (t.mentor === mentorRec.user || t.mentor === mentorRec.id || t.mentor === mentorId) &&
-      t.mentee === currentUid
-    );
-
-    if (existingThread) {
-      if (isBlockedStatus(existingThread.status)) {
-        return res.status(403).json({ error: 'This conversation was blocked.', threadId: existingThread.id, status: 'closed' });
-      }
-      if (existingThread.status === 'closed') {
-        return res.status(400).json({
-          error: 'You already had a conversation with this mentor. You can reopen it under "My mentoring".',
-          threadId: existingThread.id,
-          status: 'closed'
-        });
-      }
-      return res.status(400).json({
-        error: 'You are already being mentored by this mentor.',
-        threadId: existingThread.id,
-        status: 'active'
-      });
-    }
-
-    const randomSuffix = crypto.randomInt(100, 1000);
-    const menteeAlias = `${translate(instanceLanguage(), 'Seeker')} #${randomSuffix}`;
-
-    const thread = await createMentoringThread(context.appConfig, {
-      mentor: mentorRec.user,
-      mentee: currentUid,
-      mentee_alias: menteeAlias,
-      status: 'active',
-      last_message: initialMessage ? String(initialMessage).trim().slice(0, 240) : ''
-    });
-
-    if (initialMessage && String(initialMessage).trim()) {
-      await createMentoringMessage(context.appConfig, {
-        thread: thread.id,
-        sender_role: 'mentee',
-        text: String(initialMessage).trim(),
-        read: false
-      });
-    }
-
+  const formatted = await Promise.all(threads.map(async (t) => {
     try {
-      const mentorUser = await getUserRecord(context.appConfig, mentorRec.user);
-      notifyUsers(context.appConfig, [mentorUser], 'messages', {
-        origin: originOf(req),
-        push: (tr) => ({
-          title: `Mentoring: ${menteeAlias || tr('Seeker')}`,
-          body: initialMessage ? String(initialMessage).trim() : tr('You received a new mentoring request.'),
-          data: { url: '/#mentoring' },
-          tag: `agora-chat-${thread.id}`
-        }),
-        email: (tr) => ({
-          subject: tr('New mentoring request'),
-          heading: tr('New mentoring request'),
-          lines: [tr('{name} would like you to mentor them. You can read the message in the app.', { name: menteeAlias || tr('Someone') })],
-          actionLabel: tr('Open the request'),
-          path: '/#mentoring',
-          accent: '#7c3aed'
-        })
-      }).catch(e => console.warn('[Notify] Mentoring thread:', e.message));
-    } catch (e) {}
+      const isMentor = userIds.includes(t.mentor);
+      const isMentee = userIds.includes(t.mentee);
+      if (!isMentor && !isMentee) return null;
 
-    broadcastDataUpdate('mentoring');
-    res.json({ success: true, thread, threadId: thread.id, menteeAlias });
-  } catch (err) {
-    console.error('Failed to create mentoring thread:', err);
-    res.status(500).json({ error: 'Failed to create mentoring thread' });
-  }
-});
+      const otherRole = isMentor ? 'mentee' : 'mentor';
+      const { unreadCount, lastMessage } = await getMentoringThreadSummary(context.appConfig, t.id, otherRole)
+        .catch(() => ({ unreadCount: 0, lastMessage: null }));
 
-router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
-    const thread = await getMentoringThread(context.appConfig, req.params.id);
-    if (!thread) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
+      const mentorName = mentorNameOf(userMap.get(t.mentor));
+      const lastText = lastMessage && readableText(lastMessage.text, requestLanguage(req)).slice(0, 240);
 
-    const isMentor = userIds.includes(thread.mentor);
-    const isMentee = userIds.includes(thread.mentee);
-    if (!isMentor && !isMentee) {
-      return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
-    }
-
-    const currentRole = isMentor ? 'mentor' : 'mentee';
-    await markMentoringMessagesRead(context.appConfig, thread.id, currentRole).catch(() => {});
-
-    const messages = await listMentoringMessages(context.appConfig, thread.id);
-    const users = await listUserRecords(context.appConfig);
-    const userMap = new Map(users.map(u => [u.id, u]));
-
-    const mentorName = mentorNameOf(userMap.get(thread.mentor));
-
-    const lang = requestLanguage(req);
-    const formattedMessages = messages.map(m => {
-      const isSenderMe = (m.sender_role === 'mentor' && isMentor) || (m.sender_role === 'mentee' && isMentee);
       return {
-        id: m.id,
-        thread: m.thread,
-        senderRole: m.sender_role,
-        sender_role: m.sender_role,
-        sender: isSenderMe ? (req.user.uid || req.user.id) : 'partner',
-        sender_name: isSenderMe ? translate(lang, 'You') : (isMentor ? (thread.mentee_alias || translate(lang, 'Seeker')) : mentorName),
-        text: readableText(m.text, lang),
-        message: m.text,
-        read: !!m.read,
-        created: m.created
+        id: t.id,
+        mentor: t.mentor,
+        mentee: isMentor ? null : t.mentee,
+        status: isClosedStatus(t.status) ? 'closed' : (t.status || 'active'),
+        blocked: isBlockedStatus(t.status),
+        blockedByMe: t.status === `blocked_${isMentor ? 'mentor' : 'mentee'}`,
+        created: t.created,
+        updated: t.updated || t.created,
+        unreadCount,
+        unread_count: unreadCount,
+        last_message: lastMessage ? lastText : (t.last_message || ''),
+        lastMessage: lastMessage ? {
+          text: lastText,
+          created: lastMessage.created,
+          senderRole: lastMessage.sender_role
+        } : null,
+        myRole: isMentor ? 'mentor' : 'mentee',
+        mentor_name: mentorName,
+        mentorName,
+        mentee_alias: t.mentee_alias,
+        menteeAlias: t.mentee_alias,
+        title: isMentor ? (t.mentee_alias || translate(requestLanguage(req), 'Anonymous seeker')) : mentorName
       };
-    });
+    } catch (threadErr) {
+      console.warn('Error formatting thread:', t?.id, threadErr);
+      return null;
+    }
+  }));
 
-    res.json(formattedMessages);
-  } catch (err) {
-    console.error('Failed to get thread messages:', err);
-    res.status(500).json({ error: 'Failed to get thread messages' });
+  res.json(formatted.filter(Boolean));
+}));
+
+router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, route('Failed to create mentoring thread', async (req, res) => {
+  const currentUid = req.user.uid || req.user.id;
+  const mentorId = req.body?.mentorId || req.body?.mentor;
+  const initialMessage = req.body?.initialMessage || req.body?.message;
+  if (!mentorId) {
+    return res.status(400).json({ error: 'mentorId is required' });
   }
-});
 
-router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringParticipate, async (req, res) => {
-  try {
-    const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
-    const text = req.body?.text || req.body?.message;
-    if (!text || !String(text).trim()) {
-      return res.status(400).json({ error: 'Message text is required' });
+  let mentorRec = await getMentorByUserId(context.appConfig, mentorId);
+  if (!mentorRec) {
+    mentorRec = await getMentorRecord(context.appConfig, mentorId).catch(() => null);
+  }
+
+  if (!mentorRec || mentorRec.status !== 'approved') {
+    return res.status(400).json({ error: 'The mentor is currently not available' });
+  }
+  if (mentorRec.user === currentUid) {
+    return res.status(400).json({ error: 'You cannot mentor yourself' });
+  }
+  if (mentorRec.is_accepting === false) {
+    return res.status(400).json({ error: 'This mentor is currently not accepting new mentees' });
+  }
+
+  const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentorRec.user));
+  if ((open.get(mentorRec.user) || 0) >= maxMenteesOf(mentorRec)) {
+    return res.status(400).json({ error: 'This mentor has reached the maximum number of mentees' });
+  }
+
+  const userThreads = await listMentoringThreadsForUser(context.appConfig, currentUid);
+  const existingThread = userThreads.find(t =>
+    (t.mentor === mentorRec.user || t.mentor === mentorRec.id || t.mentor === mentorId) &&
+    t.mentee === currentUid
+  );
+
+  if (existingThread) {
+    if (isBlockedStatus(existingThread.status)) {
+      return res.status(403).json({ error: 'This conversation was blocked.', threadId: existingThread.id, status: 'closed' });
     }
-
-    const thread = await getMentoringThread(context.appConfig, req.params.id);
-    if (!thread) {
-      return res.status(404).json({ error: 'Conversation not found' });
+    if (existingThread.status === 'closed') {
+      return res.status(400).json({
+        error: 'You already had a conversation with this mentor. You can reopen it under "My mentoring".',
+        threadId: existingThread.id,
+        status: 'closed'
+      });
     }
+    return res.status(400).json({
+      error: 'You are already being mentored by this mentor.',
+      threadId: existingThread.id,
+      status: 'active'
+    });
+  }
 
-    const isMentor = userIds.includes(thread.mentor);
-    const isMentee = userIds.includes(thread.mentee);
-    if (!isMentor && !isMentee) {
-      return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
-    }
+  const randomSuffix = crypto.randomInt(100, 1000);
+  const menteeAlias = `${translate(instanceLanguage(), 'Seeker')} #${randomSuffix}`;
 
-    if (isClosedStatus(thread.status)) {
-      return res.status(400).json({ error: isBlockedStatus(thread.status) ? 'This conversation was blocked.' : 'The conversation has ended' });
-    }
+  const thread = await createMentoringThread(context.appConfig, {
+    mentor: mentorRec.user,
+    mentee: currentUid,
+    mentee_alias: menteeAlias,
+    status: 'active',
+    last_message: initialMessage ? String(initialMessage).trim().slice(0, 240) : ''
+  });
 
-    const senderRole = isMentor ? 'mentor' : 'mentee';
-    const message = await createMentoringMessage(context.appConfig, {
+  if (initialMessage && String(initialMessage).trim()) {
+    await createMentoringMessage(context.appConfig, {
       thread: thread.id,
-      sender_role: senderRole,
-      text: String(text).trim(),
+      sender_role: 'mentee',
+      text: String(initialMessage).trim(),
       read: false
     });
-
-    try {
-      await updateMentoringThread(context.appConfig, thread.id, {
-        last_message: String(text).trim().slice(0, 240)
-      });
-    } catch (updateErr) {
-      console.warn('Could not update thread last_message (non-fatal):', updateErr?.message);
-    }
-
-    const recipientUid = isMentor ? thread.mentee : thread.mentor;
-    // Who wrote, as the recipient sees it: the mentor's name or the mentee's alias
-    let senderName = null;
-    if (isMentor) {
-      try {
-        const allUsers = await listUserRecords(context.appConfig);
-        const mentorUser = allUsers.find(u => u.id === (req.user.uid || req.user.id || thread.mentor));
-        senderName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
-      } catch (uErr) {
-        senderName = 'Mentor';
-      }
-    } else {
-      senderName = thread.mentee_alias || null;
-    }
-    const senderOf = (tr) => senderName || tr('Seeker');
-
-    try {
-      const recipientUser = await getUserRecord(context.appConfig, recipientUid);
-      notifyUsers(context.appConfig, [recipientUser], 'messages', {
-        origin: originOf(req),
-        push: (tr) => ({ title: `Mentoring: ${senderOf(tr)}`, body: String(text).trim(), data: { url: '/#mentoring' }, tag: `agora-chat-${thread.id}` }),
-        email: (tr) => ({
-          subject: `Mentoring: ${senderOf(tr)}`,
-          heading: tr('New message in mentoring'),
-          lines: [tr('You have a new message ({name}). For privacy reasons it is not in this e-mail - you can read it in the app.', { name: senderOf(tr) })],
-          actionLabel: tr('Read the message'),
-          path: '/#mentoring',
-          accent: '#7c3aed'
-        })
-      }).catch(e => console.warn('[Notify] Mentoring message:', e.message));
-    } catch (e) {}
-
-    broadcastDataUpdate('mentoring', [thread.mentor, thread.mentee]);
-    res.json({
-      success: true,
-      message: {
-        id: message.id,
-        thread: message.thread,
-        senderRole,
-        text: message.text,
-        message: message.text,
-        created: message.created
-      }
-    });
-  } catch (err) {
-    console.error('Failed to send mentoring message:', err);
-    res.status(500).json({ error: 'The message could not be sent' });
   }
-});
 
-router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringParticipate, async (req, res) => {
   try {
-    const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
-    const { status } = req.body || {};
-    if (status !== 'open' && status !== 'active' && status !== 'closed' && status !== 'blocked') {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
+    const mentorUser = await getUserRecord(context.appConfig, mentorRec.user);
+    notifyUsers(context.appConfig, [mentorUser], 'messages', {
+      origin: originOf(req),
+      push: (tr) => ({
+        title: `Mentoring: ${menteeAlias || tr('Seeker')}`,
+        body: initialMessage ? String(initialMessage).trim() : tr('You received a new mentoring request.'),
+        data: { url: '/#mentoring' },
+        tag: `agora-chat-${thread.id}`
+      }),
+      email: (tr) => ({
+        subject: tr('New mentoring request'),
+        heading: tr('New mentoring request'),
+        lines: [tr('{name} would like you to mentor them. You can read the message in the app.', { name: menteeAlias || tr('Someone') })],
+        actionLabel: tr('Open the request'),
+        path: '/#mentoring',
+        accent: '#7c3aed'
+      })
+    }).catch(e => console.warn('[Notify] Mentoring thread:', e.message));
+  } catch (e) {}
 
-    const thread = await getMentoringThread(context.appConfig, req.params.id);
-    if (!thread) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
+  broadcastDataUpdate('mentoring');
+  res.json({ success: true, thread, threadId: thread.id, menteeAlias });
+}));
 
-    const isMentor = userIds.includes(thread.mentor);
-    const isMentee = userIds.includes(thread.mentee);
-    if (!isMentor && !isMentee) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    const myBlock = `blocked_${isMentor ? 'mentor' : 'mentee'}`;
-    // Only the person who blocked can lift the block (reopening or ending the chat)
-    if (isBlockedStatus(thread.status) && thread.status !== myBlock) {
-      return res.status(403).json({ error: 'This conversation was blocked by the other person.' });
-    }
-    const updated = await updateMentoringThread(context.appConfig, thread.id, { status: status === 'blocked' ? myBlock : status });
-    broadcastDataUpdate('mentoring');
-    res.json({ success: true, thread: updated });
-  } catch (err) {
-    console.error('Failed to update thread status:', err);
-    res.status(500).json({ error: 'The status could not be changed' });
+router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringParticipate, route('Failed to get thread messages', async (req, res) => {
+  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+  const thread = await getMentoringThread(context.appConfig, req.params.id);
+  if (!thread) {
+    return res.status(404).json({ error: 'Conversation not found' });
   }
-});
+
+  const isMentor = userIds.includes(thread.mentor);
+  const isMentee = userIds.includes(thread.mentee);
+  if (!isMentor && !isMentee) {
+    return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
+  }
+
+  const currentRole = isMentor ? 'mentor' : 'mentee';
+  await markMentoringMessagesRead(context.appConfig, thread.id, currentRole).catch(() => {});
+
+  const messages = await listMentoringMessages(context.appConfig, thread.id);
+  const users = await listUserRecords(context.appConfig);
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  const mentorName = mentorNameOf(userMap.get(thread.mentor));
+
+  const lang = requestLanguage(req);
+  const formattedMessages = messages.map(m => {
+    const isSenderMe = (m.sender_role === 'mentor' && isMentor) || (m.sender_role === 'mentee' && isMentee);
+    return {
+      id: m.id,
+      thread: m.thread,
+      senderRole: m.sender_role,
+      sender_role: m.sender_role,
+      sender: isSenderMe ? (req.user.uid || req.user.id) : 'partner',
+      sender_name: isSenderMe ? translate(lang, 'You') : (isMentor ? (thread.mentee_alias || translate(lang, 'Seeker')) : mentorName),
+      text: readableText(m.text, lang),
+      message: m.text,
+      read: !!m.read,
+      created: m.created
+    };
+  });
+
+  res.json(formattedMessages);
+}));
+
+router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringParticipate, route('The message could not be sent', async (req, res) => {
+  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+  const text = req.body?.text || req.body?.message;
+  if (!text || !String(text).trim()) {
+    return res.status(400).json({ error: 'Message text is required' });
+  }
+
+  const thread = await getMentoringThread(context.appConfig, req.params.id);
+  if (!thread) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+
+  const isMentor = userIds.includes(thread.mentor);
+  const isMentee = userIds.includes(thread.mentee);
+  if (!isMentor && !isMentee) {
+    return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
+  }
+
+  if (isClosedStatus(thread.status)) {
+    return res.status(400).json({ error: isBlockedStatus(thread.status) ? 'This conversation was blocked.' : 'The conversation has ended' });
+  }
+
+  const senderRole = isMentor ? 'mentor' : 'mentee';
+  const message = await createMentoringMessage(context.appConfig, {
+    thread: thread.id,
+    sender_role: senderRole,
+    text: String(text).trim(),
+    read: false
+  });
+
+  try {
+    await updateMentoringThread(context.appConfig, thread.id, {
+      last_message: String(text).trim().slice(0, 240)
+    });
+  } catch (updateErr) {
+    console.warn('Could not update thread last_message (non-fatal):', updateErr?.message);
+  }
+
+  const recipientUid = isMentor ? thread.mentee : thread.mentor;
+  // Who wrote, as the recipient sees it: the mentor's name or the mentee's alias
+  let senderName = null;
+  if (isMentor) {
+    try {
+      const allUsers = await listUserRecords(context.appConfig);
+      const mentorUser = allUsers.find(u => u.id === (req.user.uid || req.user.id || thread.mentor));
+      senderName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
+    } catch (uErr) {
+      senderName = 'Mentor';
+    }
+  } else {
+    senderName = thread.mentee_alias || null;
+  }
+  const senderOf = (tr) => senderName || tr('Seeker');
+
+  try {
+    const recipientUser = await getUserRecord(context.appConfig, recipientUid);
+    notifyUsers(context.appConfig, [recipientUser], 'messages', {
+      origin: originOf(req),
+      push: (tr) => ({ title: `Mentoring: ${senderOf(tr)}`, body: String(text).trim(), data: { url: '/#mentoring' }, tag: `agora-chat-${thread.id}` }),
+      email: (tr) => ({
+        subject: `Mentoring: ${senderOf(tr)}`,
+        heading: tr('New message in mentoring'),
+        lines: [tr('You have a new message ({name}). For privacy reasons it is not in this e-mail - you can read it in the app.', { name: senderOf(tr) })],
+        actionLabel: tr('Read the message'),
+        path: '/#mentoring',
+        accent: '#7c3aed'
+      })
+    }).catch(e => console.warn('[Notify] Mentoring message:', e.message));
+  } catch (e) {}
+
+  broadcastDataUpdate('mentoring', [thread.mentor, thread.mentee]);
+  res.json({
+    success: true,
+    message: {
+      id: message.id,
+      thread: message.thread,
+      senderRole,
+      text: message.text,
+      message: message.text,
+      created: message.created
+    }
+  });
+}));
+
+router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringParticipate, route('The status could not be changed', async (req, res) => {
+  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+  const { status } = req.body || {};
+  if (status !== 'open' && status !== 'active' && status !== 'closed' && status !== 'blocked') {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  const thread = await getMentoringThread(context.appConfig, req.params.id);
+  if (!thread) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+
+  const isMentor = userIds.includes(thread.mentor);
+  const isMentee = userIds.includes(thread.mentee);
+  if (!isMentor && !isMentee) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const myBlock = `blocked_${isMentor ? 'mentor' : 'mentee'}`;
+  // Only the person who blocked can lift the block (reopening or ending the chat)
+  if (isBlockedStatus(thread.status) && thread.status !== myBlock) {
+    return res.status(403).json({ error: 'This conversation was blocked by the other person.' });
+  }
+  const updated = await updateMentoringThread(context.appConfig, thread.id, { status: status === 'blocked' ? myBlock : status });
+  broadcastDataUpdate('mentoring');
+  res.json({ success: true, thread: updated });
+}));
 
 module.exports = router;

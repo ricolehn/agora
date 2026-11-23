@@ -20,6 +20,7 @@ const { normalizeFeeResets, normalizeFeeResetLog, FEE_RESET_STATE_KEY } = requir
 const { toDateStr } = require('../../utils/date');
 const { toCents, fromCents } = require('../codec');
 const { DEFAULT_SETTINGS } = require('../defaults');
+const { conflict, invalid } = require('../../httpError');
 
 const MEMBERS = 'finance_members';
 const PAYMENTS = 'finance_payments';
@@ -629,17 +630,17 @@ function upsertPeopleRecord(appConfig, personKey, value, expectedUpdated = null,
   return queueRecordWrite(`people:${personKey}`, async () => {
     const payload = shapes.buildPersonRecordPayload(personKey, value);
     // Checked before anything is written: a record PocketBase refuses must not leave payments half written
-    if (!payload.name || !payload.data) throw Object.assign(new Error('A person record needs a name.'), { status: 400 });
+    if (!payload.name || !payload.data) throw invalid('A person record needs a name.');
     // The old table refused a status period without a status or a start (required fields): so does this one
     for (const period of shapes.normalizeRecordListInput(value?.statusHistory)) {
       if (shapes.toOptionalText(period?.status) === '' || shapes.toOptionalText(period?.startDate) === '') {
-        throw Object.assign(new Error('A status period needs a status and a start date.'), { status: 400 });
+        throw invalid('A status period needs a status and a start date.');
       }
     }
     const existingRow = await findMemberRow(appConfig, personKey);
     const existing = existingRow && !isOrphan(existingRow) ? existingRow : null;
     if (existing ? shapes.isOutdatedVersion(existing.updated, expectedUpdated) : expectedUpdated) {
-      throw Object.assign(new Error('Conflict'), { status: 409 });
+      throw conflict('Conflict');
     }
 
     const memberId = existingRow ? existingRow.id : (ID_PATTERN.test(String(personKey)) ? String(personKey) : newRecordId());
@@ -869,7 +870,7 @@ function listChangeOps(area, ops, rows, decode) {
 function saveDonations(appConfig, value, { expectedVersion, rowIds = null } = {}) {
   return queueRecordWrite('finance:donations', async () => {
     const rows = await getDonationRows(appConfig);
-    if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== listVersion(rows)) throw Object.assign(new Error('Conflict'), { status: 409 });
+    if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== listVersion(rows)) throw conflict('Conflict');
     const { isMap, entries } = sentEntries(value, rowIds, { keepKeys: true });
     const keyOfEntry = (objectKey, entry, index) => {
       if (objectKey !== null) return `key:${objectKey}`;
@@ -913,7 +914,7 @@ async function listExpenseRecords(appConfig) {
 function syncExpenseRecords(appConfig, value, { expectedVersion, rowIds = null } = {}) {
   return queueRecordWrite('finance:expenses', async () => {
     const rows = await getExpenseRows(appConfig);
-    if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== listVersion(rows)) throw Object.assign(new Error('Conflict'), { status: 409 });
+    if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== listVersion(rows)) throw conflict('Conflict');
     // As normalizeRecordListInput: a list or the values of a map, without what is no entry
     const entries = sentEntries(value, rowIds, { keepKeys: false }).entries.filter(([, expense]) => Boolean(expense));
     const wanted = entries.map(([, expense, rowId], index) => {

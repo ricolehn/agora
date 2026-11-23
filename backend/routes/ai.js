@@ -34,6 +34,7 @@ const AI_MAX_MS = 10 * 60 * 1000;
 // A lookup needs room for its result: with less left of the question's total, the model answers with what it has
 const MIN_LOOKUP_CHARS = 600;
 const NO_MORE_LOOKUPS = JSON.stringify({ error: 'No more lookups for this question: answer with what you have, and say what is missing.' });
+const { route } = require('./http');
 
 const router = express.Router();
 
@@ -50,14 +51,9 @@ const aiConfigView = (aiSettings) => ({
   effort: aiEffortOf(aiSettings)
 });
 
-router.get('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, res) => {
-  try {
-    res.json(aiConfigView(await getAiSettings(context.appConfig)));
-  } catch (err) {
-    console.error('Failed to get AI config:', err);
-    res.status(500).json({ error: 'Failed to get AI config' });
-  }
-});
+router.get('/api/admin/ai-config', verifyToken, verifySuperAdmin, route('Failed to get AI config', async (req, res) => {
+  res.json(aiConfigView(await getAiSettings(context.appConfig)));
+}));
 
 router.get('/api/admin/ai-status', verifyToken, verifyAiAccess, async (req, res) => {
   try {
@@ -68,36 +64,31 @@ router.get('/api/admin/ai-status', verifyToken, verifyAiAccess, async (req, res)
   }
 });
 
-router.put('/api/admin/ai-config', verifyToken, verifySuperAdmin, async (req, res) => {
-  try {
-    const body = req.body || {};
-    if (body.provider !== undefined && body.provider !== null && !isProvider(body.provider)) {
-      return res.status(400).json({ error: 'The provider must be anthropic, gemini, openai or custom.' });
-    }
-    // The stored key only goes to the address it was entered for: a new address (or service) needs the key again
-    const current = await getAiSettings(context.appConfig);
-    const newBaseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : current.baseUrl;
-    const next = { ...current, baseUrl: newBaseUrl, ...(isProvider(body.provider) ? { provider: body.provider } : {}) };
-    const keepsKey = typeof body.apiKey !== 'string' || body.apiKey === '***';
-    if (current.apiKey && keepsKey && aiAddressOf(next) !== aiAddressOf(current)) {
-      return res.status(400).json({ error: 'Please enter the API key again for a new API address.' });
-    }
-    if (newBaseUrl && !/^https?:\/\//i.test(newBaseUrl)) {
-      return res.status(400).json({ error: 'The API address must start with http:// or https://.' });
-    }
-    if (body.effort !== undefined && body.effort !== null && !isEffort(body.effort)) {
-      return res.status(400).json({ error: 'The effort level must be low, medium, high, xhigh or max.' });
-    }
-    const saved = await setAiSettings(context.appConfig, body);
-    broadcastDataUpdate();
-    // What was stored: the settings page checks the service against it (a server of an earlier version - the previous
-    // backend runs while the database upgrade could not finish - answers without it and stores no service)
-    res.json({ success: true, ...aiConfigView(saved) });
-  } catch (err) {
-    console.error('Failed to save AI config:', err);
-    res.status(500).json({ error: 'Failed to save AI config' });
+router.put('/api/admin/ai-config', verifyToken, verifySuperAdmin, route('Failed to save AI config', async (req, res) => {
+  const body = req.body || {};
+  if (body.provider !== undefined && body.provider !== null && !isProvider(body.provider)) {
+    return res.status(400).json({ error: 'The provider must be anthropic, gemini, openai or custom.' });
   }
-});
+  // The stored key only goes to the address it was entered for: a new address (or service) needs the key again
+  const current = await getAiSettings(context.appConfig);
+  const newBaseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : current.baseUrl;
+  const next = { ...current, baseUrl: newBaseUrl, ...(isProvider(body.provider) ? { provider: body.provider } : {}) };
+  const keepsKey = typeof body.apiKey !== 'string' || body.apiKey === '***';
+  if (current.apiKey && keepsKey && aiAddressOf(next) !== aiAddressOf(current)) {
+    return res.status(400).json({ error: 'Please enter the API key again for a new API address.' });
+  }
+  if (newBaseUrl && !/^https?:\/\//i.test(newBaseUrl)) {
+    return res.status(400).json({ error: 'The API address must start with http:// or https://.' });
+  }
+  if (body.effort !== undefined && body.effort !== null && !isEffort(body.effort)) {
+    return res.status(400).json({ error: 'The effort level must be low, medium, high, xhigh or max.' });
+  }
+  const saved = await setAiSettings(context.appConfig, body);
+  broadcastDataUpdate();
+  // What was stored: the settings page checks the service against it (a server of an earlier version - the previous
+  // backend runs while the database upgrade could not finish - answers without it and stores no service)
+  res.json({ success: true, ...aiConfigView(saved) });
+}));
 
 // --- One question: the service answers, or first asks for lookups ----------------------------------------------------
 

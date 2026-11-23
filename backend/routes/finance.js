@@ -64,6 +64,8 @@ const {
 const { feeResetImpact, feeChangeImpact } = require('../derivedData');
 
 const { toDateStr } = require('../utils/date');
+const { route } = require('./http');
+const { httpError, invalid, notFound, conflict } = require('../httpError');
 
 
 const router = express.Router();
@@ -207,8 +209,7 @@ function feeResetAnswer(state, user) {
 }
 
 // A call that is refused with a reason for the admin (anything else that goes wrong only says that it failed)
-const refuse = (status, message) => Object.assign(new Error(message), { status, refused: true });
-const noSuchFeeReset = () => refuse(404, 'There is no fresh start on this day.');
+const noSuchFeeReset = () => notFound('There is no fresh start on this day.');
 
 /** The day of a confirmed call, or null after answering why it is not confirmed. */
 async function confirmedFeeResetDay(req, res) {
@@ -237,12 +238,6 @@ async function confirmedFeeResetDay(req, res) {
   return date;
 }
 
-function answerFeeResetError(res, error, fallback) {
-  if (error.refused) return res.status(error.status).json({ error: error.message });
-  console.error(`${fallback}:`, error);
-  return res.status(500).json({ error: fallback });
-}
-
 const actingAdmin = (user) => ({
   by: String(user.uid || user.id || ''),
   byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()
@@ -251,84 +246,68 @@ const actingAdmin = (user) => ({
 // The fresh starts of a fee state, as feeResetAnswer reads them
 const freshStartsOf = (fees) => ({ resets: fees.resets, log: fees.resetLog });
 
-router.get('/api/fee-reset', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    res.json(feeResetAnswer(freshStartsOf(await getFeeState(context.appConfig)), req.user));
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fresh start could not be loaded.');
-  }
-});
+router.get('/api/fee-reset', dbRateLimit, verifyToken, route('The fresh start could not be loaded.', async (req, res) => {
+  res.json(feeResetAnswer(freshStartsOf(await getFeeState(context.appConfig)), req.user));
+}));
 
 // What a day would change (or taking one back), in numbers, before anything is confirmed
-router.get('/api/admin/fee-reset/preview', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const today = toDateStr(new Date());
-    const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
-    let date;
-    if (req.query.remove === '1') {
-      date = parseDay(req.query.date);
-      if (!date || !fees.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
-    } else {
-      const check = checkNewFeeReset(fees.resets, req.query.date, today);
-      if (check.error) throw refuse(check.status, check.error);
-      date = check.date;
-    }
-    res.json(feeResetImpact(people.map((record) => record.data), fees.settings, fees.resets, date, today, fees.schedule));
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fresh start could not be loaded.');
+router.get('/api/admin/fee-reset/preview', verifyToken, verifyAdmin, route('The fresh start could not be loaded.', async (req, res) => {
+  const today = toDateStr(new Date());
+  const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
+  let date;
+  if (req.query.remove === '1') {
+    date = parseDay(req.query.date);
+    if (!date || !fees.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
+  } else {
+    const check = checkNewFeeReset(fees.resets, req.query.date, today);
+    if (check.error) throw httpError(check.status, check.error);
+    date = check.date;
   }
-});
+  res.json(feeResetImpact(people.map((record) => record.data), fees.settings, fees.resets, date, today, fees.schedule));
+}));
 
-router.post('/api/admin/fee-reset', authRateLimit, verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const today = toDateStr(new Date());
-    // What is wrong with the day itself is said before the password is asked for
-    const early = checkNewFeeReset((await getFeeState(context.appConfig)).resets, req.body?.date, today);
-    if (early.error) throw refuse(early.status, early.error);
-    const date = await confirmedFeeResetDay(req, res);
-    if (!date) return;
-    const { by, byName } = actingAdmin(req.user);
-    const at = Date.now();
-    const state = await updateFeeResetState(context.appConfig, (current, schedule) => {
-      const check = checkNewFeeReset(current.resets, date, today);
-      if (check.error) throw refuse(check.status, check.error);
-      // Kept with the day: what the month before it costs as it is set (the fees over time say what every month
-      // costs, feeSchedule.js - a fresh start changes the price of none)
-      const feesBefore = feesInMonth(schedule, monthIndexOf(date) - 1);
-      return {
-        resets: normalizeFeeResets([...current.resets, { date, feesBefore, setAt: at, setBy: by, setByName: byName }]),
-        log: withLogEntry(current.log, { action: 'set', date, at, by, byName })
-      };
-    });
-    console.log(`[Finance] Admin ${by} set a fresh start of the fee accounts for ${date}`);
-    broadcastDataUpdate();
-    res.json({ success: true, ...feeResetAnswer(state, req.user) });
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fresh start could not be saved.');
-  }
-});
+router.post('/api/admin/fee-reset', authRateLimit, verifyToken, verifyAdmin, route('The fresh start could not be saved.', async (req, res) => {
+  const today = toDateStr(new Date());
+  // What is wrong with the day itself is said before the password is asked for
+  const early = checkNewFeeReset((await getFeeState(context.appConfig)).resets, req.body?.date, today);
+  if (early.error) throw httpError(early.status, early.error);
+  const date = await confirmedFeeResetDay(req, res);
+  if (!date) return;
+  const { by, byName } = actingAdmin(req.user);
+  const at = Date.now();
+  const state = await updateFeeResetState(context.appConfig, (current, schedule) => {
+    const check = checkNewFeeReset(current.resets, date, today);
+    if (check.error) throw httpError(check.status, check.error);
+    // Kept with the day: what the month before it costs as it is set (the fees over time say what every month
+    // costs, feeSchedule.js - a fresh start changes the price of none)
+    const feesBefore = feesInMonth(schedule, monthIndexOf(date) - 1);
+    return {
+      resets: normalizeFeeResets([...current.resets, { date, feesBefore, setAt: at, setBy: by, setByName: byName }]),
+      log: withLogEntry(current.log, { action: 'set', date, at, by, byName })
+    };
+  });
+  console.log(`[Finance] Admin ${by} set a fresh start of the fee accounts for ${date}`);
+  broadcastDataUpdate();
+  res.json({ success: true, ...feeResetAnswer(state, req.user) });
+}));
 
-router.post('/api/admin/fee-reset/remove', authRateLimit, verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const known = (await getFeeState(context.appConfig)).resets;
-    if (!known.some((reset) => reset.date === req.body?.date)) throw noSuchFeeReset();
-    const date = await confirmedFeeResetDay(req, res);
-    if (!date) return;
-    const { by, byName } = actingAdmin(req.user);
-    const state = await updateFeeResetState(context.appConfig, (current) => {
-      if (!current.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
-      return {
-        resets: current.resets.filter((reset) => reset.date !== date),
-        log: withLogEntry(current.log, { action: 'removed', date, at: Date.now(), by, byName })
-      };
-    });
-    console.log(`[Finance] Admin ${by} took back the fresh start of the fee accounts for ${date}`);
-    broadcastDataUpdate();
-    res.json({ success: true, ...feeResetAnswer(state, req.user) });
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fresh start could not be saved.');
-  }
-});
+router.post('/api/admin/fee-reset/remove', authRateLimit, verifyToken, verifyAdmin, route('The fresh start could not be saved.', async (req, res) => {
+  const known = (await getFeeState(context.appConfig)).resets;
+  if (!known.some((reset) => reset.date === req.body?.date)) throw noSuchFeeReset();
+  const date = await confirmedFeeResetDay(req, res);
+  if (!date) return;
+  const { by, byName } = actingAdmin(req.user);
+  const state = await updateFeeResetState(context.appConfig, (current) => {
+    if (!current.resets.some((reset) => reset.date === date)) throw noSuchFeeReset();
+    return {
+      resets: current.resets.filter((reset) => reset.date !== date),
+      log: withLogEntry(current.log, { action: 'removed', date, at: Date.now(), by, byName })
+    };
+  });
+  console.log(`[Finance] Admin ${by} took back the fresh start of the fee accounts for ${date}`);
+  broadcastDataUpdate();
+  res.json({ success: true, ...feeResetAnswer(state, req.user) });
+}));
 
 // --- CALDERA: the monthly fees over time (feeSchedule.js) ---
 // Every change of the fees says from which month it counts; the months before keep the old fees. Every signed-in
@@ -354,14 +333,14 @@ function feeAnswer(fees, user) {
 function wantedFees(schedule, body, today, who = {}) {
   if (body?.remove === true) {
     const check = checkFeeRemoval(schedule, body.from);
-    if (check.error) throw refuse(check.status, check.error);
+    if (check.error) throw httpError(check.status, check.error);
     return {
       after: withoutFeeChange(schedule, check.from),
       entry: { action: 'removed', from: check.from, fees: feesInMonth(schedule, check.from), movedFrom: null }
     };
   }
   const check = checkFeeChange(schedule, body, today);
-  if (check.error) throw refuse(check.status, check.error);
+  if (check.error) throw httpError(check.status, check.error);
   const { from, replaces } = check.change;
   const after = withFeeChange(schedule, { ...check.change, ...who });
   return {
@@ -370,61 +349,49 @@ function wantedFees(schedule, body, today, who = {}) {
   };
 }
 
-router.get('/api/fees', dbRateLimit, verifyToken, async (req, res) => {
-  try {
-    res.json(feeAnswer(await getFeeState(context.appConfig), req.user));
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fees could not be loaded.');
-  }
-});
+router.get('/api/fees', dbRateLimit, verifyToken, route('The fees could not be loaded.', async (req, res) => {
+  res.json(feeAnswer(await getFeeState(context.appConfig), req.user));
+}));
 
 // What a change would do, in numbers, before anything is saved: who owes more or less today, and which months
 // cost something else. The version in the answer goes back with the call that saves it
-router.post('/api/admin/fees/preview', protectedActionRateLimit, verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const today = toDateStr(new Date());
-    const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
-    const { after, entry } = wantedFees(fees.schedule, req.body, today);
-    res.json({
-      from: entry.from,
-      remove: entry.action === 'removed',
-      movedFrom: entry.movedFrom,
-      ...feeChangeImpact(people.map((record) => record.data), fees.resets, fees.schedule, after, today),
-      version: feeScheduleVersion(fees.schedule)
-    });
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fees could not be loaded.');
-  }
-});
+router.post('/api/admin/fees/preview', protectedActionRateLimit, verifyToken, verifyAdmin, route('The fees could not be loaded.', async (req, res) => {
+  const today = toDateStr(new Date());
+  const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
+  const { after, entry } = wantedFees(fees.schedule, req.body, today);
+  res.json({
+    from: entry.from,
+    remove: entry.action === 'removed',
+    movedFrom: entry.movedFrom,
+    ...feeChangeImpact(people.map((record) => record.data), fees.resets, fees.schedule, after, today),
+    version: feeScheduleVersion(fees.schedule)
+  });
+}));
 
 async function changeFees(req, res, body) {
-  try {
-    const today = toDateStr(new Date());
-    const { by, byName } = actingAdmin(req.user);
-    const at = Date.now();
-    let saved = null;
-    const state = await updateFeeSchedule(context.appConfig, (current) => {
-      if (typeof body.version !== 'string' || !body.version) throw refuse(400, 'Please check the change of the fees before saving it.');
-      if (body.version !== feeScheduleVersion(current.schedule)) throw refuse(409, 'The fees were changed in the meantime. Please check them again.');
-      const { after, entry } = wantedFees(current.schedule, body, today, { setAt: at, setBy: by, setByName: byName });
-      saved = entry;
-      return { schedule: after, log: withFeeLogEntry(current.log, { ...entry, at, by, byName }) };
-    });
-    console.log(`[Finance] Admin ${by} ${saved.action === 'removed' ? 'took back' : 'set'} the fees from ${saved.from || 'the beginning'}`);
-    broadcastDataUpdate();
-    res.json({ success: true, ...feeAnswer(state, req.user) });
-  } catch (error) {
-    answerFeeResetError(res, error, 'The fees could not be saved.');
-  }
+  const today = toDateStr(new Date());
+  const { by, byName } = actingAdmin(req.user);
+  const at = Date.now();
+  let saved = null;
+  const state = await updateFeeSchedule(context.appConfig, (current) => {
+    if (typeof body.version !== 'string' || !body.version) throw invalid('Please check the change of the fees before saving it.');
+    if (body.version !== feeScheduleVersion(current.schedule)) throw conflict('The fees were changed in the meantime. Please check them again.');
+    const { after, entry } = wantedFees(current.schedule, body, today, { setAt: at, setBy: by, setByName: byName });
+    saved = entry;
+    return { schedule: after, log: withFeeLogEntry(current.log, { ...entry, at, by, byName }) };
+  });
+  console.log(`[Finance] Admin ${by} ${saved.action === 'removed' ? 'took back' : 'set'} the fees from ${saved.from || 'the beginning'}`);
+  broadcastDataUpdate();
+  res.json({ success: true, ...feeAnswer(state, req.user) });
 }
 
-router.post('/api/admin/fees', protectedActionRateLimit, verifyToken, verifyAdmin, (req, res) => (
+router.post('/api/admin/fees', protectedActionRateLimit, verifyToken, verifyAdmin, route('The fees could not be saved.', (req, res) => (
   changeFees(req, res, { from: req.body?.from, fees: req.body?.fees, replaces: req.body?.replaces, version: req.body?.version })
-));
+)));
 
-router.post('/api/admin/fees/remove', protectedActionRateLimit, verifyToken, verifyAdmin, (req, res) => (
+router.post('/api/admin/fees/remove', protectedActionRateLimit, verifyToken, verifyAdmin, route('The fees could not be saved.', (req, res) => (
   changeFees(req, res, { from: req.body?.from, remove: true, version: req.body?.version })
-));
+)));
 
 router.post('/api/upload', protectedActionRateLimit, verifyToken, (req, res) => {
   upload.single('receipt')(req, res, (error) => {
@@ -492,48 +459,45 @@ router.get('/api/receipts/:filename', protectedActionRateLimit, verifyToken, asy
 // Every member can trigger it (after filing a request): a few per quarter hour are enough
 const notifyAdminsRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 
-router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, async (req, res) => {
-  try {
-    const { reqType } = req.body || {};
-    const typeLabels = { payment: 'Payment', status: 'Status change', expense: 'Expense', standing_order: 'Standing order' };
-    if (!typeLabels[reqType]) {
-      return res.status(400).json({ error: 'Unknown request type' });
-    }
-    // Only about a request the member really just filed, with the name stored in it - the text comes from the
-    // server, never from the caller (anyone could otherwise send any name to every treasurer)
-    const uid = req.user.uid || req.user.id;
-    const recent = Date.now() - 15 * 60 * 1000;
-    const filed = (await listRequestRecords(context.appConfig, { orderByChild: 'userId', equalTo: uid }))
-      .filter((r) => r.status === 'pending' && r.type === reqType && Number(r.timestamp || r.requestKey) >= recent)
-      .sort((a, b) => Number(b.timestamp || b.requestKey) - Number(a.timestamp || a.requestKey))[0];
-    if (!filed) return res.json({ success: true, notified: 0 });
-    const personName = filed.personName || req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
-    const typeOf = (tr) => tr(typeLabels[reqType]);
-    // Admins, owner and treasurers (groups with manage_finances), each over the channels they chose and in their language
-    const recipients = (await financeManagers(context.appConfig)).filter((u) => u.id !== req.user?.uid);
-    await notifyUsers(context.appConfig, recipients, 'finances', {
-      origin: originOf(req),
-      // "New request: Payment" - "From Ben Fischer"
-      push: (tr) => ({
-        title: tr('New request: {type}', { type: typeOf(tr) }),
-        body: tr('From {name}', { name: personName }),
-        data: { url: '/#requests' }
-      }),
-      email: (tr) => ({
-        subject: tr('New request: {type}', { type: typeOf(tr) }),
-        heading: tr('New request to the treasury'),
-        lines: [tr('{name} filed a request. Please review it in the app.', { name: personName })],
-        rows: [[tr('Kind'), typeOf(tr)], [tr('From'), personName]],
-        actionLabel: tr('Review the request'),
-        path: '/#finances',
-        accent: '#d97706'
-      })
-    });
-    res.json({ success: true, notified: recipients.length });
-  } catch (error) {
-    console.error('Failed to notify finance managers:', error);
-    res.status(500).json({ error: 'Failed to notify admins' });
+router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, route('Failed to notify admins', async (req, res) => {
+  const { reqType } = req.body || {};
+  const typeLabels = { payment: 'Payment', status: 'Status change', expense: 'Expense', standing_order: 'Standing order' };
+  if (!typeLabels[reqType]) {
+    return res.status(400).json({ error: 'Unknown request type' });
   }
-});
+  // Only about a request the member really just filed, with the name stored in it - the text comes from the
+  // server, never from the caller (anyone could otherwise send any name to every treasurer)
+  const uid = req.user.uid || req.user.id;
+  const recent = Date.now() - 15 * 60 * 1000;
+  const filed = (await listRequestRecords(context.appConfig, { orderByChild: 'userId', equalTo: uid }))
+    .filter((r) => r.status === 'pending' && r.type === reqType && Number(r.timestamp || r.requestKey) >= recent)
+    .sort((a, b) => Number(b.timestamp || b.requestKey) - Number(a.timestamp || a.requestKey))[0];
+  if (!filed) return res.json({ success: true, notified: 0 });
+  const personName = filed.personName || req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+  const typeOf = (tr) => tr(typeLabels[reqType]);
+  // Admins, owner and treasurers (groups with manage_finances), each over the channels they chose and in their language
+  const recipients = (await financeManagers(context.appConfig)).filter((u) => u.id !== req.user?.uid);
+  await notifyUsers(context.appConfig, recipients, 'finances', {
+    origin: originOf(req),
+    // "New request: Payment" - "From Ben Fischer"
+    push: (tr) => ({
+      title: tr('New request: {type}', { type: typeOf(tr) }),
+      body: tr('From {name}', { name: personName }),
+      data: { url: '/#requests' }
+    }),
+    email: (tr) => ({
+      subject: tr('New request: {type}', { type: typeOf(tr) }),
+      heading: tr('New request to the treasury'),
+      lines: [tr('{name} filed a request. Please review it in the app.', { name: personName })],
+      rows: [[tr('Kind'), typeOf(tr)], [tr('From'), personName]],
+      actionLabel: tr('Review the request'),
+      path: '/#finances',
+      accent: '#d97706'
+    })
+  });
+  res.json({ success: true, notified: recipients.length });
+}));
 
 module.exports = router;
+
+

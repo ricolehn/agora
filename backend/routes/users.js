@@ -15,6 +15,7 @@ const { notifyUsers, adminUsers, originOf } = require('../notify');
 const { buildReport, storeReport, listReports, resolveReport } = require('../contentReports');
 
 const { listGroupRecords } = require('../pocketbase');
+const { route } = require('./http');
 
 const router = express.Router();
 
@@ -110,48 +111,35 @@ router.get('/api/groups', verifyToken, async (req, res) => {
 });
 
 // Report an AI reply or a chat message (Google Play AIGC / UGC policies); admins are notified
-router.post('/api/reports', protectedActionRateLimit, verifyToken, async (req, res) => {
+router.post('/api/reports', protectedActionRateLimit, verifyToken, route('The report could not be saved.', async (req, res) => {
   const { report, error } = buildReport(req.body, req.user);
   if (error) return res.status(400).json({ error });
-  try {
-    await storeReport(context.appConfig, report);
-    adminUsers(context.appConfig).then((admins) => notifyUsers(context.appConfig, admins.filter((u) => u.id !== req.user?.uid), 'reports', {
-      origin: originOf(req),
-      // A private chat message never goes onto lock screens or through the push services: the reason, or nothing of it
-      push: (tr) => ({ title: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'), body: report.reason || (report.type === 'ai' ? report.content.slice(0, 120) : tr('Some content was reported and is waiting for your review.')), data: { url: '/#settings' } }),
-      email: (tr) => ({
-        subject: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
-        heading: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
-        lines: [tr('Some content was reported and is waiting for your review.')],
-        rows: [[tr('Reason'), report.reason || '–']],
-        actionLabel: tr('Review reports'),
-        path: '/#settings',
-        accent: '#dc2626'
-      })
-    })).catch((err) => console.warn('[Notify] report:', err.message));
-    res.status(201).json({ success: true });
-  } catch (err) {
-    console.error('Failed to store report:', err);
-    res.status(500).json({ error: 'The report could not be saved.' });
-  }
-});
+  await storeReport(context.appConfig, report);
+  adminUsers(context.appConfig).then((admins) => notifyUsers(context.appConfig, admins.filter((u) => u.id !== req.user?.uid), 'reports', {
+    origin: originOf(req),
+    // A private chat message never goes onto lock screens or through the push services: the reason, or nothing of it
+    push: (tr) => ({ title: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'), body: report.reason || (report.type === 'ai' ? report.content.slice(0, 120) : tr('Some content was reported and is waiting for your review.')), data: { url: '/#settings' } }),
+    email: (tr) => ({
+      subject: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
+      heading: report.type === 'ai' ? tr('Reported AI answer') : tr('Reported chat message'),
+      lines: [tr('Some content was reported and is waiting for your review.')],
+      rows: [[tr('Reason'), report.reason || '–']],
+      actionLabel: tr('Review reports'),
+      path: '/#settings',
+      accent: '#dc2626'
+    })
+  })).catch((err) => console.warn('[Notify] report:', err.message));
+  res.status(201).json({ success: true });
+}));
 
-router.get('/api/admin/reports', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    res.json({ reports: await listReports(context.appConfig) });
-  } catch (err) {
-    res.status(500).json({ error: 'Reports could not be loaded.' });
-  }
-});
+router.get('/api/admin/reports', verifyToken, verifyAdmin, route('Reports could not be loaded.', async (req, res) => {
+  res.json({ reports: await listReports(context.appConfig) });
+}));
 
-router.post('/api/admin/reports/:id/resolve', verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const report = await resolveReport(context.appConfig, req.params.id);
-    if (!report) return res.status(404).json({ error: 'Report not found.' });
-    res.json({ success: true, report });
-  } catch (err) {
-    res.status(500).json({ error: 'The report could not be updated.' });
-  }
-});
+router.post('/api/admin/reports/:id/resolve', verifyToken, verifyAdmin, route('The report could not be updated.', async (req, res) => {
+  const report = await resolveReport(context.appConfig, req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found.' });
+  res.json({ success: true, report });
+}));
 
 module.exports = router;

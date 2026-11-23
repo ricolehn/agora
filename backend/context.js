@@ -1,4 +1,5 @@
 const { runAs } = require('./actor');
+const { conflict, forbidden, invalid, notFound, unauthorized } = require('./httpError');
 const multer = require('multer');
 const crypto = require('crypto');
 const path = require('path');
@@ -588,9 +589,7 @@ async function readLogicalPath(targetPath, query, user) {
   const [root, id] = normalizedPath.split('/');
 
   if (!user) {
-    const error = new Error('Unauthorized');
-    error.status = 401;
-    throw error;
+    throw unauthorized('Unauthorized');
   }
 
   if (root === 'settings' && !id) {
@@ -602,9 +601,7 @@ async function readLogicalPath(targetPath, query, user) {
 
   if (root === 'system' && !id) {
     if (!user.admin) {
-      const error = new Error('Admin access required');
-      error.status = 403;
-      throw error;
+      throw forbidden('Admin access required');
     }
     const record = await getStateRecord(context.appConfig, 'system');
     const val = record?.value ? { ...record.value } : { ...DEFAULT_SYSTEM_STATE };
@@ -616,9 +613,7 @@ async function readLogicalPath(targetPath, query, user) {
 
   if (root === 'system' && id === 'inviteCode') {
     if (!user.canManageRegistrationCode) {
-      const error = new Error('Registration code management rights required');
-      error.status = 403;
-      throw error;
+      throw forbidden('Registration code management rights required');
     }
     const record = await getStateRecord(context.appConfig, 'system');
     return { value: record?.value?.inviteCode || '', version: record?.updated || null };
@@ -626,9 +621,7 @@ async function readLogicalPath(targetPath, query, user) {
 
   if (root === 'donations' || root === 'expenses') {
     if (!user.canViewFinances) {
-      const error = new Error('Financial access required');
-      error.status = 403;
-      throw error;
+      throw forbidden('Financial access required');
     }
     // The version of the whole list: a save that sends it back is refused if the list changed meanwhile (409)
     const { financeStore } = require('./pocketbase');
@@ -651,9 +644,7 @@ async function readLogicalPath(targetPath, query, user) {
 
     if (id) {
       if (!user.admin && id !== user.uid) {
-        const error = new Error('Forbidden');
-        error.status = 403;
-        throw error;
+        throw forbidden('Forbidden');
       }
       const record = await getUserRecord(context.appConfig, id);
       return { value: record ? toUserValue(record, allGroups) : null, version: record?.updated || null };
@@ -681,9 +672,7 @@ async function readLogicalPath(targetPath, query, user) {
       // By name only while the record is not linked to an account yet (the name alone proves nothing)
       const unlinkedNameMatch = !value?.uid && !record?.uid && !isDeletedPerson(record) && isOwnFullNameMatch(user, value?.name || record?.name);
       if (value && !user.canViewFinances && value.uid !== user.uid && !unlinkedNameMatch) {
-        const error = new Error('Forbidden');
-        error.status = 403;
-        throw error;
+        throw forbidden('Forbidden');
       }
       return { value, version: record?.updated || null };
     }
@@ -705,9 +694,7 @@ async function readLogicalPath(targetPath, query, user) {
       const record = await getRequestRecord(context.appConfig, id);
       const value = record?.data || null;
       if (value && !user.canViewFinances && value.userId !== user.uid && record?.userId !== user.uid) {
-        const error = new Error('Forbidden');
-        error.status = 403;
-        throw error;
+        throw forbidden('Forbidden');
       }
       return { value, version: record?.updated || null };
     }
@@ -728,9 +715,7 @@ async function readLogicalPath(targetPath, query, user) {
     };
   }
 
-  const error = new Error('Unknown path');
-  error.status = 404;
-  throw error;
+  throw notFound('Unknown path');
 }
 
 function toUserValue(record, allGroups = null) {
@@ -802,13 +787,11 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   const [root, id, nested] = normalizedPath.split('/');
 
   if (!user) {
-    const error = new Error('Unauthorized');
-    error.status = 401;
-    throw error;
+    throw unauthorized('Unauthorized');
   }
 
   if (root === 'settings' && !id) {
-    if (!user.admin) throw Object.assign(new Error('Admin access required'), { status: 403 });
+    if (!user.admin) throw forbidden('Admin access required');
     // Apps without the fees over time write their fees here: other fees than those of this month count from this
     // month on (feeState.js). The web app changes the fees with the month they count from (routes/finance.js)
     const actor = { by: String(user.uid || user.id || ''), byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() };
@@ -818,13 +801,13 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   }
 
   if (root === 'system' && id === 'inviteCode' && !nested) {
-    if (!user.canManageRegistrationCode) throw Object.assign(new Error('Registration code management rights required'), { status: 403 });
+    if (!user.canManageRegistrationCode) throw forbidden('Registration code management rights required');
     await require('./pocketbase').updateSystemState(context.appConfig, (system) => ({ ...system, inviteCode: value }));
     return;
   }
 
   if ((root === 'donations' || root === 'expenses') && !id) {
-    if (!user.canManageFinances) throw Object.assign(new Error('Finance management rights required'), { status: 403 });
+    if (!user.canManageFinances) throw forbidden('Finance management rights required');
     // With the version it was read with, a list that changed meanwhile is refused (409) instead of overwritten
     const expectedVersion = typeof options.version === 'string' && options.version ? options.version : undefined;
     if (root === 'expenses') {
@@ -837,12 +820,12 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
 
   if (root === 'users' && id) {
     if (id !== user.uid && !user.admin) {
-      throw Object.assign(new Error('Forbidden'), { status: 403 });
+      throw forbidden('Forbidden');
     }
 
     const existing = await getUserRecord(context.appConfig, id);
     if (!existing) {
-      throw Object.assign(new Error('User not found'), { status: 404 });
+      throw notFound('User not found');
     }
 
     const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
@@ -852,7 +835,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     // Like the admin routes: only the owner changes the owner's rights - also groups (they carry the permissions)
     if (isTargetOwner && !user.owner && id !== user.uid) {
       if (value && typeof value === 'object' && ['admin', 'owner', 'pays', 'groups'].some((field) => value[field] !== undefined)) {
-        throw Object.assign(new Error('Forbidden: Cannot modify owner permissions'), { status: 403 });
+        throw forbidden('Forbidden: Cannot modify owner permissions');
       }
     }
 
@@ -900,7 +883,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       const onlyUidUpdate = value && typeof value === 'object' && Object.keys(value).every((key) => key === 'uid');
       const isAllowedLink = existingValue && !isDeletedPerson(existing) && onlyUidUpdate && requestedUid === user.uid && (!existingValue.uid || existingValue.uid === user.uid) && isOwnFullNameMatch(user, existingValue.name || existing?.name);
       if (!isAllowedLink) {
-        throw Object.assign(new Error('Finance management rights required'), { status: 403 });
+        throw forbidden('Finance management rights required');
       }
     }
     // Linking only ever adds the uid to the existing record (a plain set would replace it and drop its payments)
@@ -915,7 +898,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
 
   if (root === 'requests' && id) {
     if (!value || typeof value !== 'object') {
-      throw Object.assign(new Error('Invalid request payload'), { status: 400 });
+      throw invalid('Invalid request payload');
     }
     // A new request belongs to its author; a partial update (approve / reject) must not take it over
     if (!value.userId && method !== 'patch') {
@@ -924,12 +907,12 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     const canManageRequests = user.canManageFinances === true;
     if (!canManageRequests) {
       if (method !== 'set' || String(value.userId) !== String(user.uid)) {
-        throw Object.assign(new Error('Finance management rights required'), { status: 403 });
+        throw forbidden('Finance management rights required');
       }
     }
     const existing = await getRequestRecord(context.appConfig, id);
     if (existing && existing.data && !canManageRequests && String(existing.data.userId || existing.userId) !== String(user.uid)) {
-      throw Object.assign(new Error('Finance management rights required'), { status: 403 });
+      throw forbidden('Finance management rights required');
     }
     const mergedValue = method === 'patch' && existing?.data && value && typeof value === 'object'
       ? { ...existing.data, ...value }
@@ -943,11 +926,11 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       nextValue.userId = user.uid;
     }
     if (!canManageRequests && String(nextValue.userId) !== String(user.uid)) {
-      throw Object.assign(new Error('Finance management rights required'), { status: 403 });
+      throw forbidden('Finance management rights required');
     }
     // Only the known kinds of request (the type is shown to treasurers)
     if (!Object.hasOwn(REQUEST_TYPE_LABELS, nextValue.type)) {
-      throw Object.assign(new Error('Unknown kind of request'), { status: 400 });
+      throw invalid('Unknown kind of request');
     }
     // Members file requests, only treasurers decide on them - and only for themselves: whose record a request books
     // to and the name the treasurers see come from the member's own record, whatever was sent (a request naming
@@ -966,7 +949,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     const before = await queueRecordWrite(`requests:${id}`, async () => {
       const current = (await getRequestRecord(context.appConfig, id))?.data?.status || 'pending';
       if ((current === 'approved' || current === 'rejected') && nextValue.status !== current) {
-        throw Object.assign(new Error('This request was already decided.'), { status: 409 });
+        throw conflict('This request was already decided.');
       }
       await upsertRequestRecord(context.appConfig, id, nextValue);
       return current;
@@ -978,19 +961,19 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     return;
   }
 
-  throw Object.assign(new Error('Unknown path'), { status: 404 });
+  throw notFound('Unknown path');
 }
 
 async function removeLogicalPath(targetPath, user) {
   const normalizedPath = normalizeDataPath(targetPath);
   const [root, id] = normalizedPath.split('/');
-  if (!user) throw Object.assign(new Error('Unauthorized'), { status: 401 });
+  if (!user) throw unauthorized('Unauthorized');
   if (root === 'people' && id) {
-    if (!user.admin) throw Object.assign(new Error('Admin access required'), { status: 403 });
+    if (!user.admin) throw forbidden('Admin access required');
     await removePeopleRecord(context.appConfig, id);
     return;
   }
-  throw Object.assign(new Error('Unknown path'), { status: 404 });
+  throw notFound('Unknown path');
 }
 
 // Default finance record for a member who has none yet

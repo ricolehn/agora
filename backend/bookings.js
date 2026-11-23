@@ -1,8 +1,9 @@
 // What a booking does to a member's record or the expenses, by the rules the web app books with (web/src/lib/finance.js):
 // an approved request, a status change from a day. API v2 books with these, so a booking through v2 is the very
 // booking the web app makes (tests/finance.test.js compares both, case by case).
+const { invalid } = require('./httpError');
 
-const list = (value) => (!value ? [] : Array.isArray(value) ? value : Object.values(value));
+const list =(value) => (!value ? [] : Array.isArray(value) ? value : Object.values(value));
 const hasEntry = (entries, id) => list(entries).some((entry) => String(entry?.id) === id);
 
 /** Id of what an approved request books: approving the same request again finds its booking and adds nothing. */
@@ -17,7 +18,7 @@ function applyStatusChangeToHistory(person, newStatus, changeDateStr) {
   const memberSince = person.originalMemberSince || person.memberSince || changeDateStr;
   const changeDate = new Date(changeDateStr);
   if (changeDate < new Date(memberSince)) {
-    throw Object.assign(new Error('The change date is before the start of the membership.'), { key: 'status_change_before_member_since', status: 400 });
+    throw invalid('The change date is before the start of the membership.', { key: 'status_change_before_member_since' });
   }
   if (changeDateStr <= memberSince) return { ...person, status: newStatus, statusHistory: [{ status: newStatus, startDate: memberSince }] };
 

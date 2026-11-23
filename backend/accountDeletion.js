@@ -9,7 +9,7 @@ const {
   removePeopleRecord,
   deleteUserRecord
 } = require('./pocketbase');
-const { loadSecret } = require('./polls');
+const { loadSecret } = require('./instanceSecret');
 const { isMine } = require('./prayers');
 const { createItemStore } = require('./itemStore');
 

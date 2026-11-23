@@ -7,6 +7,7 @@
 // done. Members with the manage_prayers permission can remove any request. Expired requests stay visible to their
 // owner for a while (to extend them), then they disappear on their own.
 const crypto = require('crypto');
+const { keyedHash } = require('./instanceSecret');
 
 const DAY = 24 * 60 * 60 * 1000;
 const DURATIONS = { week: 7 * DAY, month: 30 * DAY, quarter: 90 * DAY };
@@ -17,8 +18,8 @@ const MAX_PRAYERS = 500;
 /** How long expired requests stay for their owner to extend. */
 const KEEP_EXPIRED_MS = 14 * DAY;
 
-const keyedHash = (secret, purpose, id, uid) =>
-  crypto.createHmac('sha256', secret).update(`prayer-${purpose}:${id}:${uid}`).digest('hex');
+// The owner as a keyed hash ('prayer-owner': a purpose of its own, beside the polls' with the same kind of secret)
+const ownerHash = (secret, id, uid) => keyedHash(secret, 'prayer-owner', id, uid);
 
 const canModerate = (user) => Array.isArray(user?.permissions) && user.permissions.includes('manage_prayers');
 
@@ -31,7 +32,7 @@ const cleanText = (value, max) => String(value ?? '')
   .slice(0, max);
 
 const isOpen = (prayer, now) => now < prayer.expiresAt;
-const isMine = (prayer, uid, secret) => prayer.owner === keyedHash(secret, 'owner', prayer.id, uid);
+const isMine = (prayer, uid, secret) => prayer.owner === ownerHash(secret, prayer.id, uid);
 
 /** Validates a new request; returns { prayer } or { error }. */
 function buildPrayer(input, { uid, name, secret, now = Date.now(), id = crypto.randomUUID() }) {
@@ -46,7 +47,7 @@ function buildPrayer(input, { uid, name, secret, now = Date.now(), id = crypto.r
       anonymous,
       authorUid: anonymous ? null : uid,
       authorName: anonymous ? null : String(name || '').trim().slice(0, 120),
-      owner: keyedHash(secret, 'owner', id, uid),
+      owner: ownerHash(secret, id, uid),
       createdAt: now,
       expiresAt: now + DURATIONS[duration]
     }

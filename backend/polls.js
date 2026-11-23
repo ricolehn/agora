@@ -7,8 +7,7 @@
 // Nobody in the app can see who voted for what. Someone with access to the server files AND the database could
 // recompute the participation hashes (not the choices) - polls-secret belongs in the backup, but apart from it.
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
+const { keyedHash } = require('./instanceSecret');
 
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 10;
@@ -19,30 +18,6 @@ const MIN_DURATION_MS = 5 * 60 * 1000;
 const MAX_OPEN_PER_CREATOR = 20;
 const MAX_POLLS = 500;
 
-/**
- * The secret of the participation hashes. A missing file is created once; a damaged one is an error and never
- * silently replaced - with a new secret everybody could vote again and creators would lose their polls.
- */
-function loadSecret(dataDir, name = 'polls-secret') {
-  const file = path.join(dataDir, name);
-  let existing = null;
-  try {
-    existing = fs.readFileSync(file, 'utf8').trim();
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-  }
-  if (existing !== null) {
-    if (existing.length >= 32) return existing;
-    throw new Error(`${file} is damaged; restore it from the backup (${name.replace('-secret', '')} cannot be used until then)`);
-  }
-  const secret = crypto.randomBytes(32).toString('hex');
-  // 'wx': never overwrite a file another process created a moment ago
-  fs.writeFileSync(file, secret, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-  return secret;
-}
-
-const keyedHash = (secret, purpose, pollId, uid) =>
-  crypto.createHmac('sha256', secret).update(`${purpose}:${pollId}:${uid}`).digest('hex');
 
 const cleanText = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -137,5 +112,5 @@ function publicPoll(poll, { uid, secret, now = Date.now() }) {
 
 module.exports = {
   MIN_RESULT_VOTES, MAX_OPEN_PER_CREATOR, MAX_POLLS,
-  loadSecret, buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate
+  buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate
 };

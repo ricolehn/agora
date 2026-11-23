@@ -1,5 +1,6 @@
 const { readNotificationSettings } = require('./notificationPrefs');
 const crypto = require('crypto');
+const { invalid } = require('./httpError');
 const {
   encryptMentoringText,
   decryptMentoringText
@@ -464,7 +465,7 @@ async function updateOwnPassword(appConfig, email, userId, oldPassword, password
     await loginUser(email, oldPassword);
   } catch (error) {
     // Only a sign-in that is turned down means a wrong password; a database that does not answer is an error
-    if (error?.status >= 400 && error.status < 500) throw Object.assign(new Error('The password is not correct.'), { status: 400 });
+    if (error?.status >= 400 && error.status < 500) throw invalid('The password is not correct.');
     throw error;
   }
   await adminResetUserPassword(appConfig, userId, password);

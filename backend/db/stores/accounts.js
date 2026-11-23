@@ -5,6 +5,7 @@ const client = require('../client');
 const codecs = require('../codecs/accounts');
 const { usersGroupsField, table } = require('../tables');
 const { queueRecordWrite } = require('../writeQueue');
+const { notFound } = require('../../httpError');
 
 const USERS = 'users';
 const GROUPS = 'user_groups';
@@ -42,7 +43,7 @@ async function writeBody(appConfig, current, changes) {
 function updateUserRecord(appConfig, uid, body) {
   return queueRecordWrite(`users:${uid}`, async () => {
     const current = await getUserRecord(appConfig, uid);
-    if (!current) throw Object.assign(new Error('User not found'), { status: 404 });
+    if (!current) throw notFound('User not found');
     return decode(await client.updateRecord(USERS, uid, await writeBody(appConfig, current, body || {}), appConfig));
   });
 }

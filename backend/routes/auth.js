@@ -45,6 +45,7 @@ const {
   SYSTEM_STATE_LOCK,
   queueRecordWrite
 } = require('../pocketbase');
+const { route } = require('./http');
 
 const router = express.Router();
 
@@ -310,32 +311,27 @@ router.post('/api/auth/password', authRateLimit, verifyToken, async (req, res) =
 
 // Users delete their own account (web UI + app settings, Google Play account deletion policy).
 // The password confirms it; the owner account has to stay (like in the admin deletion).
-router.post('/api/auth/delete-account', authRateLimit, verifyToken, async (req, res) => {
+router.post('/api/auth/delete-account', authRateLimit, verifyToken, route('The account could not be deleted.', async (req, res) => {
   const password = String(req.body?.password || '');
   const uid = req.user.uid || req.user.id;
   if (!password) {
     return res.status(400).json({ error: 'Please confirm the deletion with your password.' });
   }
-  try {
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
-    if (uid === ownerUid || req.user.owner === true || req.user.superAdmin === true) {
-      return res.status(400).json({ error: 'The owner account manages this instance and cannot be deleted.' });
-    }
-    try {
-      await loginUser(req.user.rawEmail || req.user.email, password);
-    } catch {
-      return res.status(403).json({ error: 'The password is not correct.' });
-    }
-    const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
-    console.log(`[Account] User ${uid} deleted their account`, summary);
-    clearAuthCookie(req, res);
-    broadcastDataUpdate();
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Failed to delete own account:', error);
-    res.status(500).json({ error: 'The account could not be deleted.' });
+  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  if (uid === ownerUid || req.user.owner === true || req.user.superAdmin === true) {
+    return res.status(400).json({ error: 'The owner account manages this instance and cannot be deleted.' });
   }
-});
+  try {
+    await loginUser(req.user.rawEmail || req.user.email, password);
+  } catch {
+    return res.status(403).json({ error: 'The password is not correct.' });
+  }
+  const summary = await deleteAccountData(context.appConfig, uid, { profilesDir, dataDir });
+  console.log(`[Account] User ${uid} deleted their account`, summary);
+  clearAuthCookie(req, res);
+  broadcastDataUpdate();
+  res.json({ success: true });
+}));
 
 module.exports = router;

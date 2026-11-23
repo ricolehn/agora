@@ -307,7 +307,8 @@ describe('ai', () => {
 });
 
 describe('polls', () => {
-  const { buildPoll, castVote, publicPoll, MIN_RESULT_VOTES, loadSecret, endPoll, sealIfTooFew, canCreate, MAX_OPEN_PER_CREATOR } = require('../backend/polls');
+  const { buildPoll, castVote, publicPoll, MIN_RESULT_VOTES, endPoll, sealIfTooFew, canCreate, MAX_OPEN_PER_CREATOR } = require('../backend/polls');
+  const { loadSecret } = require('../backend/instanceSecret');
 
   const secret = 'x'.repeat(64);
   const now = 1_800_000_000_000;

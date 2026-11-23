@@ -2,6 +2,7 @@
 // errors as { error: { code, message } } in the language of the request, what a request sends checked and never cut or
 // guessed, every list in pages with a cursor, and the way into the old API's handlers where v2 does what v1 does.
 const { translate, requestLanguage } = require('../i18n');
+const { httpError } = require('../httpError');
 
 // --- Answers -------------------------------------------------------------------------------------------------------
 
@@ -23,7 +24,7 @@ function errorOf(req, status, message, params = null, field = null) {
 const fail = (req, res, status, message, params, field) => res.status(status).json(errorOf(req, status, message, params, field));
 
 /** An error of v2: the HTTP [status] and the English [message] (translated when it is answered, see errorOf). */
-const apiError = (status, message, params = null, field = null) => Object.assign(new Error(message), { status, params, field });
+const apiError = (status, message, params = null, field = null) => httpError(status, message, { params, field });
 const invalid = (message, params = null, field = null) => apiError(400, message, params, field);
 const forbidden = (message = 'You may not do this.') => apiError(403, message);
 const notFound = (message) => apiError(404, message);
