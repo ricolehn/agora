@@ -76,24 +76,6 @@ async function submitPoll() {
 }
 
 // Symbols of the parts (as drawn in the previous version)
-const QuestionIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <circle cx="12" cy="12" r="10" />
-    <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
-    <path d="M12 17h.01" />
-  </svg>
-);
-export const ListIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <line x1="8" y1="6" x2="21" y2="6" />
-    <line x1="8" y1="12" x2="21" y2="12" />
-    <line x1="8" y1="18" x2="21" y2="18" />
-    <line x1="3" y1="6" x2="3.01" y2="6" />
-    <line x1="3" y1="12" x2="3.01" y2="12" />
-    <line x1="3" y1="18" x2="3.01" y2="18" />
-  </svg>
-);
-
 export function PollCreateModal() {
   const setOption = (index: number, value: string) => setOptions(list => list.map((v, i) => (i === index ? value : v)));
   const timeInput = (value: string, set: (v: string) => void) => {
@@ -116,7 +98,7 @@ export function PollCreateModal() {
         </>
       }
     >
-      <EditorCard tone="cyan" icon={<QuestionIcon />} label={t('polls_question', 'Question')}>
+      <EditorCard tone="cyan" icon={<Icon name="question" size={16} />} label={t('polls_question', 'Question')}>
         <input
           type="text"
           id="poll-question"
@@ -136,7 +118,7 @@ export function PollCreateModal() {
           onInput={e => setDescription(e.currentTarget.value)}
         />
       </EditorCard>
-      <EditorCard tone="indigo" icon={<ListIcon />} label={t('polls_options', 'Answers')}>
+      <EditorCard tone="indigo" icon={<Icon name="list" size={16} />} label={t('polls_options', 'Answers')}>
         <div id="poll-options" class="flex flex-col gap-2">
           <For each={options()} keyed={false}>
             {(value, index) => (

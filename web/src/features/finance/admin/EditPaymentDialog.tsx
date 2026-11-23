@@ -16,6 +16,7 @@ import { findPaymentIndex, parseAmount } from '../../../lib/finance.js';
 import { FeeResetNote, feeResetPaymentHint } from '../common';
 import { DownloadLink, OpenPdfLink, ReceiptFileRow, ReceiptThumb, useReceiptUrls } from './Receipts';
 import { refreshFinanceViews, type Transaction } from './state';
+import { Icon } from '../../../ui/Icon';
 
 type EntryType = 'payment' | 'donation' | 'expense';
 interface EditedEntry {
@@ -164,10 +165,7 @@ function EditReceiptRow(props: { filename: string }) {
   const state = useReceiptUrls(() => [props.filename]);
   const Remove = () => (
     <Button variant="danger" size="small" class="!rounded-lg !p-1.5" title={t('btn_delete', 'Delete')} onClick={() => deleteEditReceipt(props.filename)}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      </svg>
+      <Icon name="trash" size={14} />
     </Button>
   );
   return (
@@ -288,12 +286,7 @@ export function EditPaymentDialog() {
               if (canManageFinances() && edited()) openModal('confirm-delete-modal');
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              <line x1="10" y1="11" x2="10" y2="17" />
-              <line x1="14" y1="11" x2="14" y2="17" />
-            </svg>
+            <Icon name="trashLines" size={20} />
           </button>
         </ModalHeader>
         <ModalBody>

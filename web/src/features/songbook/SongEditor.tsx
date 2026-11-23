@@ -9,7 +9,6 @@ import { debounce } from '../../app/util';
 import { parseSong } from '../../lib/songbook.js';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
-import { ListIcon } from '../polls/PollCreate';
 import { DeleteButton, EDITOR_FIELD, EDITOR_INPUT, EditorCard, EditorField, EditorPage, TITLE_INPUT } from '../polls/ui';
 import { SongLines } from './SongLines';
 import { type Song, dropSong, putSong, songbookLicense, songs } from './store';
@@ -94,13 +93,6 @@ async function deleteSong() {
   }
 }
 
-const RightsIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <circle cx="12" cy="12" r="10" />
-    <path d="M14.8 9a3 3 0 1 0 0 6" />
-  </svg>
-);
-
 const HELP = 'm-0 text-[0.82rem] leading-[1.5] text-text-secondary';
 
 export function SongEditorModal() {
@@ -162,7 +154,7 @@ export function SongEditorModal() {
           />
         </div>
       </EditorCard>
-      <EditorCard tone="indigo" icon={<ListIcon />} label={t('songbook_text', 'Lyrics & chords')}>
+      <EditorCard tone="indigo" icon={<Icon name="list" size={16} />} label={t('songbook_text', 'Lyrics & chords')}>
         <p class={HELP}>
           {t('songbook_help', 'Chords in square brackets right before the syllable: [G]Amazing [D]grace. Sections with # at the start of a line, e.g. # Chorus. Empty line = new paragraph.')}
         </p>
@@ -192,7 +184,7 @@ export function SongEditorModal() {
           </Show>
         </div>
       </EditorCard>
-      <EditorCard tone="amber" icon={<RightsIcon />} label={t('songbook_rights', 'Rights')}>
+      <EditorCard tone="amber" icon={<Icon name="copyright" size={16} />} label={t('songbook_rights', 'Rights')}>
         <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-2.5 max-[480px]:grid-cols-1">
           <EditorField label={t('songbook_ccli_song', 'CCLI song number')}>
             <input

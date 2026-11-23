@@ -9,7 +9,6 @@ import { formatEventDateSpanCompact } from '../format';
 import { SHARE_MODAL, canShareNatively, copyEventShareLink, sendEventShareLink, shareTarget, switching, toggleEventPublic } from './share';
 
 // The sheet's own symbols (copy, send, the world) are not in the app's icon set
-const svgProps = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' } as const;
 
 /**
  * The switch "Visible without an account". It shows the tapped state while it is saved, then the saved one (the old
@@ -53,19 +52,12 @@ export function ShareDialog() {
       footer={
         <div class="flex w-full gap-2">
           <Button variant="secondary" class="flex-[1_1_0] gap-1.5" onClick={() => void copyEventShareLink(linkField)}>
-            <svg width="16" height="16" stroke-width="2" {...svgProps}>
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
+            <Icon name="copy" size={16} />
             <span>{t('events_share_copy', 'Copy link')}</span>
           </Button>
           <Show when={canShareNatively(shareTarget()?.url || '')}>
             <Button class="flex-[1_1_0] gap-1.5" onClick={() => void sendEventShareLink()}>
-              <svg width="16" height="16" stroke-width="2" {...svgProps}>
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                <polyline points="16 6 12 2 8 6" />
-                <line x1="12" y1="2" x2="12" y2="15" />
-              </svg>
+              <Icon name="shareUp" size={16} />
               <span>{t('events_share_send', 'Share…')}</span>
             </Button>
           </Show>
@@ -76,11 +68,7 @@ export function ShareDialog() {
         <div class="flex items-start justify-between gap-3">
           <label for="event-share-public" class="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
             <span class="inline-flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-surface-alt text-primary">
-              <svg width="17" height="17" stroke-width="2" {...svgProps}>
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
+              <Icon name="globe" size={17} />
             </span>
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class="text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase">{t('events_share_public', 'Visible without an account')}</span>

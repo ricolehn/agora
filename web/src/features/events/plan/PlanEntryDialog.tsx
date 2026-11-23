@@ -177,10 +177,7 @@ function WhoSection(props: { ruled: boolean }) {
         <div class="flex flex-col gap-1.5">
           <div class="group relative">
             <span class="pointer-events-none absolute top-1/2 left-3 z-[2] flex -translate-y-1/2 items-center justify-center text-text-secondary transition-colors duration-200 group-focus-within:text-primary">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+              <Icon name="magnifierSharp" size={16} strokeWidth={2.5} />
             </span>
             <Input
               // Opened by "+ Ask …": the cursor goes to the search

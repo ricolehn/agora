@@ -48,10 +48,7 @@ const TYPE_CARDS: { type: ReportType; title: [string, string]; desc: [string, st
     title: ['report_type_manual', 'Selection'],
     desc: ['report_type_manual_desc', 'Tick bookings'],
     icon: () => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <polyline points="9 11 12 14 22 4" />
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
+      <Icon name="checkBox" size={18} />
     )
   }
 ];
@@ -498,12 +495,7 @@ function ReportContent() {
     <>
       <div class="flex items-center gap-3.5 border-b border-border-light bg-surface px-4 py-3.5 md:px-[22px] md:py-[18px]">
         <span class="inline-flex size-[42px] shrink-0 items-center justify-center rounded-[13px] bg-gradient-primary text-white">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="8" y1="13" x2="16" y2="13" />
-            <line x1="8" y1="17" x2="13" y2="17" />
-          </svg>
+          <Icon name="report" size={18} />
         </span>
         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
           <span class="text-[1.15rem] font-extrabold text-text">{t('report_modal_title', 'Create financial report')}</span>

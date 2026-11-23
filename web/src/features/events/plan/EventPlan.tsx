@@ -1,6 +1,5 @@
 // The plan card of the event dialog: collapsed (title, "x of y filled", bar), opened the order of service as a
 // timeline and the tasks without a time in their own box. Editors tap a row to open its entry, "+" adds one.
-import type { JSX } from '@solidjs/web';
 import { For, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import { t } from '../../../app/i18n';
 import { groupBy } from '../../../app/util';
@@ -47,16 +46,6 @@ function planRows(ev: AppEvent, items: ProgramItem[]) {
   }));
   return { order, tasks };
 }
-
-/** The roster symbol (a sheet with lines). */
-const RosterIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-    <line x1="9" y1="9" x2="15" y2="9" />
-    <line x1="9" y1="13" x2="15" y2="13" />
-    <line x1="9" y1="17" x2="13" y2="17" />
-  </svg>
-);
 
 function PlanRow(props: {
   row: RowData;
@@ -184,7 +173,7 @@ export function EventPlan(props: { event: AppEvent }) {
         >
           <summary class="flex min-w-0 cursor-pointer list-none items-center gap-3 select-none [&::-webkit-details-marker]:hidden">
             <div class="flex size-[38px] shrink-0 items-center justify-center rounded-xl bg-[rgba(99,102,241,0.14)] text-[#6366f1] dark:text-[#818cf8]">
-              <RosterIcon />
+              <Icon name="roster" size={18} />
             </div>
             <div class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class="text-[1rem] font-extrabold text-text">{header().title}</span>
