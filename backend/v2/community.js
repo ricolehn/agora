@@ -9,7 +9,7 @@ const {
   getStateValue, DEFAULT_SYSTEM_STATE
 } = require('../pocketbase');
 const { translate, requestLanguage, normalizeLanguage } = require('../i18n');
-const { DECRYPTION_FAILED } = require('../mentoringCrypto');
+const { isBlockedStatus, isClosedStatus, isFull, maxMenteesOf, mentorNameOf, openConversationsByMentor, readableText } = require('../mentoring');
 const { NOTIFICATION_TYPES, readNotificationSettings, mergeNotificationSettings } = require('../notificationPrefs');
 const { validTimeZone } = require('../dutyReminders');
 const usersRouter = require('../routes/users');
@@ -290,9 +290,6 @@ router.delete(`${BASE}/prayers/:id`, protectedActionRateLimit, verifyToken, hand
 
 // --- Mentoring ---------------------------------------------------------------------------------------------------------
 
-// A blocked conversation is closed for both; its status remembers who blocked it (only they can open it again)
-const isBlockedStatus = (status) => typeof status === 'string' && status.startsWith('blocked_');
-const isClosedStatus = (status) => status === 'closed' || isBlockedStatus(status);
 const nameOf = (user) => (user ? user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() : '');
 const isMentoringManager = (req) => req.user.canManageMentoring === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_mentoring'));
 
@@ -307,12 +304,8 @@ router.get(`${BASE}/mentoring/mentors`, verifyToken, handle(async (req, res) => 
   needs(status === 'approved' || manager, 'Mentor management rights required');
   const [mentors, users] = await Promise.all([listMentorRecords(context.appConfig, status === 'all' ? '' : `status = ${JSON.stringify(status)}`), listUserRecords(context.appConfig)]);
   const usersById = new Map(users.map((user) => [user.id, user]));
-  const open = new Map();
-  for (const thread of await listMentoringThreadsForUser(context.appConfig, mentors.map((mentor) => mentor.user)).catch(() => [])) {
-    if (thread.mentor && !isClosedStatus(thread.status)) open.set(thread.mentor, (open.get(thread.mentor) || 0) + 1);
-  }
+  const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentors.map((mentor) => mentor.user)).catch(() => []));
   const items = mentors.map((mentor) => {
-    const maxMentees = typeof mentor.max_mentees === 'number' ? mentor.max_mentees : 3;
     const activeMentees = open.get(mentor.user) || 0;
     return {
       id: mentor.id,
@@ -323,7 +316,7 @@ router.get(`${BASE}/mentoring/mentors`, verifyToken, handle(async (req, res) => 
       maxMentees: mentor.max_mentees || 0,
       isAccepting: mentor.is_accepting === true,
       activeMentees,
-      isFull: activeMentees >= maxMentees || mentor.is_accepting === false,
+      isFull: isFull(mentor, activeMentees),
       ...(manager ? { email: usersById.get(mentor.user)?.email || '' } : {})
     };
   });
@@ -334,7 +327,7 @@ const mentorProfileOf = (mentor) => (mentor ? {
   id: mentor.id,
   status: mentor.status || null,
   bio: mentor.bio || '',
-  maxMentees: typeof mentor.max_mentees === 'number' ? mentor.max_mentees : 3,
+  maxMentees: maxMenteesOf(mentor),
   isAccepting: mentor.is_accepting !== false
 } : null);
 
@@ -387,8 +380,8 @@ async function threadOf(req, thread, users) {
   const isMentor = thread.mentor === uid;
   const { unreadCount, lastMessage } = await getMentoringThreadSummary(context.appConfig, thread.id, isMentor ? 'mentee' : 'mentor').catch(() => ({ unreadCount: 0, lastMessage: null }));
   const lang = requestLanguage(req);
-  const lastText = lastMessage ? (lastMessage.text === DECRYPTION_FAILED ? translate(lang, lastMessage.text) : lastMessage.text).slice(0, 240) : (thread.last_message || '');
-  const mentorName = nameOf(users.get(thread.mentor)) || 'Mentor';
+  const lastText = lastMessage ? readableText(lastMessage.text, lang).slice(0, 240) : (thread.last_message || '');
+  const mentorName = mentorNameOf(users.get(thread.mentor));
   return {
     id: thread.id,
     role: isMentor ? 'mentor' : 'mentee',
@@ -447,8 +440,8 @@ router.get(`${BASE}/mentoring/threads/:id/messages`, verifyToken, handle(async (
   const lang = requestLanguage(req);
   res.json(storedPage({
     items: items.map((message) => {
-      const text = decryptMentoringText(message.text, thread.id);
-      return { id: message.id, from: message.sender_role, text: text === DECRYPTION_FAILED ? translate(lang, text) : text, isRead: message.read === true, createdAt: message.created || null };
+      const text = readableText(decryptMentoringText(message.text, thread.id), lang);
+      return { id: message.id, from: message.sender_role, text, isRead: message.read === true, createdAt: message.created || null };
     }),
     next
   }));

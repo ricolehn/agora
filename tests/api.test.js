@@ -1262,6 +1262,15 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     }
     assert.equal((await call('max', 'POST', `/api/mentoring/threads/${threadId}/messages`, { text: 'Hallo?' })).status, 403);
     assert.ok(mentee);
+
+    // Two at once, as the mentor chose: a third person is turned away, and members no longer find a full mentor
+    await account('mila', 'Mila');
+    await account('mats', 'Mats');
+    await ok(call('mila', 'POST', '/api/mentoring/threads', { mentorId: mentor }));
+    assert.equal((await call('mats', 'POST', '/api/mentoring/threads', { mentorId: mentor })).status, 400);
+    const finds = async (who) => (await ok(call(who, 'GET', '/api/mentoring/mentors'))).some((m) => m.user === mentor);
+    assert.equal(await finds('mats'), false);
+    assert.equal(await finds('mentor'), true, 'the mentor still finds themselves');
   });
 
   test('page addresses: deep paths get the app (with <base href>), files and the API stay what they are', async () => {
@@ -1544,6 +1553,7 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const pastToken = (await listed('owner', past)).publicToken;
     assertHas((await visitor('GET', `/api/public/events/${pastToken}`)).body, { isPast: true, registrationOpen: false });
     assert.equal((await visitor('POST', `/api/public/events/${pastToken}/register`, carla)).status, 400, 'over');
+    assert.equal((await call('mia', 'POST', `/api/events/${past}/register`, { action: 'register' })).status, 400, 'members neither');
     await ok(call('owner', 'DELETE', `/api/events/${past}`));
 
     // One place: Carla gets it, Dana waits; a second place lets Dana move up

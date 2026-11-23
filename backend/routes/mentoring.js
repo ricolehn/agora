@@ -29,13 +29,11 @@ const {
 
 const { notifyUsers, originOf } = require('../notify');
 const { translate, requestLanguage, instanceLanguage } = require('../i18n');
-const { DECRYPTION_FAILED } = require('../mentoringCrypto');
+const {
+  DEFAULT_MAX_MENTEES, isBlockedStatus, isClosedStatus, maxMenteesOf, openConversationsByMentor, isFull, mentorNameOf, readableText
+} = require('../mentoring');
 
 const router = express.Router();
-
-// A blocked chat is closed for both; the status remembers who blocked (only they can reopen it)
-const isBlockedStatus = status => typeof status === 'string' && status.startsWith('blocked_');
-const isClosedStatus = status => status === 'closed' || isBlockedStatus(status);
 
 router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, async (req, res) => {
   try {
@@ -56,22 +54,14 @@ router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, as
     const users = await listUserRecords(context.appConfig);
     const userMap = new Map(users.map(u => [u.id, u]));
 
-    let activeThreadCounts = new Map();
-    try {
-      const allThreads = await listMentoringThreadsForUser(context.appConfig, mentors.map(m => m.user));
-      for (const t of allThreads) {
-        if (t.mentor && !isClosedStatus(t.status)) {
-          activeThreadCounts.set(t.mentor, (activeThreadCounts.get(t.mentor) || 0) + 1);
-        }
-      }
-    } catch { /* ignore */ }
+    // Without the conversations (a failed read) every mentor counts as free
+    const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentors.map(m => m.user)).catch(() => []));
 
     const formatted = mentors.map(m => {
       const u = userMap.get(m.user);
-      const activeMenteesCount = activeThreadCounts.get(m.user) || 0;
-      const maxMentees = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
-      const isFull = activeMenteesCount >= maxMentees;
-      const mentorName = u ? (u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Mentor') : 'Mentor';
+      const activeMenteesCount = open.get(m.user) || 0;
+      const maxMentees = maxMenteesOf(m);
+      const mentorName = mentorNameOf(u);
 
       const item = {
         id: m.id,
@@ -87,7 +77,7 @@ router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, as
         activeMentees: activeMenteesCount,
         active_mentees: activeMenteesCount,
         activeMenteesCount,
-        isFull: isFull || m.is_accepting === false,
+        isFull: isFull(m, activeMenteesCount),
         isAccepting: m.is_accepting !== false,
         created: m.created
       };
@@ -102,21 +92,9 @@ router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, as
       return item;
     });
 
-    let result = formatted;
-    if (!isManager && req.query.all !== 'true') {
-      const currentUid = req.user.uid || req.user.id;
-      result = formatted.filter(item => {
-        const m = mentors.find(rec => rec.id === item.id);
-        if (!m) return false;
-        if (m.user === currentUid) return true;
-        const activeMenteesCount = activeThreadCounts.get(m.user) || 0;
-        const maxMentees = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
-        const isFull = activeMenteesCount >= maxMentees || m.is_accepting === false;
-        return !isFull;
-      });
-    }
-
-    res.json(result);
+    // Members see who takes someone new (and themselves); managers and ?all=true see every mentor
+    const everyone = isManager || req.query.all === 'true';
+    res.json(everyone ? formatted : formatted.filter(item => item.user === req.user.uid || !item.isFull));
   } catch (err) {
     console.error('Failed to list mentors:', err);
     res.status(500).json({ error: 'Failed to list mentors' });
@@ -133,8 +111,8 @@ router.get('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate,
       id: mentor.id,
       status: mentor.status,
       bio: mentor.bio || '',
-      maxMentees: typeof mentor.max_mentees === 'number' ? mentor.max_mentees : 3,
-      max_mentees: typeof mentor.max_mentees === 'number' ? mentor.max_mentees : 3,
+      maxMentees: maxMenteesOf(mentor),
+      max_mentees: maxMenteesOf(mentor),
       isAccepting: mentor.is_accepting !== false
     };
     res.json({
@@ -151,7 +129,7 @@ router.get('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate,
 router.post('/api/mentoring/apply', verifyToken, verifyMentoringParticipate, async (req, res) => {
   try {
     const { bio, maxMentees, max_mentees } = req.body || {};
-    const parsedMax = Number(max_mentees || maxMentees) > 0 ? Number(max_mentees || maxMentees) : 3;
+    const parsedMax = Number(max_mentees || maxMentees) > 0 ? Number(max_mentees || maxMentees) : DEFAULT_MAX_MENTEES;
 
     const existing = await getMentorByUserId(context.appConfig, req.user.uid);
     if (existing) {
@@ -237,8 +215,8 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, as
         const { unreadCount, lastMessage } = await getMentoringThreadSummary(context.appConfig, t.id, otherRole)
           .catch(() => ({ unreadCount: 0, lastMessage: null }));
 
-        const mentorUser = userMap.get(t.mentor);
-        const mentorName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || 'Mentor') : 'Mentor';
+        const mentorName = mentorNameOf(userMap.get(t.mentor));
+        const lastText = lastMessage && readableText(lastMessage.text, requestLanguage(req)).slice(0, 240);
 
         return {
           id: t.id,
@@ -251,9 +229,9 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, as
           updated: t.updated || t.created,
           unreadCount,
           unread_count: unreadCount,
-          last_message: lastMessage ? (lastMessage.text === DECRYPTION_FAILED ? translate(requestLanguage(req), lastMessage.text) : lastMessage.text).slice(0, 240) : (t.last_message || ''),
+          last_message: lastMessage ? lastText : (t.last_message || ''),
           lastMessage: lastMessage ? {
-            text: (lastMessage.text === DECRYPTION_FAILED ? translate(requestLanguage(req), lastMessage.text) : lastMessage.text).slice(0, 240),
+            text: lastText,
             created: lastMessage.created,
             senderRole: lastMessage.sender_role
           } : null,
@@ -301,10 +279,8 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, a
       return res.status(400).json({ error: 'This mentor is currently not accepting new mentees' });
     }
 
-    const allMentorThreads = await listMentoringThreadsForUser(context.appConfig, mentorRec.user);
-    const activeMenteesCount = allMentorThreads.filter(t => t.mentor === mentorRec.user && !isClosedStatus(t.status)).length;
-    const maxMentees = typeof mentorRec.max_mentees === 'number' ? mentorRec.max_mentees : 3;
-    if (activeMenteesCount >= maxMentees) {
+    const open = openConversationsByMentor(await listMentoringThreadsForUser(context.appConfig, mentorRec.user));
+    if ((open.get(mentorRec.user) || 0) >= maxMenteesOf(mentorRec)) {
       return res.status(400).json({ error: 'This mentor has reached the maximum number of mentees' });
     }
 
@@ -402,8 +378,7 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
     const users = await listUserRecords(context.appConfig);
     const userMap = new Map(users.map(u => [u.id, u]));
 
-    const mentorUser = userMap.get(thread.mentor);
-    const mentorName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || 'Mentor') : 'Mentor';
+    const mentorName = mentorNameOf(userMap.get(thread.mentor));
 
     const lang = requestLanguage(req);
     const formattedMessages = messages.map(m => {
@@ -414,8 +389,8 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
         senderRole: m.sender_role,
         sender_role: m.sender_role,
         sender: isSenderMe ? (req.user.uid || req.user.id) : 'partner',
-        sender_name: isSenderMe ? translate(requestLanguage(req), 'You') : (isMentor ? (thread.mentee_alias || translate(requestLanguage(req), 'Seeker')) : mentorName),
-        text: m.text === DECRYPTION_FAILED ? translate(lang, m.text) : m.text,
+        sender_name: isSenderMe ? translate(lang, 'You') : (isMentor ? (thread.mentee_alias || translate(lang, 'Seeker')) : mentorName),
+        text: readableText(m.text, lang),
         message: m.text,
         read: !!m.read,
         created: m.created
