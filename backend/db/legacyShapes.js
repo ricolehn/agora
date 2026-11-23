@@ -97,19 +97,6 @@ function buildExpenseRecordPayload(expense, index = 0) {
   };
 }
 
-function groupRecordsBy(records, keyField) {
-  const acc = {};
-  for (let i = 0, len = records.length; i < len; i++) {
-    const record = records[i];
-    const key = record?.[keyField];
-    if (key) {
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(record);
-    }
-  }
-  return acc;
-}
-
 function getChildRecordIdentity(record) {
   return toOptionalText(
     record?.data?.id
@@ -168,19 +155,6 @@ function buildPersonRecordPayload(personKey, value) {
   };
 }
 
-function buildRequestRecordPayload(requestKey, value) {
-  return {
-    requestKey: String(requestKey),
-    userId: value?.userId ? String(value.userId) : '',
-    personId: value?.personId ? String(value.personId) : '',
-    personName: value?.personName ? String(value.personName) : '',
-    type: value?.type ? String(value.type) : '',
-    status: value?.status ? String(value.status) : '',
-    timestamp: typeof value?.timestamp === 'number' ? value.timestamp : null,
-    data: value || null
-  };
-}
-
 /**
  * True when a write based on version [expected] would overwrite a newer state. null / undefined: no check. Records
  * from before the version field have an empty one until their next write: '' is a version too.
@@ -220,12 +194,8 @@ module.exports = {
   buildPaymentRecordPayload,
   buildStatusHistoryRecordPayload,
   buildExpenseRecordPayload,
-  groupRecordsBy,
-  getChildRecordIdentity,
-  toSortedChildValues,
   hydratePersonRecord,
   buildPersonRecordPayload,
-  buildRequestRecordPayload,
   isOutdatedVersion,
   isDeletedPerson,
   deletedPersonPayload

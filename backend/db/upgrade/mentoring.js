@@ -3,7 +3,6 @@
 // conversation's texts are encrypted with a key derived from its id - and the texts stay encrypted as they are.
 const client = require('../client');
 const codecs = require('../codecs/mentoring');
-const store = require('../stores/mentoring');
 const { linkContextOf } = require('../stores/oldTables');
 const { fieldKinds } = require('../codec');
 const { makeDiffer } = require('./differ');

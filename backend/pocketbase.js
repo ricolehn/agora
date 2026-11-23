@@ -24,24 +24,14 @@ const {
 } = require('./db/client');
 const {
   normalizeRecordListInput,
-  toOptionalText,
-  toFiniteNumber,
-  calculateTotalPaid,
-  stableSerialize,
-  buildStableChildKey,
   stripNormalizedPersonData,
   buildPaymentRecordPayload,
   buildStatusHistoryRecordPayload,
   buildExpenseRecordPayload,
-  groupRecordsBy,
-  getChildRecordIdentity,
-  toSortedChildValues,
   hydratePersonRecord,
   buildPersonRecordPayload,
-  buildRequestRecordPayload,
   isOutdatedVersion,
-  isDeletedPerson,
-  deletedPersonPayload
+  isDeletedPerson
 } = require('./db/legacyShapes');
 const { queueRecordWrite } = require('./db/writeQueue');
 
@@ -69,11 +59,6 @@ function ownerClaim(system, user) {
 }
 
 // Every collection is the server's alone: it reads and writes as superuser, and the apps only reach the data through it.
-// A member's own PocketBase token (the session token) could otherwise read and change records directly wherever
-// PocketBase's port is reachable - from another container on the same Docker network, or where port 8090 is published
-// for the admin page. Only the users collection lets a token read its own record (the server's sign-in check).
-const SERVER_ONLY_RULES = { listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null };
-
 function generatePocketBaseCredentials() {
   return {
     url: getPocketBaseBaseUrl(),

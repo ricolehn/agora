@@ -146,7 +146,7 @@ describe('fcmNotifications', () => {
     isStaleTokenError,
     sendFcmToToken
   } = require('../backend/fcmNotifications');
-  const { sendPushToUser, sendPushToAdmins } = require('../backend/pushNotifications');
+  const { sendPushToUser } = require('../backend/pushNotifications');
 
   test('loadServiceAccount prefers the file env, then raw JSON, then the data directory fallback', () => {
     const files = {
@@ -305,29 +305,6 @@ describe('fcmNotifications', () => {
       body: 'Bitte bestätigen',
       url: '/#events'
     });
-  });
-
-  test('sendPushToAdmins only reaches FCM devices of admins with finance notifications enabled', async (t) => {
-    const calls = installFetchMock(t, {
-      users: [
-        { id: 'admin-on', admin: true, notificationSettings: { finances: true } },
-        { id: 'admin-off', admin: true, notificationSettings: { finances: false } },
-        // An account of an older app version that switched everything off (no settings, emailNotifications false):
-        // the new structure keeps that switch in `original`, as the upgrade writes it
-        { id: 'owner-muted', owner: true, notificationSettings: null, original: { values: { emailNotifications: false } } },
-        { id: 'member', admin: false }
-      ],
-      fcmTokens: [
-        { id: 'rec-a', user: 'admin-on', token: 'token-admin-on' },
-        { id: 'rec-b', user: 'admin-off', token: 'token-admin-off' },
-        { id: 'rec-c', user: 'owner-muted', token: 'token-owner-muted' },
-        { id: 'rec-d', user: 'member', token: 'token-member' }
-      ]
-    });
-
-    await sendPushToAdmins(mockAppConfig, { title: 'Neue Ausgabe', body: '10 €' });
-
-    assert.deepEqual(calls.fcmSends.map(m => m.token), ['token-admin-on']);
   });
 });
 

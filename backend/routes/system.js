@@ -20,7 +20,6 @@ const {
   ownerClaim,
   updateSystemState,
   getStateValue,
-  upsertStateValue,
   updateUserRecord,
   listUserRecords,
   listPeopleRecords,

@@ -70,7 +70,12 @@ const keptId = () => ({
  */
 const original = () => json('original', 'Exactly how an older app wrote this record where the columns cannot show it (e.g. an amount typed as "50,00", a field it left out). Only for older apps; empty for almost every record. Do not edit.');
 
-/** A table of the server alone (see SERVER_ONLY_RULES in pocketbase.js). */
+/**
+ * A table of the server alone. A member's own PocketBase token (the session token) could otherwise read and change
+ * records directly wherever PocketBase's port is reachable - from another container on the same Docker network, or
+ * where port 8090 is published for the admin page. Only the users collection lets a token read its own record (the
+ * server's sign-in check).
+ */
 const SERVER_ONLY_RULES = { listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null };
 
 module.exports = {

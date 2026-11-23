@@ -5,7 +5,6 @@
 // stays in `original`, where the older apps read it. The order of service (one JSON value per event in
 // event_programs) becomes one record per item (event_program_items) and the time it was saved on the event.
 const client = require('../client');
-const codecs = require('../codecs/events');
 const store = require('../stores/events');
 const { fieldKinds } = require('../codec');
 const { makeDiffer } = require('./differ');

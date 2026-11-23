@@ -20,7 +20,6 @@ const NEW_COLLECTIONS = [
 ];
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
-const has = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
 const isEmpty = (value) => value === undefined || value === null || value === '';
 
 /** What the check noticed, by kind: record ids only (no names, no amounts) - the report can be shared. */

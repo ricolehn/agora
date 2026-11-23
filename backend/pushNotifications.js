@@ -177,37 +177,9 @@ async function sendPushToUser(appConfig, userId, payload = {}) {
   ]);
 }
 
-/**
- * Sends a push notification to multiple user IDs.
- */
-async function sendPushToUsers(appConfig, userIds, payload) {
-  if (!Array.isArray(userIds) || !userIds.length) return;
-  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
-  await Promise.all(uniqueIds.map(uid => sendPushToUser(appConfig, uid, payload)));
-}
-
-/**
- * Sends a push notification to all admins who have notifications enabled.
- */
-async function sendPushToAdmins(appConfig, payload) {
-  if (!appConfig) return;
-  try {
-    const { listUserRecords } = require('./pocketbase');
-    const allUsers = await listUserRecords(appConfig);
-    const adminUserIds = allUsers
-      .filter(u => (u.admin === true || u.owner === true || u.superAdmin === true) && (u.notificationSettings?.finances !== false && u.emailNotifications !== false))
-      .map(u => u.id);
-    await sendPushToUsers(appConfig, adminUserIds, payload);
-  } catch (err) {
-    console.warn('[WebPush] Failed to send push to admins:', err.message);
-  }
-}
-
 module.exports = {
   getOrInitVapidKeys,
   getVapidPublicKey,
   sendPushToSubscription,
-  sendPushToUser,
-  sendPushToUsers,
-  sendPushToAdmins
+  sendPushToUser
 };
