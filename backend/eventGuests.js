@@ -3,6 +3,7 @@
 // what the public page shows, the guests' e-mails and how long their details are kept.
 const crypto = require('crypto');
 const { listEvents, listEventGuests, deleteEventGuest } = require('./pocketbase');
+const { formatEventMoment } = require('./eventTexts');
 
 // A guest's details are deleted this many days after their event ended
 const GUEST_RETENTION_DAYS = 30;
@@ -89,7 +90,7 @@ const guestPagePath = (event, key) => `/events/${encodeURIComponent(slugify(even
  * 'removed' (by the organisers). Only when SMTP is set up; never throws.
  */
 async function sendGuestEmail(guest, event, kind, origin) {
-  const { context, formatEventMoment } = require('./context');
+  const { context } = require('./context');
   const { sendNotificationEmail } = require('./notify');
   const { translator, normalizeLanguage, instanceLanguage } = require('./i18n');
   const lang = normalizeLanguage(guest.language) || instanceLanguage();

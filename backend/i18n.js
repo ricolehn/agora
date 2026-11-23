@@ -65,6 +65,9 @@ function translate(lang, text, params = null) {
   return String(template).replace(/\{(\w+)\}/g, (match, key) => (params && params[key] !== undefined ? String(params[key]) : match));
 }
 
+/** The locale dates and amounts are written in for [lang] (Intl). */
+const localeOf = (lang) => (lang === 'de' ? 'de-DE' : 'en-GB');
+
 /** translate() bound to one language: tr('Hello {name}', { name }). */
 const translator = (lang) => (text, params) => translate(lang, text, params);
 
@@ -99,5 +102,6 @@ module.exports = {
   requestLanguage,
   translate,
   translator,
+  localeOf,
   translateResponses
 };

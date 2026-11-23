@@ -13,7 +13,8 @@ const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests, repairRequestAuthors } = require('./requestRetention');
 const { wantsNotification, mergeNotificationSettings } = require('./notificationPrefs');
-const { translate, translator, userLanguage, instanceLanguage, normalizeLanguage, BASE_LANGUAGE } = require('./i18n');
+const { translate, translator, userLanguage, instanceLanguage, normalizeLanguage, localeOf, BASE_LANGUAGE } = require('./i18n');
+const { formatEventMoment, formatEventShort, pushLine } = require('./eventTexts');
 const { settingsOn } = require('./feeState');
 const { toDateStr } = require('./utils/date');
 
@@ -949,7 +950,6 @@ async function verifyOptionalUser(req) {
 
 // The kinds of finance request (English source texts, translated per recipient)
 const REQUEST_TYPE_LABELS = { payment: 'Payment', expense: 'Expense', status: 'Status change', standing_order: 'Standing order' };
-const localeOf = (lang) => (lang === 'de' ? 'de-DE' : 'en-GB');
 
 function requestAmountLabel(request, lang) {
   const tr = translator(lang);
@@ -959,32 +959,6 @@ function requestAmountLabel(request, lang) {
   const text = Number.isFinite(amount) ? amount.toLocaleString(localeOf(lang), { style: 'currency', currency: 'EUR' }) : String(data.amount || '');
   return request.type === 'standing_order' ? tr('{amount} / month', { amount: text }) : text;
 }
-
-/** "Sat, 7 Nov 2026, 19:00 – 21:00" in the reader's language (no time zone conversion: event times are local). */
-function formatEventMoment(event, lang) {
-  const [y, m, d] = String(event?.date || '').split('-').map(Number);
-  const date = y && m && d
-    ? new Intl.DateTimeFormat(localeOf(lang), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)))
-    : (event?.date || translate(lang, 'No date'));
-  const start = event?.startTime || event?.time;
-  return start ? `${date}, ${start}${event.endTime ? ` – ${event.endTime}` : ''}` : date;
-}
-
-/**
- * The short form for push messages: "Sun 1 Nov, 10:00" ("So., 1. Nov., 10:00"), with the year only when it is not
- * this year's; no end time. '' without a date.
- */
-function formatEventShort(event, lang, now = new Date()) {
-  const [y, m, d] = String(event?.date || '').split('-').map(Number);
-  if (!y || !m || !d) return '';
-  const options = { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC', ...(y !== now.getUTCFullYear() ? { year: 'numeric' } : {}) };
-  const date = new Intl.DateTimeFormat(localeOf(lang), options).format(new Date(Date.UTC(y, m - 1, d)));
-  const start = event?.startTime || event?.time;
-  return start ? `${date}, ${start}` : date;
-}
-
-/** Push bodies are facts, not sentences: "Sunday service · Sun 1 Nov, 10:00 · Main hall" (empty parts left out). */
-const pushLine = (...parts) => parts.filter(Boolean).join(' · ');
 
 // What the apps store as the reason of a rejection without one: a fixed value every app shows its own text for
 const NO_REASON_GIVEN = 'Kein Grund angegeben';
@@ -1273,9 +1247,6 @@ async function authenticateCalendarFeed(req, res, next) {
 }
 
 module.exports = {
-  formatEventMoment,
-  formatEventShort,
-  pushLine,
   context,
   isStarting,
   resetToSetupMode,

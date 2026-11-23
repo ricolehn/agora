@@ -18,11 +18,9 @@ const {
   addDaysDriftFree,
   getNextRecurringDate,
   sendDutyRequestNotificationEmail,
-  authenticateCalendarFeed,
-  formatEventMoment,
-  formatEventShort,
-  pushLine
+  authenticateCalendarFeed
 } = require('../context');
+const { formatEventMoment, formatEventShort, pushLine } = require('../eventTexts');
 
 const {
   listEvents,

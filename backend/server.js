@@ -6,7 +6,6 @@ const cron = require('node-cron');
 const {
   context,
   isStarting,
-  formatEventMoment,
   loadConfig,
   logoAssetRateLimit,
   pageRateLimit,
@@ -18,6 +17,7 @@ const {
 } = require('./context');
 
 const { selectChurchLogoFilePath } = require('./logoStorage');
+const { formatEventMoment } = require('./eventTexts');
 const { resolveTrustProxySetting } = require('./trustProxy');
 const { securityHeadersMiddleware } = require('./securityHeaders');
 const { runAutomatedStandingOrders } = require('./standingOrders');

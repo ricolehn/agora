@@ -543,7 +543,7 @@ describe('dutyReminders', () => {
 });
 
 describe('push texts', () => {
-  const { formatEventShort, pushLine } = require('../backend/context');
+  const { formatEventShort, pushLine } = require('../backend/eventTexts');
   const now = new Date('2026-10-27T12:00:00Z');
 
   test('formatEventShort: weekday, day, month and start; the year only when it is not this year', () => {

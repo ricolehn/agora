@@ -2,6 +2,7 @@
 const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
 const { listUserRecords, listGroupRecords } = require('./pocketbase');
 const { wantsNotification } = require('./notificationPrefs');
+const { formatEventMoment, formatEventShort, pushLine } = require('./eventTexts');
 
 // Members of the group who want duty messages over at least one channel
 function wantsDutyNotifications(user) {
@@ -29,7 +30,6 @@ function groupDutyRecipients(users, groupId, groupName, excludeUserId) {
 function buildGroupDutyPush({ groupName, event, duty }, lang = BASE_LANGUAGE) {
   const tr = translator(lang);
   const dutyName = duty?.roleName || duty?.section || tr('Duty');
-  const { formatEventShort, pushLine } = require('./context');
   return {
     title: tr('{group} is on duty: {duty}', { group: groupName, duty: dutyName }),
     body: pushLine(event?.title || 'Event', formatEventShort(event, lang), event?.location),
@@ -51,7 +51,6 @@ async function notifyGroupDutyAssigned({ appConfig, groupId, event, duty, assign
     const recipients = groupDutyRecipients(users, group?.id || groupId, groupName, assignedBy);
     if (!recipients.length) return;
     const { notifyUsers } = require('./notify');
-    const { formatEventMoment } = require('./context');
     await notifyUsers(appConfig, users.filter(u => recipients.includes(u.id)), 'duties', {
       origin,
       push: (tr, user) => buildGroupDutyPush({ groupName, event, duty }, userLanguage(user)),

@@ -8,6 +8,7 @@
 // in UTC without TZ), else UTC. Each duty remembers per person for which start it already reminded (field
 // "reminded"), so a moved event reminds again, restarts never send twice and new group members still get one.
 const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
+const { formatEventMoment, pushLine } = require('./eventTexts');
 const { isGroupMember } = require('./dutyGroupNotifications');
 
 const REMINDER_HOURS = 3;
@@ -106,7 +107,6 @@ function communityTimeZone(users) {
 /** Push for one person, in [lang] (English source texts, see i18n.js): "Your duty at 10:00: Sound" - "Sunday service · Main hall". */
 function buildDutyReminderPush({ event, duty, time }, lang = BASE_LANGUAGE) {
   const tr = translator(lang);
-  const { pushLine } = require('./context');
   const dutyName = duty?.roleName || duty?.section || tr('Duty');
   return {
     title: time ? tr('Your duty at {time}: {duty}', { time, duty: dutyName }) : tr('Your duty today: {duty}', { duty: dutyName }),
@@ -175,7 +175,6 @@ async function sendDueDutyReminders(appConfig, now = Date.now(), deps = {}) {
         push: () => buildDutyReminderPush({ event, duty, time }, userLanguage(user)),
         email: (tr) => {
           const push = buildDutyReminderPush({ event, duty, time }, userLanguage(user));
-          const { formatEventMoment } = require('./context');
           return {
             subject: push.title,
             heading: push.title,
