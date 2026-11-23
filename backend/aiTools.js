@@ -21,6 +21,7 @@ const { canUserAccessEventDutyPlan } = require('./eventAccess');
 const { can } = require('./permissions');
 const { plainText } = require('./eventContext');
 const { toDateStr } = require('./utils/date');
+const { fullName } = require('./utils/names');
 
 
 // --- Reading the model's arguments ----------------------------------------------------------------------------------
@@ -376,7 +377,7 @@ async function eventsLookup(args, user, limits) {
   const guestsOf = byEvent(guests);
   const dutiesOf = byEvent(duties);
   const groupMap = new Map(groups.map((group) => [group.id, group.name]));
-  const nameOf = new Map(users.map((account) => [account.id, account.name || `${account.firstName || ''} ${account.lastName || ''}`.trim()]));
+  const nameOf = new Map(users.map((account) => [account.id, fullName(account)]));
 
   const entries = events
     .filter((event) => !title.length || matchesAny(fold(event.title), title))

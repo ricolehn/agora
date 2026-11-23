@@ -37,10 +37,11 @@ const {
   upsertRequestRecord,
   queueRecordWrite
 } = require('./pocketbase');
+const { fullName } = require('./utils/names');
 
 function isOwnFullNameMatch(user, name) {
   if (!user) return false;
-  const userFull = (user.name || `${user.firstName || ''} ${user.lastName || ''}`).trim().toLowerCase();
+  const userFull = fullName(user).trim().toLowerCase();
   const targetName = String(name || '').trim().toLowerCase();
   if (userFull && userFull === targetName) return true;
 
@@ -205,7 +206,7 @@ function toUserValue(record, allGroups) {
   return {
     firstName: record.firstName || '',
     lastName: record.lastName || '',
-    name: record.name || `${record.firstName || ''} ${record.lastName || ''}`.trim(),
+    name: fullName(record),
     email: isPlaceholder ? '' : (record.email || ''),
     rawEmail: record.email || '',
     admin: record.admin === true || isOwner,
@@ -246,7 +247,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     if (!isAdmin(user)) throw forbidden('Admin access required');
     // Apps without the fees over time write their fees here: other fees than those of this month count from this
     // month on (feeState.js). The web app changes the fees with the month they count from (routes/finance.js)
-    const actor = { by: String(user.uid || user.id || ''), byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() };
+    const actor = { by: String(user.uid || user.id || ''), byName: fullName(user) };
     const saved = await saveSettings(context.appConfig, value || DEFAULT_SETTINGS, actor);
     if (saved.feesChangedFrom) console.log(`[Finance] Admin ${actor.by} set the fees from ${saved.feesChangedFrom} (saved with the fee settings)`);
     return;

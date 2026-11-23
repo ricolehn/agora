@@ -18,6 +18,7 @@ const {
   invalid, forbidden, notFound, handle, bodyOf, dayInput, optionalDayInput, timeInput, wholeInput, boolInput, textInput, requiredTextInput,
   idInput, choiceInput, daysOf, searchOf, matchesSearch, sortable, page, v1Route, runV1, runSteps
 } = require('./http');
+const { fullName } = require('../utils/names');
 
 const { isoFromMillis, eventOf } = data;
 const router = express.Router();
@@ -32,7 +33,7 @@ const BASE = '/api/v2';
 async function namesOf() {
   const [users, groups] = await Promise.all([listUserRecords(context.appConfig).catch(() => []), listGroupRecords(context.appConfig).catch(() => [])]);
   return {
-    users: new Map(users.map((user) => [user.id, user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()])),
+    users: new Map(users.map((user) => [user.id, fullName(user)])),
     groups: new Map(groups.map((group) => [group.id, group.name]))
   };
 }
@@ -405,7 +406,7 @@ router.delete(`${BASE}/duties/:id/claim`, protectedActionRateLimit, verifyToken,
 // The duties the person was asked to do and has not answered yet, the soonest first
 router.get(`${BASE}/duty-requests`, verifyToken, handle(async (req, res) => {
   const [{ body }, users] = await Promise.all([runV1(myRequestsRoute, req), listUserRecords(context.appConfig)]);
-  const names = new Map(users.map((user) => [user.id, user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email]));
+  const names = new Map(users.map((user) => [user.id, fullName(user) || user.email]));
   // Whoever asked, by name - "the organisers" in the reader's language when their account is gone
   const askedBy = (id) => names.get(id) || translate(requestLanguage(req), 'The organisers');
   const items = (Array.isArray(body) ? body : []).map((request) => ({

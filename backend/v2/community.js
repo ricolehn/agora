@@ -17,6 +17,7 @@ const { isBlockedStatus, isClosedStatus, isFull, maxMenteesOf, mentorNameOf, ope
 const { NOTIFICATION_TYPES, readNotificationSettings, mergeNotificationSettings } = require('../notificationPrefs');
 const { validTimeZone } = require('../dutyReminders');
 const { isAdmin, can, abilities } = require('../permissions');
+const { fullName } = require('../utils/names');
 const usersRouter = require('../routes/users');
 const songbookRouter = require('../routes/songbook');
 const mentoringRouter = require('../routes/mentoring');
@@ -286,7 +287,6 @@ router.delete(`${BASE}/prayers/:id`, protectedActionRateLimit, verifyToken, hand
 
 // --- Mentoring ---------------------------------------------------------------------------------------------------------
 
-const nameOf = (user) => (user ? user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() : '');
 const isMentoringManager = (req) => can(req.user, 'manage_mentoring');
 
 /**
@@ -306,7 +306,7 @@ router.get(`${BASE}/mentoring/mentors`, verifyToken, handle(async (req, res) => 
     return {
       id: mentor.id,
       userId: mentor.user,
-      name: nameOf(usersById.get(mentor.user)),
+      name: fullName(usersById.get(mentor.user)),
       bio: mentor.bio || '',
       status: mentor.status || null,
       maxMentees: mentor.max_mentees || 0,

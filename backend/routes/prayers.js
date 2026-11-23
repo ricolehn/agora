@@ -8,6 +8,7 @@ const { queueRecordWrite } = require('../pocketbase');
 const { instanceSecret } = require('../instanceSecret');
 const { route } = require('./http');
 const { canModerate, buildPrayer, canCreate, ownerUpdate, isMine, isGone, publicPrayer, visiblePrayers } = require('../prayers');
+const { fullName } = require('../utils/names');
 
 const router = express.Router();
 const store = createItemStore('prayers');
@@ -15,7 +16,7 @@ const store = createItemStore('prayers');
 // A damaged secret makes prayer requests unusable, it is never silently replaced (instanceSecret.js)
 const prayerSecret = instanceSecret(dataDir, 'prayers-secret', 'Prayer requests are not available right now.');
 
-const userName = (req) => req.user?.name || `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || req.user?.email || '';
+const userName = (req) => fullName(req.user) || req.user?.email || '';
 const viewOf = (prayer, req) => publicPrayer(prayer, { uid: req.user.uid, secret: prayerSecret(), moderator: canModerate(req.user) });
 
 const notFound = (res) => res.status(404).json({ error: 'Prayer request not found' });

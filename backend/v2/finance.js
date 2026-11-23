@@ -34,6 +34,7 @@ const {
   versionInput, requestIdInput, choiceInput, daysOf, idOfQuery, sortable, searchOf, dayTexts, amountTexts, matchesSearch,
   limitOf, storedCursorOf, storedPage, page, v1Route, runV1, runSteps
 } = require('./http');
+const { fullName } = require('../utils/names');
 
 const { cents, isoFromMillis, memberOf, paymentOf, statusPeriodOf, standingOrderOf } = data;
 
@@ -120,7 +121,7 @@ router.get(`${BASE}/accounts`, verifyToken, handle(async (req, res) => {
   const memberOfUser = new Map();
   for (const { row } of members) if (row.user && !row.isDeleted && !memberOfUser.has(row.user)) memberOfUser.set(row.user, row.id);
   const words = searchOf(req);
-  const items = users.map((user) => ({ id: user.id, name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim(), email: user.email || '', memberId: memberOfUser.get(user.id) || null }))
+  const items = users.map((user) => ({ id: user.id, name: fullName(user), email: user.email || '', memberId: memberOfUser.get(user.id) || null }))
     .filter((account) => (req.query.unlinked !== '1' || !account.memberId) && matchesSearch(words, [account.name, account.email]));
   res.json(page(items, req, (account) => sortable(account.name), { ascending: true }));
 }));

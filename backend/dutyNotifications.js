@@ -7,9 +7,10 @@ const { wantsNotification } = require('./notificationPrefs');
 const { notifyUsers } = require('./notify');
 const { formatEventMoment, formatEventShort, pushLine } = require('./eventTexts');
 const { isGroupMember } = require('./eventAccess');
+const { fullName } = require('./utils/names');
 
 const dutyNameOf = (duty, tr) => duty?.roleName || duty?.section || tr('Duty');
-const personName = (user) => user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+const personName = (user) => fullName(user) || user.email;
 
 /**
  * [requesterId] asks [recipientId] to do [duty] of [event]: a push, and an e-mail unless the person asking left it

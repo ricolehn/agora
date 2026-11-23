@@ -56,6 +56,7 @@ const { toDateStr } = require('../utils/date');
 const { route } = require('./http');
 const { httpError, invalid, notFound, conflict } = require('../httpError');
 const { isAdmin, can } = require('../permissions');
+const { fullName } = require('../utils/names');
 
 
 const router = express.Router();
@@ -194,7 +195,7 @@ async function confirmedFeeResetDay(req, res) {
 
 const actingAdmin = (user) => ({
   by: String(user.uid || user.id || ''),
-  byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()
+  byName: fullName(user)
 });
 
 // The fresh starts of a fee state, as feeResetAnswer reads them
@@ -427,7 +428,7 @@ router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, route('Fai
     .filter((r) => r.status === 'pending' && r.type === reqType && Number(r.timestamp || r.requestKey) >= recent)
     .sort((a, b) => Number(b.timestamp || b.requestKey) - Number(a.timestamp || a.requestKey))[0];
   if (!filed) return res.json({ success: true, notified: 0 });
-  const personName = filed.personName || req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+  const personName = filed.personName || fullName(req.user);
   const typeOf = (tr) => tr(typeLabels[reqType]);
   // Admins, owner and treasurers (groups with manage_finances), each over the channels they chose and in their language
   const recipients = (await financeManagers(context.appConfig)).filter((u) => u.id !== req.user?.uid);

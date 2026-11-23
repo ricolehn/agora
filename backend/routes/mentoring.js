@@ -30,6 +30,7 @@ const {
   DEFAULT_MAX_MENTEES, isBlockedStatus, isClosedStatus, maxMenteesOf, openConversationsByMentor, isFull, mentorNameOf, readableText
 } = require('../mentoring');
 const { route } = require('./http');
+const { fullName } = require('../utils/names');
 
 const router = express.Router();
 
@@ -404,7 +405,7 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, route('The messa
     try {
       const allUsers = await listUserRecords(context.appConfig);
       const mentorUser = allUsers.find(u => u.id === req.user.uid);
-      senderName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
+      senderName = mentorUser ? (fullName(mentorUser) || mentorUser.email) : 'Mentor';
     } catch (uErr) {
       senderName = 'Mentor';
     }

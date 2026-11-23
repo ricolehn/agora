@@ -3,6 +3,7 @@
 // read. Pure: the routes load the records and answer.
 const { DECRYPTION_FAILED } = require('./mentoringCrypto');
 const { translate } = require('./i18n');
+const { fullName } = require('./utils/names');
 
 // What a mentor takes at once until they choose their own number
 const DEFAULT_MAX_MENTEES = 3;
@@ -29,7 +30,7 @@ function openConversationsByMentor(threads) {
 const isFull = (mentor, openCount) => openCount >= maxMenteesOf(mentor) || mentor.is_accepting === false;
 
 /** The mentor's name in the conversations ('Mentor' without an account or a name). */
-const mentorNameOf = (user) => (user && (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim())) || 'Mentor';
+const mentorNameOf = (user) => fullName(user) || 'Mentor';
 
 /** A message's text for a reader of [lang]: one that could not be decrypted says so in their language. */
 const readableText = (text, lang) => (text === DECRYPTION_FAILED ? translate(lang, text) : text);

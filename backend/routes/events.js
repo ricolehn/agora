@@ -48,6 +48,7 @@ const { eventImageName, linkedEventImageNames, deleteUnlinkedEventImages } = req
 const { seatCounts, isBookedOut, withEventSeats, loadSeats, fillFreeSeats } = require('../eventSeats');
 const { newPublicToken, sendGuestEmail, tellPromotedGuests, localToday } = require('../eventGuests');
 const { route } = require('./http');
+const { fullName } = require('../utils/names');
 
 const router = express.Router();
 // Suggested duties until an instance saves its own list (in the instance's default language)
@@ -100,7 +101,7 @@ router.get('/api/events', verifyToken, route('Events could not be loaded', async
     listUserRecords(context.appConfig),
     listGroupRecords(context.appConfig).catch(() => [])
   ]);
-  const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+  const userMap = new Map(users.map(u => [u.id, fullName(u) || u.email]));
   // The accounts' permissions come from their groups (an account record carries none itself: this set used to stay
   // empty, so createdByManager was always false)
   const groupKeys = (groups) => (Array.isArray(groups) ? groups : []).map(g => (g && typeof g === 'object' ? g.id || g.name : g));
@@ -597,7 +598,7 @@ router.get('/api/events/candidates', verifyToken, route('Candidates could not be
   const showEmail = isAdmin(req.user) || can(req.user, 'manage_events');
   const candidates = users.map(u => ({
     id: u.id,
-    name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || (showEmail ? u.email : '') || translate(requestLanguage(req), 'Member'),
+    name: fullName(u) || (showEmail ? u.email : '') || translate(requestLanguage(req), 'Member'),
     email: showEmail ? (u.email || '') : '',
     groups: Array.isArray(u.groups) ? u.groups : []
   }));
@@ -619,7 +620,7 @@ router.get('/api/events/my-requests', verifyToken, route('Duty requests could no
   const allEvents = await listEvents(context.appConfig);
   const eventMap = new Map(allEvents.map(e => [e.id, e]));
   const users = await listUserRecords(context.appConfig);
-  const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+  const userMap = new Map(users.map(u => [u.id, fullName(u) || u.email]));
 
   const result = myRequestedDuties.map(d => {
     const ev = eventMap.get(d.event) || {};
@@ -935,7 +936,7 @@ router.get('/api/events/:id/attendees', verifyToken, route('Participants could n
 
   const { memberRegs: evRegs, guests } = await loadSeats(context.appConfig, event.id);
   const users = await listUserRecords(context.appConfig);
-  const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+  const userMap = new Map(users.map(u => [u.id, fullName(u) || u.email]));
   // Everyone sees who comes; how to reach a guest (and their age) only those who may edit the event
   const canEdit = canEditEvent(req.user, event);
 
@@ -1071,7 +1072,7 @@ router.get('/api/events/calendar.ics', pageRateLimit, authenticateCalendarFeed, 
     const visibleEvents = allEvents.filter((ev) => userAssignedEventIds.has(ev.id) || seesEvent(req.user, ev));
 
     const appName = context.appConfig?.appName || 'Agora';
-    const userName = req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    const userName = fullName(req.user);
     const lang = userLanguage(req.user);
     const calendarTitle = userName ? `${appName} - ${userName}` : translate(lang, '{app} calendar', { app: appName });
     const icsContent = generateIcsCalendar(visibleEvents, calendarTitle, currentUid, allDuties, lang);

@@ -6,6 +6,7 @@ const { seesEvent, canEditEvent, canUserAccessEventDutyPlan } = require('./event
 const { createItemStore } = require('./itemStore');
 const { seatCounts } = require('./eventSeats');
 const { toDateStr } = require('./utils/date');
+const { fullName } = require('./utils/names');
 
 const programStore = createItemStore('event_programs');
 const songStore = createItemStore('songs');
@@ -44,7 +45,7 @@ async function buildEventContext(appConfig, user) {
     listUserRecords(appConfig).catch(() => []),
     listGroupRecords(appConfig).catch(() => [])
   ]);
-  const nameOf = new Map(users.map((u) => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || '']));
+  const nameOf = new Map(users.map((u) => [u.id, fullName(u)]));
   const groupMap = new Map(groups.map((g) => [g.id, g.name]));
 
   const visible = events

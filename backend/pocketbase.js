@@ -36,6 +36,7 @@ const {
 const { queueRecordWrite } = require('./db/writeQueue');
 
 const { DEFAULT_SETTINGS, DEFAULT_SYSTEM_STATE } = require('./db/defaults');
+const { fullName } = require('./utils/names');
 
 // Older versions stored this fixed code until someone made a new one: anyone could register with it
 const LEGACY_DEFAULT_INVITE_CODE = '123456';
@@ -112,7 +113,7 @@ function toPublicUser(record) {
     rawEmail: record.email || '',
     firstName: record.firstName || '',
     lastName: record.lastName || '',
-    name: record.name || `${record.firstName || ''} ${record.lastName || ''}`.trim(),
+    name: fullName(record),
     admin: record.admin === true || isOwner,
     owner: isOwner,
     superAdmin: isOwner,

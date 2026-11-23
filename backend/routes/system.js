@@ -56,6 +56,7 @@ const { isFcmEnabled, getClientConfig } = require('../fcmNotifications');
 
 const features = require('../features');
 const { route } = require('./http');
+const { fullName } = require('../utils/names');
 
 const router = express.Router();
 
@@ -251,7 +252,7 @@ router.get('/api/admin/users', verifyToken, verifyAdmin, route('Failed to list u
       rawEmail: u.email || '',
       firstName: u.firstName || '',
       lastName: u.lastName || '',
-      name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unbekannt',
+      name: fullName(u) || 'Unbekannt',
       admin: u.admin === true || isOwner,
       owner: isOwner,
       superAdmin: isOwner,
@@ -380,7 +381,7 @@ router.post('/api/admin/users', verifyToken, verifyAdmin, route('Failed to creat
   }, context.appConfig);
 
   const userUid = createdAuth.user.id || createdAuth.user.uid;
-  const fullName = `${normalizedFirst} ${normalizedLast}`.trim();
+  const name = `${normalizedFirst} ${normalizedLast}`.trim();
   const today = new Date().toISOString().slice(0, 10);
   const startDate = String(memberSince || today).trim() || today;
   const memberStatus = String(status || 'vollverdiener').trim() || 'vollverdiener';
@@ -389,7 +390,7 @@ router.post('/api/admin/users', verifyToken, verifyAdmin, route('Failed to creat
   await upsertPeopleRecord(context.appConfig, personKey, {
     id: personKey,
     uid: userUid,
-    name: fullName,
+    name,
     status: memberStatus,
     memberSince: startDate,
     originalMemberSince: startDate,
@@ -439,11 +440,11 @@ router.put('/api/admin/users/:uid/pays', verifyToken, verifyAdmin, route('Failed
       existingData.pays = true;
       await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
     } else {
-              const user = await getUserRecord(context.appConfig, uid);
-      const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
+      const user = await getUserRecord(context.appConfig, uid);
+      const name = fullName(user) || translate(instanceLanguage(), 'Member');
       const today = new Date().toISOString().slice(0, 10);
       const personKey = uid;
-      await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, today));
+      await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, name, today));
     }
   } else {
     if (linkedPerson) {
@@ -477,9 +478,9 @@ router.put('/api/admin/users/:uid/member-since', verifyToken, verifyAdmin, route
     await upsertPeopleRecord(context.appConfig, linkedPerson.personKey, existingData);
   } else {
     const user = await getUserRecord(context.appConfig, uid);
-    const fullName = user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || translate(instanceLanguage(), 'Member')) : translate(instanceLanguage(), 'Member');
+    const name = fullName(user) || translate(instanceLanguage(), 'Member');
     const personKey = uid;
-    await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, fullName, memberSince, user?.pays !== false));
+    await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, name, memberSince, user?.pays !== false));
   }
 
   broadcastDataUpdate();
