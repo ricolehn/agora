@@ -15,7 +15,7 @@ import { Icon } from '../../../../ui/Icon';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
-import { DialogActions, FEE_KEYS, Facts, ImpactTile, addMonths, type FeeKey, type Fees } from './common';
+import { ActionPair, FEE_KEYS, Facts, ImpactTile, addMonths, type FeeKey, type Fees } from './common';
 
 type FeeDraft = {
   /** New fees from a month (not an entry being edited). */
@@ -250,14 +250,14 @@ function FeeChangeForm() {
           {monthHint().text}
         </p>
       </ModalSection>
-      <DialogActions>
+      <ActionPair>
         <Button variant="secondary" onClick={() => closeModal('fee-change-modal')}>
           {t('btn_cancel', 'Cancel')}
         </Button>
         <Button id="btn-fee-change-review" busy={reviewBusy()} busyText={t('btn_loading', 'Loading...')} onClick={() => void reviewFeeChange()}>
           {t('fee_reset_review_btn', 'Review…')}
         </Button>
-      </DialogActions>
+      </ActionPair>
     </div>
   );
 }
@@ -329,14 +329,14 @@ function FeeChangeReview(props: { impact: Impact }) {
         </Show>
         <Facts facts={facts()} />
       </ModalSection>
-      <DialogActions>
+      <ActionPair>
         <Button id="btn-fee-change-back" variant="secondary" onClick={() => backToFeeChange()}>
           {mode() === 'remove' ? t('btn_cancel', 'Cancel') : t('btn_back', 'Back')}
         </Button>
         <Button id="btn-fee-change-confirm" busy={confirmBusy()} busyText={t('setup_btn_saving', 'Saving...')} onClick={() => void confirmFeeChange()}>
           {mode() === 'remove' ? t('fee_reset_remove_btn', 'Take back') : t('btn_save', 'Save')}
         </Button>
-      </DialogActions>
+      </ActionPair>
     </div>
   );
 }

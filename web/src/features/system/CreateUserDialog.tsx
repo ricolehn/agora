@@ -7,9 +7,8 @@ import { closeModal, openModal } from '../../app/modals';
 import { attempt, showToast } from '../../app/toast';
 import { getTodayStr } from '../../app/util';
 import { Button } from '../../ui/Button';
-import { Field, Input, PasswordInput, Select, createForm } from '../../ui/form';
+import { Field, Input, PasswordInput, Select, SwitchRow, createForm } from '../../ui/form';
 import { Modal } from '../../ui/Modal';
-import { SwitchRow } from './parts';
 import { flushNow } from '../../app/flush';
 
 const MODAL_ID = 'create-user-modal';

@@ -121,8 +121,8 @@ const SUB_LABEL = 'mb-1.5 block truncate text-[0.8rem] font-semibold text-text-s
 const SOFT_INPUT =
   'min-h-12 rounded-[13px] border border-border-light bg-surface-alt text-[1rem] text-text outline-none transition-[border-color,box-shadow,background-color] duration-150 ease-[ease] focus:border-primary focus:bg-surface focus:shadow-[0_0_0_4px_rgba(var(--brand-rgb),0.16)] dark:bg-[rgba(28,25,23,0.55)]';
 
-/** A section head: the tinted symbol and the label. */
-function SectionHead(props: { icon: JSX.Element; tint: string; for?: string; class?: string; children: JSX.Element }) {
+/** The head of a group of fields: the tinted symbol and the label (of its field, [for]). */
+function FieldHead(props: { icon: JSX.Element; tint: string; for?: string; class?: string; children: JSX.Element }) {
   return (
     <label for={props.for} class={['mb-3 flex items-center gap-2.5 text-[0.98rem] font-bold text-text', props.class]}>
       <span class={['flex size-[34px] shrink-0 items-center justify-center rounded-[11px]', props.tint]}>{props.icon}</span>
@@ -438,9 +438,9 @@ function DescriptionCard() {
   onSettled(autoResize);
   return (
     <div class={CARD}>
-      <SectionHead icon={<Icon name="text" size={16} />} tint="bg-[rgba(245,158,11,0.13)] text-[#d97706] dark:text-[#fbbf24]" for="detail-edit-description">
+      <FieldHead icon={<Icon name="text" size={16} />} tint="bg-[rgba(245,158,11,0.13)] text-[#d97706] dark:text-[#fbbf24]" for="detail-edit-description">
         {t('events_input_desc', 'Description')}
-      </SectionHead>
+      </FieldHead>
       <textarea
         ref={area}
         id="detail-edit-description"
@@ -468,9 +468,9 @@ function GroupsCard() {
   return (
     <div class={CARD}>
       <div class="flex flex-col">
-        <SectionHead icon={<Icon name="users" size={16} />} tint="bg-[rgba(99,102,241,0.12)] text-[#6366f1] dark:text-[#a5b4fc]" class="!mb-1.5">
+        <FieldHead icon={<Icon name="users" size={16} />} tint="bg-[rgba(99,102,241,0.12)] text-[#6366f1] dark:text-[#a5b4fc]" class="!mb-1.5">
           {t('events_target_groups', 'Target groups')}
-        </SectionHead>
+        </FieldHead>
         <span class="mb-3 text-[0.84rem] leading-[1.45] text-text-secondary">
           {t('events_target_groups_desc', 'Only the selected groups see this entry. Without a selection, all members see it.')}
         </span>
@@ -629,9 +629,9 @@ export function DetailEditor() {
           <TypeCard />
         </Show>
         <div class={CARD}>
-          <SectionHead icon={<Icon name="pen" size={16} />} tint="bg-brand/12 text-brand-deep dark:text-brand" for="detail-edit-title">
+          <FieldHead icon={<Icon name="pen" size={16} />} tint="bg-brand/12 text-brand-deep dark:text-brand" for="detail-edit-title">
             {t('events_field_title', 'Title')} <span class="text-danger">*</span>
-          </SectionHead>
+          </FieldHead>
           <input
             ref={titleInput}
             id="detail-edit-title"

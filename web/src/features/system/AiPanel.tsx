@@ -2,10 +2,10 @@
 import { For, Show } from 'solid-js';
 import { t } from '../../app/i18n';
 import { Button } from '../../ui/Button';
-import { Field, Input, PasswordInput, Select } from '../../ui/form';
+import { Field, Input, PasswordInput, Select, SwitchRow } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import { aiForm, aiModels, countAiEdit, providersSupported, saveAiConfig, selectAiProvider, serverNote, setAiField, type AiEffort } from './ai';
-import { Help, SettingsGroup, SUPER_ADMIN_BTN, SwitchRow } from './parts';
+import { Help, SettingsGroup, SUPER_ADMIN_BTN } from './parts';
 
 // What each effort level costs: only the explanation of the chosen one shows
 const EFFORT_HINTS: Record<AiEffort, [string, string]> = {

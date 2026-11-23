@@ -127,6 +127,6 @@ export function Facts(props: { facts: string[] }) {
 }
 
 /** Cancel and the action of a dialog side by side (.fee-reset-actions). */
-export function DialogActions(props: { children?: JSX.Element }) {
+export function ActionPair(props: { children?: JSX.Element }) {
   return <div class="flex gap-2.5 [&>*]:flex-1">{props.children}</div>;
 }

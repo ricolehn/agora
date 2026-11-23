@@ -11,11 +11,11 @@ import { fullName, getTodayStr } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
-import { Field, Input, Select } from '../../../../ui/form';
+import { Field, Input, Select, SwitchRow } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
 import { requestForm, startRequestForm, type RequestKind } from '../state';
 import { FeeResetNote, feeResetPaymentHint } from '../../common';
-import { AmountInput, PendingFileList, ReceiptDropzone, SwitchRow, createPendingFiles, newId } from '../shared';
+import { AmountInput, PendingFileList, ReceiptDropzone, createPendingFiles, newId } from '../shared';
 import { StatusDayNote, StatusOptions } from './StatusDialog';
 
 const HEADS: Record<RequestKind, { tint: string; emoji: string; title: () => string; subtitle: () => string }> = {
@@ -149,7 +149,7 @@ function PaymentRequestForm() {
           </Field>
         </ModalSection>
         <ModalSection icon="⚙️" title={t('modal_section_payment_type', 'Payment type & date')}>
-          <SwitchRow id="req-is-standing-order" checked={standingOrder()} onChange={on => setStandingOrder(on)} label={t('modal_standing_order', 'Standing Order')} />
+          <SwitchRow small id="req-is-standing-order" checked={standingOrder()} onChange={on => setStandingOrder(on)} label={t('modal_standing_order', 'Standing Order')} />
           <Field label={<span id="req-date-label">{dateLabel()}</span>} for="req-date">
             <RequestDate value={date()} onInput={setDate} />
             <FeeResetNote id="req-reset-hint" text={resetHint()} />

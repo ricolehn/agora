@@ -8,11 +8,11 @@ import { showToast } from '../../../../app/toast';
 import { getTodayStr, safeList } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
-import { Field, Input } from '../../../../ui/form';
+import { Field, Input, SwitchRow } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
 import { paymentPersonId } from '../state';
 import { FeeResetNote, feeResetPaymentHint } from '../../common';
-import { AmountInput, SwitchRow, createRequired, newId } from '../shared';
+import { AmountInput, createRequired, newId } from '../shared';
 
 export function PaymentDialog() {
   const [amount, setAmount] = createSignal('');
@@ -76,6 +76,7 @@ export function PaymentDialog() {
       </ModalSection>
       <ModalSection icon="⚙️" title={t('modal_section_payment_type', 'Payment type & date')}>
         <SwitchRow
+          small
           id="payment-is-standing-order"
           checked={standingOrder()}
           onChange={on => setStandingOrder(on)}

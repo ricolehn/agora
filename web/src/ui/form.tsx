@@ -152,6 +152,21 @@ export function PasswordInput(props: Omit<InputProps, 'type'>) {
 }
 
 /** An on/off switch (.switch with its .slider); size "sm" is the one in dialog rows (.modal-switch-row). */
+/**
+ * A switch with its label beside it (a .form-group row); [small]: the small switch and label of the finance dialogs.
+ * The space below it yields to `class` (15px; none when small).
+ */
+export function SwitchRow(props: { id: string; checked: boolean; onChange: (checked: boolean) => void; label: JSX.Element; small?: boolean; class?: string }) {
+  return (
+    <div class={['flex items-center', props.small ? 'gap-2 py-0.5' : 'gap-2.5', props.class ?? (props.small ? '' : 'mb-[15px]')]}>
+      <Switch id={props.id} size={props.small ? 'sm' : undefined} checked={props.checked} onChange={checked => props.onChange(checked)} />
+      <label for={props.id} class={['m-0 cursor-pointer font-semibold', { 'text-[0.85rem] text-text': props.small }]}>
+        {props.label}
+      </label>
+    </div>
+  );
+}
+
 export function Switch(props: {
   checked: boolean;
   onChange: (checked: boolean) => void;

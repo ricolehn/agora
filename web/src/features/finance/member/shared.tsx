@@ -1,12 +1,12 @@
-// Pieces the finance dialogs share: the amount field with the euro sign, the switch row, the receipt drop zone with
-// the chosen files, required fields and the note below a field (what the treasury's views show too - the texts of a
+// Pieces the finance dialogs share: the amount field with the euro sign, the receipt drop zone with the chosen files,
+// required fields and the note below a field (what the treasury's views show too - the texts of a
 // request, the amber note of a fresh start - is in ../common.tsx).
 import type { JSX } from '@solidjs/web';
 import { For, Show, createSignal, onSettled } from 'solid-js';
 import { t } from '../../../app/i18n';
 import { Button } from '../../../ui/Button';
 import { Icon } from '../../../ui/Icon';
-import { Input, Switch } from '../../../ui/form';
+import { Input } from '../../../ui/form';
 
 /** The amount field with the euro sign in front (.hero-amount-wrapper): typed as text, read with parseAmount. */
 export function AmountInput(props: { id: string; value: string; onInput: (value: string) => void; invalid?: boolean }) {
@@ -24,18 +24,6 @@ export function AmountInput(props: { id: string; value: string; onInput: (value:
         class="!h-[38px] !bg-surface !pl-7 !text-[1.15rem] font-bold tracking-[-0.01em]"
         onInput={e => props.onInput(e.currentTarget.value)}
       />
-    </div>
-  );
-}
-
-/** A switch with its label beside it (.modal-switch-row). */
-export function SwitchRow(props: { id: string; checked: boolean; onChange: (checked: boolean) => void; label: string }) {
-  return (
-    <div class="flex items-center gap-2 py-0.5">
-      <Switch id={props.id} size="sm" checked={props.checked} onChange={props.onChange} />
-      <label for={props.id} class="m-0 cursor-pointer text-[0.85rem] font-semibold text-text">
-        {props.label}
-      </label>
     </div>
   );
 }

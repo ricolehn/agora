@@ -2,7 +2,6 @@
 // label, a check item of the dialogs' lists and the reddish "system" button.
 import type { JSX } from '@solidjs/web';
 import { Show } from 'solid-js';
-import { Switch } from '../../ui/form';
 
 /** The quiet red button of the system settings (.btn.super-admin-btn): the colours of a Button with variant "none". */
 export const SUPER_ADMIN_BTN = 'border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.1)] text-danger !font-bold';
@@ -23,24 +22,6 @@ export function SettingsGroup(props: { title: JSX.Element; desc?: JSX.Element; c
 /** The grey line under a field that explains it. */
 export function Help(props: { children: JSX.Element; class?: string }) {
   return <div class={['text-[0.8rem] text-text-secondary', props.class ?? 'mt-1.5']}>{props.children}</div>;
-}
-
-/** A switch with its label beside it (a .form-group row). */
-export function SwitchRow(props: {
-  id: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  label: JSX.Element;
-  class?: string;
-}) {
-  return (
-    <div class={['flex items-center gap-2.5', props.class ?? 'mb-[15px]']}>
-      <Switch id={props.id} checked={props.checked} onChange={checked => props.onChange(checked)} />
-      <label for={props.id} class="m-0 cursor-pointer font-semibold">
-        {props.label}
-      </label>
-    </div>
-  );
 }
 
 /** The scrolling list of the dialogs' check items (permissions of a group, groups of an account). */

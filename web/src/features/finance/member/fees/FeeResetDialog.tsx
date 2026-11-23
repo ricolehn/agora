@@ -14,7 +14,7 @@ import { Icon } from '../../../../ui/Icon';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { typedDayMatches } from '../../../../lib/finance.js';
-import { DialogActions, Facts, ImpactTile, type ImpactSide } from './common';
+import { ActionPair, Facts, ImpactTile, type ImpactSide } from './common';
 
 type ResetImpact = { date: string; firstMonth: string; inEffect?: boolean; behind: ImpactSide; ahead: ImpactSide };
 
@@ -176,7 +176,7 @@ export function FeeResetDialog() {
           />
         </Field>
       </ModalSection>
-      <DialogActions>
+      <ActionPair>
         <Button variant="secondary" onClick={() => closeModal('fee-reset-modal')}>
           {t('btn_cancel', 'Cancel')}
         </Button>
@@ -192,7 +192,7 @@ export function FeeResetDialog() {
         >
           {shown()?.remove ? t('fee_reset_remove_btn', 'Take back') : t('fee_reset_set_btn', 'Start afresh')}
         </Button>
-      </DialogActions>
+      </ActionPair>
     </Modal>
   );
 }

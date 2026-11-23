@@ -10,7 +10,7 @@ import { DetailView } from './DetailView';
 import { EVENT_DIALOG_ID, currentDetailEvent, detailEditing, detailShown } from './store';
 
 /** The round back button (it stays in place while the page scrolls); dialogId: the page it closes (the event page). */
-export function BackButton(props: { dialogId?: string }) {
+export function FloatingBackButton(props: { dialogId?: string }) {
   return (
     <button
       type="button"
@@ -37,7 +37,7 @@ export function EventDialog() {
   });
   return (
     <Modal id={EVENT_DIALOG_ID} page class="overflow-hidden" labelledBy={detailEditing() ? 'detail-edit-heading' : 'detail-modal-title'}>
-      <BackButton />
+      <FloatingBackButton />
       <div
         ref={el => (body = el)}
         class="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-5 pb-[calc(32px+env(safe-area-inset-bottom,0px))] pt-[calc(12px+env(safe-area-inset-top,0px))] md:pt-7"

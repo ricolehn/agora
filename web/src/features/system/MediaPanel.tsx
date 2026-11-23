@@ -2,9 +2,9 @@
 import { For, Show } from 'solid-js';
 import { t } from '../../app/i18n';
 import { Button } from '../../ui/Button';
-import { Field, Input, PasswordInput } from '../../ui/form';
+import { Field, Input, PasswordInput, SwitchRow } from '../../ui/form';
 import { mediaForm, mediaSaving, mediaTestResult, mediaTesting, saveMediaConfig, setMediaField, testMediaConfig, type MediaTestResult } from './media';
-import { Help, SettingsGroup, SUPER_ADMIN_BTN, SwitchRow } from './parts';
+import { Help, SettingsGroup, SUPER_ADMIN_BTN } from './parts';
 
 const MEDIA_HELP = 'mt-1 leading-[1.45]';
 

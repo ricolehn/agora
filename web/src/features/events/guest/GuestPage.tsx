@@ -7,7 +7,7 @@ import { t } from '../../../app/i18n';
 import { Icon } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
 import { CoverHero, Description, InfoCells, SphereBand, TopBadges } from '../DetailView';
-import { BackButton } from '../EventDialog';
+import { FloatingBackButton } from '../EventDialog';
 import { openGuestShare } from '../share/share';
 import { eventImage } from '../store';
 import { GUEST_LINK, GuestRegistration } from './GuestRegistration';
@@ -115,7 +115,7 @@ export function GuestPage() {
         )}
       </Show>
       <Modal id={GUEST_MODAL} page class="overflow-hidden" labelledBy="guest-event-title" onClose={leaveGuestView}>
-        <BackButton dialogId={GUEST_MODAL} />
+        <FloatingBackButton dialogId={GUEST_MODAL} />
         <Show when={guestView()}>{view => <GuestEvent view={view()} />}</Show>
       </Modal>
     </>

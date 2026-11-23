@@ -2,8 +2,8 @@
 // licence, the logo and the SMTP server.
 import { t } from '../../app/i18n';
 import { Button } from '../../ui/Button';
-import { Field, Input, Select } from '../../ui/form';
-import { Help, SettingsGroup, SUPER_ADMIN_BTN, SwitchRow } from './parts';
+import { Field, Input, Select, SwitchRow } from '../../ui/form';
+import { Help, SettingsGroup, SUPER_ADMIN_BTN } from './parts';
 import { configForm, saveAdvancedSystemConfig, setConfigField, uploadChurchLogo } from './systemConfig';
 
 // Two fields side by side (stacked on phones); the old layout puts each label beside its field
