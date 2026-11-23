@@ -20,6 +20,7 @@ import { paidUntilText, standingOrderCovers } from '../common';
 import { Timeline } from '../Timeline';
 import { currentStatus, feeResetIsShown, isPayingPerson, personPaidUntil, statusMeta } from './people';
 import { openPersonId, peopleSearch, peopleTerm, setOpenPersonId, setPeopleSearch } from './state';
+import { onActivateKey } from '../../../ui/keys';
 
 /** A translation with one value set in bold ("<strong>€50.00</strong> a month"). */
 function WithStrong(props: { text: string; param: string; value: JSX.Element; class?: string }) {
@@ -239,12 +240,7 @@ function PersonCard(props: { person: Person }) {
         tabindex="0"
         aria-expanded={open() ? 'true' : 'false'}
         onClick={toggle}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggle();
-          }
-        }}
+        onKeyDown={e => onActivateKey(e, () => toggle())}
       >
         <div class="flex w-full items-center justify-start gap-3">
           <Avatar uid={props.person.uid || props.person.data?.uid} name={props.person.name} size={42} initialsClass="text-[0.82rem]" />

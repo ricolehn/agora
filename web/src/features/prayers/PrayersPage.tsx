@@ -7,6 +7,7 @@ import { Icon } from '../../ui/Icon';
 import { AppHead, FilterPills, ListEmpty, ListLoading } from '../polls/ui';
 import { openPrayerOptions } from './PrayerDialogs';
 import { type Prayer, type PrayerFilter, loadPrayers, prayerDate, prayerFilter, prayerName, prayers, prayersError, prayersLoaded, setPrayerFilter, timeAgo } from './store';
+import { onActivateKey } from '../../ui/keys';
 
 const FILTERS: Array<{ value: PrayerFilter; label: () => string }> = [
   { value: 'all', label: () => t('prayers_filter_all', 'All') },
@@ -81,13 +82,7 @@ function PrayerRow(props: { prayer: Prayer }) {
       role={editable() ? 'button' : undefined}
       tabindex={editable() ? '0' : undefined}
       onClick={open}
-      onKeyDown={e => {
-        // Only the row's own keys: Enter or Space on its "Read more" opened the options instead of the text
-        if (e.target === e.currentTarget && editable() && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault();
-          open();
-        }
-      }}
+      onKeyDown={e => onActivateKey(e, () => editable() && open())}
     >
       <Show
         when={props.prayer.author}

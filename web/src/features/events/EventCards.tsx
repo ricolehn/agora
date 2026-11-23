@@ -10,14 +10,7 @@ import {
 } from './format';
 import { eventImage, isEventPast, openEventDetailModal, type AppEvent } from './store';
 import { getTodayStr } from '../../app/util';
-
-/** Enter and space open a card like a tap (the card is a role="button" div: it holds other text). */
-function openOnKey(e: KeyboardEvent, id: string) {
-  if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-    e.preventDefault();
-    void openEventDetailModal(id);
-  }
-}
+import { onActivateKey } from '../../ui/keys';
 
 const CATEGORY_LABEL: Record<EventCategory, () => string> = {
   pinned: () => t('events_major_event', 'Major event'),
@@ -124,7 +117,7 @@ export function EventCard(props: { event: AppEvent; day?: string; jumping?: bool
       role="button"
       tabindex="0"
       onClick={() => void openEventDetailModal(props.event.id)}
-      onKeyDown={e => openOnKey(e, props.event.id)}
+      onKeyDown={e => onActivateKey(e, () => void openEventDetailModal(props.event.id))}
     >
       <CalendarLeaf day={day()} category={category()} class="rounded-[11px] border border-hairline shadow-card" />
       <div class="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -220,7 +213,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
       role="button"
       tabindex="0"
       onClick={() => void openEventDetailModal(ev().id)}
-      onKeyDown={e => openOnKey(e, ev().id)}
+      onKeyDown={e => onActivateKey(e, () => void openEventDetailModal(ev().id))}
     >
       <div class="relative isolate flex aspect-video items-center justify-center overflow-hidden rounded-[18px] bg-surface-alt after:pointer-events-none after:absolute after:inset-0 after:z-[1] after:bg-[linear-gradient(180deg,rgba(28,25,23,0.28)_0%,rgba(28,25,23,0)_34%,rgba(28,25,23,0)_70%,rgba(28,25,23,0.18)_100%)] after:content-['']">
         <Show

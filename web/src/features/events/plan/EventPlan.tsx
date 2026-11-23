@@ -8,6 +8,7 @@ import { Icon } from '../../../ui/Icon';
 import { appEvents, type AppEvent } from '../store';
 import { openPlanEntry } from './entry';
 import { PlanAnswer, PlanNames } from './PlanPeople';
+import { onActivateKey } from '../../../ui/keys';
 import {
   clearShownPlan, filledDuties, itemTask, loadProgram, openProgramSong, planHeader, programItems, programItemTitle, programMinutes,
   programSong, programTimes, roleOf, sameName, setShownPlan, type Duty, type ProgramItem
@@ -70,12 +71,7 @@ function PlanRow(props: {
   const songKey = () => props.row.item?.songKey || song()?.key || '';
   const title = () => (props.row.item ? programItemTitle(props.row.item) : props.row.role);
   const inOrder = () => props.row.time !== undefined;
-  const onKeyDown: JSX.EventHandler<HTMLDivElement, KeyboardEvent> = e => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      e.currentTarget.click();
-    }
-  };
+  const onKeyDown = (e: KeyboardEvent & { currentTarget: HTMLElement }) => onActivateKey(e, () => e.currentTarget.click());
   return (
     <div
       class={[

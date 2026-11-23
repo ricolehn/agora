@@ -5,6 +5,7 @@ import { t } from '../../app/i18n';
 import { Button } from '../../ui/Button';
 import { formatEventDate } from './format';
 import { openEventDetailModal, respondToDutyRequest } from './store';
+import { onActivateKey } from '../../ui/keys';
 
 function DutyRequestCard(props: { request: any; onHome?: boolean }) {
   const req = () => props.request;
@@ -24,12 +25,7 @@ function DutyRequestCard(props: { request: any; onHome?: boolean }) {
         tabindex={props.onHome ? '0' : undefined}
         title={props.onHome ? t('duty_requests_show_details', 'Show appointment details') : undefined}
         onClick={() => props.onHome && open()}
-        onKeyDown={e => {
-          if (props.onHome && (e.key === 'Enter' || e.key === ' ')) {
-            e.preventDefault();
-            open();
-          }
-        }}
+        onKeyDown={e => onActivateKey(e, () => props.onHome && open())}
       >
         <div class="text-[0.88rem] font-bold text-text">📅 {req().eventTitle || t('detail_groups_event', 'Event')}</div>
         <div class="text-[0.78rem] text-text-secondary">

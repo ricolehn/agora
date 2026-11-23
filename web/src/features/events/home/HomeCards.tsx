@@ -11,6 +11,7 @@ import { DutyRequestsBanner } from '../DutyRequests';
 import { EventCard } from '../EventCards';
 import { EventsNotLoaded } from '../EventsNotLoaded';
 import { eventCategory, eventStatusInfo, formatEventDateSpanShort, isMultiDay, type EventCategory } from '../format';
+import { onActivateKey } from '../../../ui/keys';
 import {
   appEvents, eventImage, eventsLoaded, isEventPast, isMyDuty, myDutyRequests, openEventDetailModal, switchEventsSubTab, type AppEvent
 } from '../store';
@@ -141,12 +142,7 @@ function NextCard(props: { ev: AppEvent; day: string }) {
       role="button"
       tabindex="0"
       onClick={open}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          open();
-        }
-      }}
+      onKeyDown={e => onActivateKey(e, () => open())}
     >
       <div class="relative aspect-video overflow-hidden rounded-[17px] bg-surface-alt min-[1200px]:max-h-[200px]">
         <Show

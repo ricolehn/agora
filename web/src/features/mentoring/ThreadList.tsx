@@ -6,6 +6,7 @@ import { Button } from '../../ui/Button';
 import { CountBadge } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
 import { SearchIcon } from './icons';
+import { onActivateKey } from '../../ui/keys';
 import {
   activeThreadId, inChat, isThreadUnread, openMentoringThread, setThreadSearch, switchMentoringSubTab, threadMatches, threadRow,
   threadSearch, threads, threadsLoaded, type Thread
@@ -85,12 +86,7 @@ function ThreadItem(props: { thread: Thread }) {
       tabindex="0"
       aria-current={active() ? 'true' : undefined}
       onClick={() => void openMentoringThread(props.thread.id)}
-      onKeyDown={e => {
-        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-          e.preventDefault();
-          void openMentoringThread(props.thread.id);
-        }
-      }}
+      onKeyDown={e => onActivateKey(e, () => void openMentoringThread(props.thread.id))}
     >
       <div class="relative shrink-0">
         <Show when={row().isMentor} fallback={<Avatar uid={props.thread.mentor} name={row().name} size={46} initialsClass="text-[0.88rem]" />}>

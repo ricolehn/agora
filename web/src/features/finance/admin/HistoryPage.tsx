@@ -16,6 +16,7 @@ import {
   type Transaction
 } from './state';
 import { showTransactionDetails } from './TransactionDetailsDialog';
+import { onActivateKey } from '../../../ui/keys';
 
 const TX_ICONS: Record<string, IconName> = { pay: 'person', don: 'heart', exp: 'dollar' };
 const TX_TINTS: Record<string, string> = {
@@ -84,12 +85,7 @@ function TransactionRow(props: { tx: Transaction }) {
       role="button"
       tabindex="0"
       onClick={open}
-      onKeyDown={e => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        // Space acts as on a button: it opens the booking, it does not also scroll the page
-        e.preventDefault();
-        open();
-      }}
+      onKeyDown={e => onActivateKey(e, () => open())}
     >
       <div class="flex min-w-0 flex-1 items-center">
         <TransactionIcon tx={props.tx} />
