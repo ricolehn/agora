@@ -218,7 +218,7 @@ export async function removePlanPerson(dutyId: string) {
     const res = await api(`/events/duties/${dutyId}`, 'DELETE');
     if (!res.ok) throw new Error(t('duty_remove_error', 'Failed to remove'));
     // The task stays (empty) when its last person goes
-    if ((ev.duties || []).filter((d: Duty) => sameName(d.roleName, duty.roleName)).length === 1) await api(`/events/${ev.id}/duties`, 'POST', { roleName: duty.roleName });
+    if ((ev.duties || []).filter((d: Duty) => sameName(d.roleName, duty.roleName)).length === 1) await apiJson(`/events/${ev.id}/duties`, 'POST', { roleName: duty.roleName });
     // Fresh data in the list behind the dialog; the dialog stays open
     await loadEventsData();
   } catch (err: any) {
@@ -361,7 +361,7 @@ export async function deletePlanEntry() {
   if (!confirmAction(t('plan_delete_confirm', 'Delete “{name}” with everyone asked for it?', { name: entryName }))) return;
   try {
     const duties = (ev.duties || []).filter((d: Duty) => current.role && sameName(d.roleName, current.role));
-    await Promise.all(duties.map((d: Duty) => api(`/events/duties/${d.id}`, 'DELETE')));
+    await Promise.all(duties.map((d: Duty) => apiJson(`/events/duties/${d.id}`, 'DELETE')));
     const next = items.filter(i => i.id !== item?.id && !(current.role && itemTask(i, [current.role])));
     if (next.length !== items.length) await saveProgram(ev, next);
     closeModal(PLAN_ENTRY_MODAL, false, true);
