@@ -2,8 +2,8 @@
 // "Report reply". reply.ts keeps its state and moves it; this draws it and hands it the elements it measures.
 import type { JSX } from '@solidjs/web';
 import { For, Show, createEffect, createSignal, onSettled } from 'solid-js';
-import { apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
+import { sendReport } from '../../app/reports';
 import { showToast } from '../../app/toast';
 import { Icon } from '../../ui/Icon';
 import { renderMarkdown } from '../../ui/markdown';
@@ -156,11 +156,9 @@ function ThinkingLine(props: { reply: AiReply }) {
 function ReportButton(props: { answer: string; prompt: string }) {
   const [sent, setSent] = createSignal(false);
   const report = async () => {
-    const reason = window.prompt(t('ai_report_reason', 'What is wrong with this reply? (optional)'), '');
-    if (reason === null) return;
     try {
-      await apiJson('/reports', 'POST', { type: 'ai', content: props.answer, prompt: props.prompt, reason }, t('report_failed', 'Report failed.'));
-      setSent(true);
+      const question = t('ai_report_reason', 'What is wrong with this reply? (optional)');
+      if (await sendReport(question, { type: 'ai', content: props.answer, prompt: props.prompt })) setSent(true);
     } catch (err: any) {
       showToast(err.message, 'error');
     }

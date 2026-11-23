@@ -9,6 +9,7 @@ import { shortDayText, t, timeText } from '../../app/i18n';
 import { closeModal, openModal } from '../../app/modals';
 import { setNavBadge } from '../../app/nav';
 import { whenPicturesReady } from '../../app/pictures';
+import { sendReport } from '../../app/reports';
 import { HOME_TAB, activeTab, forgetTabHistory, switchTab, syncUrl } from '../../app/router';
 import { canManageMentoring, canUseMentoring, currentUid, isCurrentUser } from '../../app/session';
 import { confirmAction, showToast } from '../../app/toast';
@@ -521,8 +522,6 @@ async function setThreadStatus(thread: Thread, status: 'active' | 'closed' | 'bl
 /** Reports the conversation to the admins with the partner's recent messages. */
 export const reportCurrentThread = () =>
   withActiveThread(async thread => {
-    const reason = window.prompt(t('mentoring_report_reason', 'Why are you reporting this conversation? The latest messages of the other person are sent to the administrators.'), '');
-    if (reason === null) return;
     const partnerRole = thread.myRole === 'mentor' ? 'mentee' : 'mentor';
     const content =
       activeMessages
@@ -530,8 +529,8 @@ export const reportCurrentThread = () =>
         .slice(-10)
         .map(m => m.text)
         .join('\n---\n') || t('mentoring_report_no_messages', '(no messages)');
-    await apiJson('/reports', 'POST', { type: 'chat', threadId: thread.id, content, reason }, t('report_failed', 'Report failed.'));
-    showToast(t('report_sent', 'Reported – thank you!'), 'info');
+    const question = t('mentoring_report_reason', 'Why are you reporting this conversation? The latest messages of the other person are sent to the administrators.');
+    if (await sendReport(question, { type: 'chat', threadId: thread.id, content })) showToast(t('report_sent', 'Reported – thank you!'), 'info');
   });
 
 async function blockThread(thread: Thread) {
