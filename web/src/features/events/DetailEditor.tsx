@@ -11,6 +11,7 @@ import { showToast } from '../../app/toast';
 import { toFormData } from '../../app/util';
 import { Icon } from '../../ui/Icon';
 import { openImageCrop } from '../../ui/crop';
+import { Pill, Pills } from '../../ui/PillTabs';
 import { CoverHero } from './DetailView';
 import {
   EVENT_DIALOG_ID, cancelDetailEditMode, chosenGroupNames, currentDetailEvent, draft, groupChosen, loadEventsData,
@@ -228,26 +229,26 @@ function CoverEdit(props: { onPick: () => void }) {
 function TypeCard() {
   const isTermin = () => draft.eventType === 'termin';
   const option = (type: EventKind, icon: JSX.Element, iconTint: [string, string], label: () => string) => (
-    <button
-      type="button"
+    <Pill
+      chosen={draft.eventType === type}
       class={[
         'flex min-h-11 w-full items-center rounded-[11px] px-3 py-1.5 text-left transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-200 ease-[ease]',
         draft.eventType === type ? 'bg-surface shadow-[0_1px_3px_rgba(28,25,23,0.12),0_4px_12px_-6px_rgba(28,25,23,0.25)] dark:bg-[#44403c]' : 'bg-transparent'
       ]}
-      onClick={() => setDraftType(type)}
+      onSelect={() => setDraftType(type)}
     >
       <span class="flex w-full items-center justify-center gap-2">
         <span class={['inline-flex size-[22px] shrink-0 items-center justify-center rounded-md transition-[background-color,color] duration-200', draft.eventType === type ? iconTint[1] : iconTint[0]]}>{icon}</span>
         <span class={['flex-none text-[0.95rem] font-bold', draft.eventType === type ? 'text-text' : 'text-text-secondary']}>{label()}</span>
       </span>
-    </button>
+    </Pill>
   );
   return (
     <div class={CARD}>
-      <div class={['grid grid-cols-2 gap-1 rounded-[14px] border border-border-light p-1', FIELD_BG]}>
+      <Pills kind="radio" class={['grid grid-cols-2 gap-1 rounded-[14px] border border-border-light p-1', FIELD_BG]}>
         {option('termin', <Icon name="calendar" size={12} />, ['bg-brand/12 text-brand', 'bg-brand text-white'], () => t('detail_groups_termin', 'Appointment'))}
         {option('event', <Icon name="userCheck" size={12} />, ['bg-[rgba(16,185,129,0.12)] text-[#10b981]', 'bg-[#10b981] text-white'], () => t('detail_groups_event', 'Event'))}
-      </div>
+      </Pills>
       <div class="mt-1.5 flex items-center gap-1.5 rounded-md px-1 text-[0.84rem] font-medium leading-[1.45] text-text-secondary">
         <Icon name="info" size={12} class="shrink-0 text-primary" />
         <span>

@@ -9,6 +9,7 @@ import { Button } from './Button';
 import { EmptyState, Spinner } from './feedback';
 import { Icon, type IconName } from './Icon';
 import { Modal } from './Modal';
+import { Pill, Pills } from './PillTabs';
 
 /** The round "back" button of a sub-page or a full-screen page (.hub-back-btn, .poll-editor-back). */
 export function BackButton(props: { onClick: () => void; large?: boolean }) {
@@ -57,26 +58,24 @@ export interface FilterOption<T extends string> {
 /** The filter pills above a list (Running / Finished / Mine; All / Mine). */
 export function FilterPills<T extends string>(props: { value: T; options: FilterOption<T>[]; onChange: (value: T) => void }) {
   return (
-    <div role="tablist" class="mb-3.5 inline-flex gap-0.5 rounded-full border border-hairline bg-surface-alt p-[3px]">
+    <Pills kind="tabs" class="mb-3.5 inline-flex gap-0.5 rounded-full border border-hairline bg-surface-alt p-[3px]">
       <For each={props.options}>
         {option => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={props.value === option.value ? 'true' : 'false'}
+          <Pill
+            chosen={props.value === option.value}
             class={[
               'rounded-full px-4 py-[7px] text-[0.86rem] font-semibold',
               props.value === option.value
                 ? 'bg-surface text-text shadow-[0_1px_2px_rgba(48,38,26,0.1),0_0_0_0.5px_rgba(48,38,26,0.06)]'
                 : 'bg-transparent text-text-secondary'
             ]}
-            onClick={() => props.onChange(option.value)}
+            onSelect={() => props.onChange(option.value)}
           >
             {option.label()}
-          </button>
+          </Pill>
         )}
       </For>
-    </div>
+    </Pills>
   );
 }
 

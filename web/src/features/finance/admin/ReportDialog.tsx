@@ -13,6 +13,7 @@ import { Spinner } from '../../../ui/feedback';
 import { Input, Select } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
 import { CloseButton, Modal } from '../../../ui/Modal';
+import { Pill, Pills } from '../../../ui/PillTabs';
 import {
   REPORT_TIER_HINTS, REPORT_TYPE_LABELS, bookingsCount, customFrom, customTo, downloadReportPdf, generating, personFrom, personTo,
   reportKey, reportPeople, reportPersonId, reportStatus, reportTier, reportTotals, reportTransactions, reportType, reportYear, reportYears,
@@ -204,24 +205,22 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
       </Show>
 
       <Section title={t('report_detail_tier', 'Level of Detail')}>
-        <div class="grid grid-cols-3 gap-0.5 rounded-xl border border-border-light bg-surface-alt p-[3px]" role="tablist">
+        <Pills kind="tabs" class="grid grid-cols-3 gap-0.5 rounded-xl border border-border-light bg-surface-alt p-[3px]">
           <For each={TIERS}>
             {tab => (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={reportTier() === tab.tier ? 'true' : 'false'}
+              <Pill
+                chosen={reportTier() === tab.tier}
                 class={[
                   'min-w-0 cursor-pointer truncate rounded-[9px] px-1.5 py-2 text-[0.84rem] font-bold',
                   reportTier() === tab.tier ? 'bg-surface text-text shadow-[0_1px_3px_rgba(28,25,23,0.12)]' : 'bg-transparent text-text-secondary'
                 ]}
-                onClick={() => setReportTier(tab.tier)}
+                onSelect={() => setReportTier(tab.tier)}
               >
                 {t(...tab.label)}
-              </button>
+              </Pill>
             )}
           </For>
-        </div>
+        </Pills>
         <span class="text-[0.78rem] text-text-secondary">{t(...REPORT_TIER_HINTS[reportTier()])}</span>
       </Section>
     </div>

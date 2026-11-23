@@ -10,6 +10,7 @@ import { Button } from '../../ui/Button';
 import { Switch, Textarea } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
+import { Pill, Pills } from '../../ui/PillTabs';
 import { type Prayer, type PrayerDuration, loadPrayers, prayerDate, prayerName, prayers, removePrayer, replacePrayer, setPrayerFilter, timeAgo } from './store';
 import { flushNow } from '../../app/flush';
 
@@ -101,26 +102,24 @@ export function PrayerEditModal() {
         <span id="prayer-duration-label" class={SHEET_LABEL}>
           {t('prayers_how_long_short', 'Shown for')}
         </span>
-        <div class="flex gap-1 rounded-[14px] border border-border-light bg-surface-alt p-1" role="radiogroup" aria-labelledby="prayer-duration-label">
+        <Pills kind="radio" class="flex gap-1 rounded-[14px] border border-border-light bg-surface-alt p-1" aria-labelledby="prayer-duration-label">
           <For each={DURATIONS}>
             {pill => (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={duration() === pill.value ? 'true' : 'false'}
+              <Pill
+                chosen={duration() === pill.value}
                 class={[
                   'inline-flex min-h-[34px] min-w-0 flex-[1_1_0] items-center justify-center gap-1.5 rounded-[10px] border-0 px-2.5 py-1.5 text-[0.84rem] font-bold transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
                   duration() === pill.value
                     ? 'bg-surface text-primary shadow-[0_1px_2px_rgba(28,25,23,0.08),0_4px_12px_-6px_rgba(28,25,23,0.25)] dark:bg-bg'
                     : 'bg-transparent text-text-secondary hover:text-text'
                 ]}
-                onClick={() => setDuration(pill.value)}
+                onSelect={() => setDuration(pill.value)}
               >
                 {pill.label()}
-              </button>
+              </Pill>
             )}
           </For>
-        </div>
+        </Pills>
       </div>
       <div class="flex flex-col gap-2 border-t border-border-light pt-3.5">
         <div class="flex items-center justify-between gap-3">

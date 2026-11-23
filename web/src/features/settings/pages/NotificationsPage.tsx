@@ -4,6 +4,7 @@ import { currentUser } from '../../../app/session';
 import { Button } from '../../../ui/Button';
 import { Switch } from '../../../ui/form';
 import { Icon, type IconName } from '../../../ui/Icon';
+import { Pill, Pills } from '../../../ui/PillTabs';
 import {
   NOTIFICATION_KINDS, availableNotificationTypes, readNotificationSettings, setNotificationChannel, setNotificationKind, setNotificationTab,
   shownChannel, type NotificationChannel, type NotificationType
@@ -112,25 +113,23 @@ function ChannelPicker() {
         </span>
       }
     >
-      <div role="tablist" class="inline-flex gap-0.5 rounded-full border border-border-light bg-surface-alt p-[3px]">
+      <Pills kind="tabs" class="inline-flex gap-0.5 rounded-full border border-border-light bg-surface-alt p-[3px]">
         <For each={['push', 'email'] as NotificationChannel[]}>
           {channel => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={shownChannel() === channel ? 'true' : 'false'}
+            <Pill
+              chosen={shownChannel() === channel}
               class={[
                 'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.82rem] font-bold',
                 shownChannel() === channel ? 'bg-surface text-text shadow-[0_1px_3px_rgba(28,25,23,0.12)]' : 'text-text-secondary'
               ]}
-              onClick={() => setNotificationTab(channel)}
+              onSelect={() => setNotificationTab(channel)}
             >
               <Icon name={channelIcon(channel)} size={14} />
               {channelLabel(channel)}
-            </button>
+            </Pill>
           )}
         </For>
-      </div>
+      </Pills>
     </Show>
   );
 }

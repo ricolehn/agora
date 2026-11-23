@@ -11,6 +11,7 @@ import { once } from '../../app/util';
 import { Input } from '../../ui/form';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
+import { Pill, Pills } from '../../ui/PillTabs';
 import { addableTargets, removableRow, rightsPayload, rightsRows } from '../../lib/media.js';
 import { loadMediaFolder, mediaFolder, openMediaFolder } from './library';
 import { SheetFooter } from './SheetFooter';
@@ -175,26 +176,24 @@ function RightsRowView(props: { row: RightsRow }) {
           </button>
         </Show>
       </div>
-      <div class={PILLS} role="radiogroup" aria-label={name()}>
+      <Pills kind="radio" class={PILLS} aria-label={name()}>
         <For each={options()} keyed={option => option[0]}>
           {option => (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={props.row.level === option()[0] ? 'true' : 'false'}
+            <Pill
+              chosen={props.row.level === option()[0]}
               class={[
                 PILL,
                 props.row.level === option()[0]
                   ? [PILL_ACTIVE, option()[0] === 'hide' ? 'text-warning' : 'text-primary']
                   : 'bg-transparent text-text-secondary hover:text-text'
               ]}
-              onClick={() => setLevel(props.row.id, option()[0])}
+              onSelect={() => setLevel(props.row.id, option()[0])}
             >
               <span>{option()[1]}</span>
-            </button>
+            </Pill>
           )}
         </For>
-      </div>
+      </Pills>
     </div>
   );
 }

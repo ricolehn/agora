@@ -8,6 +8,7 @@ import { Button } from '../../../ui/Button';
 import { Input } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
+import { Pill, Pills } from '../../../ui/PillTabs';
 import { formatEventDateSpanCompact } from '../format';
 import {
   PLAN_DURATIONS, candidatesLoading, choosePlanSong, chosenSong, clearPlanPerson, clearPlanSong, deletePlanEntry, entry, entryEvent,
@@ -288,20 +289,18 @@ function OrderList() {
 function WhenTab(props: { order: boolean; label: string }) {
   const on = () => !!entry()?.inProgram === props.order;
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={on() ? 'true' : 'false'}
+    <Pill
+      chosen={on()}
       class={[
         'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[0.82rem] whitespace-nowrap transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150',
         on()
           ? 'bg-surface font-bold text-primary-dark shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-[#44403c] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
           : 'font-semibold text-text-secondary'
       ]}
-      onClick={() => setPlanWhen(props.order)}
+      onSelect={() => setPlanWhen(props.order)}
     >
       {props.label}
-    </button>
+    </Pill>
   );
 }
 
@@ -329,10 +328,10 @@ function WhenSection() {
       <span class={LABEL} id="plan-when-label">
         {t('plan_when', 'When?')}
       </span>
-      <div id="plan-entry-when" class="flex gap-[3px] rounded-[10px] border border-border-light bg-surface-alt p-[3px]" role="radiogroup" aria-labelledby="plan-when-label">
+      <Pills kind="radio" id="plan-entry-when" class="flex gap-[3px] rounded-[10px] border border-border-light bg-surface-alt p-[3px]" aria-labelledby="plan-when-label">
         <WhenTab order={false} label={t('plan_when_event', 'During the event')} />
         <WhenTab order label={t('plan_when_order', 'In the order')} />
-      </div>
+      </Pills>
       <Show when={entry()?.inProgram && planOrder()}>
         {order => (
           <div class="flex flex-col gap-2">
