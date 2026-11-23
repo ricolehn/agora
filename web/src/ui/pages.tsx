@@ -3,12 +3,12 @@
 // (a new poll, a song).
 import type { JSX } from '@solidjs/web';
 import { For, Show } from 'solid-js';
-import { t } from '../../app/i18n';
-import { switchTab } from '../../app/router';
-import { Button } from '../../ui/Button';
-import { EmptyState, Spinner } from '../../ui/feedback';
-import { Icon, type IconName } from '../../ui/Icon';
-import { Modal } from '../../ui/Modal';
+import { t } from '../app/i18n';
+import { switchTab } from '../app/router';
+import { Button } from './Button';
+import { EmptyState, Spinner } from './feedback';
+import { Icon, type IconName } from './Icon';
+import { Modal } from './Modal';
 
 /** The round "back" button of a sub-page or a full-screen page (.hub-back-btn, .poll-editor-back). */
 export function BackButton(props: { onClick: () => void; large?: boolean }) {

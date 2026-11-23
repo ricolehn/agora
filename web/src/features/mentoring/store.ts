@@ -165,7 +165,6 @@ export const isThreadUnread = (thread: Thread) => (thread.unread_count || 0) > 0
 export const unreadTotal = () => threads().reduce((sum, th) => sum + ((th.unread_count || 0) > 0 ? th.unread_count! : 0), 0);
 
 /** Count badges cap large numbers. */
-export const formatBadgeCount = (count: number) => (count > 99 ? '99+' : String(count));
 
 /** The conversation the chat pane shows (its latest state in the list). */
 export const paneThread = () => {

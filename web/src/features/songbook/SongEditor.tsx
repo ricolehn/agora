@@ -9,7 +9,7 @@ import { debounce } from '../../app/util';
 import { parseSong } from '../../lib/songbook.js';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
-import { DeleteButton, EDITOR_FIELD, EDITOR_INPUT, EditorCard, EditorField, EditorPage, TITLE_INPUT } from '../polls/ui';
+import { DeleteButton, EDITOR_FIELD, EDITOR_INPUT, EditorCard, EditorField, EditorPage, TITLE_INPUT } from '../../ui/pages';
 import { SongLines } from './SongLines';
 import { type Song, dropSong, putSong, songbookLicense, songs } from './store';
 import { openSongId } from './view';

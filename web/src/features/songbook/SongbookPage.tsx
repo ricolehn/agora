@@ -5,7 +5,7 @@ import { t, uiLocale } from '../../app/i18n';
 import { SearchInput } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
 import { normalizeSearch } from '../../lib/songbook.js';
-import { AppHead, ListEmpty, ListLoading } from '../polls/ui';
+import { AppHead, ListEmpty, ListLoading } from '../../ui/pages';
 import { type Song, canManageSongs, songbookError, songbookLicense, songbookLoaded, songs, songSearchText } from './store';
 import { loadSongs, openSong } from './view';
 

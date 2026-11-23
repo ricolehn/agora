@@ -9,7 +9,7 @@ import { Button } from '../../ui/Button';
 import { Switch } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
-import { BackButton } from '../polls/ui';
+import { BackButton } from '../../ui/pages';
 import { openSongEditor } from './SongEditor';
 import { SongLines } from './SongLines';
 import { type Song, canManageSongs, songbookLicense, songs } from './store';

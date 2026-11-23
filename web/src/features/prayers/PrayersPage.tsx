@@ -4,7 +4,7 @@ import { For, Match, Show, Switch, createSignal, onSettled } from 'solid-js';
 import { t } from '../../app/i18n';
 import { Avatar } from '../../ui/Avatar';
 import { Icon } from '../../ui/Icon';
-import { AppHead, FilterPills, ListEmpty, ListLoading } from '../polls/ui';
+import { AppHead, FilterPills, ListEmpty, ListLoading } from '../../ui/pages';
 import { openPrayerOptions } from './PrayerDialogs';
 import { type Prayer, type PrayerFilter, loadPrayers, prayerDate, prayerFilter, prayerName, prayers, prayersError, prayersLoaded, setPrayerFilter, timeAgo } from './store';
 import { onActivateKey } from '../../ui/keys';

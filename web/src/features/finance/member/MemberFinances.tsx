@@ -14,6 +14,7 @@ import { openUserRequestModal } from './api';
 import { REQUEST_COLORS, REQUEST_TYPES, paidUntilText, rejectionReasonOf, requestAmount, requestTypeLabel, standingOrderCovers } from '../common';
 import { Timeline } from '../Timeline';
 import { BoldParam } from './shared';
+import { badgeText } from '../../../ui/feedback';
 
 // --- The state of a fee account (also the start page's payment line) ---
 export type StatusMeta = { text?: string; isOverdue?: boolean; isSoonDue?: boolean; isActiveStandingOrder?: boolean };
@@ -213,7 +214,6 @@ const REQUEST_STATES: Record<string, [string, string, string]> = {
 };
 const stateOf = (req: FinanceRequest) => REQUEST_STATES[req.status || ''] || REQUEST_STATES.pending;
 const MY_REQUESTS_SHOWN = 3;
-const badgeCount = (count: number) => (count > 99 ? '99+' : String(count));
 
 function MyRequestRow(props: { req: FinanceRequest }) {
   const data = () => props.req.data || {};
@@ -280,7 +280,7 @@ function MyRequests(props: { class?: string }) {
             </span>
             <span class="font-extrabold text-text">{t('user_requests_title', 'My Requests')}</span>
             <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-text-secondary px-[7px] text-[0.75rem] leading-none font-extrabold text-white">
-              {badgeCount(mine().length)}
+              {badgeText(mine().length)}
             </span>
           </div>
           <div class="flex flex-col">

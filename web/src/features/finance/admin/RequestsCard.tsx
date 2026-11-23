@@ -9,9 +9,9 @@ import { Avatar } from '../../../ui/Avatar';
 import { Icon } from '../../../ui/Icon';
 import { requestAmount, requestTypeLabel } from '../common';
 import { openRequestDetail, pendingRequests, requestColor, requestDateLabel, requestPersonName, requestPersonUid } from './requests';
+import { badgeText } from '../../../ui/feedback';
 
 const HOME_REQUEST_COUNT = 3;
-export const formatBadgeCount = (count: number) => (count > 99 ? '99+' : String(count));
 
 function RequestRow(props: { req: FinanceRequest }) {
   const data = () => props.req.data || {};
@@ -57,7 +57,7 @@ export function RequestsCard(props: { context: 'fin' | 'home'; items: FinanceReq
         </span>
         <span class="font-extrabold text-text">{t('requests_open_title', 'Open requests')}</span>
         <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[#f59e0b] px-[7px] text-[0.75rem] leading-none font-extrabold text-white">
-          {formatBadgeCount(props.total)}
+          {badgeText(props.total)}
         </span>
         <Show when={props.context === 'home'}>
           <button

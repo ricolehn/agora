@@ -7,7 +7,7 @@ import {
   type Poll, type PollFilter, loadPolls, pollEndDate, pollFilter, pollLeader, polls, pollsError, pollsLoaded, pollTimeLabel,
   pollVotes, setOpenPoll, setPollFilter
 } from './store';
-import { AppHead, FilterPills, ListEmpty, ListLoading } from './ui';
+import { AppHead, FilterPills, ListEmpty, ListLoading } from '../../ui/pages';
 
 export function openPollDetail(id: string) {
   setOpenPoll(id);

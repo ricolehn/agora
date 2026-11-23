@@ -10,7 +10,7 @@ import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
 import { PollsNote } from './PollsPage';
 import { type Poll, addPoll, setPollFilter } from './store';
-import { EDITOR_INPUT, EditorCard, EditorField, EditorPage, TEXT_AREA, TITLE_INPUT } from './ui';
+import { EDITOR_INPUT, EditorCard, EditorField, EditorPage, TEXT_AREA, TITLE_INPUT } from '../../ui/pages';
 import { flushNow } from '../../app/flush';
 
 const DURATIONS: Array<{ days: number; label: () => string }> = [

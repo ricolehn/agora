@@ -97,6 +97,9 @@ export function SearchInput(props: {
  * A count on a navigation entry or a tab (.mentoring-badge-count): nothing at 0, "99+" above 99. The brand colour,
  * or red (danger). Its size yields to `class`.
  */
+/** A count as a badge shows it: "99+" above 99. */
+export const badgeText = (count: number) => (count > 99 ? '99+' : String(count));
+
 export function CountBadge(props: { count: number; danger?: boolean; class?: string }) {
   return (
     <Show when={props.count > 0}>
@@ -108,7 +111,7 @@ export function CountBadge(props: { count: number; danger?: boolean; class?: str
           props.class
         ]}
       >
-        {props.count > 99 ? '99+' : props.count}
+        {badgeText(props.count)}
       </span>
     </Show>
   );

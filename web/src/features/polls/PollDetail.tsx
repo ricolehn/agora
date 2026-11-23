@@ -13,7 +13,7 @@ import {
   type Poll, loadPolls, myPollChoice, openPollId, pollEndDate, pollEndTime, pollShares, polls, pollTimeLabel, pollVotes,
   rememberPollChoice, removePoll, replacePoll, scheduleNextPollEnd
 } from './store';
-import { DeleteButton } from './ui';
+import { DeleteButton } from '../../ui/pages';
 
 export function PollDetailModal() {
   // A poll that was just deleted stays on screen while the dialog fades out
