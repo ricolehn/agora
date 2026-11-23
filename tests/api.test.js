@@ -1350,6 +1350,14 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     await ok(call('owner', 'DELETE', `/api/polls/${poll.id}`));
   });
 
+  test('polls: sent all at once, one person still gets no more than 20 running polls', async () => {
+    await account('umfragen', 'Uma');
+    const create = (n) => call('umfragen', 'POST', '/api/polls', { title: `Frage ${n}`, options: ['Ja', 'Nein'], endsAt: Date.now() + 86400000 });
+    const answers = await Promise.all(Array.from({ length: 25 }, (_, n) => create(n)));
+    assert.deepEqual([answers.filter((a) => a.status === 201).length, answers.filter((a) => a.status === 409).length], [20, 5]);
+    for (const answer of answers.filter((a) => a.status === 201)) await ok(call('umfragen', 'DELETE', `/api/polls/${answer.body.id}`));
+  });
+
   test('polls and songs: object names and odd ids are just "not found", and nothing lives in the readable app state', async () => {
     for (const id of ['__proto__', 'constructor', 'toString', 'x%22%7C%7C1%3D1']) {
       assert.equal((await call('mia', 'POST', `/api/polls/${id}/vote`, { optionIds: ['o1'] })).status, 404, `vote ${id}`);

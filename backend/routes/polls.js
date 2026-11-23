@@ -4,6 +4,7 @@ const { verifyToken } = require('../auth');
 const { protectedActionRateLimit } = require('../rateLimits');
 const { broadcastDataUpdate } = require('../liveUpdates');
 const { createItemStore, changeItem } = require('../itemStore');
+const { queueRecordWrite } = require('../pocketbase');
 const { buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate } = require('../polls');
 const { instanceSecret } = require('../instanceSecret');
 const { isAdmin } = require('../permissions');
@@ -36,9 +37,13 @@ router.get('/api/polls', verifyToken, route('Polls could not be loaded', async (
 router.post('/api/polls', protectedActionRateLimit, verifyToken, route('The poll could not be created', async (req, res) => {
   const { poll, error } = buildPoll(req.body, { uid: req.user.uid, secret: pollSecret() });
   if (error) return res.status(400).json({ error });
-  const limit = canCreate(await store.list(context.appConfig), { uid: req.user.uid, secret: pollSecret() });
+  // Checked and saved one after another per person (as prayer requests are): parallel posts cannot get past the limit
+  const limit = await queueRecordWrite(`polls-new:${req.user.uid}`, async () => {
+    const over = canCreate(await store.list(context.appConfig), { uid: req.user.uid, secret: pollSecret() });
+    if (!over) await store.update(context.appConfig, poll.id, () => ({ save: poll }));
+    return over;
+  });
   if (limit) return res.status(limit.status).json({ error: limit.error });
-  await store.update(context.appConfig, poll.id, () => ({ save: poll }));
   broadcastDataUpdate('polls');
   res.status(201).json(view(poll, req));
 }));
