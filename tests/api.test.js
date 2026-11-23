@@ -496,6 +496,23 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     const logo = await call(null, 'GET', '/assets/church-logo.svg');
     assert.equal(logo.status, 200);
     assert.match(logo.headers.get('content-security-policy') || '', /sandbox/);
+    // It is asked for again on every load (an upload shows at once), but only sent again when it changed
+    assert.equal(logo.headers.get('cache-control'), 'no-cache');
+    assert.ok(logo.headers.get('etag'), 'an ETag to ask with');
+    // (a browser checking its copy; fetch would add Cache-Control: no-cache to a request with If-None-Match, as a forced
+    // reload does, and then the file is always sent whole)
+    const unchanged = await new Promise((resolve, reject) => {
+      require('http').get(`${base}/assets/church-logo.svg`, { headers: { 'If-None-Match': logo.headers.get('etag'), 'X-Forwarded-For': '10.42.9.1' } }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      }).on('error', reject);
+    });
+    assert.equal(unchanged, 304);
+    // The web app's build files (assets/build, named after their content) may be kept for a year, the others not
+    const built = await call(null, 'GET', '/assets/build/app-Ab12Cd34.js');
+    assert.equal(built.status, 200);
+    assert.equal(built.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal((await call(null, 'GET', '/assets/app.js')).headers.get('cache-control'), 'public, max-age=0');
   });
 
   test('languages: answers follow the app, then the user, then the instance default; English is the base', async () => {

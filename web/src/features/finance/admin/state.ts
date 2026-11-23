@@ -64,11 +64,12 @@ export function setPeopleSearch(text: string) {
 }
 
 /** Loads what the shown sub-page needs: the fee list is drawn from memory (its cards start closed), the overview
- *  fetches the history and the balance. */
+ *  fetches the history and the balance. A history already on screen stays while it is fetched again (back on the tab
+ *  it shows at once, as the balance does); placeholders only when there is none yet or the last load failed. */
 export function loadSubpage() {
   if (subpage() === 'members') setOpenPersonId(null);
   else {
-    void loadHistory(true);
+    void loadHistory(true, { quiet: historyView() === 'list' && transactions() !== null });
     void loadStats();
   }
 }

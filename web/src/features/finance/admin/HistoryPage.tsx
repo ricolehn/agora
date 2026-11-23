@@ -75,7 +75,11 @@ function TransactionRow(props: { tx: Transaction }) {
         'cursor-pointer transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
         // A quiet lift on devices that hover, an honest press everywhere
         '[@media(hover:hover)]:transition-[transform,box-shadow,border-color,background-color] [@media(hover:hover)]:duration-250 [@media(hover:hover)]:ease-app',
-        'hover:-translate-y-px hover:shadow-card-md active:scale-[0.985] active:duration-100'
+        'hover:-translate-y-px hover:shadow-card-md active:scale-[0.985] active:duration-100',
+        // The browser lays out only the rows on screen: back on the tab the kept list (up to 150 rows and more) shows
+        // in the first frame after the tap instead of holding it up. Until a row was drawn once its content counts as
+        // 40px high (the picture; padding and border come on top: 74px, as a drawn row), so scrolling does not jump
+        '[content-visibility:auto] [contain-intrinsic-height:auto_40px]'
       ]}
       role="button"
       tabindex="0"

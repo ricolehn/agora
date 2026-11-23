@@ -16,6 +16,20 @@ const STATIC_TYPES = {
 };
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 
+// Static files are asked for again on every load (a new image shows at once; unchanged files cost a 304)...
+const CACHE_REVALIDATE = 'public, max-age=0';
+// ...except the web app's own build files: web/vite.config.ts writes them to assets/build and names them after their
+// content (index-Ch43RHov.js), so a changed file always gets a new name and browsers may keep these for a year
+// without asking. Both conditions must hold: a file without such a name (or outside that folder) is asked for again.
+const CACHE_IMMUTABLE = 'public, max-age=31536000, immutable';
+const BUILD_FILE = /^build\/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/;
+
+/** Cache-Control for a file at [relativePath] below the frontend's assets folder ('build/index-Ch43RHov.js'). */
+function assetCacheControl(relativePath) {
+  const normalized = String(relativePath || '').split(path.sep).join('/').replace(/^\/+/, '');
+  return BUILD_FILE.test(normalized) ? CACHE_IMMUTABLE : CACHE_REVALIDATE;
+}
+
 function acceptedEncodings(acceptEncoding) {
   return String(acceptEncoding || '').toLowerCase().split(',').map(part => {
     const [name, q] = part.trim().split(';q=');
@@ -51,8 +65,9 @@ const staticCache = new Map();
 /**
  * Sends a static text file compressed (cached per file version). Returns false when it did not handle the
  * request (unknown type, missing file, client without br/gzip) so the caller can fall back to sendFile / static.
+ * [cacheControl]: how long browsers may keep it without asking (default: ask again on every load).
  */
-function sendCompressedFile(req, res, filePath) {
+function sendCompressedFile(req, res, filePath, { cacheControl = CACHE_REVALIDATE } = {}) {
   const type = STATIC_TYPES[path.extname(filePath).toLowerCase()];
   const encoding = pickEncoding(req.headers['accept-encoding']);
   if (!type || !encoding || (req.method !== 'GET' && req.method !== 'HEAD')) return false;
@@ -78,7 +93,7 @@ function sendCompressedFile(req, res, filePath) {
   const etag = `W/"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}-${encoding}"`;
 
   res.setHeader('Content-Type', type);
-  res.setHeader('Cache-Control', 'public, max-age=0');
+  res.setHeader('Cache-Control', cacheControl);
   res.setHeader('ETag', etag);
   res.setHeader('Last-Modified', stat.mtime.toUTCString());
   appendVary(res);
@@ -92,8 +107,11 @@ function sendCompressedFile(req, res, filePath) {
   return true;
 }
 
-/** Serves compressible files below [rootDir] compressed; everything else falls through to the next handler. */
-function compressedStatic(rootDir, { exclude = [] } = {}) {
+/**
+ * Serves compressible files below [rootDir] compressed; everything else falls through to the next handler.
+ * [cacheControl](relative path) decides how long browsers may keep a file (default: ask again on every load).
+ */
+function compressedStatic(rootDir, { exclude = [], cacheControl = () => CACHE_REVALIDATE } = {}) {
   const root = path.resolve(rootDir);
   return (req, res, next) => {
     let relative;
@@ -103,9 +121,10 @@ function compressedStatic(rootDir, { exclude = [] } = {}) {
       return next();
     }
     if (exclude.includes(relative)) return next();
-    const filePath = path.resolve(root, '.' + path.posix.normalize('/' + relative));
+    const normalized = path.posix.normalize('/' + relative);
+    const filePath = path.resolve(root, '.' + normalized);
     if (filePath !== root && !filePath.startsWith(root + path.sep)) return next();
-    if (!sendCompressedFile(req, res, filePath)) next();
+    if (!sendCompressedFile(req, res, filePath, { cacheControl: cacheControl(normalized) })) next();
   };
 }
 
@@ -132,4 +151,4 @@ function compressResponses(req, res, next) {
   next();
 }
 
-module.exports = { pickEncoding, sendCompressedFile, compressedStatic, compressResponses };
+module.exports = { pickEncoding, sendCompressedFile, compressedStatic, compressResponses, assetCacheControl };

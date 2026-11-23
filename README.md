@@ -67,7 +67,7 @@ docker run -d \
 
 ### Optional: Frontend Volume Mapping
 
-The frontend files are bundled directly in `/app/html` inside the container: the production build of the web app in `web/` (its scripts and styles carry a hash of their content in the name, e.g. `assets/index-B1x2y3z4.js`, so the names change with every version). If you want the files on the host, you can optionally map this path as well:
+The frontend files are bundled directly in `/app/html` inside the container: the production build of the web app in `web/` (its scripts, styles and fonts carry a hash of their content in the name, e.g. `assets/build/index-B1x2y3z4.js`, so the names change with every version and browsers keep them for a year without asking again). If you want the files on the host, you can optionally map this path as well:
 
 ```bash
 docker run -d \

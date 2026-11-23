@@ -159,7 +159,7 @@ describe('logoStorage', () => {
 });
 
 describe('compression', () => {
-  const { pickEncoding, sendCompressedFile, compressedStatic, compressResponses } = require('../backend/compression');
+  const { pickEncoding, sendCompressedFile, compressedStatic, compressResponses, assetCacheControl } = require('../backend/compression');
 
   function fakeRes() {
     const headers = {};
@@ -240,6 +240,43 @@ describe('compression', () => {
     assert.equal(run('/../secret.js').passed, true, 'path traversal is not served');
     assert.equal(run('/%2e%2e/secret.js').passed, true, 'encoded traversal is not served');
     assert.equal(run('/%E0%A4%A').passed, true, 'malformed path');
+  });
+
+  test('only the build files named after their content may be kept for a year, everything else is asked for again', (t) => {
+    const IMMUTABLE = 'public, max-age=31536000, immutable';
+    const REVALIDATE = 'public, max-age=0';
+    // What web/vite.config.ts writes to assets/build (hashes may contain - and _)
+    for (const file of ['build/index-Ch43RHov.js', '/build/index-Dnkfmh1-.css', 'build/pdf.worker.min-Dswkl-cV.mjs', 'build/inter-latin-ext-DO1Apj_S.woff2']) {
+      assert.equal(assetCacheControl(file), IMMUTABLE, file);
+    }
+    // The files of public/ keep their names, older images had plain names, the instance's own files change in place:
+    // a name that only looks like a hash outside the folder, or a plain name inside it, is never kept
+    for (const file of ['icon-maskable.png', 'church-logo.svg', 'config.js', 'app.js', 'fonts/inter-latin.woff2', 'build/app.js', 'build/sub/index-Ch43RHov.js', 'other/index-Ch43RHov.js', '']) {
+      assert.equal(assetCacheControl(file), REVALIDATE, file);
+    }
+
+    const dir = tempDir(t, 'agora-static-cache-');
+    fs.mkdirSync(path.join(dir, 'assets', 'build'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'assets', 'build', 'index-Ch43RHov.js'), 'export const answer = 42;\n'.repeat(100));
+    fs.writeFileSync(path.join(dir, 'assets', 'style.css'), 'body { margin: 0; }\n'.repeat(200));
+    const middleware = compressedStatic(path.join(dir, 'assets'), { cacheControl: assetCacheControl });
+    const run = (p, headers = {}) => {
+      const res = fakeRes();
+      middleware({ ...req('br', { headers }), path: p }, res, () => {});
+      return res;
+    };
+    const built = run('/build/index-Ch43RHov.js');
+    assert.equal(built.headers['cache-control'], IMMUTABLE);
+    assert.equal(built.headers['content-encoding'], 'br');
+    assert.equal(run('/build/index-Ch43RHov.js', { 'if-none-match': built.headers.etag }).headers['cache-control'], IMMUTABLE, 'also on a 304');
+    assert.equal(run('/style.css').headers['cache-control'], REVALIDATE);
+    // Without the option everything is asked for again, as before
+    const plain = fakeRes();
+    compressedStatic(path.join(dir, 'assets'))({ ...req('br'), path: '/build/index-Ch43RHov.js' }, plain, () => {});
+    assert.equal(plain.headers['cache-control'], REVALIDATE);
+    const own = fakeRes();
+    assert.equal(sendCompressedFile(req('gzip'), own, path.join(dir, 'assets', 'style.css'), { cacheControl: 'no-cache' }), true);
+    assert.equal(own.headers['cache-control'], 'no-cache');
   });
 
   test('compressResponses gzips large JSON / text bodies only', () => {

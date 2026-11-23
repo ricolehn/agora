@@ -27,7 +27,7 @@ const { purgeUnlinkedEventImages } = require('./eventImages');
 const { purgeExpiredGuests, isPublicToken, linkPreviewHead } = require('./eventGuests');
 const { findEventByPublicToken } = require('./pocketbase');
 const { originOf } = require('./notify');
-const { compressResponses, compressedStatic, sendCompressedFile } = require('./compression');
+const { assetCacheControl, compressResponses, compressedStatic, sendCompressedFile } = require('./compression');
 const { translateResponses, instanceLanguage } = require('./i18n');
 
 const authRouter = require('./routes/auth');
@@ -125,26 +125,33 @@ app.use((req, res, next) => {
 const frontendDir = resolvedFrontendDir;
 console.log(`Serving frontend from: ${frontendDir}`);
 
+// The logo is asked for again on every load, so a new upload shows at once - but browsers keep their copy and only
+// get it again when it changed (ETag, else a 304), compressed like the other files (it went out whole on every start)
+const LOGO_CACHE_CONTROL = 'no-cache';
 app.get('/assets/church-logo.svg', logoAssetRateLimit, (req, res, next) => {
   const logoFilePath = selectChurchLogoFilePath(churchLogoFile, bundledChurchLogoFile);
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
   // Opened directly, an SVG is a document of this origin: whatever slipped through the upload check must not run
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox");
+  if (sendCompressedFile(req, res, logoFilePath, { cacheControl: LOGO_CACHE_CONTROL })) return;
+  res.setHeader('Cache-Control', LOGO_CACHE_CONTROL);
   res.sendFile(logoFilePath, (error) => {
     if (error) next(error);
   });
 });
 
-// Frontend files go out compressed (cached per file version); config.js and the logo keep their own handlers
+// Frontend files go out compressed (cached per file version); config.js and the logo keep their own handlers. The
+// web app's build files (assets/build, named after their content) may be kept by browsers for a year, everything
+// else is asked for again on every load (compression.js assetCacheControl)
 const sendPage = file => (req, res) => {
   if (!sendCompressedFile(req, res, file)) res.sendFile(file);
 };
-app.use('/assets', compressedStatic(path.join(frontendDir, 'assets'), { exclude: ['/config.js', '/church-logo.svg'] }));
+const assetsDir = path.join(frontendDir, 'assets');
+app.use('/assets', compressedStatic(assetsDir, { exclude: ['/config.js', '/church-logo.svg'], cacheControl: assetCacheControl }));
 // assets/config.js in the frontend folder is only the fallback of older images: the app name comes from the
 // server configuration (route in routes/system.js), so the static copy must not answer first
-const staticAssets = express.static(path.join(frontendDir, 'assets'));
+const staticAssets = express.static(assetsDir, {
+  setHeaders: (res, filePath) => res.setHeader('Cache-Control', assetCacheControl(path.relative(assetsDir, filePath)))
+});
 app.use('/assets', (req, res, next) => (req.path === '/config.js' ? next() : staticAssets(req, res, next)));
 app.get('/sw.js', sendPage(path.join(frontendDir, 'sw.js')));
 app.get('/manifest.json', (req, res) => res.sendFile(path.join(frontendDir, 'manifest.json')));

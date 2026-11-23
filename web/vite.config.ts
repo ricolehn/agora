@@ -107,7 +107,10 @@ export default defineConfig({
     target: 'es2022',
     outDir: 'dist',
     emptyOutDir: true,
-    assetsDir: 'assets',
+    // Every file the build writes is named after its content (index-Ch43RHov.js): the backend lets browsers keep what
+    // is in this folder for a year without asking again (backend/compression.js assetCacheControl). The files of
+    // public/ keep their names and stay outside it, they are asked for again on every load.
+    assetsDir: 'assets/build',
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
