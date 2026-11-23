@@ -2,7 +2,7 @@
 // a period, one member, hand-picked bookings) and how detailed it is decide the A4 preview, which becomes the PDF.
 import { createSignal } from 'solid-js';
 import { flushNow } from '../../../app/flush';
-import { api } from '../../../app/api';
+import { apiJson } from '../../../app/api';
 import { findPerson, people, sumAmounts, type Person } from '../../../app/data';
 import { formatDateFast, t } from '../../../app/i18n';
 import { openModal } from '../../../app/modals';
@@ -70,9 +70,7 @@ export async function openExportReport() {
   try {
     let all: Transaction[] = [];
     for (let page = 1, totalPages = 1; page <= totalPages; page++) {
-      const res = await api(`/transactions?page=${page}&perPage=500`);
-      if (!res.ok) throw new Error('Failed to fetch transactions');
-      const data = await res.json();
+      const data = await apiJson(`/transactions?page=${page}&perPage=500`);
       all = all.concat(data.items || []);
       totalPages = data.totalPages || 1;
     }

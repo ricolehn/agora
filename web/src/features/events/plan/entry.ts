@@ -215,8 +215,7 @@ export async function removePlanPerson(dutyId: string) {
   const duty = ev?.duties?.find((d: Duty) => d.id === dutyId);
   if (!ev || !duty || !confirmAction(t('duty_remove_entry_confirm', 'Really remove this entry?'))) return;
   try {
-    const res = await api(`/events/duties/${dutyId}`, 'DELETE');
-    if (!res.ok) throw new Error(t('duty_remove_error', 'Failed to remove'));
+    await apiJson(`/events/duties/${dutyId}`, 'DELETE', undefined, t('duty_remove_error', 'Failed to remove'));
     // The task stays (empty) when its last person goes
     if ((ev.duties || []).filter((d: Duty) => sameName(d.roleName, duty.roleName)).length === 1) await apiJson(`/events/${ev.id}/duties`, 'POST', { roleName: duty.roleName });
     // Fresh data in the list behind the dialog; the dialog stays open

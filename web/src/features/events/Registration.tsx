@@ -2,7 +2,7 @@
 // the participants (removable by those who may edit the event; guests without an account are marked).
 import type { JSX } from '@solidjs/web';
 import { For, Show, createEffect, createSignal } from 'solid-js';
-import { api } from '../../app/api';
+import { apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
 import { confirmAction } from '../../app/toast';
 import { Avatar } from '../../ui/Avatar';
@@ -95,9 +95,7 @@ let attendeesLoad = 0;
 async function loadEventAttendees(eventId: string) {
   const load = ++attendeesLoad;
   try {
-    const res = await api(`/events/${eventId}/attendees`);
-    if (!res.ok || load !== attendeesLoad) return;
-    const data = await res.json();
+    const data = await apiJson(`/events/${eventId}/attendees`);
     if (load !== attendeesLoad) return;
     setAttendees({ eventId, registered: data.registered || [], waitlist: data.waitlist || [] });
   } catch (err) {

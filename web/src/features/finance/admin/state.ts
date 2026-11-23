@@ -3,7 +3,7 @@
 // apply at once (flush): the router reads the sub-page right after a switch to build the page address.
 import { createSignal } from 'solid-js';
 import { flushNow } from '../../../app/flush';
-import { api } from '../../../app/api';
+import { apiJson } from '../../../app/api';
 import { activeTab, syncUrl } from '../../../app/router';
 import { canViewFinances } from '../../../app/session';
 import { debounce } from '../../../app/util';
@@ -89,9 +89,7 @@ let statsSeq = 0;
 export async function loadStats() {
   const seq = ++statsSeq;
   try {
-    const res = await api('/stats');
-    if (!res.ok) throw new Error('Stats fetch failed');
-    const total = Number((await res.json()).totalBalance) || 0;
+    const total = Number((await apiJson('/stats')).totalBalance) || 0;
     if (seq === statsSeq) setBalance(total);
   } catch (err) {
     console.error('Could not load the statistics:', err);
@@ -142,9 +140,7 @@ export async function loadHistory(reset = true, { quiet = false } = {}) {
     setHistoryView('skeleton');
   }
   try {
-    const res = await api(`/transactions?page=${page}&perPage=${perPage}${query ? `&search=${encodeURIComponent(query)}` : ''}`);
-    if (!res.ok) throw new Error('Failed to fetch transactions');
-    const data = await res.json();
+    const data = await apiJson(`/transactions?page=${page}&perPage=${perPage}${query ? `&search=${encodeURIComponent(query)}` : ''}`);
     if (seq !== historySeq) return;
     const items: Transaction[] = Array.isArray(data.items) ? data.items : [];
     setTransactions(reset || quiet ? items : [...(transactions() || []), ...items]);

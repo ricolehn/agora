@@ -1,7 +1,7 @@
 // Settings page "Calendar": the personal calendar feed (WebCal / iCal) with my appointments and duties - copy it,
 // subscribe on this device or in Google Calendar, download it, or renew the link.
 import { createSignal, onSettled } from 'solid-js';
-import { api } from '../../app/api';
+import { apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
 import { confirmAction, showToast } from '../../app/toast';
 import { copyText } from '../../app/util';
@@ -22,8 +22,9 @@ const [feedUrl, setFeedUrl] = createSignal('');
 async function fetchFeed(force = false): Promise<CalendarFeed> {
   if (cachedFeed && !force) return cachedFeed;
   try {
-    const res = await api('/user/calendar-feed');
-    if (res.ok) return (cachedFeed = await res.json());
+    const feed = await apiJson<CalendarFeed>('/user/calendar-feed');
+    cachedFeed = feed;
+    return feed;
   } catch (err) {
     console.warn('Failed to load personal calendar feed:', err);
   }
@@ -45,13 +46,12 @@ async function personalFeedUrl() {
 async function resetFeedToken() {
   if (!confirmAction(t('calendar_sub_reset_confirm', 'Do you really want to generate a new calendar link? Your previous calendar link will stop working and you will have to subscribe to the calendar again in your apps.'))) return;
   try {
-    const res = await api('/user/calendar-feed/reset', 'POST');
-    if (!res.ok) return showToast(t('calendar_sub_reset_error', 'Failed to reset the link'), 'error');
-    cachedFeed = await res.json();
+    cachedFeed = await apiJson('/user/calendar-feed/reset', 'POST', undefined, t('calendar_sub_reset_error', 'Failed to reset the link'));
     await loadFeed(true);
     showToast(t('calendar_sub_reset_success', 'New calendar link successfully generated!'), 'success');
-  } catch {
-    showToast(t('calendar_sub_reset_network_error', 'Connection error while resetting'), 'error');
+  } catch (err: any) {
+    // The server's answer when it refused, else the connection
+    showToast(err.status ? err.message : t('calendar_sub_reset_network_error', 'Connection error while resetting'), 'error');
   }
 }
 
