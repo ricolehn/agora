@@ -21,6 +21,7 @@
 // be reached.
 const crypto = require('crypto');
 const path = require('path');
+const { can } = require('./permissions');
 
 const ALL_MEMBERS = '*';
 const PERSON_PREFIX = 'user:';
@@ -30,7 +31,7 @@ const RANK = { none: 0, read: 1, write: 2 };
 const MAX_PATH = 1024;
 const MAX_NAME = 200;
 
-const canManageMedia = (user) => Array.isArray(user?.permissions) && user.permissions.includes('manage_media');
+const canManageMedia = (user) => can(user, 'manage_media');
 
 /** Whether [name] can be one part of a path (no separators, "..", control characters). */
 const isValidName = (name) => !!name && name.length <= MAX_NAME && name !== '.' && name !== '..'

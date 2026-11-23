@@ -1,10 +1,11 @@
 // Songbook: songs with chords in ChordPro style ("[G]Amazing [D]grace", "# Chorus" for sections). Everyone reads,
 // members with the manage_songbook permission add, edit and delete songs.
 const crypto = require('crypto');
+const { can } = require('./permissions');
 
 const MAX_SONGS = 2000;
 
-const canManageSongbook = (user) => Array.isArray(user?.permissions) && user.permissions.includes('manage_songbook');
+const canManageSongbook = (user) => can(user, 'manage_songbook');
 
 const clean = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 

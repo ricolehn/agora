@@ -12,7 +12,6 @@ const {
   logoUpload,
   verifyToken,
   verifyAdmin,
-  verifySuperAdmin,
   protectedActionRateLimit,
   buildSmtpTransport,
   configFile,
@@ -47,11 +46,10 @@ const {
   upsertFcmToken,
   deleteFcmToken,
   isPlaceholderEmail,
-  resolveUserPermissions,
   listEvents,
-  updateEventRecord,
-  SYSTEM_PERMISSIONS
+  updateEventRecord
 } = require('../pocketbase');
+const { SYSTEM_PERMISSIONS, permissionFlags, resolveUserPermissions } = require('../permissions');
 
 const {
   hasSvgExtension,
@@ -114,7 +112,7 @@ router.get('/api/stream', verifyToken, (req, res) => {
   res.flushHeaders();
 
   // Lets broadcasts address single users (private mentoring updates)
-  res.agoraUserId = req.user.uid || req.user.id;
+  res.agoraUserId = req.user.uid;
   sseClients.add(res);
 
   req.on('close', () => {
@@ -253,7 +251,7 @@ router.get('/api/admin/users', verifyToken, verifyAdmin, route('Failed to list u
       const match = groups.find(g => g.id === gid || g.name === gid);
       return match ? { id: match.id, name: match.name, permissions: match.permissions } : { id: gid, name: gid, permissions: [] };
     });
-    const resolved = resolveUserPermissions(userGroupIds, groups);
+    const { permissions } = resolveUserPermissions(userGroupIds, groups);
 
     return {
       uid: u.id,
@@ -269,14 +267,8 @@ router.get('/api/admin/users', verifyToken, verifyAdmin, route('Failed to list u
       pays: u.pays !== false,
       groups: userGroupIds,
       groupObjects: userGroupObjects,
-      permissions: resolved.permissions,
-      canManageFinances: resolved.canManageFinances,
-      canViewFinances: resolved.canViewFinances,
-      canManageRegistrationCode: resolved.canManageRegistrationCode === true,
-      canAccessAi: resolved.canAccessAi,
-      canParticipateMentoring: resolved.canParticipateMentoring,
-      canManageMentoring: resolved.canManageMentoring,
-      canManageEvents: resolved.canManageEvents === true,
+      permissions,
+      ...permissionFlags({ permissions }),
       isApprovedMentor: approvedMentorUserIds.has(u.id),
       emailNotifications: u.emailNotifications !== false,
       isClaimed,
@@ -532,7 +524,7 @@ router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, route('Failed t
   res.json({ success: true });
 }));
 
-router.post('/api/admin/logo', verifyToken, verifySuperAdmin, (req, res) => {
+router.post('/api/admin/logo', verifyToken, verifyAdmin, (req, res) => {
   logoUpload.single('logo')(req, res, async (uploadError) => {
     if (uploadError) {
       console.error('Multer error:', uploadError);
@@ -625,7 +617,7 @@ router.post('/api/push/subscribe', verifyToken, route('Failed to save subscripti
   if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
     return res.status(400).json({ error: 'Invalid push subscription payload' });
   }
-  const currentUid = req.user.uid || req.user.id;
+  const currentUid = req.user.uid;
   // Only the installed app (PWA) gets pushes, not a browser tab (iOS sends web push to home screen apps only anyway)
   await upsertPushSubscription(context.appConfig, currentUid, subscription, userAgent || req.headers['user-agent'] || '', installed === true);
   res.json({ success: true });
@@ -637,7 +629,7 @@ router.post('/api/push/unsubscribe', verifyToken, route('Failed to unsubscribe',
     return res.status(400).json({ error: 'Endpoint is required' });
   }
   // Only the own device: another person's subscription stays (the answer is the same, so it tells nothing)
-  await deletePushSubscription(context.appConfig, endpoint, req.user.uid || req.user.id);
+  await deletePushSubscription(context.appConfig, endpoint, req.user.uid);
   res.json({ success: true });
 }));
 
@@ -652,7 +644,7 @@ router.post('/api/push/fcm/subscribe', verifyToken, route('Failed to save FCM to
   if (!token || typeof token !== 'string' || token.length > 4096) {
     return res.status(400).json({ error: 'Invalid FCM token' });
   }
-  const currentUid = req.user.uid || req.user.id;
+  const currentUid = req.user.uid;
   await upsertFcmToken(context.appConfig, currentUid, token, typeof platform === 'string' && platform ? platform.slice(0, 32) : 'android');
   res.json({ success: true });
 }));
@@ -662,13 +654,13 @@ router.post('/api/push/fcm/unsubscribe', verifyToken, route('Failed to unsubscri
   if (!token || typeof token !== 'string') {
     return res.status(400).json({ error: 'Token is required' });
   }
-  const currentUid = req.user.uid || req.user.id;
+  const currentUid = req.user.uid;
   await deleteFcmToken(context.appConfig, token, currentUid);
   res.json({ success: true });
 }));
 
 router.post('/api/push/test', verifyToken, route('Failed to send test notification', async (req, res) => {
-  const currentUid = req.user.uid || req.user.id;
+  const currentUid = req.user.uid;
   await sendPushToUser(context.appConfig, currentUid, {
     title: `${context.appConfig?.appName || 'Agora'} Test`,
     body: translate(requestLanguage(req), 'Push notifications are set up successfully!'),

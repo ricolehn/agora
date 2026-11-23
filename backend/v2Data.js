@@ -2,6 +2,7 @@
 // moments as ISO 8601 (UTC) - with the permissions of the old API (v1). The AI assistant's lookups (aiTools.js) read
 // through the same functions, so both always see the same data under the same rules.
 const { context, userMatchesTargetGroups } = require('./context');
+const { can } = require('./permissions');
 const client = require('./db/client');
 const finance = require('./db/stores/finance');
 const eventsStore = require('./db/stores/events');
@@ -21,7 +22,6 @@ const sumCents = (rows) => rows.reduce((sum, row) => sum + (Number.isSafeInteger
 const isoOf = (stored) => (stored ? new Date(String(stored).replace(' ', 'T')).toISOString() : null);
 const isoFromMillis = (value) => (Number.isFinite(value) && value > 0 && value <= 8.64e15 ? new Date(value).toISOString() : null);
 const uidOf = (user) => user.uid || user.id;
-const canViewFinances = (user) => user.canViewFinances === true;
 
 // --- Finance ------------------------------------------------------------------------------------------------------
 
@@ -96,7 +96,7 @@ const standingOrderOf = (order) => ({
 // Who may see which member: those with finance rights all of them, everyone else their own. The members come from
 // the books' memo (stores/finance.js: every member with its rows, kept up to date with every save) - read only here;
 // the orphans (payments of a member that never had a record) are not in it
-const visibleTo = (user) => ({ row }) => canViewFinances(user) || row.user === uidOf(user);
+const visibleTo = (user) => ({ row }) => can(user, 'view_finances') || row.user === uidOf(user);
 
 /** The members [user] may see: [{ row, person, payments }] (read only). */
 async function membersFor(user) {
@@ -358,7 +358,6 @@ module.exports = {
   isoOf,
   isoFromMillis,
   uidOf,
-  canViewFinances,
   memberOf,
   paymentOf,
   statusPeriodOf,

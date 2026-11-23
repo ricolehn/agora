@@ -18,11 +18,10 @@ const eventsStore = require('./db/stores/events');
 const { listGroupRecords, listUserRecords } = require('./pocketbase');
 const { seatCounts } = require('./eventSeats');
 const { canUserAccessEventDutyPlan } = require('./eventAccess');
+const { can } = require('./permissions');
 const { plainText } = require('./eventContext');
 const { toDateStr } = require('./utils/date');
 
-/** May [user] see the finances (the rule of the AI chat: viewing or managing them). */
-const seesFinances = (user) => user?.canViewFinances === true || user?.canManageFinances === true;
 
 // --- Reading the model's arguments ----------------------------------------------------------------------------------
 
@@ -571,7 +570,7 @@ const TOOLS = {
 };
 
 /** May [user] use the lookup [name] (asked again before every call: permissions can change during a question). */
-const mayUse = (name, user) => Boolean(TOOLS[name]) && (!TOOLS[name].finance || seesFinances(user));
+const mayUse = (name, user) => Boolean(TOOLS[name]) && (!TOOLS[name].finance || can(user, 'view_finances'));
 
 /** The tool definitions for a question of [user]: only the lookups they may use. */
 const aiToolDefinitions = (user) => Object.keys(TOOLS).filter((name) => mayUse(name, user)).map((name) => TOOLS[name].definition);
@@ -647,4 +646,4 @@ function foundIn(text) {
   return { count: total[unit], unit, ...(Number.isFinite(total.eur) ? { eur: total.eur } : {}), ...(result.cut ? { cut: true } : {}) };
 }
 
-module.exports = { aiToolDefinitions, runAiTool, describeLookup, foundIn, seesFinances, AI_TOOL_NAMES: Object.keys(TOOLS) };
+module.exports = { aiToolDefinitions, runAiTool, describeLookup, foundIn, AI_TOOL_NAMES: Object.keys(TOOLS) };

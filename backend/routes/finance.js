@@ -66,6 +66,7 @@ const { feeResetImpact, feeChangeImpact } = require('../derivedData');
 const { toDateStr } = require('../utils/date');
 const { route } = require('./http');
 const { httpError, invalid, notFound, conflict } = require('../httpError');
+const { isAdmin, can } = require('../permissions');
 
 
 const router = express.Router();
@@ -102,14 +103,14 @@ router.delete('/api/db', dbRateLimit, verifyToken, route('Failed to delete data'
 }));
 
 router.get('/api/stats', dbRateLimit, verifyToken, route('Failed to fetch stats', async (req, res) => {
-  if (!req.user.canViewFinances) {
+  if (!can(req.user, 'view_finances')) {
     return res.status(403).json({ error: 'Finance access rights required' });
   }
   res.json(await aggregateStats(context.appConfig));
 }));
 
 router.get('/api/transactions', dbRateLimit, verifyToken, route('Failed to fetch transactions', async (req, res) => {
-  if (!req.user.canViewFinances) {
+  if (!can(req.user, 'view_finances')) {
     return res.status(403).json({ error: 'Finance access rights required' });
   }
   const page = parseInt(req.query.page, 10) || 1;
@@ -123,7 +124,7 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, route('Transaction 
   const [root, id] = targetPath.split('/');
   // Donations and expenses: the whole list, saved only if it is still the version the app read
   if ((root === 'donations' || root === 'expenses') && !id) {
-    if (!req.user.canManageFinances) return res.status(403).json({ error: 'Finance management rights required' });
+    if (!can(req.user, 'manage_finances')) return res.status(403).json({ error: 'Finance management rights required' });
     const read = await readLogicalPath(root, {}, req.user);
     if ((req.body?.currentVersion || null) !== read.version) return res.status(409).json({ error: 'Conflict' });
     await writeLogicalPath(root, req.body?.value, req.user, 'set', { origin: originOf(req), version: read.version });
@@ -142,7 +143,7 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, route('Transaction 
   }
 
   const nextValue = req.body?.value;
-  if (!req.user.canManageFinances) {
+  if (!can(req.user, 'manage_finances')) {
     return res.status(403).json({ error: 'Finance management rights required' });
   }
 
@@ -160,7 +161,7 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, route('Transaction 
 // own password: no stray tap, replayed request or session left open starts it.
 
 // Who set what and the logs of changes: for those who see the finances or run the instance
-const isFeeInsider = (user) => user?.admin === true || user?.canViewFinances === true;
+const isFeeInsider = (user) => isAdmin(user) || can(user, 'view_finances');
 
 function feeResetAnswer(state, user) {
   const today = toDateStr(new Date());
@@ -411,7 +412,7 @@ router.get('/api/receipts/:filename', protectedActionRateLimit, verifyToken, asy
   const user = req.user;
   // Receipts belong to the books: those who see or manage the finances open them, and whoever uploaded the file. A
   // system admin (the owner too) without these rights is a member like any other here, as for events (v3.0.0)
-  const allowed = user.canViewFinances || user.canManageFinances || ownsReceipt(user, filename);
+  const allowed = can(user, 'view_finances') || ownsReceipt(user, filename);
   if (!allowed) return res.status(403).send('Forbidden');
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
@@ -431,7 +432,7 @@ router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, route('Fai
   }
   // Only about a request the member really just filed, with the name stored in it - the text comes from the
   // server, never from the caller (anyone could otherwise send any name to every treasurer)
-  const uid = req.user.uid || req.user.id;
+  const uid = req.user.uid;
   const recent = Date.now() - 15 * 60 * 1000;
   const filed = (await listRequestRecords(context.appConfig, { orderByChild: 'userId', equalTo: uid }))
     .filter((r) => r.status === 'pending' && r.type === reqType && Number(r.timestamp || r.requestKey) >= recent)

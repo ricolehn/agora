@@ -1,8 +1,9 @@
 const express = require('express');
+const { can } = require('../permissions');
 const {
   context,
   verifyToken,
-  verifySuperAdmin,
+  verifyAdmin,
   verifyAiAccess,
   aiChatRateLimit,
   broadcastDataUpdate,
@@ -51,7 +52,7 @@ const aiConfigView = (aiSettings) => ({
   effort: aiEffortOf(aiSettings)
 });
 
-router.get('/api/admin/ai-config', verifyToken, verifySuperAdmin, route('Failed to get AI config', async (req, res) => {
+router.get('/api/admin/ai-config', verifyToken, verifyAdmin, route('Failed to get AI config', async (req, res) => {
   res.json(aiConfigView(await getAiSettings(context.appConfig)));
 }));
 
@@ -64,7 +65,7 @@ router.get('/api/admin/ai-status', verifyToken, verifyAiAccess, async (req, res)
   }
 });
 
-router.put('/api/admin/ai-config', verifyToken, verifySuperAdmin, route('Failed to save AI config', async (req, res) => {
+router.put('/api/admin/ai-config', verifyToken, verifyAdmin, route('Failed to save AI config', async (req, res) => {
   const body = req.body || {};
   if (body.provider !== undefined && body.provider !== null && !isProvider(body.provider)) {
     return res.status(400).json({ error: 'The provider must be anthropic, gemini, openai or custom.' });
@@ -235,7 +236,7 @@ router.post('/api/ai/chat', aiChatRateLimit, verifyToken, verifyAiAccess, async 
     const apiKey = aiSettings.apiKey || '';
     const leaveOut = aiRefusedParts(aiSettings);
 
-    const canViewFinances = req.user?.canViewFinances === true || req.user?.canManageFinances === true;
+    const canViewFinances = can(req.user, 'view_finances');
     const dbSnapshot = await buildDatabaseSnapshot(context.appConfig, { canViewFinances, user: req.user });
     // The effort level decides whether the model may look up the full history, how much, and how deeply it thinks
     const level = aiEffortOf(aiSettings);
@@ -272,7 +273,7 @@ router.post('/api/ai/chat', aiChatRateLimit, verifyToken, verifyAiAccess, async 
         freshUser: async () => {
           try {
             const user = await resolveRequestUser(req.authToken);
-            return user.canAccessAi === true || (Array.isArray(user.permissions) && user.permissions.includes('access_ai')) ? user : null;
+            return can(user, 'access_ai') ? user : null;
           } catch {
             return null;
           }

@@ -9,6 +9,7 @@ const { listGroupRecords, listUserRecords } = require('../pocketbase');
 const { translate, requestLanguage } = require('../i18n');
 const { seatCounts } = require('../eventSeats');
 const { canUserAccessEventDutyPlan } = require('../eventAccess');
+const { can } = require('../permissions');
 const eventsRouter = require('../routes/events');
 const data = require('../v2Data');
 const {
@@ -19,7 +20,6 @@ const {
 const { isoFromMillis, eventOf, seesEvent } = data;
 const router = express.Router();
 const BASE = '/api/v2';
-const uidOf = (req) => data.uidOf(req.user);
 
 // --- Reading -------------------------------------------------------------------------------------------------------
 
@@ -70,7 +70,7 @@ async function dutiesOf(eventIds) {
  * they see it (duties: null where they do not) - the same in the list and alone.
  */
 function eventView(req, event, { registrations, guests, duties }, names) {
-  const uid = uidOf(req);
+  const uid = req.user.uid;
   const mine = registrations.find((reg) => reg.user === uid && reg.status !== 'cancelled');
   const seesPlan = canUserAccessEventDutyPlan(req.user, event, duties, names.groups);
   return {
@@ -110,7 +110,7 @@ async function eventAnswer(req, id) {
   return { ...view, program: view.duties && program ? { items: program.items || [], updatedAt: isoFromMillis(program.updatedAt) } : null };
 }
 
-const canManageEvents = (req) => req.user.canManageEvents === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_events'));
+const canManageEvents = (req) => can(req.user, 'manage_events');
 
 router.get(`${BASE}/events/:id`, verifyToken, handle(async (req, res) => {
   res.json(await eventAnswer(req, req.params.id));

@@ -12,6 +12,7 @@ const { translate, requestLanguage, normalizeLanguage } = require('../i18n');
 const { isBlockedStatus, isClosedStatus, isFull, maxMenteesOf, mentorNameOf, openConversationsByMentor, readableText } = require('../mentoring');
 const { NOTIFICATION_TYPES, readNotificationSettings, mergeNotificationSettings } = require('../notificationPrefs');
 const { validTimeZone } = require('../dutyReminders');
+const { isAdmin, can, abilities } = require('../permissions');
 const usersRouter = require('../routes/users');
 const songbookRouter = require('../routes/songbook');
 const mentoringRouter = require('../routes/mentoring');
@@ -24,7 +25,6 @@ const {
 const { isoFromMillis } = data;
 const router = express.Router();
 const BASE = '/api/v2';
-const uidOf = (req) => data.uidOf(req.user);
 
 // --- Who am I, the groups --------------------------------------------------------------------------------------------
 
@@ -39,7 +39,7 @@ async function meOf(user) {
     firstName: user.firstName || '',
     lastName: user.lastName || '',
     name: user.name || '',
-    isAdmin: user.admin === true,
+    isAdmin: isAdmin(user),
     isOwner: user.owner === true,
     permissions,
     groups: groups.filter((group) => mine.has(group.id) || mine.has(group.name)).map((group) => ({ id: group.id, name: group.name })),
@@ -48,15 +48,7 @@ async function meOf(user) {
     // Which messages reach the person, and how: the two channels and the kinds of message for each
     notificationSettings: readNotificationSettings(user),
     // What the person may do, as the apps decide what to offer (the server checks every call itself)
-    can: {
-      viewFinances: user.canViewFinances === true,
-      manageFinances: user.canManageFinances === true,
-      manageEvents: user.canManageEvents === true || permissions.includes('manage_events'),
-      manageMentoring: user.canManageMentoring === true || permissions.includes('manage_mentoring'),
-      manageSongbook: permissions.includes('manage_songbook'),
-      useAi: user.canAccessAi === true || permissions.includes('access_ai'),
-      manageRegistrationCode: user.canManageRegistrationCode === true
-    }
+    can: abilities(user)
   };
 }
 
@@ -98,7 +90,7 @@ router.patch(`${BASE}/me`, protectedActionRateLimit, verifyToken, handle(async (
   }
   // The same change as the apps' through the old API: what the person may change of their own account, merged
   if (Object.keys(value).length) {
-    await writeLogicalPath(`users/${uidOf(req)}`, value, req.user, 'patch');
+    await writeLogicalPath(`users/${req.user.uid}`, value, req.user, 'patch');
     broadcastDataUpdate();
   }
   const user = { ...req.user, ...value };
@@ -108,7 +100,7 @@ router.patch(`${BASE}/me`, protectedActionRateLimit, verifyToken, handle(async (
 
 // --- The registration code, the profile pictures, reports -----------------------------------------------------------
 
-const managesRegistrationCode = (req) => needs(req.user.canManageRegistrationCode === true, 'Registration code management rights required');
+const managesRegistrationCode = (req) => needs(can(req.user, 'manage_registration_code'), 'Registration code management rights required');
 
 // The code people register with - for those who manage it
 router.get(`${BASE}/registration-code`, verifyToken, handle(async (req, res) => {
@@ -148,7 +140,7 @@ router.get(`${BASE}/pictures/:id`, verifyToken, (req, res) => {
 // The person's own picture (multipart, field "picture": a JPEG, at most 5 MB) - answers its new version
 router.put(`${BASE}/me/picture`, verifyToken, (req, res) => {
   const json = res.json.bind(res);
-  res.json = (body) => (res.statusCode < 400 && body?.success === true ? json({ userId: uidOf(req), version: body.version }) : json(body));
+  res.json = (body) => (res.statusCode < 400 && body?.success === true ? json({ userId: req.user.uid, version: body.version }) : json(body));
   runSteps(pictureUploadRoute, req, res);
 });
 
@@ -291,7 +283,7 @@ router.delete(`${BASE}/prayers/:id`, protectedActionRateLimit, verifyToken, hand
 // --- Mentoring ---------------------------------------------------------------------------------------------------------
 
 const nameOf = (user) => (user ? user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() : '');
-const isMentoringManager = (req) => req.user.canManageMentoring === true || (Array.isArray(req.user.permissions) && req.user.permissions.includes('manage_mentoring'));
+const isMentoringManager = (req) => can(req.user, 'manage_mentoring');
 
 /**
  * The mentors, by name: the approved ones, each with how many conversations they have open and whether they take
@@ -333,7 +325,7 @@ const mentorProfileOf = (mentor) => (mentor ? {
 
 // The person's own profile as a mentor (null: they never applied)
 router.get(`${BASE}/mentoring/profile`, verifyToken, handle(async (req, res) => {
-  res.json({ profile: mentorProfileOf(await getMentorByUserId(context.appConfig, uidOf(req))) });
+  res.json({ profile: mentorProfileOf(await getMentorByUserId(context.appConfig, req.user.uid)) });
 }));
 
 const applyRoute = v1Route(mentoringRouter, 'post', '/api/mentoring/apply');
@@ -353,12 +345,12 @@ function profileInput(body) {
 router.post(`${BASE}/mentoring/application`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
   const profile = profileInput(bodyOf(req));
   await runV1(applyRoute, req, { body: { bio: profile.bio || '', maxMentees: profile.maxMentees || 3 } });
-  res.status(201).json({ profile: mentorProfileOf(await getMentorByUserId(context.appConfig, uidOf(req))) });
+  res.status(201).json({ profile: mentorProfileOf(await getMentorByUserId(context.appConfig, req.user.uid)) });
 }));
 
 router.patch(`${BASE}/mentoring/profile`, protectedActionRateLimit, verifyToken, handle(async (req, res) => {
   await runV1(profileRoute, req, { body: profileInput(bodyOf(req)) });
-  res.json({ profile: mentorProfileOf(await getMentorByUserId(context.appConfig, uidOf(req))) });
+  res.json({ profile: mentorProfileOf(await getMentorByUserId(context.appConfig, req.user.uid)) });
 }));
 
 // Those who manage mentoring approve or reject an application (or set it back to pending)
@@ -370,13 +362,13 @@ router.post(`${BASE}/mentoring/mentors/:id/status`, protectedActionRateLimit, ve
 
 /** The reader's conversations (none without an account id: the lookup would take that for "all of them"). */
 async function threadsOf(req) {
-  const uid = uidOf(req);
+  const uid = req.user.uid;
   return uid ? listMentoringThreadsForUser(context.appConfig, uid) : [];
 }
 
 /** A conversation as the reader sees it: the mentee stays anonymous to the mentor (alias), as in v1. */
 async function threadOf(req, thread, users) {
-  const uid = uidOf(req);
+  const uid = req.user.uid;
   const isMentor = thread.mentor === uid;
   const { unreadCount, lastMessage } = await getMentoringThreadSummary(context.appConfig, thread.id, isMentor ? 'mentee' : 'mentor').catch(() => ({ unreadCount: 0, lastMessage: null }));
   const lang = requestLanguage(req);

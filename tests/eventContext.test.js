@@ -101,13 +101,13 @@ test('the roster follows the real access rules: asked people, assigned groups an
   assert.ok(asked.dutyRoster, 'asked for a duty');
   const band = byTitle(await buildEventContext({}, { uid: 'ben', groups: ['band'] }), 'Lobpreisabend');
   assert.ok(band.dutyRoster && band.orderOfService, 'member of the assigned group');
-  const manager = await buildEventContext({}, { uid: 'eva', groups: [], canManageEvents: true });
+  const manager = await buildEventContext({}, { uid: 'eva', groups: [], permissions: ['manage_events'] });
   assert.ok(titles(manager).includes('Leitungsrunde'), 'managers see group events');
   assert.ok(byTitle(manager, 'Jugend').dutyRoster, 'and every roster');
 });
 
 test('attendee names never reach the AI', async () => {
-  for (const user of [{ uid: 'max', groups: [] }, { uid: 'eva', groups: [], canManageEvents: true }]) {
+  for (const user of [{ uid: 'max', groups: [] }, { uid: 'eva', groups: [], permissions: ['manage_events'] }]) {
     const fest = byTitle(await buildEventContext({}, user), 'Sommerfest');
     const text = JSON.stringify(fest.registration);
     assert.equal(text.includes('Max') || text.includes('Mia'), false);

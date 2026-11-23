@@ -13,6 +13,7 @@ const {
   dataDir,
   verifyToken,
   verifyAdmin,
+  requires,
   protectedActionRateLimit,
   broadcastDataUpdate
 } = require('../context');
@@ -64,7 +65,6 @@ async function connection() {
   return { url: settings.url, user: settings.user, password, root: settings.root || '' };
 }
 
-const userId = (req) => req.user?.uid || req.user?.id;
 
 /**
  * Media's answer to what went wrong: nothing when the person left (an aborted transfer), an error meant for them (a
@@ -305,7 +305,7 @@ router.post('/api/media/upload', protectedActionRateLimit, verifyToken, async (r
         const used = await storeUpload(target.conn, target.folder, file, names[index]);
         stored.push({ name: used, path: media.joinPath(target.folder, used) });
       }
-      console.log(`[Media] ${userId(req)} added ${stored.length} file(s) to "/${target.folder}"`);
+      console.log(`[Media] ${req.user.uid} added ${stored.length} file(s) to "/${target.folder}"`);
       broadcastDataUpdate('media');
       res.status(201).json({ files: stored });
     } catch (err) {
@@ -403,7 +403,7 @@ router.post('/api/media/delete', protectedActionRateLimit, verifyToken, mediaRou
     });
   }
   if (deleted.length) {
-    console.log(`[Media] ${userId(req)} deleted ${deleted.length} item(s) in "/${target.folder}"`);
+    console.log(`[Media] ${req.user.uid} deleted ${deleted.length} item(s) in "/${target.folder}"`);
     broadcastDataUpdate('media');
   }
   const failures = failed.map(({ status, ...entry }) => entry);
@@ -471,13 +471,13 @@ router.post('/api/media/download', protectedActionRateLimit, verifyToken, mediaR
   if (!entries.some((entry) => !entry.folder)) return res.status(404).json({ error: 'There is nothing to download here.' });
   // One folder: the archive is named after it; several entries after the folder they are in
   const base = names.length === 1 && entries[0].folder ? names[0] : (folder ? media.nameOf(folder) : 'Media');
-  const id = keepDownload({ uid: userId(req), entries, name: `${base}.zip` });
+  const id = keepDownload({ uid: req.user.uid, entries, name: `${base}.zip` });
   res.json({ id, url: `/api/media/download/${id}`, files: entries.filter((entry) => !entry.folder).length });
 }));
 
 router.get('/api/media/download/:id', mediaFileRateLimit, verifyToken, async (req, res) => {
   const ticket = downloads.get(String(req.params.id));
-  if (!ticket || ticket.expires <= Date.now() || ticket.uid !== userId(req)) {
+  if (!ticket || ticket.expires <= Date.now() || ticket.uid !== req.user.uid) {
     return res.status(404).json({ error: 'This download is no longer available. Please start it again.' });
   }
   let setup;
@@ -521,10 +521,7 @@ router.get('/api/media/download/:id', mediaFileRateLimit, verifyToken, async (re
 
 // --- Rules: members with extended media rights decide who may do what in which folder ---
 
-function verifyManageMedia(req, res, next) {
-  if (media.canManageMedia(req.user)) return next();
-  return res.status(403).json({ error: 'Extended media rights required' });
-}
+const verifyManageMedia = requires(media.canManageMedia, 'Extended media rights required');
 
 const personName = (user) => `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.name || user.email || user.id;
 
@@ -590,7 +587,7 @@ router.put('/api/media/rules', protectedActionRateLimit, verifyToken, verifyMana
     return next;
   });
   if (result.error) return res.status(400).json({ error: result.error });
-  console.log(`[Media] ${userId(req)} set the rights of "/${folder}"`);
+  console.log(`[Media] ${req.user.uid} set the rights of "/${folder}"`);
   broadcastDataUpdate('media');
   res.json({ folder: folderRules(result.rules, folder) });
 }));

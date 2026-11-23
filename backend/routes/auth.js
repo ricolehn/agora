@@ -13,7 +13,7 @@ const {
   setAuthCookie,
   clearAuthCookie,
   verifyToken,
-  applyGroupPermissions,
+  withGroupPermissions,
   broadcastDataUpdate,
   configFile,
   profilesDir,
@@ -40,7 +40,6 @@ const {
   claimUserAccount,
   listPeopleRecords,
   updateOwnPassword,
-  resolveUserPermissions,
   updateSystemState,
   SYSTEM_STATE_LOCK,
   queueRecordWrite
@@ -159,14 +158,7 @@ router.post('/api/auth/login', authRateLimit, async (req, res) => {
 
   try {
     const auth = await loginUser(email, password);
-    let allGroups = [];
-    try {
-      allGroups = await listGroupRecords(context.appConfig);
-    } catch { /* ignore */ }
-    const groupPerms = resolveUserPermissions(auth.user?.groups, allGroups);
-    if (auth.user) {
-      applyGroupPermissions(auth.user, groupPerms);
-    }
+    if (auth.user) await withGroupPermissions(auth.user);
     setAuthCookie(req, res, auth.token);
     res.json(auth);
   } catch (error) {
@@ -305,7 +297,7 @@ router.post('/api/auth/password', authRateLimit, verifyToken, route('Failed to u
 // The password confirms it; the owner account has to stay (like in the admin deletion).
 router.post('/api/auth/delete-account', authRateLimit, verifyToken, route('The account could not be deleted.', async (req, res) => {
   const password = String(req.body?.password || '');
-  const uid = req.user.uid || req.user.id;
+  const uid = req.user.uid;
   if (!password) {
     return res.status(400).json({ error: 'Please confirm the deletion with your password.' });
   }

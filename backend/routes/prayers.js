@@ -18,9 +18,8 @@ const store = createItemStore('prayers');
 // A damaged secret makes prayer requests unusable, it is never silently replaced (instanceSecret.js)
 const prayerSecret = instanceSecret(dataDir, 'prayers-secret', 'Prayer requests are not available right now.');
 
-const userId = (req) => req.user?.uid || req.user?.id;
 const userName = (req) => req.user?.name || `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || req.user?.email || '';
-const viewOf = (prayer, req) => publicPrayer(prayer, { uid: userId(req), secret: prayerSecret(), moderator: canModerate(req.user) });
+const viewOf = (prayer, req) => publicPrayer(prayer, { uid: req.user.uid, secret: prayerSecret(), moderator: canModerate(req.user) });
 
 const notFound = (res) => res.status(404).json({ error: 'Prayer request not found' });
 
@@ -32,17 +31,17 @@ router.get('/api/prayers', verifyToken, route('Prayer requests could not be load
     await store.update(context.appConfig, prayer.id, (current) => (current && isGone(current, now) ? { remove: true } : {}));
   }
   res.json({
-    prayers: visiblePrayers(prayers, { uid: userId(req), secret: prayerSecret(), now, moderator: canModerate(req.user) }),
+    prayers: visiblePrayers(prayers, { uid: req.user.uid, secret: prayerSecret(), now, moderator: canModerate(req.user) }),
     canModerate: canModerate(req.user)
   });
 }));
 
 router.post('/api/prayers', protectedActionRateLimit, verifyToken, route('The prayer request could not be shared', async (req, res) => {
-  const { prayer, error } = buildPrayer(req.body, { uid: userId(req), name: userName(req), secret: prayerSecret() });
+  const { prayer, error } = buildPrayer(req.body, { uid: req.user.uid, name: userName(req), secret: prayerSecret() });
   if (error) return res.status(400).json({ error });
   // Checked and saved one after another per person: parallel posts cannot get past the limit
-  const limit = await queueRecordWrite(`prayers-new:${userId(req)}`, async () => {
-    const over = canCreate(await store.list(context.appConfig), { uid: userId(req), secret: prayerSecret() });
+  const limit = await queueRecordWrite(`prayers-new:${req.user.uid}`, async () => {
+    const over = canCreate(await store.list(context.appConfig), { uid: req.user.uid, secret: prayerSecret() });
     if (!over) await store.update(context.appConfig, prayer.id, () => ({ save: prayer }));
     return over;
   });
@@ -56,7 +55,7 @@ router.patch('/api/prayers/:id', protectedActionRateLimit, verifyToken, route('T
   if (!store.isValidKey(req.params.id)) return notFound(res);
   const result = await store.update(context.appConfig, req.params.id, (prayer) => {
     if (!prayer) return { error: 'Prayer request not found', status: 404 };
-    if (!isMine(prayer, userId(req), prayerSecret())) return { error: 'Only the person who shared it can change this request.', status: 403 };
+    if (!isMine(prayer, req.user.uid, prayerSecret())) return { error: 'Only the person who shared it can change this request.', status: 403 };
     const next = ownerUpdate(prayer, req.body);
     return { ...next, save: next.prayer };
   });
@@ -70,7 +69,7 @@ router.delete('/api/prayers/:id', protectedActionRateLimit, verifyToken, route('
   if (!store.isValidKey(req.params.id)) return notFound(res);
   const result = await store.update(context.appConfig, req.params.id, (prayer) => {
     if (!prayer) return { error: 'Prayer request not found', status: 404 };
-    if (!isMine(prayer, userId(req), prayerSecret()) && !canModerate(req.user)) {
+    if (!isMine(prayer, req.user.uid, prayerSecret()) && !canModerate(req.user)) {
       return { error: 'You may not delete this prayer request.', status: 403 };
     }
     return { remove: true };

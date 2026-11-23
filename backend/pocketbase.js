@@ -535,58 +535,10 @@ const getRequestRecord = (appConfig, requestKey) => financeStore.getRequestRecor
 const listRequestRecords = (appConfig, query = {}) => financeStore.listRequestRecords(appConfig, query);
 const upsertRequestRecord = (appConfig, requestKey, value) => financeStore.upsertRequestRecord(appConfig, requestKey, value);
 
-function resolveUserPermissions(userGroups = [], allGroups = []) {
-  const groupIds = Array.isArray(userGroups) ? userGroups : (userGroups ? [String(userGroups)] : []);
-  const matchingGroups = (Array.isArray(allGroups) ? allGroups : []).filter((g) => groupIds.includes(g.id) || groupIds.includes(g.name));
-  const permSet = new Set();
-  for (const g of matchingGroups) {
-    const perms = Array.isArray(g.permissions) ? g.permissions : [];
-    for (const p of perms) {
-      if (typeof p === 'string' && p.trim()) {
-        permSet.add(p.trim());
-      }
-    }
-  }
-  const permissions = Array.from(permSet);
-  const canManageFinances = permissions.includes('manage_finances');
-  const canViewFinances = canManageFinances || permissions.includes('view_finances');
-  const canManageRegistrationCode = permissions.includes('manage_registration_code');
-  const canAccessAi = permissions.includes('access_ai');
-  const canParticipateMentoring = true;
-  const canManageMentoring = permissions.includes('manage_mentoring');
-  const canManageEvents = permissions.includes('manage_events');
-  return {
-    // Accounts keep their groups by id, events their target groups by name (eventAccess.js)
-    groupIds: matchingGroups.map((g) => g.id).filter(Boolean),
-    groupNames: matchingGroups.map((g) => g.name).filter(Boolean),
-    permissions,
-    canManageFinances,
-    canViewFinances,
-    canManageRegistrationCode,
-    canAccessAi,
-    canParticipateMentoring,
-    canManageMentoring,
-    canManageEvents
-  };
-}
-
 // Groups in user_groups (backend/db/stores/accounts.js)
 const listGroupRecords = (appConfig = null) => accountsStore.listGroupRecords(appConfig);
 const createGroupRecord = (appConfig, group) => accountsStore.createGroupRecord(appConfig, group);
 const updateGroupRecord = (appConfig, id, group) => accountsStore.updateGroupRecord(appConfig, id, group);
-
-const SYSTEM_PERMISSIONS = [
-  { id: 'view_finances', name: 'Finance management (read only)', description: 'Allows viewing balances, history, transactions and reports without editing rights' },
-  { id: 'manage_finances', name: 'Finance management (full access)', description: 'Allows recording, editing, booking and deleting payments, donations, expenses and standing orders' },
-  { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
-  { id: 'access_ai', name: 'Use AI support', description: 'Allows access to and use of the built-in AI assistant' },
-  { id: 'manage_mentoring', name: 'Mentoring management', description: 'Allows leaders to review, approve or reject mentor applications (no access to private chats)' },
-  { id: 'manage_events', name: 'Event & duty roster management', description: 'Allows creating recurring appointments and full management of all events and duties' },
-  { id: 'manage_songbook', name: 'Manage songbook', description: 'Allows adding, editing and deleting songs in the songbook' },
-  { id: 'manage_prayers', name: 'Moderate prayer requests', description: 'Allows removing unsuitable prayer requests (anonymous ones stay anonymous)' },
-  { id: 'manage_media', name: 'Extended media rights', description: 'Allows deciding which groups may read, write or not see a media folder; sees every folder, its files only where the rights allow' }
-];
-
 const deleteGroupRecord = (appConfig, id) => accountsStore.deleteGroupRecord(appConfig, id);
 
 // Mentors
@@ -851,7 +803,6 @@ module.exports = {
   createGroupRecord,
   updateGroupRecord,
   deleteGroupRecord,
-  resolveUserPermissions,
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
@@ -871,7 +822,6 @@ module.exports = {
   listRequestRecords,
   getRequestRecord,
   upsertRequestRecord,
-  SYSTEM_PERMISSIONS,
   listMentorRecords,
   getMentorRecord,
   getMentorByUserId,

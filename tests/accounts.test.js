@@ -312,8 +312,7 @@ describe('pocketbase', () => {
       listGroupRecords,
       createGroupRecord,
       updateGroupRecord,
-      deleteGroupRecord,
-      resolveUserPermissions
+      deleteGroupRecord
     } = require('../backend/pocketbase');
     assert.equal(typeof adminResetUserPassword, 'function');
     assert.equal(typeof deleteUserRecord, 'function');
@@ -323,11 +322,10 @@ describe('pocketbase', () => {
     assert.equal(typeof createGroupRecord, 'function');
     assert.equal(typeof updateGroupRecord, 'function');
     assert.equal(typeof deleteGroupRecord, 'function');
-    assert.equal(typeof resolveUserPermissions, 'function');
   });
 
   test('resolveUserPermissions merges permissions and determines finance, AI, and mentoring access', () => {
-    const { resolveUserPermissions } = require('../backend/pocketbase');
+    const { resolveUserPermissions } = require('../backend/permissions');
     const allGroups = [
       { id: 'g1', name: 'Finance Team', permissions: ['view_finances'] },
       { id: 'g2', name: 'Treasury', permissions: ['manage_finances'] },
@@ -397,6 +395,20 @@ describe('pocketbase', () => {
     assert.equal(resCombined.canManageEvents, false);
   });
 
+  test('one answer to what a person may do: can() and isAdmin(), the old flags and the can block of API v2 say the same', () => {
+    const { can, isAdmin, permissionFlags, abilities } = require('../backend/permissions');
+    const treasurer = { permissions: ['manage_finances', 'manage_songbook'] };
+    assert.equal(can(treasurer, 'view_finances'), true, 'managing the finances includes seeing them');
+    assert.equal(can({ permissions: ['view_finances'] }, 'manage_finances'), false);
+    assert.equal(can({ canManageEvents: true }, 'manage_events'), false, 'only the permissions count, not a flag set by hand');
+    assert.equal(can(null, 'access_ai'), false);
+    assert.deepEqual([isAdmin({ admin: true }), isAdmin({ owner: true }), isAdmin({ superAdmin: true }), isAdmin({}), isAdmin(undefined)], [true, true, true, false, false]);
+    const flags = permissionFlags(treasurer);
+    const v2 = abilities(treasurer);
+    assert.deepEqual([flags.canManageFinances, flags.canViewFinances, flags.canManageEvents], [v2.manageFinances, v2.viewFinances, v2.manageEvents]);
+    assert.deepEqual(v2, { viewFinances: true, manageFinances: true, manageEvents: false, manageMentoring: false, manageSongbook: true, useAi: false, manageRegistrationCode: false });
+  });
+
   // Regression: a password starting with "-" was read as a CLI option by "pocketbase superuser upsert" (~1 in 64 setups failed)
   test('generated PocketBase superuser credentials never start with a dash', () => {
     const { generatePocketBaseCredentials } = require('../backend/pocketbase');
@@ -409,7 +421,7 @@ describe('pocketbase', () => {
 
   // A contract, not a snapshot: new permissions may be added, the existing ones must stay and be well-formed
   test('SYSTEM_PERMISSIONS keeps the core permissions and every entry is well-formed', () => {
-    const { SYSTEM_PERMISSIONS } = require('../backend/pocketbase');
+    const { SYSTEM_PERMISSIONS } = require('../backend/permissions');
     assert.ok(Array.isArray(SYSTEM_PERMISSIONS));
     const ids = SYSTEM_PERMISSIONS.map(p => p.id);
     for (const core of ['view_finances', 'manage_finances', 'manage_registration_code', 'access_ai', 'manage_mentoring', 'manage_events']) {

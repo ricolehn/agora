@@ -9,6 +9,7 @@ const {
 const { createItemStore } = require('../itemStore');
 const { buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate } = require('../polls');
 const { instanceSecret } = require('../instanceSecret');
+const { isAdmin } = require('../permissions');
 const { route } = require('./http');
 
 const router = express.Router();
@@ -17,9 +18,7 @@ const store = createItemStore('polls');
 // A damaged secret makes polls unusable, it is never silently replaced (instanceSecret.js)
 const pollSecret = instanceSecret(dataDir, 'polls-secret', 'Polls are not available right now.');
 
-const userId = (req) => req.user?.uid || req.user?.id;
-const isAdmin = (req) => req.user?.admin === true || req.user?.owner === true || req.user?.superAdmin === true;
-const view = (poll, req) => publicPoll(poll, { uid: userId(req), secret: pollSecret() });
+const view = (poll, req) => publicPoll(poll, { uid: req.user.uid, secret: pollSecret() });
 
 const notFound = (res) => res.status(404).json({ error: 'Poll not found' });
 
@@ -33,15 +32,15 @@ router.get('/api/polls', verifyToken, route('Polls could not be loaded', async (
     }
   }
   const list = polls
-    .map((poll) => publicPoll(poll, { uid: userId(req), secret: pollSecret(), now }))
+    .map((poll) => publicPoll(poll, { uid: req.user.uid, secret: pollSecret(), now }))
     .sort((a, b) => (a.closed - b.closed) || (a.closed ? b.endsAt - a.endsAt : a.endsAt - b.endsAt));
   res.json(list);
 }));
 
 router.post('/api/polls', protectedActionRateLimit, verifyToken, route('The poll could not be created', async (req, res) => {
-  const { poll, error } = buildPoll(req.body, { uid: userId(req), secret: pollSecret() });
+  const { poll, error } = buildPoll(req.body, { uid: req.user.uid, secret: pollSecret() });
   if (error) return res.status(400).json({ error });
-  const limit = canCreate(await store.list(context.appConfig), { uid: userId(req), secret: pollSecret() });
+  const limit = canCreate(await store.list(context.appConfig), { uid: req.user.uid, secret: pollSecret() });
   if (limit) return res.status(limit.status).json({ error: limit.error });
   await store.update(context.appConfig, poll.id, () => ({ save: poll }));
   broadcastDataUpdate('polls');
@@ -51,7 +50,7 @@ router.post('/api/polls', protectedActionRateLimit, verifyToken, route('The poll
 router.post('/api/polls/:id/vote', protectedActionRateLimit, verifyToken, route('The vote could not be saved', async (req, res) => {
   if (!store.isValidKey(req.params.id)) return notFound(res);
   const result = await store.update(context.appConfig, req.params.id, (poll) => {
-    const outcome = castVote(poll, req.body?.optionIds, { uid: userId(req), secret: pollSecret() });
+    const outcome = castVote(poll, req.body?.optionIds, { uid: req.user.uid, secret: pollSecret() });
     return outcome.error ? outcome : { ...outcome, save: outcome.poll };
   });
   if (result.error) return res.status(result.status || 400).json({ error: result.error });
@@ -64,7 +63,7 @@ router.post('/api/polls/:id/close', protectedActionRateLimit, verifyToken, route
   if (!store.isValidKey(req.params.id)) return notFound(res);
   const result = await store.update(context.appConfig, req.params.id, (poll) => {
     if (!poll) return { error: 'Poll not found', status: 404 };
-    if (!isMine(poll, userId(req), pollSecret()) && !isAdmin(req)) return { error: 'Only the person who created the poll can end it.', status: 403 };
+    if (!isMine(poll, req.user.uid, pollSecret()) && !isAdmin(req.user)) return { error: 'Only the person who created the poll can end it.', status: 403 };
     const ended = endPoll(poll);
     return { poll: ended, save: ended };
   });
@@ -77,7 +76,7 @@ router.delete('/api/polls/:id', protectedActionRateLimit, verifyToken, route('Th
   if (!store.isValidKey(req.params.id)) return notFound(res);
   const result = await store.update(context.appConfig, req.params.id, (poll) => {
     if (!poll) return { error: 'Poll not found', status: 404 };
-    if (!isMine(poll, userId(req), pollSecret()) && !isAdmin(req)) return { error: 'Only the person who created the poll can delete it.', status: 403 };
+    if (!isMine(poll, req.user.uid, pollSecret()) && !isAdmin(req.user)) return { error: 'Only the person who created the poll can delete it.', status: 403 };
     return { remove: true };
   });
   if (result.error) return res.status(result.status).json({ error: result.error });

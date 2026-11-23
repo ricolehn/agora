@@ -1,5 +1,6 @@
 const { runAs } = require('./actor');
 const { conflict, forbidden, invalid, notFound, unauthorized, unavailable } = require('./httpError');
+const { isAdmin, can, permissionFlags, resolveUserPermissions } = require('./permissions');
 const multer = require('multer');
 const crypto = require('crypto');
 const path = require('path');
@@ -35,7 +36,6 @@ const {
   updateUserRecord,
   isPlaceholderEmail,
   listGroupRecords,
-  resolveUserPermissions,
   listPeopleRecords,
   getPeopleRecord,
   upsertPeopleRecord,
@@ -386,30 +386,14 @@ function clearAuthCookie(req, res) {
   res.setHeader('Set-Cookie', setCookies);
 }
 
-// Copies the permissions of the user's groups onto the user object (resolveUserPermissions result)
-function applyGroupPermissions(user, groupPerms) {
-  user.groupIds = groupPerms.groupIds || [];
-  user.groupNames = groupPerms.groupNames || [];
-  user.permissions = groupPerms.permissions;
-  user.canManageFinances = groupPerms.canManageFinances;
-  user.canViewFinances = groupPerms.canViewFinances;
-  user.canManageRegistrationCode = groupPerms.canManageRegistrationCode === true;
-  user.canAccessAi = groupPerms.canAccessAi;
-  user.canParticipateMentoring = groupPerms.canParticipateMentoring;
-  user.canManageMentoring = groupPerms.canManageMentoring;
-  user.canManageEvents = groupPerms.canManageEvents === true;
-  return user;
+/** [user] with what their groups give (permissions.js); while the groups cannot be read, nothing. */
+async function withGroupPermissions(user) {
+  const groups = await listGroupRecords(context.appConfig).catch(() => []);
+  return Object.assign(user, resolveUserPermissions(user.groups, groups));
 }
 
 async function loadUserWithPermissions(token) {
-  const user = await verifyUserToken(token);
-  let allGroups = [];
-  try {
-    allGroups = await listGroupRecords(context.appConfig);
-  } catch { /* ignore */ }
-  const groupPerms = resolveUserPermissions(user.groups, allGroups);
-  applyGroupPermissions(user, groupPerms);
-  return user;
+  return withGroupPermissions(await verifyUserToken(token));
 }
 
 // verifyToken needs three PocketBase lookups per request, and clients send bursts (a page load is ~25 requests).
@@ -479,27 +463,11 @@ async function verifyToken(req, res, next) {
   }
 }
 
-function verifyAdmin(req, res, next) {
-  if (req.user?.admin === true || req.user?.owner === true || req.user?.superAdmin === true) return next();
-  return res.status(403).json({ error: 'Admin access required' });
-}
-
-function verifyAiAccess(req, res, next) {
-  if (req.user?.canAccessAi === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('access_ai'))) return next();
-  return res.status(403).json({ error: 'AI permission required' });
-}
-
-function verifyMentoringParticipate(req, res, next) {
-  if (req.user) return next();
-  return res.status(401).json({ error: 'Sign-in required' });
-}
-
-function verifyManageMentoring(req, res, next) {
-  if (req.user?.canManageMentoring === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('manage_mentoring'))) return next();
-  return res.status(403).json({ error: 'Mentor management rights required' });
-}
-
-const verifySuperAdmin = verifyAdmin;
+/** Middleware: the request goes on when [allowed](the person asking), else 403 with [text]. */
+const requires = (allowed, text) => (req, res, next) => (allowed(req.user) ? next() : res.status(403).json({ error: text }));
+const verifyAdmin = requires(isAdmin, 'Admin access required');
+const verifyAiAccess = requires((user) => can(user, 'access_ai'), 'AI permission required');
+const verifyManageMentoring = requires((user) => can(user, 'manage_mentoring'), 'Mentor management rights required');
 
 function validateSetupPayload(body = {}) {
   const appName = typeof body.appName === 'string' ? body.appName.trim() : '';
@@ -600,19 +568,19 @@ async function readLogicalPath(targetPath, query, user) {
   }
 
   if (root === 'system' && !id) {
-    if (!user.admin) {
+    if (!isAdmin(user)) {
       throw forbidden('Admin access required');
     }
     const record = await getStateRecord(context.appConfig, 'system');
     const val = record?.value ? { ...record.value } : { ...DEFAULT_SYSTEM_STATE };
-    if (!user.canManageRegistrationCode) {
+    if (!can(user, 'manage_registration_code')) {
       delete val.inviteCode;
     }
     return { value: val, version: record?.updated || null };
   }
 
   if (root === 'system' && id === 'inviteCode') {
-    if (!user.canManageRegistrationCode) {
+    if (!can(user, 'manage_registration_code')) {
       throw forbidden('Registration code management rights required');
     }
     const record = await getStateRecord(context.appConfig, 'system');
@@ -620,7 +588,7 @@ async function readLogicalPath(targetPath, query, user) {
   }
 
   if (root === 'donations' || root === 'expenses') {
-    if (!user.canViewFinances) {
+    if (!can(user, 'view_finances')) {
       throw forbidden('Financial access required');
     }
     // The version of the whole list: a save that sends it back is refused if the list changed meanwhile (409)
@@ -643,14 +611,14 @@ async function readLogicalPath(targetPath, query, user) {
     } catch { /* ignore */ }
 
     if (id) {
-      if (!user.admin && id !== user.uid) {
+      if (!isAdmin(user) && id !== user.uid) {
         throw forbidden('Forbidden');
       }
       const record = await getUserRecord(context.appConfig, id);
       return { value: record ? toUserValue(record, allGroups) : null, version: record?.updated || null };
     }
 
-    if (!user.admin) {
+    if (!isAdmin(user)) {
       const record = await getUserRecord(context.appConfig, user.uid);
       return {
         value: record ? { [user.uid]: toUserValue(record, allGroups) } : {},
@@ -671,7 +639,7 @@ async function readLogicalPath(targetPath, query, user) {
       const value = record?.data || null;
       // By name only while the record is not linked to an account yet (the name alone proves nothing)
       const unlinkedNameMatch = !value?.uid && !record?.uid && !isDeletedPerson(record) && isOwnFullNameMatch(user, value?.name || record?.name);
-      if (value && !user.canViewFinances && value.uid !== user.uid && !unlinkedNameMatch) {
+      if (value && !can(user, 'view_finances') && value.uid !== user.uid && !unlinkedNameMatch) {
         throw forbidden('Forbidden');
       }
       return { value, version: record?.updated || null };
@@ -679,7 +647,7 @@ async function readLogicalPath(targetPath, query, user) {
 
     // Only read and sent (shared: no copy of them all)
     let people = await listPeopleRecords(context.appConfig, query, { shared: true });
-    if (!user.canViewFinances) {
+    if (!can(user, 'view_finances')) {
       people = people.filter((record) => record.uid === user.uid || (record.data && record.data.uid === user.uid)
         || (!record.uid && !record.data?.uid && !isDeletedPerson(record) && isOwnFullNameMatch(user, record.name || record.data?.name)));
     }
@@ -693,7 +661,7 @@ async function readLogicalPath(targetPath, query, user) {
     if (id) {
       const record = await getRequestRecord(context.appConfig, id);
       const value = record?.data || null;
-      if (value && !user.canViewFinances && value.userId !== user.uid && record?.userId !== user.uid) {
+      if (value && !can(user, 'view_finances') && value.userId !== user.uid && record?.userId !== user.uid) {
         throw forbidden('Forbidden');
       }
       return { value, version: record?.updated || null };
@@ -701,7 +669,7 @@ async function readLogicalPath(targetPath, query, user) {
 
     // Approved / rejected requests are only shown for 30 days (the daily cleanup deletes them)
     let requests = (await listRequestRecords(context.appConfig, query)).filter((record) => !isExpiredRequest(record));
-    if (!user.canViewFinances) {
+    if (!can(user, 'view_finances')) {
       // Also by the own person record: approving or rejecting used to overwrite userId with the treasurer's id
       const ownPeople = new Set((await listPeopleRecords(context.appConfig, {}, { shared: true }))
         .filter((record) => record.uid === user.uid || record.data?.uid === user.uid)
@@ -718,31 +686,13 @@ async function readLogicalPath(targetPath, query, user) {
   throw notFound('Unknown path');
 }
 
-function toUserValue(record, allGroups = null) {
+function toUserValue(record, allGroups) {
   const isOwner = record.owner === true || record.superAdmin === true;
   const isPlaceholder = isPlaceholderEmail(record.email);
   const isClaimed = !isPlaceholder;
   const rawGroups = Array.isArray(record.groups) ? record.groups : (record.groups ? [String(record.groups)] : []);
 
-  let permissions = [];
-  let canManageFinances = false;
-  let canViewFinances = false;
-  let canManageRegistrationCode = false;
-  let canAccessAi = false;
-  let canParticipateMentoring = false;
-  let canManageMentoring = false;
-  let canManageEvents = false;
-  if (Array.isArray(allGroups)) {
-    const res = resolveUserPermissions(rawGroups, allGroups);
-    permissions = res.permissions;
-    canManageFinances = res.canManageFinances;
-    canViewFinances = res.canViewFinances;
-    canManageRegistrationCode = res.canManageRegistrationCode === true;
-    canAccessAi = res.canAccessAi;
-    canParticipateMentoring = res.canParticipateMentoring;
-    canManageMentoring = res.canManageMentoring;
-    canManageEvents = res.canManageEvents === true;
-  }
+  const { permissions } = resolveUserPermissions(rawGroups, allGroups);
 
   return {
     firstName: record.firstName || '',
@@ -756,13 +706,7 @@ function toUserValue(record, allGroups = null) {
     pays: record.pays !== false,
     groups: rawGroups,
     permissions,
-    canManageFinances,
-    canViewFinances,
-    canManageRegistrationCode,
-    canAccessAi,
-    canParticipateMentoring,
-    canManageMentoring,
-    canManageEvents,
+    ...permissionFlags({ permissions }),
     emailNotifications: record.emailNotifications !== false,
     language: record.language || '',
     isClaimed,
@@ -791,7 +735,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   }
 
   if (root === 'settings' && !id) {
-    if (!user.admin) throw forbidden('Admin access required');
+    if (!isAdmin(user)) throw forbidden('Admin access required');
     // Apps without the fees over time write their fees here: other fees than those of this month count from this
     // month on (feeState.js). The web app changes the fees with the month they count from (routes/finance.js)
     const actor = { by: String(user.uid || user.id || ''), byName: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() };
@@ -801,13 +745,13 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   }
 
   if (root === 'system' && id === 'inviteCode' && !nested) {
-    if (!user.canManageRegistrationCode) throw forbidden('Registration code management rights required');
+    if (!can(user, 'manage_registration_code')) throw forbidden('Registration code management rights required');
     await require('./pocketbase').updateSystemState(context.appConfig, (system) => ({ ...system, inviteCode: value }));
     return;
   }
 
   if ((root === 'donations' || root === 'expenses') && !id) {
-    if (!user.canManageFinances) throw forbidden('Finance management rights required');
+    if (!can(user, 'manage_finances')) throw forbidden('Finance management rights required');
     // With the version it was read with, a list that changed meanwhile is refused (409) instead of overwritten
     const expectedVersion = typeof options.version === 'string' && options.version ? options.version : undefined;
     if (root === 'expenses') {
@@ -819,7 +763,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   }
 
   if (root === 'users' && id) {
-    if (id !== user.uid && !user.admin) {
+    if (id !== user.uid && !isAdmin(user)) {
       throw forbidden('Forbidden');
     }
 
@@ -840,7 +784,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     }
 
     let updates = {};
-    if (user.admin && id !== user.uid && value && typeof value === 'object') {
+    if (isAdmin(user) && id !== user.uid && value && typeof value === 'object') {
       if (typeof value.admin === 'boolean') updates.admin = isTargetOwner ? true : value.admin;
       if (typeof value.pays === 'boolean') updates.pays = value.pays;
       if (Array.isArray(value.groups)) updates.groups = value.groups;
@@ -852,7 +796,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       updates = sanitizeSelfUserWrite(value);
     }
 
-    if (method === 'set' && !user.admin) {
+    if (method === 'set' && !isAdmin(user)) {
       updates = sanitizeSelfUserWrite(value || {});
     }
 
@@ -865,8 +809,8 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       updates.emailNotifications = updates.notificationSettings.channels.push || updates.notificationSettings.channels.email;
     }
 
-    if (typeof value?.firstName === 'string' && user.admin && id !== user.uid) updates.firstName = value.firstName.trim();
-    if (typeof value?.lastName === 'string' && user.admin && id !== user.uid) updates.lastName = value.lastName.trim();
+    if (typeof value?.firstName === 'string' && isAdmin(user) && id !== user.uid) updates.firstName = value.firstName.trim();
+    if (typeof value?.lastName === 'string' && isAdmin(user) && id !== user.uid) updates.lastName = value.lastName.trim();
     if ((updates.firstName || updates.lastName) && !updates.name) {
       updates.name = `${updates.firstName || existing.firstName || ''} ${updates.lastName || existing.lastName || ''}`.trim();
     }
@@ -878,7 +822,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
   if (root === 'people' && id) {
     const existing = await getPeopleRecord(context.appConfig, id);
     const existingValue = existing?.data || null;
-    if (!user.canManageFinances) {
+    if (!can(user, 'manage_finances')) {
       const requestedUid = value && typeof value === 'object' ? value.uid : undefined;
       const onlyUidUpdate = value && typeof value === 'object' && Object.keys(value).every((key) => key === 'uid');
       const isAllowedLink = existingValue && !isDeletedPerson(existing) && onlyUidUpdate && requestedUid === user.uid && (!existingValue.uid || existingValue.uid === user.uid) && isOwnFullNameMatch(user, existingValue.name || existing?.name);
@@ -887,7 +831,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       }
     }
     // Linking only ever adds the uid to the existing record (a plain set would replace it and drop its payments)
-    const nextValue = !user.canManageFinances
+    const nextValue = !can(user, 'manage_finances')
       ? { ...existingValue, uid: user.uid }
       : method === 'patch' && existingValue && value && typeof value === 'object'
         ? { ...existingValue, ...value }
@@ -904,7 +848,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
     if (!value.userId && method !== 'patch') {
       value.userId = user.uid;
     }
-    const canManageRequests = user.canManageFinances === true;
+    const canManageRequests = can(user, 'manage_finances');
     if (!canManageRequests) {
       if (method !== 'set' || String(value.userId) !== String(user.uid)) {
         throw forbidden('Finance management rights required');
@@ -969,7 +913,7 @@ async function removeLogicalPath(targetPath, user) {
   const [root, id] = normalizedPath.split('/');
   if (!user) throw unauthorized('Unauthorized');
   if (root === 'people' && id) {
-    if (!user.admin) throw forbidden('Admin access required');
+    if (!isAdmin(user)) throw forbidden('Admin access required');
     await removePeopleRecord(context.appConfig, id);
     return;
   }
@@ -1324,14 +1268,7 @@ async function authenticateCalendarFeed(req, res, next) {
     return res.status(401).send('Unauthorized: invalid or expired calendar link');
   }
 
-  let allGroups = [];
-  try {
-    allGroups = await listGroupRecords(context.appConfig);
-  } catch { /* ignore */ }
-  const groupPerms = resolveUserPermissions(authenticatedUser.groups, allGroups);
-  applyGroupPermissions(authenticatedUser, groupPerms);
-
-  req.user = authenticatedUser;
+  req.user = await withGroupPermissions(authenticatedUser);
   next();
 }
 
@@ -1378,11 +1315,10 @@ module.exports = {
   NO_REASON_GIVEN,
   rejectionReasonText,
   resolveRequestUser,
+  requires,
   verifyAdmin,
   verifyAiAccess,
-  verifyMentoringParticipate,
   verifyManageMentoring,
-  verifySuperAdmin,
   validateSetupPayload,
   saveOptionalLogo,
   isOwnFullNameMatch,
@@ -1393,7 +1329,7 @@ module.exports = {
   removeLogicalPath,
   verifyOptionalUser,
   newPersonRecord,
-  applyGroupPermissions,
+  withGroupPermissions,
   sendDutyRequestNotificationEmail,
   invalidateAuthCache,
   userMatchesTargetGroups,

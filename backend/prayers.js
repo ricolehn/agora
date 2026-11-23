@@ -8,6 +8,7 @@
 // owner for a while (to extend them), then they disappear on their own.
 const crypto = require('crypto');
 const { keyedHash } = require('./instanceSecret');
+const { can } = require('./permissions');
 
 const DAY = 24 * 60 * 60 * 1000;
 const DURATIONS = { week: 7 * DAY, month: 30 * DAY, quarter: 90 * DAY };
@@ -21,7 +22,7 @@ const KEEP_EXPIRED_MS = 14 * DAY;
 // The owner as a keyed hash ('prayer-owner': a purpose of its own, beside the polls' with the same kind of secret)
 const ownerHash = (secret, id, uid) => keyedHash(secret, 'prayer-owner', id, uid);
 
-const canModerate = (user) => Array.isArray(user?.permissions) && user.permissions.includes('manage_prayers');
+const canModerate = (user) => can(user, 'manage_prayers');
 
 /** Line breaks are kept (a request may have paragraphs), runs of empty lines are not. */
 const cleanText = (value, max) => String(value ?? '')

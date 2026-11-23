@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const { isDeepStrictEqual } = require('util');
 const { context, verifyToken, protectedActionRateLimit, broadcastDataUpdate, writeLogicalPath, isOwnFullNameMatch, NO_REASON_GIVEN, rejectionReasonText } = require('../context');
 const { listUserRecords, getUserRecord } = require('../pocketbase');
+const { isAdmin, can } = require('../permissions');
 const client = require('../db/client');
 const finance = require('../db/stores/finance');
 const { fromCents, toCents } = require('../db/codec');
@@ -34,11 +35,10 @@ const { cents, isoFromMillis, memberOf, paymentOf, statusPeriodOf, standingOrder
 const router = express.Router();
 const BASE = '/api/v2';
 
-const uidOf = (req) => data.uidOf(req.user);
-const canView = (req) => req.user.canViewFinances === true;
-const canManage = (req) => req.user.canManageFinances === true;
+const canView = (req) => can(req.user, 'view_finances');
+const canManage = (req) => can(req.user, 'manage_finances');
 // Who set the fees and fresh starts, and their logs: for those who see the finances or run the instance (as in v1)
-const isFeeInsider = (req) => req.user.admin === true || canView(req);
+const isFeeInsider = (req) => isAdmin(req.user) || canView(req);
 
 const NEEDS_MEMBER_VERSION = '{name} is needed: the version of the member the change is based on.';
 const NEEDS_LIST_VERSION = '{name} is needed: the version of the list the change is based on.';
@@ -77,7 +77,7 @@ const isClaimable = (req, row, person) => !row.user && !person?.uid && !person?.
 /** The members [req]'s person may see: all with finance rights; else their own and the ones they may claim (as v1). */
 async function membersShownTo(req) {
   if (canView(req)) return data.membersFor(req.user);
-  const uid = uidOf(req);
+  const uid = req.user.uid;
   return (await finance.membersReadOnly(context.appConfig)).filter(({ row, person }) => row.user === uid || isClaimable(req, row, person));
 }
 
@@ -92,7 +92,7 @@ router.get(`${BASE}/members`, verifyToken, handle(async (req, res) => {
 // One member: from the books' memo where it is up to date (stores/finance.js), its rows are read only here
 router.get(`${BASE}/members/:id`, verifyToken, handle(async (req, res) => {
   const { row, answer, person } = await memberAnswer(req.params.id);
-  needs(canView(req) || row.user === uidOf(req) || isClaimable(req, row, person));
+  needs(canView(req) || row.user === req.user.uid || isClaimable(req, row, person));
   res.json(answer);
 }));
 
@@ -110,7 +110,7 @@ router.put(`${BASE}/members/:id/account`, protectedActionRateLimit, verifyToken,
 // The accounts and the member record each is linked to (memberId; null: none - ?unlinked=1 lists only those), by name -
 // for administrators, who alone see every account in v1 too
 router.get(`${BASE}/accounts`, verifyToken, handle(async (req, res) => {
-  needs(req.user.admin === true, 'Admin access required');
+  needs(isAdmin(req.user), 'Admin access required');
   const [users, members] = await Promise.all([listUserRecords(context.appConfig), finance.membersReadOnly(context.appConfig)]);
   const memberOfUser = new Map();
   for (const { row } of members) if (row.user && !row.isDeleted && !memberOfUser.has(row.user)) memberOfUser.set(row.user, row.id);
@@ -609,7 +609,7 @@ const requestOf = (record, memberIds) => ({
 
 router.get(`${BASE}/requests`, verifyToken, handle(async (req, res) => {
   const [records, memberIds] = await Promise.all([finance.listRequestRecords(context.appConfig), memberIdsByKey()]);
-  const uid = uidOf(req);
+  const uid = req.user.uid;
   const words = searchOf(req);
   const status = req.query.status === undefined || req.query.status === '' ? null : choiceInput(req.query.status, 'status', ['pending', 'approved', 'rejected']);
   // Everyone else sees what they asked and what was asked about them (their own member record), as in v1
@@ -641,7 +641,7 @@ router.post(`${BASE}/requests`, protectedActionRateLimit, verifyToken, handle(as
   choiceInput(body.type, 'type', REQUEST_TYPES);
   const details = detailsInput(body);
   const notify = body.notify === undefined ? false : boolInput(body.notify, 'notify');
-  const uid = uidOf(req);
+  const uid = req.user.uid;
   let person = { personId: uid, personName: req.user.name || '' };
   if (body.memberId !== undefined && body.memberId !== null) {
     const row = await memberRow(idInput(body.memberId, 'memberId'));

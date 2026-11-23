@@ -4,6 +4,7 @@
 const { wantsNotification } = require('./notificationPrefs');
 const { sendPushToUser } = require('./pushNotifications');
 const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
+const { isAdmin, can, resolveUserPermissions } = require('./permissions');
 
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -132,17 +133,16 @@ async function notifyUsers(appConfig, users, type, { push, email, origin = '' })
 
 /** Everyone who decides on finance requests: admins, owner and members of a group with manage_finances. */
 async function financeManagers(appConfig) {
-  const { listUserRecords, listGroupRecords, resolveUserPermissions } = require('./pocketbase');
+  const { listUserRecords, listGroupRecords } = require('./pocketbase');
   const [users, groups] = await Promise.all([listUserRecords(appConfig), listGroupRecords(appConfig).catch(() => [])]);
-  return users.filter((u) => u.admin === true || u.owner === true || u.superAdmin === true
-    || resolveUserPermissions(u.groups, groups).canManageFinances);
+  return users.filter((u) => isAdmin(u) || can(resolveUserPermissions(u.groups, groups), 'manage_finances'));
 }
 
 /** Admins and the owner (reported content). */
 async function adminUsers(appConfig) {
   const { listUserRecords } = require('./pocketbase');
   const users = await listUserRecords(appConfig);
-  return users.filter((u) => u.admin === true || u.owner === true || u.superAdmin === true);
+  return users.filter(isAdmin);
 }
 
 module.exports = {

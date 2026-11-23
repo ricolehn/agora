@@ -1,11 +1,12 @@
 // Who sees an event and its duty roster / order of service. Pure rules without server state, shared by the
 // events routes, the AI's event context and the tests (context.js re-exports them).
+const { isAdmin, can } = require('./permissions');
 
 /** Events without target groups are for everyone; managers see all; otherwise one of the person's groups. */
 function userMatchesTargetGroups(user, targetGroups = []) {
   if (!Array.isArray(targetGroups) || targetGroups.length === 0) return true;
   if (!user) return false;
-  if (user.admin === true || user.owner === true || user.superAdmin === true || user.canManageEvents === true) return true;
+  if (isAdmin(user) || can(user, 'manage_events')) return true;
   // The event editor stores target groups by name, accounts their groups by id: the server adds the names of the
   // user's groups (groupNames, resolveUserPermissions). Without them members never saw their own group's events.
   if (Array.isArray(user.groupNames) && user.groupNames.some(name => targetGroups.includes(name))) return true;
@@ -24,10 +25,7 @@ function canUserAccessEventDutyPlan(user, event, allEventDuties, groupMap) {
 
   if (event.createdBy === currentUid) return true;
 
-  const canManage = user.canManageEvents === true || (Array.isArray(user.permissions) && user.permissions.includes('manage_events'));
-  if (canManage) {
-    return true;
-  }
+  if (can(user, 'manage_events')) return true;
 
   const isEnteredOrRequested = Array.isArray(allEventDuties) && allEventDuties.some(d => {
     if (d.event !== event.id) return false;

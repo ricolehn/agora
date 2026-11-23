@@ -3,6 +3,7 @@
 // order of service only where the person may see them (canUserAccessEventDutyPlan), no attendee names.
 const { listEvents, listEventRegistrations, listEventGuests, listEventDuties, listUserRecords, listGroupRecords } = require('./pocketbase');
 const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./eventAccess');
+const { can } = require('./permissions');
 const { createItemStore } = require('./itemStore');
 const { seatCounts } = require('./eventSeats');
 const { toDateStr } = require('./utils/date');
@@ -33,7 +34,7 @@ const addDays = (date, days) => {
 async function buildEventContext(appConfig, user) {
   if (!user) return [];
   const uid = user.uid || user.id;
-  const canManage = user.canManageEvents === true || (Array.isArray(user.permissions) && user.permissions.includes('manage_events'));
+  const canManage = can(user, 'manage_events');
   const from = addDays(new Date(), -PAST_DAYS);
   const until = addDays(new Date(), FUTURE_DAYS);
 

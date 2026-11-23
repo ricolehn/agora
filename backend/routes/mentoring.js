@@ -3,7 +3,6 @@ const crypto = require('crypto');
 const {
   context,
   verifyToken,
-  verifyMentoringParticipate,
   verifyManageMentoring,
   broadcastDataUpdate
 } = require('../context');
@@ -28,6 +27,7 @@ const {
 } = require('../pocketbase');
 
 const { notifyUsers, originOf } = require('../notify');
+const { can } = require('../permissions');
 const { translate, requestLanguage, instanceLanguage } = require('../i18n');
 const {
   DEFAULT_MAX_MENTEES, isBlockedStatus, isClosedStatus, maxMenteesOf, openConversationsByMentor, isFull, mentorNameOf, readableText
@@ -36,8 +36,8 @@ const { route } = require('./http');
 
 const router = express.Router();
 
-router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, route('Failed to list mentors', async (req, res) => {
-  const isManager = req.user?.canManageMentoring === true || (Array.isArray(req.user?.permissions) && req.user.permissions.includes('manage_mentoring'));
+router.get('/api/mentoring/mentors', verifyToken, route('Failed to list mentors', async (req, res) => {
+  const isManager = can(req.user, 'manage_mentoring');
 
   let filter = 'status = "approved"';
   if (isManager && req.query.status) {
@@ -97,7 +97,7 @@ router.get('/api/mentoring/mentors', verifyToken, verifyMentoringParticipate, ro
   res.json(everyone ? formatted : formatted.filter(item => item.user === req.user.uid || !item.isFull));
 }));
 
-router.get('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate, route('Failed to get mentor profile', async (req, res) => {
+router.get('/api/mentoring/my-profile', verifyToken, route('Failed to get mentor profile', async (req, res) => {
   const mentor = await getMentorByUserId(context.appConfig, req.user.uid);
   if (!mentor) {
     return res.json({ exists: false, mentor: null });
@@ -117,7 +117,7 @@ router.get('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate,
   });
 }));
 
-router.post('/api/mentoring/apply', verifyToken, verifyMentoringParticipate, route('Failed to apply as mentor', async (req, res) => {
+router.post('/api/mentoring/apply', verifyToken, route('Failed to apply as mentor', async (req, res) => {
   const { bio, maxMentees, max_mentees } = req.body || {};
   const parsedMax = Number(max_mentees || maxMentees) > 0 ? Number(max_mentees || maxMentees) : DEFAULT_MAX_MENTEES;
 
@@ -144,7 +144,7 @@ router.post('/api/mentoring/apply', verifyToken, verifyMentoringParticipate, rou
   res.json({ success: true, mentor: created });
 }));
 
-router.put('/api/mentoring/my-profile', verifyToken, verifyMentoringParticipate, route('Failed to update mentor profile', async (req, res) => {
+router.put('/api/mentoring/my-profile', verifyToken, route('Failed to update mentor profile', async (req, res) => {
   const existing = await getMentorByUserId(context.appConfig, req.user.uid);
   if (!existing) {
     return res.status(404).json({ error: 'Mentor profile not found' });
@@ -174,16 +174,15 @@ router.post('/api/mentoring/manage/:id/status', verifyToken, verifyManageMentori
   res.json({ success: true, status });
 }));
 
-router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, route('Failed to list mentoring threads', async (req, res) => {
-  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
-  const threads = await listMentoringThreadsForUser(context.appConfig, userIds);
+router.get('/api/mentoring/threads', verifyToken, route('Failed to list mentoring threads', async (req, res) => {
+  const threads = await listMentoringThreadsForUser(context.appConfig, [req.user.uid]);
   const users = await listUserRecords(context.appConfig);
   const userMap = new Map(users.map(u => [u.id, u]));
 
   const formatted = await Promise.all(threads.map(async (t) => {
     try {
-      const isMentor = userIds.includes(t.mentor);
-      const isMentee = userIds.includes(t.mentee);
+      const isMentor = t.mentor === req.user.uid;
+      const isMentee = t.mentee === req.user.uid;
       if (!isMentor && !isMentee) return null;
 
       const otherRole = isMentor ? 'mentee' : 'mentor';
@@ -226,8 +225,8 @@ router.get('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, ro
   res.json(formatted.filter(Boolean));
 }));
 
-router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, route('Failed to create mentoring thread', async (req, res) => {
-  const currentUid = req.user.uid || req.user.id;
+router.post('/api/mentoring/threads', verifyToken, route('Failed to create mentoring thread', async (req, res) => {
+  const currentUid = req.user.uid;
   const mentorId = req.body?.mentorId || req.body?.mentor;
   const initialMessage = req.body?.initialMessage || req.body?.message;
   if (!mentorId) {
@@ -323,15 +322,14 @@ router.post('/api/mentoring/threads', verifyToken, verifyMentoringParticipate, r
   res.json({ success: true, thread, threadId: thread.id, menteeAlias });
 }));
 
-router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringParticipate, route('Failed to get thread messages', async (req, res) => {
-  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+router.get('/api/mentoring/threads/:id/messages', verifyToken, route('Failed to get thread messages', async (req, res) => {
   const thread = await getMentoringThread(context.appConfig, req.params.id);
   if (!thread) {
     return res.status(404).json({ error: 'Conversation not found' });
   }
 
-  const isMentor = userIds.includes(thread.mentor);
-  const isMentee = userIds.includes(thread.mentee);
+  const isMentor = thread.mentor === req.user.uid;
+  const isMentee = thread.mentee === req.user.uid;
   if (!isMentor && !isMentee) {
     return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
   }
@@ -353,7 +351,7 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
       thread: m.thread,
       senderRole: m.sender_role,
       sender_role: m.sender_role,
-      sender: isSenderMe ? (req.user.uid || req.user.id) : 'partner',
+      sender: isSenderMe ? req.user.uid : 'partner',
       sender_name: isSenderMe ? translate(lang, 'You') : (isMentor ? (thread.mentee_alias || translate(lang, 'Seeker')) : mentorName),
       text: readableText(m.text, lang),
       message: m.text,
@@ -365,8 +363,7 @@ router.get('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringPa
   res.json(formattedMessages);
 }));
 
-router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringParticipate, route('The message could not be sent', async (req, res) => {
-  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+router.post('/api/mentoring/threads/:id/messages', verifyToken, route('The message could not be sent', async (req, res) => {
   const text = req.body?.text || req.body?.message;
   if (!text || !String(text).trim()) {
     return res.status(400).json({ error: 'Message text is required' });
@@ -377,8 +374,8 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
     return res.status(404).json({ error: 'Conversation not found' });
   }
 
-  const isMentor = userIds.includes(thread.mentor);
-  const isMentee = userIds.includes(thread.mentee);
+  const isMentor = thread.mentor === req.user.uid;
+  const isMentee = thread.mentee === req.user.uid;
   if (!isMentor && !isMentee) {
     return res.status(403).json({ error: 'Confidential pastoral conversation: access denied' });
   }
@@ -409,7 +406,7 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
   if (isMentor) {
     try {
       const allUsers = await listUserRecords(context.appConfig);
-      const mentorUser = allUsers.find(u => u.id === (req.user.uid || req.user.id || thread.mentor));
+      const mentorUser = allUsers.find(u => u.id === req.user.uid);
       senderName = mentorUser ? (mentorUser.name || `${mentorUser.firstName || ''} ${mentorUser.lastName || ''}`.trim() || mentorUser.email) : 'Mentor';
     } catch (uErr) {
       senderName = 'Mentor';
@@ -449,8 +446,7 @@ router.post('/api/mentoring/threads/:id/messages', verifyToken, verifyMentoringP
   });
 }));
 
-router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringParticipate, route('The status could not be changed', async (req, res) => {
-  const userIds = Array.from(new Set([req.user.uid, req.user.id].filter(Boolean)));
+router.patch('/api/mentoring/threads/:id/status', verifyToken, route('The status could not be changed', async (req, res) => {
   const { status } = req.body || {};
   if (status !== 'open' && status !== 'active' && status !== 'closed' && status !== 'blocked') {
     return res.status(400).json({ error: 'Invalid status' });
@@ -461,8 +457,8 @@ router.patch('/api/mentoring/threads/:id/status', verifyToken, verifyMentoringPa
     return res.status(404).json({ error: 'Conversation not found' });
   }
 
-  const isMentor = userIds.includes(thread.mentor);
-  const isMentee = userIds.includes(thread.mentee);
+  const isMentor = thread.mentor === req.user.uid;
+  const isMentee = thread.mentee === req.user.uid;
   if (!isMentor && !isMentee) {
     return res.status(403).json({ error: 'Access denied' });
   }

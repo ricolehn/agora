@@ -10,7 +10,7 @@ describe('events', () => {
     assert.equal(userMatchesTargetGroups(null, []), true, 'no target groups: everyone');
     const forYouth = (user) => userMatchesTargetGroups(user, ['Jugend']);
     assert.equal(forYouth(null), false);
-    for (const user of [{ admin: true }, { owner: true }, { canManageEvents: true }]) assert.equal(forYouth(user), true, JSON.stringify(user));
+    for (const user of [{ admin: true }, { owner: true }, { permissions: ['manage_events'] }]) assert.equal(forYouth(user), true, JSON.stringify(user));
     // Accounts keep their groups by id, the event editor stores target groups by name
     assert.equal(forYouth({ groups: ['g1'], groupNames: ['Jugend'] }), true);
     assert.equal(forYouth({ groups: ['Jugend'] }), true);
@@ -30,8 +30,7 @@ describe('events', () => {
     ];
     const sees = (user, groupMap) => canUserAccessEventDutyPlan(user, event, duties, groupMap);
     assert.equal(sees({ uid: 'creator' }), true, 'the creator');
-    assert.equal(sees({ uid: 'm', canManageEvents: true }), true, 'manager by flag');
-    assert.equal(sees({ uid: 'm', permissions: ['manage_events'] }), true, 'manager by permission');
+    assert.equal(sees({ uid: 'm', permissions: ['manage_events'] }), true, 'an event manager');
     assert.equal(sees({ uid: 'tech' }), true, 'entered');
     assert.equal(sees({ uid: 'asked' }), true, 'asked');
     assert.equal(sees({ uid: 'b1', groups: ['bistro'] }), true, 'in the group (id)');
