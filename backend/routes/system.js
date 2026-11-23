@@ -3,10 +3,9 @@ const { instanceLanguage, normalizeLanguage, SUPPORTED_LANGUAGES, translate, tra
 const { cleanCcli } = require('../songbook');
 const path = require('path');
 const fs = require('fs');
-const multer = require('multer');
 const { context, churchLogoFile, configFile, profilesDir, dataDir } = require('../context');
 const { sseClients, broadcastDataUpdate } = require('../liveUpdates');
-const { logoUpload } = require('../uploads');
+const { logoUpload, receiveFile } = require('../uploads');
 const { verifyToken, verifyAdmin } = require('../auth');
 const { protectedActionRateLimit } = require('../rateLimits');
 const { buildSmtpTransport } = require('../runtime');
@@ -512,49 +511,40 @@ router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, route('Failed t
   res.json({ success: true });
 }));
 
-router.post('/api/admin/logo', verifyToken, verifyAdmin, (req, res) => {
-  logoUpload.single('logo')(req, res, async (uploadError) => {
-    if (uploadError) {
-      console.error('Multer error:', uploadError);
-      if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'Logo file too large (max 5MB)' });
-      }
-      return res.status(400).json({ error: 'Invalid logo upload: ' + uploadError.message });
+const receiveLogo = receiveFile(logoUpload, 'logo', {
+  tooLarge: 'Logo file too large (max 5MB)',
+  missing: 'No logo file uploaded',
+  failure: (error) => 'Invalid logo upload: ' + error.message
+});
+router.post('/api/admin/logo', verifyToken, verifyAdmin, receiveLogo, async (req, res) => {
+  try {
+    const originalName = req.file.originalname || '';
+    const ext = path.extname(originalName).toLowerCase();
+    const mimeType = (req.file.mimetype || '').toLowerCase();
+
+    if (!hasSvgExtension(originalName)) {
+      return res.status(400).json({ error: 'Only SVG files are allowed (Invalid extension)' });
+    }
+    if (!ext && mimeType && mimeType !== 'image/svg+xml') {
+      return res.status(400).json({ error: 'Only SVG files are allowed (Invalid MIME type)' });
     }
 
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: 'No logo file uploaded' });
-      }
-
-      const originalName = req.file.originalname || '';
-      const ext = path.extname(originalName).toLowerCase();
-      const mimeType = (req.file.mimetype || '').toLowerCase();
-
-      if (!hasSvgExtension(originalName)) {
-        return res.status(400).json({ error: 'Only SVG files are allowed (Invalid extension)' });
-      }
-      if (!ext && mimeType && mimeType !== 'image/svg+xml') {
-        return res.status(400).json({ error: 'Only SVG files are allowed (Invalid MIME type)' });
-      }
-
-      const content = req.file.buffer.toString('utf8');
-      if (!isSafeSvg(content)) {
-        return res.status(400).json({ error: 'Invalid SVG file (Contains invalid tags or scripts)' });
-      }
-
-      await fs.promises.writeFile(churchLogoFile, content, 'utf8');
-      broadcastDataUpdate();
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Failed to update logo:', error);
-      let msg = error.message || 'Unknown error';
-      if (error.code === 'EACCES' || error.code === 'EPERM') {
-        msg = 'Permission denied writing to data directory. Check Docker volume mount permissions.';
-      }
-      res.status(500).json({ error: 'Failed to update logo: ' + msg });
+    const content = req.file.buffer.toString('utf8');
+    if (!isSafeSvg(content)) {
+      return res.status(400).json({ error: 'Invalid SVG file (Contains invalid tags or scripts)' });
     }
-  });
+
+    await fs.promises.writeFile(churchLogoFile, content, 'utf8');
+    broadcastDataUpdate();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to update logo:', error);
+    let msg = error.message || 'Unknown error';
+    if (error.code === 'EACCES' || error.code === 'EPERM') {
+      msg = 'Permission denied writing to data directory. Check Docker volume mount permissions.';
+    }
+    res.status(500).json({ error: 'Failed to update logo: ' + msg });
+  }
 });
 
 router.post('/api/send-email', protectedActionRateLimit, verifyToken, verifyAdmin, route('Failed to send email', async (req, res) => {

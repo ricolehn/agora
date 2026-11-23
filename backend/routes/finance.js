@@ -2,11 +2,10 @@ const express = require('express');
 const { notifyUsers, financeManagers, originOf } = require('../notify');
 const path = require('path');
 const fs = require('fs');
-const multer = require('multer');
 const { context, uploadDir, dataDir } = require('../context');
 const { MINUTE, rateLimitOf, dbRateLimit, authRateLimit, protectedActionRateLimit } = require('../rateLimits');
 const { verifyToken, verifyAdmin, verifyOptionalUser } = require('../auth');
-const { upload } = require('../uploads');
+const { upload, receiveFile } = require('../uploads');
 const { readLogicalPath, writeLogicalPath, removeLogicalPath } = require('../dataPaths');
 const { broadcastDataUpdate } = require('../liveUpdates');
 
@@ -348,18 +347,10 @@ router.post('/api/admin/fees/remove', protectedActionRateLimit, verifyToken, ver
   changeFees(req, res, { from: req.body?.from, remove: true, version: req.body?.version })
 )));
 
-router.post('/api/upload', protectedActionRateLimit, verifyToken, (req, res) => {
-  upload.single('receipt')(req, res, (error) => {
-    if (error) {
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File too large (max 50MB)' });
-      }
-      return res.status(400).json({ error: error.message || 'File upload failed' });
-    }
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
-    rememberReceiptOwner(req.file.filename, req.user.uid);
-    res.json({ filename: req.file.filename });
-  });
+const receiveReceipt = receiveFile(upload, 'receipt', { tooLarge: 'File too large (max 50MB)', failed: 'File upload failed', missing: 'No file uploaded.' });
+router.post('/api/upload', protectedActionRateLimit, verifyToken, receiveReceipt, (req, res) => {
+  rememberReceiptOwner(req.file.filename, req.user.uid);
+  res.json({ filename: req.file.filename });
 });
 
 // Who uploaded which receipt: a member may only see receipts they uploaded themselves (a filename written into

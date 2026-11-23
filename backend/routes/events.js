@@ -1,11 +1,10 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const multer = require('multer');
 const { context, uploadDir, eventImagesDir } = require('../context');
 const { verifyToken, authenticateCalendarFeed } = require('../auth');
 const { protectedActionRateLimit, pageRateLimit } = require('../rateLimits');
-const { eventImageUpload } = require('../uploads');
+const { eventImageUpload, receiveFile } = require('../uploads');
 const { broadcastDataUpdate } = require('../liveUpdates');
 const { generateIcsCalendar } = require('../ics');
 const { addDaysDriftFree, getNextRecurringDate, currentDay } = require('../utils/date');
@@ -1085,17 +1084,13 @@ router.get('/api/events/calendar.ics', pageRateLimit, authenticateCalendarFeed, 
   }
 });
 
-router.post('/api/events/upload-image', protectedActionRateLimit, verifyToken, (req, res) => {
-  eventImageUpload.single('image')(req, res, (error) => {
-    if (error) {
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'Image file too large (max. 25 MB)' });
-      }
-      return res.status(400).json({ error: error.message || 'The upload failed.' });
-    }
-    if (!req.file) return res.status(400).json({ error: 'No file was sent.' });
-    res.json({ filename: req.file.filename, url: `/api/events/images/${req.file.filename}` });
-  });
+const receiveEventImage = receiveFile(eventImageUpload, 'image', {
+  tooLarge: 'Image file too large (max. 25 MB)',
+  failed: 'The upload failed.',
+  missing: 'No file was sent.'
+});
+router.post('/api/events/upload-image', protectedActionRateLimit, verifyToken, receiveEventImage, (req, res) => {
+  res.json({ filename: req.file.filename, url: `/api/events/images/${req.file.filename}` });
 });
 
 // File names of pictures that events link (older pictures were stored in uploads/ next to the receipts)

@@ -1,11 +1,10 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const multer = require('multer');
 const { context, profilesDir } = require('../context');
 const { verifyToken, verifyAdmin } = require('../auth');
 const { MINUTE, rateLimitOf, protectedActionRateLimit } = require('../rateLimits');
-const { profileUpload } = require('../uploads');
+const { profileUpload, receiveFile } = require('../uploads');
 const { notifyUsers, adminUsers, originOf } = require('../notify');
 const { buildReport, storeReport, listReports, resolveReport } = require('../contentReports');
 
@@ -14,30 +13,21 @@ const { route } = require('./http');
 
 const router = express.Router();
 
-router.post('/api/profile/picture', protectedActionRateLimit, verifyToken, (req, res) => {
-  profileUpload.single('picture')(req, res, async (uploadError) => {
-    if (uploadError) {
-      if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File too large (max 5MB)' });
-      }
-      return res.status(400).json({ error: uploadError.message || 'Upload failed' });
+const receivePicture = receiveFile(profileUpload, 'picture', { tooLarge: 'File too large (max 5MB)', failed: 'Upload failed', missing: 'No file uploaded.' });
+router.post('/api/profile/picture', protectedActionRateLimit, verifyToken, receivePicture, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(uid)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
     }
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
-
-    try {
-      const uid = req.user.uid;
-      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(uid)) {
-        return res.status(400).json({ error: 'Invalid user ID' });
-      }
-      const destPath = path.join(profilesDir, `${uid}.jpg`);
-      await fs.promises.writeFile(destPath, req.file.buffer);
-      forgetPictureVersions();
-      res.json({ success: true, version: pictureVersions()[uid] || Date.now() });
-    } catch (err) {
-      console.error('Failed to save profile picture:', err);
-      res.status(500).json({ error: 'Failed to save profile picture' });
-    }
-  });
+    const destPath = path.join(profilesDir, `${uid}.jpg`);
+    await fs.promises.writeFile(destPath, req.file.buffer);
+    forgetPictureVersions();
+    res.json({ success: true, version: pictureVersions()[uid] || Date.now() });
+  } catch (err) {
+    console.error('Failed to save profile picture:', err);
+    res.status(500).json({ error: 'Failed to save profile picture' });
+  }
 });
 
 // Which members have a picture, with its version (the file's time): lists ask only for those - every member's

@@ -54,4 +54,21 @@ const eventImageUpload = multer({
   fileFilter: imageFileFilter('Only image files (JPG, PNG, WebP, HEIC) are allowed.')
 });
 
-module.exports = { upload, logoUpload, profileUpload, eventImageUpload };
+/**
+ * The step of a route that takes the one file of the form field [field] through [uploader]: it answers a failed upload
+ * itself (400) - with [tooLarge] for a file over the limit, the upload's own message ([failed] without one, or what
+ * [failure] makes of the error) and [missing] when no file came - so the route's handler finds the file in req.file.
+ * A step of its own: API v2 runs the old routes' steps in turn (v2/http.js runSteps).
+ */
+function receiveFile(uploader, field, { tooLarge, failed, missing, failure = (error) => error.message || failed }) {
+  return (req, res, next) => uploader.single(field)(req, res, (error) => {
+    if (error) {
+      const tooBig = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE';
+      return res.status(400).json({ error: tooBig ? tooLarge : failure(error) });
+    }
+    if (!req.file) return res.status(400).json({ error: missing });
+    next();
+  });
+}
+
+module.exports = { upload, logoUpload, profileUpload, eventImageUpload, receiveFile };
