@@ -13,7 +13,8 @@
 const { isDeepStrictEqual } = require('util');
 const { toDateStr } = require('../utils/date');
 
-const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+/** True when [object] has [key] itself (not through its prototype); false for no object. */
+const has = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
 // An own key also when it is named "__proto__" (a plain assignment would set the prototype instead)
 const put = (object, key, value) => Object.defineProperty(object, key, { value, enumerable: true, writable: true, configurable: true });
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -118,6 +119,9 @@ const fromCents = (cents) => (Number(cents) || 0) / 100;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const asText = (value) => (value === undefined || value === null ? '' : typeof value === 'string' ? value : typeof value === 'object' ? JSON.stringify(value) : String(value));
 
+/** The record's id: the id the code gave it (ctx.recordId when the store sets one), read back as stored. */
+const recordId = { column: 'id', toColumn: (value, source, ctx) => ctx.recordId ?? String(value ?? ''), fromColumn: (stored) => stored };
+
 const fieldKinds = {
   /** Text column ('' for nothing). */
   text: (column) => ({ column, toColumn: (value) => asText(value), fromColumn: (stored) => (stored === undefined || stored === null ? '' : String(stored)) }),
@@ -202,6 +206,8 @@ const fieldKinds = {
 const isCanonical = (encoded) => encoded.original === null;
 
 module.exports = {
+  has,
+  recordId,
   createCodec,
   fieldKinds,
   readAmount,

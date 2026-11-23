@@ -2,7 +2,7 @@
 //
 // The default shapes (canonicalKeys) are the ones the current web app writes - for its records `original` stays
 // empty. Everything older apps wrote differently comes back exactly as they wrote it.
-const { createCodec, fieldKinds: f } = require('../codec');
+const { createCodec, fieldKinds: f, has } = require('../codec');
 const { INCOME_STATUSES, REQUEST_TYPES, REQUEST_STATES } = require('../schema/finance');
 
 const when = (condition, keys) => (condition ? keys : []);
@@ -144,7 +144,6 @@ const request = {
   }
 };
 
-const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 /**
  * A member's own values, as the server hands them out (the keys it always fills - id, uid, name, status, the

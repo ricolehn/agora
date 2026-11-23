@@ -18,7 +18,7 @@ const { readFeeState, changeFeeSchedule, changeFeeResets, saveFeeSettings } = re
 const { normalizeFeeSchedule, normalizeFeeScheduleLog, FEE_SCHEDULE_STATE_KEY } = require('../../feeSchedule');
 const { normalizeFeeResets, normalizeFeeResetLog, FEE_RESET_STATE_KEY } = require('../../feeReset');
 const { toDateStr } = require('../../utils/date');
-const { toCents, fromCents } = require('../codec');
+const { toCents, fromCents, has } = require('../codec');
 const { DEFAULT_SETTINGS } = require('../defaults');
 const { conflict, invalid } = require('../../httpError');
 
@@ -35,7 +35,6 @@ const CHANGES = 'finance_changes';
 const SETTINGS = 'system_settings';
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-const has = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
 const originalOf = (row) => (row?.original && typeof row.original === 'object' ? row.original : {});
 /** A new PocketBase record id (15 lowercase letters and digits), made here so records of one batch can link each other. */
 const { newRecordId } = client;

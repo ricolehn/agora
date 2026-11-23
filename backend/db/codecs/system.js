@@ -1,8 +1,7 @@
 // Push devices and reported content exactly as the old tables and values kept them (push_subscriptions, fcm_tokens,
 // the content_reports list in app_state), and as the new tables keep them (see ../codec.js).
-const { createCodec, fieldKinds: f } = require('../codec');
+const { createCodec, fieldKinds: f, recordId } = require('../codec');
 
-const recordId = { column: 'id', toColumn: (value, source, ctx) => ctx.recordId ?? String(value ?? ''), fromColumn: (stored) => stored };
 
 /** A web push subscription (old push_subscriptions record). "created" was reset at every registration. */
 const WEB_PUSH_KEYS = ['id', 'user', 'endpoint', 'p256dh', 'auth', 'userAgent', 'created', 'installed'];

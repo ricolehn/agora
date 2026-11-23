@@ -8,11 +8,11 @@
 // overwrite each other.
 const client = require('../client');
 const codecs = require('../codecs/events');
-const { isPlainObject } = require('../codec');
+const { isPlainObject, has } = require('../codec');
 const { table } = require('../tables');
 const { queueRecordWrite } = require('../writeQueue');
 const links = require('../links');
-const { recordStore, linkContextOf, existingIds, without, originalOf, has } = require('./oldTables');
+const { recordStore, linkContextOf, existingIds, without, originalOf } = require('./oldTables');
 
 const isValidKey = (key) => typeof key === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(key);
 const now = () => new Date().toISOString();

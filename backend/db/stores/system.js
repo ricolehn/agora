@@ -4,10 +4,10 @@
 // app_state by key, the push and Firebase records - and gets exactly what the old storage gave it.
 const client = require('../client');
 const codecs = require('../codecs/system');
-const { isPlainObject } = require('../codec');
+const { isPlainObject, has } = require('../codec');
 const { table } = require('../tables');
 const { queueRecordWrite } = require('../writeQueue');
-const { recordStore, linkContextOf, existingIds, without, has } = require('./oldTables');
+const { recordStore, linkContextOf, existingIds, without } = require('./oldTables');
 const links = require('../links');
 
 const SETTINGS = 'system_settings';

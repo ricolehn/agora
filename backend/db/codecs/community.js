@@ -1,8 +1,7 @@
 // Songs, prayer requests and polls as the server keeps them in memory (one object each, the
 // "data" of the old { key, data } records), and as the new tables keep them (see ../codec.js).
-const { createCodec, fieldKinds: f } = require('../codec');
+const { createCodec, fieldKinds: f, recordId } = require('../codec');
 
-const recordId = { column: 'id', toColumn: (value, source, ctx) => ctx.recordId ?? String(value ?? ''), fromColumn: (stored) => stored };
 /** A link that the app keeps as null when there is none. */
 const linkOrNull = (column, collection) => ({ ...f.link(column, collection), fromColumn: (stored) => stored || null });
 const textOrNull = (column) => ({ ...f.text(column), fromColumn: (stored) => (stored === undefined || stored === null || stored === '' ? null : String(stored)) });

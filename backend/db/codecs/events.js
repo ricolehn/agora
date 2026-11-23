@@ -1,9 +1,8 @@
 // Events, sign-ups, guests, the duty roster and the order of service: the records exactly as the server has always
 // handled them (the records of the old tables, every field), and as the new tables keep them (see ../codec.js).
-const { createCodec, fieldKinds: f } = require('../codec');
+const { createCodec, fieldKinds: f, recordId } = require('../codec');
 const { REGISTRATION_STATES, GUEST_STATES, DUTY_STATES, EVENT_TYPES } = require('../schema/events');
 
-const recordId = { column: 'id', toColumn: (value, source, ctx) => ctx.recordId ?? String(value ?? ''), fromColumn: (stored) => stored };
 /** A field the new structure does not keep: what the apps wrote there was always empty (anything else stays in `original`). */
 const dropped = (empty) => f.computed(() => empty);
 const asText = (value) => (value === undefined || value === null ? '' : typeof value === 'string' ? value : String(value));

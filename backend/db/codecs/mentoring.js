@@ -1,9 +1,8 @@
 // Mentoring: mentors, conversations and their messages exactly as the old tables kept them (snake_case fields, texts
 // encrypted with a key per conversation), and as the new tables keep them (see ../codec.js).
-const { createCodec, fieldKinds: f } = require('../codec');
+const { createCodec, fieldKinds: f, recordId } = require('../codec');
 const { MENTOR_STATES, THREAD_STATES, SENDER_ROLES } = require('../schema/mentoring');
 
-const recordId = { column: 'id', toColumn: (value, source, ctx) => ctx.recordId ?? String(value ?? ''), fromColumn: (stored) => stored };
 
 const MENTOR_KEYS = ['id', 'user', 'status', 'bio', 'max_mentees', 'is_accepting', 'created'];
 const mentor = createCodec({

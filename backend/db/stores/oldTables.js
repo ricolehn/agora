@@ -7,11 +7,10 @@
 // record, applies the change and writes it back, in the record's own queue: two changes at the same moment never
 // overwrite each other. Filters and sorts name the old fields; renamed ones are translated.
 const client = require('../client');
-const { isPlainObject } = require('../codec');
+const { isPlainObject, has } = require('../codec');
 const { table } = require('../tables');
 const { queueRecordWrite } = require('../writeQueue');
 
-const has = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
 const originalOf = (row) => (isPlainObject(row?.original) ? row.original : {});
 const now = () => new Date().toISOString();
 
@@ -224,4 +223,4 @@ function recordStore({ kind, tableName = kind, codec, fields, links = {}, groupL
   };
 }
 
-module.exports = { CAST, EMPTY, translateFilter, linkContextOf, existingIds, without, storedOriginal, recordStore, originalOf, has };
+module.exports = { CAST, EMPTY, translateFilter, linkContextOf, existingIds, without, storedOriginal, recordStore, originalOf };
