@@ -2,7 +2,7 @@
 // where, description, target groups, registration, and the save bar that sticks to the bottom.
 import type { JSX } from '@solidjs/web';
 import { For, Show, createSignal, onSettled } from 'solid-js';
-import { api } from '../../app/api';
+import { apiJson } from '../../app/api';
 import { groupList } from '../../app/groups';
 import { t } from '../../app/i18n';
 import { closeModal } from '../../app/modals';
@@ -67,9 +67,7 @@ async function saveDetailEditMode(focus: (field: 'title' | 'date') => void) {
   setSaving(true);
   try {
     const eventId = editing ? editing.id : null;
-    const res = await api(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload);
-    const saved = await res.json().catch(() => ({}));
-    if (!res.ok) return showToast(saved.error || t('alert_save_error', 'Error while saving.'), 'error');
+    const saved = await apiJson(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload, t('alert_save_error', 'Error while saving.'));
     showToast(
       eventId
         ? t('events_updated_success', 'Updated successfully!')
@@ -82,9 +80,9 @@ async function saveDetailEditMode(focus: (field: 'title' | 'date') => void) {
     const reopenId = eventId || saved.id || saved._id || saved.event?.id || saved.event?._id;
     if (reopenId) await openEventDetailModal(reopenId);
     else closeModal(EVENT_DIALOG_ID, false, true);
-  } catch (err) {
+  } catch (err: any) {
     console.error('saveDetailEditMode error:', err);
-    showToast(t('events_save_network_error', 'Connection error while saving'), 'error');
+    showToast(err.status ? err.message : t('events_save_network_error', 'Connection error while saving'), 'error');
   } finally {
     setSaving(false);
   }
@@ -93,20 +91,16 @@ async function saveDetailEditMode(focus: (field: 'title' | 'date') => void) {
 // --- The cover picture: cropped to 16:9, uploaded, then shown ---
 async function uploadEventCover(blob: Blob): Promise<boolean> {
   try {
-    const res = await api('/events/upload-image', 'POST', toFormData({ image: new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' }) }));
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showToast(data.error || t('toast_upload_failed_short', 'Upload failed'), 'error');
-      return false;
-    }
+    const image = new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' });
+    const data = await apiJson('/events/upload-image', 'POST', toFormData({ image }), t('toast_upload_failed_short', 'Upload failed'));
     setDraft(dr => {
       dr.imageUrl = data.url;
     });
     showToast(t('events_cover_applied', 'Event image applied in 16:9 format!'), 'success');
     return true;
-  } catch (e) {
-    console.error('Crop upload error:', e);
-    showToast(t('events_cover_save_error', 'Failed to save the event image'), 'error');
+  } catch (err: any) {
+    console.error('Crop upload error:', err);
+    showToast(err.status ? err.message : t('events_cover_save_error', 'Failed to save the event image'), 'error');
     return false;
   }
 }

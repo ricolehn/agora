@@ -2,8 +2,7 @@
 // signed-in account here; this module loads the profile and the data, or shows the sign-in.
 import { createSignal } from 'solid-js';
 import {
-  api, apiJson, auth, createUserWithEmailAndPassword, db, get, onAuthStateChanged, ref, signInWithEmailAndPassword, signOut,
-  updatePassword
+  apiJson, auth, createUserWithEmailAndPassword, db, get, onAuthStateChanged, ref, signInWithEmailAndPassword, signOut, updatePassword
 } from './api';
 import { clearData, loadData } from './data';
 import { onLanguageChange, t, uiLang } from './i18n';
@@ -69,9 +68,7 @@ async function fetchUserProfile(uid: string, retries = 2): Promise<User | null> 
 // profile and the data are loaded again
 async function bootstrapSuperAdmin(user: { uid: string }) {
   try {
-    const res = await api('/admin/bootstrap-super-admin', 'POST');
-    if (!res.ok) return;
-    const result = await res.json();
+    const result = await apiJson('/admin/bootstrap-super-admin', 'POST');
     if (!(result.isSuperAdmin || result.isOwner)) return;
     const current = currentUser();
     if (current?.owner && current?.superAdmin && current?.admin) return;
@@ -99,7 +96,7 @@ function syncUserLanguage() {
   if (timeZone && user?.timeZone !== timeZone) value.timeZone = timeZone;
   if (!uid || !Object.keys(value).length) return;
   patchCurrentUser(value);
-  api('/db', 'PATCH', { path: `users/${uid}`, value }).catch(e => console.warn('Could not save the language:', e));
+  apiJson('/db', 'PATCH', { path: `users/${uid}`, value }).catch(e => console.warn('Could not save the language:', e));
 }
 onLanguageChange(() => syncUserLanguage());
 

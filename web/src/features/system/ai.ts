@@ -1,6 +1,6 @@
 // System settings: the AI provider (service, address, key, model, effort per question) and whether the AI is on.
 import { createSignal, createStore } from 'solid-js';
-import { API, api, apiJson } from '../../app/api';
+import { API, apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser, setAiEnabled } from '../../app/session';
 import { showToast } from '../../app/toast';
@@ -110,9 +110,7 @@ export async function loadAiConfig({ fresh = false } = {}) {
   if (!isSuperAdminUser()) return;
   try {
     const editsBefore = aiFormEdits;
-    const res = await api('/admin/ai-config');
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await apiJson('/admin/ai-config');
     setAiEnabled(!!data.enabled);
     // A server of an earlier version names no service (see providersSupported)
     const supported = typeof data.provider === 'string';

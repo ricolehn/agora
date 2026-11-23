@@ -2,7 +2,7 @@
 // page (owner: the events port). Loaded with the data, on the events tab and on a live update. Also the state of the
 // event dialog (which event, viewing or editing, the editor's draft) and the actions on events.
 import { createSignal, createStore, snapshot } from 'solid-js';
-import { api } from '../../app/api';
+import { api, apiJson } from '../../app/api';
 import { groupList, loadSystemGroups, userInGroup } from '../../app/groups';
 import { t } from '../../app/i18n';
 import { closeModal, isModalOpen, openModal } from '../../app/modals';
@@ -261,13 +261,11 @@ interface EventActionOptions {
 async function runEventAction(path: string, method: string, body: unknown, options: EventActionOptions) {
   const { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Connection error') } = options;
   try {
-    const res = await api(path, method, body);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return showToast((useServerError && data.error) || error, 'error');
+    const data = await apiJson(path, method, body);
     showToast(typeof success === 'function' ? success(data) : success, typeof successType === 'function' ? successType(data) : successType);
     await loadEventsData();
-  } catch {
-    showToast(networkError, 'error');
+  } catch (err: any) {
+    showToast(err.status ? (useServerError && err.data?.error) || error : networkError, 'error');
   }
 }
 

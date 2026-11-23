@@ -2,7 +2,7 @@
 // order), a status change or an expense with receipts. The treasury decides on it in the finances tab.
 import { For, Show, createSignal } from 'solid-js';
 import { db, findLinkedPerson, loadData, people, ref, requests, set, setRequests, uploadAll } from '../../../../app/data';
-import { api } from '../../../../app/api';
+import { apiJson } from '../../../../app/api';
 import { t } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';
 import { currentUser } from '../../../../app/session';
@@ -93,7 +93,7 @@ async function sendRequest(request: CollectedRequest, receipts: File[], setBusy:
     // Shown at once, then synced with the server
     if (!requests().some(r => r.id === newReq.id)) setRequests([newReq, ...requests()]);
     await loadData(true);
-    api('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Telling the treasury failed:', e));
+    apiJson('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Telling the treasury failed:', e));
   } catch (err: any) {
     console.error('Sending the request failed:', err);
     showToast(t('alert_send_request_failed', 'Request could not be sent. Please try again.') + (err.message ? ` ${err.message}` : ''), 'error');

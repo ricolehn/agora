@@ -1,7 +1,7 @@
 // System settings: the instance's configuration (name, public address, default language, CCLI licence, SMTP) and
 // its logo.
 import { createStore, snapshot } from 'solid-js';
-import { api } from '../../app/api';
+import { apiJson } from '../../app/api';
 import { bumpLogoVersion, config, setAppName } from '../../app/config';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser } from '../../app/session';
@@ -46,26 +46,11 @@ export function forgetSystemConfig() {
   loadedAppName = null;
 }
 
-/** The error text of a failed request (the server's { error } or the plain answer). */
-async function readErrorText(res: Response): Promise<string> {
-  const text = await res.text();
-  try {
-    const data = JSON.parse(text);
-    if (data?.error) return data.error;
-    if (data && Object.keys(data).length > 0) return JSON.stringify(data);
-  } catch {
-    /* not JSON */
-  }
-  return text;
-}
-
 export async function loadAdvancedSystemConfig() {
   if (!isSuperAdminUser()) return;
   await attempt(
     async () => {
-      const res = await api('/admin/system-config');
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data = await apiJson('/admin/system-config');
       loadedAppName = data.appName || null;
       setConfigForm(form => {
         form.appName = data.appName || '';
@@ -82,8 +67,7 @@ export async function loadAdvancedSystemConfig() {
       configLoaded = true;
       await loadAiConfig();
     },
-    t('toast_config_load_failed', 'Advanced configuration could not be loaded'),
-    { toast: 'error' }
+    t('toast_config_load_failed', 'Advanced configuration could not be loaded')
   );
 }
 
@@ -112,8 +96,7 @@ export async function saveAdvancedSystemConfig() {
         if (!smtp.port || Number.isNaN(smtp.port)) throw new Error(t('admin_smtp_port_invalid', 'The SMTP port is invalid.'));
       }
       const payload = { appName, publicUrl, defaultLanguage: form.defaultLanguage || BASE_LANGUAGE, ccliLicense, smtp };
-      const res = await api('/admin/system-config', 'PUT', payload);
-      if (!res.ok) throw new Error(await readErrorText(res));
+      await apiJson('/admin/system-config', 'PUT', payload);
       loadedAppName = appName;
       // The header, the sign-in and the window title show the new name at once
       setAppName(appName);
@@ -132,8 +115,7 @@ export async function uploadChurchLogo(fileInput: HTMLInputElement) {
     return;
   }
   try {
-    const res = await api('/admin/logo', 'POST', toFormData({ logo: file }));
-    if (!res.ok) throw new Error((await readErrorText(res)) || `HTTP ${res.status}`);
+    await apiJson('/admin/logo', 'POST', toFormData({ logo: file }));
     // Every picture of the logo (header, sign-in) loads the new one
     bumpLogoVersion();
     fileInput.value = '';

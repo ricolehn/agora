@@ -58,17 +58,12 @@ export async function ensurePushNotificationSubscription(interactive = false) {
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
-      const keyRes = await api('/push/vapid-public-key');
-      if (keyRes.ok) {
-        const { publicKey } = await keyRes.json();
-        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
-      }
+      const { publicKey } = await apiJson('/push/vapid-public-key');
+      subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
     }
-    if (subscription) {
-      await api('/push/subscribe', 'POST', { subscription: subscription.toJSON(), userAgent: navigator.userAgent, installed: true }).catch(e =>
-        console.warn('Push sync error:', e)
-      );
-    }
+    await apiJson('/push/subscribe', 'POST', { subscription: subscription.toJSON(), userAgent: navigator.userAgent, installed: true }).catch(e =>
+      console.warn('Push sync error:', e)
+    );
   } catch (err) {
     console.warn('Auto-subscribe push notification error:', err);
   }

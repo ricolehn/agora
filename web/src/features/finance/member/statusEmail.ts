@@ -1,6 +1,6 @@
 // The e-mail with a member's fee status (sent by the backend's /send-email), from the member's card: the status, paid
 // until, and either "all settled", "standing order active" or the months and the amount overdue.
-import { api } from '../../../app/api';
+import { apiJson } from '../../../app/api';
 import { appName } from '../../../app/config';
 import { findPerson, settings, users } from '../../../app/data';
 import { escapeHtml, euro, getStatusLabels, monthYearFormatter, t, type MemberStatus } from '../../../app/i18n';
@@ -80,15 +80,9 @@ export async function sendStatusEmail(personId: string): Promise<void> {
         </div>`;
   await attempt(
     async () => {
-      const res = await api('/send-email', 'POST', { to: email, subject: t('email_status_subject', 'Your membership fee status - {app}', { app }), text, html });
-      if (res.ok) {
-        showToast(t('toast_email_sent', 'Status email sent'));
-      } else {
-        showToast(t('toast_email_failed', 'Failed to send email'), 'error');
-        console.error('Email API response not ok:', await res.text());
-      }
+      await apiJson('/send-email', 'POST', { to: email, subject: t('email_status_subject', 'Your membership fee status - {app}', { app }), text, html });
+      showToast(t('toast_email_sent', 'Status email sent'));
     },
-    t('toast_email_failed', 'Failed to send email'),
-    { toast: 'error' }
+    t('toast_email_failed', 'Failed to send email')
   );
 }

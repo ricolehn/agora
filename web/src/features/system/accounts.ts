@@ -2,7 +2,7 @@
 // permissions. The groups themselves are shared state (app/groups.ts); after a change they and the accounts are loaded
 // again.
 import { createSignal } from 'solid-js';
-import { api, apiJson } from '../../app/api';
+import { apiJson } from '../../app/api';
 import { findLinkedPerson, loadData, people, refreshCurrentUser, replacePersonInMemory, setUsers, users } from '../../app/data';
 import { findGroup, loadSystemGroups } from '../../app/groups';
 import { t } from '../../app/i18n';
@@ -43,8 +43,7 @@ export function shownAccounts() {
 // --- Loading again after a change ---
 async function reloadUsersData() {
   try {
-    const res = await api('/admin/users');
-    if (res.ok) setUsers(await res.json());
+    setUsers(await apiJson('/admin/users'));
   } catch (err) {
     console.warn('Failed to reload users:', err);
   }
@@ -63,8 +62,7 @@ const updateUser = (uid: string, fields: Record<string, unknown>) => setUsers(us
 async function saveUserSetting(uid: string, field: 'member-since' | 'admin' | 'pays', payload: object, applyLocal: () => void, successMsg: string, errorMsg: string, logMsg: string) {
   if (!isSuperAdminUser()) return;
   try {
-    const res = await api(`/admin/users/${uid}/${field}`, 'PUT', payload);
-    if (!res.ok) throw new Error((await res.text()) || t('toast_save_failed', 'Saving failed'));
+    await apiJson(`/admin/users/${uid}/${field}`, 'PUT', payload);
     applyLocal();
     showToast(successMsg);
   } catch (err) {

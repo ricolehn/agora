@@ -2,7 +2,7 @@
 // dialog) and when (during the event, or a place in the order of service). Everyone chosen is asked when saving; an
 // existing entry also shows its people with "remove".
 import { createMemo, createSignal } from 'solid-js';
-import { api, apiJson } from '../../../app/api';
+import { apiJson } from '../../../app/api';
 import { flushNow } from '../../../app/flush';
 import { groupList } from '../../../app/groups';
 import { t } from '../../../app/i18n';
@@ -140,12 +140,9 @@ function loadEventCandidates(): Promise<void> {
   candidatesRequest ??= (async () => {
     setCandidatesLoading(true);
     try {
-      const res = await api('/events/candidates');
-      if (res.ok) {
-        const data = await res.json();
-        setCandidates(Array.isArray(data) ? data : data.candidates || []);
-        setCandidateGroups(Array.isArray(data) ? [] : data.groups || []);
-      }
+      const data = await apiJson('/events/candidates');
+      setCandidates(Array.isArray(data) ? data : data.candidates || []);
+      setCandidateGroups(Array.isArray(data) ? [] : data.groups || []);
     } catch (err) {
       console.warn('Failed to fetch event candidates:', err);
     } finally {
