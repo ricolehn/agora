@@ -7,7 +7,7 @@ import { Avatar } from '../../../ui/Avatar';
 import { Button } from '../../../ui/Button';
 import { Input } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
-import { Modal } from '../../../ui/Modal';
+import { Modal, ModalPart, PART_LABEL } from '../../../ui/Modal';
 import { Pill, Pills } from '../../../ui/PillTabs';
 import { formatEventDateSpanCompact } from '../format';
 import {
@@ -22,9 +22,6 @@ import { PLAN_ENTRY_MODAL, programItemTitle } from './program';
 
 // The plan's fields are 40px high (the dialog's body gives them the compact look)
 const PLAN_INPUT = 'h-10';
-const LABEL = 'text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase';
-const SECTION = 'flex flex-col gap-2';
-const SECTION_RULE = 'border-t border-border-light pt-[14px]';
 
 // The name field of the open dialog: the cursor goes there for a new entry, after "x" on a song and when it is missing
 let nameField: HTMLInputElement | undefined;
@@ -47,8 +44,8 @@ function RemoveButton(props: { label: string; onClick: () => void; class?: strin
 
 function WhatSection() {
   return (
-    <div class={SECTION}>
-      <label class={LABEL} for="plan-entry-name">
+    <ModalPart>
+      <label class={PART_LABEL} for="plan-entry-name">
         {t('plan_what', 'What?')}
       </label>
       <Show when={chosenSong()}>
@@ -102,7 +99,7 @@ function WhatSection() {
           />
         </div>
       </Show>
-    </div>
+    </ModalPart>
   );
 }
 
@@ -142,8 +139,8 @@ function WhoSection(props: { ruled: boolean }) {
   const assignees = () => entry()?.assignees || [];
   const hasChips = () => existing().length > 0 || assignees().length > 0 || !pickerOpen();
   return (
-    <div class={[SECTION, { [SECTION_RULE]: props.ruled }]}>
-      <span class={LABEL}>{t('plan_who', 'Who?')}</span>
+    <ModalPart ruled={props.ruled}>
+      <span class={PART_LABEL}>{t('plan_who', 'Who?')}</span>
       <Show when={hasChips()}>
         <div id="plan-entry-person" class="flex flex-wrap gap-1.5">
           <For each={existing()} keyed={duty => duty.id}>
@@ -227,7 +224,7 @@ function WhoSection(props: { ruled: boolean }) {
           </div>
         </div>
       </Show>
-    </div>
+    </ModalPart>
   );
 }
 
@@ -324,8 +321,8 @@ function DurationPill(props: { label: string; active: boolean; onClick: () => vo
 function WhenSection() {
   let minutesInput: HTMLInputElement | undefined;
   return (
-    <div class={[SECTION, SECTION_RULE]}>
-      <span class={LABEL} id="plan-when-label">
+    <ModalPart ruled>
+      <span class={PART_LABEL} id="plan-when-label">
         {t('plan_when', 'When?')}
       </span>
       <Pills kind="radio" id="plan-entry-when" class="flex gap-[3px] rounded-[10px] border border-border-light bg-surface-alt p-[3px]" aria-labelledby="plan-when-label">
@@ -336,7 +333,7 @@ function WhenSection() {
         {order => (
           <div class="flex flex-col gap-2">
             <OrderList />
-            <span class={[LABEL, 'mt-1']}>{t('plan_how_long', 'How long (min)?')}</span>
+            <span class={[PART_LABEL, 'mt-1']}>{t('plan_how_long', 'How long (min)?')}</span>
             <div class="flex flex-wrap gap-1.5">
               <For each={PLAN_DURATIONS}>{m => <DurationPill label={String(m)} active={!order().custom && m === order().minutes} onClick={() => setPlanMinutes(m)} />}</For>
               <DurationPill
@@ -384,7 +381,7 @@ function WhenSection() {
           </div>
         )}
       </Show>
-    </div>
+    </ModalPart>
   );
 }
 

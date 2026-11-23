@@ -282,6 +282,14 @@ export function Modal(props: ModalProps) {
   );
 }
 
+/** The small capitalised label above a part of a dialog's body (a field, a choice). */
+export const PART_LABEL = 'text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase';
+
+/** A part of a dialog's body without a card: its label and fields 8px apart; [ruled]: a line 14px above it. */
+export function ModalPart(props: { ruled?: boolean; children: JSX.Element }) {
+  return <div class={['flex flex-col gap-2', { 'border-t border-border-light pt-3.5': props.ruled }]}>{props.children}</div>;
+}
+
 /** A section of a dialog's body: a soft card with a small capitalised header (.modal-section-card / -header). */
 export function ModalSection(props: { icon?: JSX.Element; title?: JSX.Element; class?: string; children?: JSX.Element }) {
   return (

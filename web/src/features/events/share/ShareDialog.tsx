@@ -4,7 +4,7 @@ import { t } from '../../../app/i18n';
 import { Button } from '../../../ui/Button';
 import { Input, Switch } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
-import { Modal } from '../../../ui/Modal';
+import { Modal, PART_LABEL } from '../../../ui/Modal';
 import { formatEventDateSpanCompact } from '../format';
 import { SHARE_MODAL, canShareNatively, copyEventShareLink, sendEventShareLink, shareTarget, switching, toggleEventPublic } from './share';
 
@@ -71,7 +71,7 @@ export function ShareDialog() {
               <Icon name="globe" size={17} />
             </span>
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span class="text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase">{t('events_share_public', 'Visible without an account')}</span>
+              <span class={PART_LABEL}>{t('events_share_public', 'Visible without an account')}</span>
               <span class="-mt-0.5 text-[0.78rem] text-text-secondary">
                 {shareTarget()?.ev.requiresRegistration
                   ? t('events_share_public_desc_reg', 'Anyone with the link sees the event and can sign up – no account needed.')
@@ -83,7 +83,7 @@ export function ShareDialog() {
         </div>
       </Show>
       <div class="flex flex-col gap-1.5">
-        <label class="text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase" for="event-share-link">
+        <label class={PART_LABEL} for="event-share-link">
           {t('events_share_link', 'Link')}
         </label>
         <Input

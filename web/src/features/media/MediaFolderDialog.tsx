@@ -6,7 +6,7 @@ import { closeModal, openModal } from '../../app/modals';
 import { attempt, showToast } from '../../app/toast';
 import { once } from '../../app/util';
 import { Input } from '../../ui/form';
-import { Modal } from '../../ui/Modal';
+import { Modal, PART_LABEL } from '../../ui/Modal';
 import { loadMediaFolder, mediaFolder, mediaListing } from './library';
 import { SheetFooter } from './SheetFooter';
 
@@ -48,7 +48,7 @@ export function MediaFolderDialog() {
       bodyClass="gap-3.5"
       footer={<SheetFooter modal={ID} id="media-folder-create" label={t('media_create', 'Create')} busy={creating()} onConfirm={() => void createMediaFolder()} />}
     >
-      <label for="media-folder-name" class="text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase">
+      <label for="media-folder-name" class={PART_LABEL}>
         {t('media_folder_name', 'Name')}
       </label>
       <Input

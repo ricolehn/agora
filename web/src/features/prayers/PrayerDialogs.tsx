@@ -9,7 +9,7 @@ import { once } from '../../app/util';
 import { Button } from '../../ui/Button';
 import { Switch, Textarea } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
-import { Modal } from '../../ui/Modal';
+import { Modal, ModalPart, PART_LABEL } from '../../ui/Modal';
 import { Pill, Pills } from '../../ui/PillTabs';
 import { type Prayer, type PrayerDuration, loadPrayers, prayerDate, prayerName, prayers, removePrayer, replacePrayer, setPrayerFilter, timeAgo } from './store';
 import { flushNow } from '../../app/flush';
@@ -62,7 +62,6 @@ const DURATIONS: Array<{ value: PrayerDuration; label: () => string }> = [
 ];
 
 // The small capital labels of the sheet (.plan-sheet-label)
-const SHEET_LABEL = 'text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase';
 
 export function PrayerEditModal() {
   return (
@@ -98,8 +97,8 @@ export function PrayerEditModal() {
       <span id="prayer-counter" class="-mt-1.5 self-end text-[0.74rem] text-text-secondary">
         {draft().length} / 1000
       </span>
-      <div class="flex flex-col gap-2 border-t border-border-light pt-3.5">
-        <span id="prayer-duration-label" class={SHEET_LABEL}>
+      <ModalPart ruled>
+        <span id="prayer-duration-label" class={PART_LABEL}>
           {t('prayers_how_long_short', 'Shown for')}
         </span>
         <Pills kind="radio" class="flex gap-1 rounded-[14px] border border-border-light bg-surface-alt p-1" aria-labelledby="prayer-duration-label">
@@ -120,16 +119,16 @@ export function PrayerEditModal() {
             )}
           </For>
         </Pills>
-      </div>
-      <div class="flex flex-col gap-2 border-t border-border-light pt-3.5">
+      </ModalPart>
+      <ModalPart ruled>
         <div class="flex items-center justify-between gap-3">
           <label for="prayer-anonymous" class="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5">
-            <span class={SHEET_LABEL}>{t('prayers_anonymous', 'Share anonymously')}</span>
+            <span class={PART_LABEL}>{t('prayers_anonymous', 'Share anonymously')}</span>
             <span class="-mt-0.5 text-[0.78rem] text-text-secondary">{t('prayers_anonymous_desc', 'Nobody sees who it is from, not even the leaders.')}</span>
           </label>
           <Switch id="prayer-anonymous" checked={anonymous()} onChange={setAnonymous} />
         </div>
-      </div>
+      </ModalPart>
     </Modal>
   );
 }
