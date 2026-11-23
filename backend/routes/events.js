@@ -726,7 +726,8 @@ router.post('/api/events/:id/duties', verifyToken, route('The duty could not be 
     status
   });
 
-  if (finalRequestedUser && sendEmail !== false) {
+  // sendEmail false leaves out the e-mail only: the person asked still gets the push
+  if (finalRequestedUser) {
     askForDuty({ appConfig: context.appConfig, recipientId: finalRequestedUser, requesterId: currentUid, event, duty, sendEmail, origin: originOf(req) })
       .catch((err) => console.warn('[Notify] Duty request:', err.message));
   }
@@ -771,10 +772,8 @@ router.post('/api/events/duties/:dutyId/request', verifyToken, route('The reques
     status: 'requested'
   });
 
-  if (sendEmail !== false) {
-    askForDuty({ appConfig: context.appConfig, recipientId: String(targetUserId).trim(), requesterId: currentUid, event, duty: updated, sendEmail, origin: originOf(req) })
-      .catch((err) => console.warn('[Notify] Duty request:', err.message));
-  }
+  askForDuty({ appConfig: context.appConfig, recipientId: String(targetUserId).trim(), requesterId: currentUid, event, duty: updated, sendEmail, origin: originOf(req) })
+    .catch((err) => console.warn('[Notify] Duty request:', err.message));
 
   broadcastDataUpdate('events');
   res.json({ success: true, duty: updated });
@@ -813,7 +812,7 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, route('The duty co
 
   const updated = await updateEventDuty(context.appConfig, duty.id, updates);
 
-  if (updates.requestedUser && sendEmail !== false) {
+  if (updates.requestedUser) {
     askForDuty({ appConfig: context.appConfig, recipientId: updates.requestedUser, requesterId: currentUid, event, duty: updated, sendEmail, origin: originOf(req) })
       .catch((err) => console.warn('[Notify] Duty request:', err.message));
   }
