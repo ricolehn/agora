@@ -5,7 +5,7 @@ import { createSignal } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { flushNow } from '../../app/flush';
 import { programmaticBack } from '../../app/history';
-import { t, uiLocale } from '../../app/i18n';
+import { shortDayText, t, timeText } from '../../app/i18n';
 import { closeModal, openModal } from '../../app/modals';
 import { setNavBadge } from '../../app/nav';
 import { whenPicturesReady } from '../../app/pictures';
@@ -148,7 +148,7 @@ export function threadRow(thread: Thread) {
     closedLabel,
     pill: closed ? closedLabel : role,
     snippet: thread.last_message || (closed ? closedLabel : t('mentoring_no_messages_yet', 'No messages yet')),
-    date: thread.updated ? new Date(thread.updated).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : ''
+    date: thread.updated ? shortDayText(new Date(thread.updated)) : ''
   };
 }
 
@@ -457,14 +457,12 @@ async function loadMentoringMessages(threadId: string, isPoll = false) {
   }
 }
 
-const timeOfDay = (d: Date) => d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
-
 /** Time of a chat message: "14:05" today, "3 Nov, 14:05" before (only the time made old messages look new). */
 export function chatTime(iso: string | undefined) {
   const d = iso ? new Date(iso) : null;
   if (!d || Number.isNaN(d.getTime())) return '';
-  const time = timeOfDay(d);
-  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' })}, ${time}`;
+  const time = timeText(d);
+  return d.toDateString() === new Date().toDateString() ? time : `${shortDayText(d)}, ${time}`;
 }
 
 export async function sendMentoringMessage() {
@@ -472,7 +470,7 @@ export async function sendMentoringMessage() {
   const threadId = activeThreadId();
   if (!threadId || !text) return;
   // Show the message optimistically until the server round-trip completes
-  const pending: SendingMessage = { key: ++sendingSeq, text, time: timeOfDay(new Date()) };
+  const pending: SendingMessage = { key: ++sendingSeq, text, time: timeText(new Date()) };
   setSending(list => [...list, pending]);
   setDraft('');
   flushNow();

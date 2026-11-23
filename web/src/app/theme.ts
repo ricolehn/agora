@@ -1,18 +1,13 @@
 // The theme: 'system' (follows the device), 'light' or 'dark'; stored on the device. <html data-theme> carries the
 // actual one (index.html sets it before the first paint).
 import { createSignal } from 'solid-js';
+import { readStored, store } from './storage';
 
 export type ThemeSetting = 'system' | 'light' | 'dark';
 
-const readStored = (): ThemeSetting => {
-  try {
-    return (localStorage.getItem('agora-theme') || localStorage.getItem('nova-theme') || 'system') as ThemeSetting;
-  } catch {
-    return 'system';
-  }
-};
+const storedTheme = (): ThemeSetting => (readStored('agora-theme') || readStored('nova-theme') || 'system') as ThemeSetting;
 
-const [themeSetting, setThemeSetting] = createSignal<ThemeSetting>(readStored());
+const [themeSetting, setThemeSetting] = createSignal<ThemeSetting>(storedTheme());
 const [actualTheme, setActualTheme] = createSignal<'light' | 'dark'>('light');
 export { themeSetting, actualTheme };
 
@@ -30,11 +25,7 @@ function applyActualTheme(theme: ThemeSetting) {
 }
 
 export function setTheme(theme: ThemeSetting) {
-  try {
-    localStorage.setItem('agora-theme', theme);
-  } catch {
-    /* private mode */
-  }
+  store('agora-theme', theme);
   setThemeSetting(theme);
   applyActualTheme(theme);
 }
@@ -42,6 +33,6 @@ export function setTheme(theme: ThemeSetting) {
 export function initTheme() {
   applyActualTheme(themeSetting());
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (readStored() === 'system') applyActualTheme('system');
+    if (storedTheme() === 'system') applyActualTheme('system');
   });
 }

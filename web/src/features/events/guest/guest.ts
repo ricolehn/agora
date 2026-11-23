@@ -7,6 +7,7 @@ import { languageReady, t, uiLang } from '../../../app/i18n';
 import { isModalOpen, openModal, topModal } from '../../../app/modals';
 import { hideLoading, setSignInReturn, showLoading } from '../../../app/shell';
 import { confirmAction, showToast } from '../../../app/toast';
+import { readStoredJson, store } from '../../../app/storage';
 import { linkParam, slugify } from '../../../app/util';
 
 export const GUEST_MODAL = 'guest-event-modal';
@@ -43,21 +44,12 @@ const patchView = (fields: Partial<GuestView>) => {
 };
 
 function storedGuestKeys(): string[] {
-  try {
-    const keys = JSON.parse(localStorage.getItem(GUEST_KEYS_STORAGE) || '[]');
-    return Array.isArray(keys) ? keys.filter(key => typeof key === 'string') : [];
-  } catch {
-    return [];
-  }
+  const keys = readStoredJson<unknown>(GUEST_KEYS_STORAGE, []);
+  return Array.isArray(keys) ? keys.filter(key => typeof key === 'string') : [];
 }
 
-function storeGuestKeys(keys: string[]) {
-  try {
-    localStorage.setItem(GUEST_KEYS_STORAGE, JSON.stringify([...new Set(keys)].slice(0, 20)));
-  } catch {
-    /* private mode: the link in the e-mail still leads to the registration */
-  }
-}
+// Without storage the link in the e-mail still leads to the registration
+const storeGuestKeys = (keys: string[]) => store(GUEST_KEYS_STORAGE, [...new Set(keys)].slice(0, 20));
 
 // The API without an account (no token); answers come in the page's language
 async function publicApi(path: string, method = 'GET', body?: unknown): Promise<any> {

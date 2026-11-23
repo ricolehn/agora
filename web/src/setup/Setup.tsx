@@ -1,5 +1,6 @@
 import { For, Show, createSignal, onSettled } from 'solid-js';
 import { t, uiLang } from '../app/i18n';
+import { setSignedIn, store } from '../app/storage';
 import { Button } from '../ui/Button';
 import { Field, Input, Switch } from '../ui/form';
 import './setup.css';
@@ -125,12 +126,9 @@ export function Setup() {
       if (res.ok && data.success) {
         // The owner is signed in when the app opens
         if (data.token && data.user) {
-          try {
-            localStorage.setItem('agora_auth_session', JSON.stringify({ token: data.token, user: data.user }));
-            localStorage.setItem('agora-is-logged-in', 'true');
-          } catch {
-            /* private mode: the sign-in shows */
-          }
+          // Without storage the sign-in shows
+          store('agora_auth_session', { token: data.token, user: data.user });
+          setSignedIn(true);
         }
         window.location.href = '/';
         return;

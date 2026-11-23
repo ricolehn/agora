@@ -4,21 +4,12 @@ import { createSignal } from 'solid-js';
 import { activeTab, setRevealHeaderHook } from './router';
 import type { TabId } from './tabs';
 import { flushNow } from './flush';
+import { wasSignedIn } from './storage';
 
 // --- Loading screen (covers the app while data loads after signing in) ---
 // Signed in before (or a shared event's link): it shows from the start, like the boot screen of index.html, until
 // the session is known - no empty page between the two
-const expectsSession = () => {
-  try {
-    return (
-      localStorage.getItem('agora-is-logged-in') === 'true' ||
-      localStorage.getItem('nova-is-logged-in') === 'true' ||
-      /[?&](share|guest)=/.test(window.location.search)
-    );
-  } catch {
-    return false;
-  }
-};
+export const expectsSession = () => wasSignedIn() || /[?&](share|guest)=/.test(window.location.search);
 const [loading, setLoading] = createSignal<{ visible: boolean; message: string }>({ visible: expectsSession(), message: '' });
 export { loading };
 /** Shows the loading screen with [message]. Without one, a screen that already shows keeps its text: the sign-in's

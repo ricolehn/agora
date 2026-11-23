@@ -1,7 +1,7 @@
 // Start page: unread conversations as one card - header with the total, up to three chats, link to all (nothing
 // when everything is read).
 import { For, Show } from 'solid-js';
-import { t, uiLocale } from '../../app/i18n';
+import { shortDayText, t, timeText } from '../../app/i18n';
 import { switchTab } from '../../app/router';
 import { canUseMentoring, currentUser, isCurrentUser } from '../../app/session';
 import { Avatar } from '../../ui/Avatar';
@@ -15,9 +15,7 @@ const HOME_MENTORING_ROWS = 3;
 function when(iso: string | undefined) {
   const d = iso ? new Date(iso) : null;
   if (!d || Number.isNaN(d.getTime())) return '';
-  return d.toDateString() === new Date().toDateString()
-    ? d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' });
+  return d.toDateString() === new Date().toDateString() ? timeText(d) : shortDayText(d);
 }
 
 export function HomeMentoringCard() {

@@ -2,9 +2,10 @@
 // shares. The server never links a person to an answer; what you chose is remembered on this device only.
 import { createSignal } from 'solid-js';
 import { apiJson } from '../../app/api';
-import { formatDateFast, t, uiLocale } from '../../app/i18n';
+import { formatDateFast, t, timeText } from '../../app/i18n';
 import { closeModal, isModalOpen } from '../../app/modals';
 import { activeTab } from '../../app/router';
+import { readStoredJson, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
 import { toDateStr } from '../../app/util';
 import { flushNow } from '../../app/flush';
@@ -59,13 +60,7 @@ export function setOpenPoll(id: string | null) {
 
 // --- What you chose: on this device only (the server keeps no link between you and your answer) ---
 const POLL_CHOICES_KEY = 'agora-poll-choices';
-const readChoices = (): Record<string, string[]> => {
-  try {
-    return JSON.parse(localStorage.getItem(POLL_CHOICES_KEY) || '{}') || {};
-  } catch {
-    return {};
-  }
-};
+const readChoices = () => readStoredJson<Record<string, string[]>>(POLL_CHOICES_KEY, {});
 const [choices, setChoices] = createSignal<Record<string, string[]>>(readChoices());
 // A vote in another tab of the app counts here too (the previous app read the stored choices on every showing)
 window.addEventListener('storage', event => {
@@ -80,11 +75,7 @@ export function rememberPollChoice(id: string, optionIds: string[]) {
   const known = new Set(polls().map(p => p.id));
   for (const key of Object.keys(all)) if (!known.has(key) && key !== id) delete all[key];
   setChoices(all);
-  try {
-    localStorage.setItem(POLL_CHOICES_KEY, JSON.stringify(all));
-  } catch {
-    /* private mode */
-  }
+  store(POLL_CHOICES_KEY, all);
 }
 
 // --- Loading ---
@@ -121,7 +112,7 @@ export function scheduleNextPollEnd() {
 }
 
 // --- Labels ---
-export const pollEndTime = (poll: Poll) => new Date(poll.endsAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+export const pollEndTime = (poll: Poll) => timeText(new Date(poll.endsAt));
 export const pollEndDate = (poll: Poll) => formatDateFast(toDateStr(new Date(poll.endsAt)));
 
 export function pollTimeLabel(poll: Poll): string {

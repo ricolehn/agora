@@ -10,7 +10,8 @@ import { connectSSE, disconnectSSE } from './live';
 import { loadCurrentProfilePicture, setOwnPicture } from './pictures';
 import { resetRouting } from './router';
 import { currentUid, currentUser, patchCurrentUser, setCurrentUser, setIsAuthenticated, type User } from './session';
-import { hideLoading, setLoadingMessage, showLoading } from './shell';
+import { expectsSession, hideLoading, setLoadingMessage, showLoading } from './shell';
+import { setSignedIn } from './storage';
 import { alertMessage, confirmAction, showToast } from './toast';
 import { flushNow } from './flush';
 
@@ -43,18 +44,6 @@ const beforeSignOutHooks: Array<() => Promise<unknown> | unknown> = [];
 export function onBeforeSignOut(fn: () => Promise<unknown> | unknown) {
   beforeSignOutHooks.push(fn);
 }
-
-const setLoggedInFlag = (on: boolean) => {
-  try {
-    if (on) localStorage.setItem('agora-is-logged-in', 'true');
-    else {
-      localStorage.removeItem('agora-is-logged-in');
-      localStorage.removeItem('nova-is-logged-in');
-    }
-  } catch {
-    /* private mode */
-  }
-};
 
 async function fetchUserProfile(uid: string, retries = 2): Promise<User | null> {
   const snap = await get(ref(db, 'users/' + uid));
@@ -103,14 +92,6 @@ onLanguageChange(() => syncUserLanguage());
 // The boot screen of index.html covers the page until the app shows its own screen (loading or sign-in)
 const removeBootScreen = () => document.getElementById('boot')?.remove();
 
-const storedSessionHint = () => {
-  try {
-    return localStorage.getItem('agora-is-logged-in') === 'true' || localStorage.getItem('nova-is-logged-in') === 'true';
-  } catch {
-    return false;
-  }
-};
-
 // The account the compat layer last reported: undefined until its first report, null while nobody is signed in
 let reportedUid: string | null | undefined;
 // The account of a session that ended while the page was open (the server signed it out: the password changed, the
@@ -121,7 +102,7 @@ let endedUid: string | null = null;
 /** Wires the session to the app (once, at start). */
 export function startAuth() {
   // Nobody signed in on this device and no shared event's link: the sign-in right away, without waiting for the server
-  if (!storedSessionHint() && !/[?&](share|guest)=/.test(window.location.search)) {
+  if (!expectsSession()) {
     showAuthForm(true);
     flushNow();
     removeBootScreen();
@@ -133,7 +114,7 @@ export function startAuth() {
         // where they were)
         if (user.uid !== endedUid) history.replaceState(null, '', '/');
         // The new session is stored: the fresh page restores it
-        setLoggedInFlag(true);
+        setSignedIn(true);
         showLoading(t('auth_loading_profile', 'Loading profile...'));
         flushNow();
         location.reload();
@@ -144,7 +125,7 @@ export function startAuth() {
       showLoading(t('auth_loading_profile', 'Loading profile...'));
       flushNow();
       removeBootScreen();
-      setLoggedInFlag(true);
+      setSignedIn(true);
       // /auth/me carries the whole profile plus the computed fields (permissions, mentor status). Opening the app
       // already restored the session with it: no second round trip before the data; after a fresh login it is
       // asked once
@@ -170,7 +151,7 @@ export function startAuth() {
       reportedUid = null;
       // No live updates without a session (they would try again every few seconds)
       disconnectSSE();
-      setLoggedInFlag(false);
+      setSignedIn(false);
       setIsAuthenticated(false);
       resetRouting();
       setCurrentUser(null);

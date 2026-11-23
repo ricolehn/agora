@@ -8,6 +8,7 @@ import { loadMediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
 import { activeTab, leaveHistoryLevels, switchTab, syncUrl } from '../../app/router';
 import { scrollContainer } from '../../app/shell';
+import { readStored, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
 import { folderDepth, folderFromRoute, parentPath, sortEntries } from '../../lib/media.js';
 import { motionAllowed } from './files';
@@ -17,13 +18,7 @@ import { flushNow } from '../../app/flush';
 /** Why a folder is not shown: nothing to see (not set up, gone) or the server's message. */
 export type MediaLoadError = { unavailable: true; message?: undefined } | { unavailable?: undefined; message: string };
 
-const storedSort = (): MediaSort => {
-  try {
-    return localStorage.getItem('agora-media-sort') === 'newest' ? 'newest' : 'name';
-  } catch {
-    return 'name';
-  }
-};
+const storedSort = (): MediaSort => (readStored('agora-media-sort') === 'newest' ? 'newest' : 'name');
 
 const [folder, setFolder] = createSignal('');
 const [listing, setListing] = createSignal<MediaListing | null>(null);
@@ -303,11 +298,7 @@ export function setMediaSort(value: string) {
   const next: MediaSort = value === 'newest' ? 'newest' : 'name';
   setSort(next);
   flushNow();
-  try {
-    localStorage.setItem('agora-media-sort', next);
-  } catch {
-    /* private mode */
-  }
+  store('agora-media-sort', next);
   renderMedia();
 }
 

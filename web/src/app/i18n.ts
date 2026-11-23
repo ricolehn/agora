@@ -5,6 +5,7 @@
 import { createSignal } from 'solid-js';
 import en from '../locales/en.json';
 import { flushNow } from './flush';
+import { readStored, store } from './storage';
 
 export const SUPPORTED_LANGUAGES = ['en', 'de'] as const;
 export type Lang = (typeof SUPPORTED_LANGUAGES)[number];
@@ -13,13 +14,7 @@ const BASE_LANGUAGE: Lang = 'en';
 // Translations other than English are loaded when chosen (one file each, added by contributors as JSON)
 const translationFiles = import.meta.glob<{ default: Record<string, string> }>(['../locales/*.json', '!../locales/en.json']);
 
-const storedLang = (() => {
-  try {
-    return localStorage.getItem('app_lang') || 'system';
-  } catch {
-    return 'system';
-  }
-})();
+const storedLang = readStored('app_lang') || 'system';
 
 const [translations, setTranslations] = createSignal<Record<string, string>>(en as Record<string, string>);
 const [uiLangSignal, setUiLang] = createSignal<Lang>(BASE_LANGUAGE);
@@ -64,11 +59,7 @@ export async function loadLanguage(lang: string): Promise<void> {
     setLangSetting(lang);
     flushNow();
     document.documentElement.lang = resolved;
-    try {
-      localStorage.setItem('app_lang', lang);
-    } catch {
-      /* private mode */
-    }
+    store('app_lang', lang);
     for (const fn of languageListeners) fn(resolved);
   } catch (e) {
     console.error('Failed to load translation:', e);
@@ -127,6 +118,11 @@ export function formatDateFast(dateInput: unknown): string {
   const d = new Date(dateInput as string);
   return Number.isNaN(d.getTime()) ? t('no_date', 'No date') : dateFormatter.format(d);
 }
+
+/** The time of day ("14:05" / "02:05 PM"). */
+export const timeText = (date: Date) => intlFormatter(Intl.DateTimeFormat, { hour: '2-digit', minute: '2-digit' }).format(date);
+/** A day without its year ("3. Nov." / "3 Nov"). */
+export const shortDayText = (date: Date) => intlFormatter(Intl.DateTimeFormat, { day: 'numeric', month: 'short' }).format(date);
 
 const utcDate = (day: string) => new Date(`${day}T00:00:00Z`);
 export const longDayText = (day: string) => intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(utcDate(day));

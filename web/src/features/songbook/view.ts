@@ -4,6 +4,7 @@
 import { createSignal } from 'solid-js';
 import { t } from '../../app/i18n';
 import { closeModal, isModalOpen, isTopModal, onModalClosed, openModal } from '../../app/modals';
+import { readStoredJson, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
 import { copyText } from '../../app/util';
 import { findBySlug } from '../../app/router';
@@ -14,20 +15,9 @@ const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
 const SONG_PREFS_KEY = 'agora-song-view';
 const VIEW_ID = 'song-view-modal';
 
-const prefs: { chords: boolean; size: number; speed: number } = (() => {
-  const fallback = { chords: true, size: 0, speed: 1 };
-  try {
-    return { ...fallback, ...JSON.parse(localStorage.getItem(SONG_PREFS_KEY) || '{}') };
-  } catch {
-    return fallback;
-  }
-})();
+const prefs: { chords: boolean; size: number; speed: number } = { chords: true, size: 0, speed: 1, ...readStoredJson(SONG_PREFS_KEY, {}) };
 // Transpositions were remembered per song up to the first ORION builds
-try {
-  localStorage.removeItem('agora-song-steps');
-} catch {
-  /* private mode */
-}
+store('agora-song-steps', null);
 
 const [openSongId, setOpenSongId] = createSignal<string | null>(null);
 // Semitones the song is moved by (-6..5)
@@ -42,13 +32,7 @@ const [songPanelOpen, setSongPanelOpen] = createSignal(false);
 const [songControlsShown, setSongControlsShown] = createSignal(true);
 export { openSongId, songSteps, songChords, songSize, songSpeed, songScrolling, songPanelOpen, songControlsShown };
 
-const savePrefs = () => {
-  try {
-    localStorage.setItem(SONG_PREFS_KEY, JSON.stringify({ chords: songChords(), size: songSize(), speed: songSpeed() }));
-  } catch {
-    /* private mode */
-  }
-};
+const savePrefs = () => store(SONG_PREFS_KEY, { chords: songChords(), size: songSize(), speed: songSpeed() });
 
 /** The open song (while the page shows). */
 export const shownSong = () => (isModalOpen(VIEW_ID) && songs().find(s => s.id === openSongId())) || null;

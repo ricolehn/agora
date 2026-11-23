@@ -2,7 +2,7 @@
 // server never tells who shared an anonymous request (backend/prayers.js).
 import { createSignal } from 'solid-js';
 import { apiJson } from '../../app/api';
-import { t, uiLocale } from '../../app/i18n';
+import { shortDayText, t, uiLocale } from '../../app/i18n';
 import { showToast } from '../../app/toast';
 import { flushNow } from '../../app/flush';
 
@@ -50,7 +50,7 @@ export function removePrayer(id: string) {
 }
 
 // --- Labels ---
-export const prayerDate = (ms: number) => new Date(ms).toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' });
+export const prayerDate = (ms: number) => shortDayText(new Date(ms));
 
 /** "2 hours ago", "yesterday"; older than a week as a date. */
 export function timeAgo(ms: number): string {
