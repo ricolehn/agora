@@ -8,7 +8,7 @@ const { protectedActionRateLimit, pageRateLimit } = require('../rateLimits');
 const { eventImageUpload } = require('../uploads');
 const { broadcastDataUpdate } = require('../liveUpdates');
 const { generateIcsCalendar } = require('../ics');
-const { addDaysDriftFree, getNextRecurringDate } = require('../utils/date');
+const { addDaysDriftFree, getNextRecurringDate, currentDay } = require('../utils/date');
 const { formatEventMoment, formatEventShort, pushLine } = require('../eventTexts');
 
 const {
@@ -46,7 +46,7 @@ const { buildProgram } = require('../program');
 const { DUTY_STATES, dutyStatusOf } = require('../dutyStatus');
 const { eventImageName, linkedEventImageNames, deleteUnlinkedEventImages } = require('../eventImages');
 const { seatCounts, isBookedOut, withEventSeats, loadSeats, fillFreeSeats } = require('../eventSeats');
-const { newPublicToken, sendGuestEmail, tellPromotedGuests, localToday } = require('../eventGuests');
+const { newPublicToken, sendGuestEmail, tellPromotedGuests } = require('../eventGuests');
 const { route } = require('./http');
 const { fullName } = require('../utils/names');
 
@@ -560,7 +560,7 @@ router.post('/api/events/:id/register', verifyToken, route('Registration failed'
   }
 
   const { action } = req.body || {};
-  const todayStr = localToday();
+  const todayStr = currentDay();
   const eventEndDate = (event.endDate && event.endDate.trim()) ? event.endDate.trim() : (event.date ? event.date.trim() : '');
   if (action !== 'cancel' && eventEndDate && eventEndDate < todayStr) {
     return res.status(400).json({ error: 'This event is already over. Registration is no longer possible.' });

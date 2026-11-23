@@ -57,6 +57,7 @@ const { isFcmEnabled, getClientConfig } = require('../fcmNotifications');
 const features = require('../features');
 const { route } = require('./http');
 const { fullName } = require('../utils/names');
+const { currentDay } = require('../utils/date');
 
 const router = express.Router();
 
@@ -382,7 +383,7 @@ router.post('/api/admin/users', verifyToken, verifyAdmin, route('Failed to creat
 
   const userUid = createdAuth.user.id || createdAuth.user.uid;
   const name = `${normalizedFirst} ${normalizedLast}`.trim();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = currentDay();
   const startDate = String(memberSince || today).trim() || today;
   const memberStatus = String(status || 'vollverdiener').trim() || 'vollverdiener';
 
@@ -442,7 +443,7 @@ router.put('/api/admin/users/:uid/pays', verifyToken, verifyAdmin, route('Failed
     } else {
       const user = await getUserRecord(context.appConfig, uid);
       const name = fullName(user) || translate(instanceLanguage(), 'Member');
-      const today = new Date().toISOString().slice(0, 10);
+      const today = currentDay();
       const personKey = uid;
       await upsertPeopleRecord(context.appConfig, personKey, newPersonRecord(uid, name, today));
     }

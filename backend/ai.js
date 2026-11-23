@@ -1,6 +1,6 @@
 const { getStateValue, upsertStateValue, listPeopleRecords, listExpenseRecords, listUserRecords, listRequestRecords, isDeletedPerson, getFeeState } = require('./pocketbase');
 const { queueRecordWrite } = require('./db/writeQueue');
-const { toDateStr } = require('./utils/date');
+const { toDateStr, currentDay } = require('./utils/date');
 const { amountValue } = require('./db/codec');
 const { buildEventContext } = require('./eventContext');
 const { describeFeeResets } = require('./feeReset');
@@ -204,11 +204,7 @@ async function buildDatabaseSnapshot(appConfig, options = {}) {
       canViewFinances ? getFeeState(appConfig).catch(() => null) : Promise.resolve(null)
     ]);
 
-    const today = new Date();
-    const todayY = today.getFullYear();
-    const todayM = String(today.getMonth() + 1).padStart(2, '0');
-    const todayD = String(today.getDate()).padStart(2, '0');
-    const todayStr = `${todayY}-${todayM}-${todayD}`;
+    const todayStr = currentDay();
 
     // Deleted people are no members any more (they used to show up as overdue): only their payments stay in the books
     const people = allPeople.filter((p) => !isDeletedPerson(p));

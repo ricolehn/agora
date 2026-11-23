@@ -3,7 +3,7 @@ const {
   listExpenseRecords,
   getStateRecord
 } = require('./pocketbase');
-const { toDateStr } = require('./utils/date');
+const { toDateStr, currentDay } = require('./utils/date');
 const { readAmount, amountValue } = require('./db/codec');
 
 // An amount as the books read it: a number, or text like "1.234,50"; one nobody can read ("fünfzig") counts 0, as in a
@@ -34,10 +34,7 @@ async function aggregateStats(appConfig, { asBefore = false } = {}) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const todayY = today.getFullYear();
-  const todayM = String(today.getMonth() + 1).padStart(2, '0');
-  const todayD = String(today.getDate()).padStart(2, '0');
-  const todayStr = `${todayY}-${todayM}-${todayD}`;
+  const todayStr = currentDay(today);
 
   const ninetyDaysAgo = new Date(today);
   ninetyDaysAgo.setDate(today.getDate() - 90);

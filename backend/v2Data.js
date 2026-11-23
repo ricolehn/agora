@@ -8,7 +8,7 @@ const client = require('./db/client');
 const finance = require('./db/stores/finance');
 const eventsStore = require('./db/stores/events');
 const { toCents, amountValue } = require('./db/codec');
-const { toDateStr } = require('./utils/date');
+const { toDateStr, currentDay } = require('./utils/date');
 const { receiptNames } = require('./v2/http');
 const { isBookedOut } = require('./eventSeats');
 
@@ -177,7 +177,7 @@ const LIST_READS = {
  * expenses - SQLite works the view out anew for every question, a few hundred milliseconds after every booking.
  */
 let moneyKept = null;
-async function moneyBooks(today = toDateStr(new Date())) {
+async function moneyBooks(today = currentDay()) {
   // Kept until anything is written, the members are read anew or the day changes
   const writes = client.writeGeneration();
   const members = await finance.membersReadOnly(context.appConfig);

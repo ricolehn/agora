@@ -77,4 +77,7 @@ function getNextRecurringDate(baseDateStr, rule, index) {
   return addDaysDriftFree(baseDateStr, index * 7);
 }
 
-module.exports = { toDateStr, addDaysDriftFree, getNextRecurringDate };
+/** Today in the community's time zone (the server's TZ, see the README), as YYYY-MM-DD. */
+const currentDay = (now = new Date()) => toDateStr(now);
+
+module.exports = { toDateStr, currentDay, addDaysDriftFree, getNextRecurringDate };

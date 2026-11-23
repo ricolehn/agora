@@ -25,7 +25,7 @@ const { REQUEST_TYPES, CHANGE_AREAS, INCOME_STATUSES } = require('../db/schema/f
 const { checkAndExecuteStandingOrders } = require('../standingOrders');
 const bookings = require('../bookings');
 const { translate, requestLanguage } = require('../i18n');
-const { toDateStr } = require('../utils/date');
+const { currentDay } = require('../utils/date');
 const financeRouter = require('../routes/finance');
 const data = require('../v2Data');
 const {
@@ -331,7 +331,7 @@ router.post(`${BASE}/standing-orders`, protectedActionRateLimit, verifyToken, ha
   const memberId = idInput(body.memberId, 'memberId');
   if (body.amountCents === undefined || body.startDate === undefined) throw invalid('amountCents and startDate are needed.');
   const order = standingOrderInput(body, { note: '' });
-  if (order.endDate && order.endDate < toDateStr(new Date())) throw invalid('endDate must not be before today: book the payments of a standing order that has ended.', null, 'endDate');
+  if (order.endDate && order.endDate < currentDay()) throw invalid('endDate must not be before today: book the payments of a standing order that has ended.', null, 'endDate');
   const requestId = requestIdInput(body.requestId);
   const clientId = requestId ? bookings.bookingId({ id: requestId }) : crypto.randomUUID();
   if (requestId) {

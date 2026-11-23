@@ -1,11 +1,7 @@
 const { feePeriods, feesOfMonth, feesBeforeDay, settledFeeResets, monthIndexOf, memberStartDay } = require('./feeReset');
 const { amountValue } = require('./db/codec');
 const { schedulePeriods, feesInMonth, changedFees } = require('./feeSchedule');
-const { toDateStr } = require('./utils/date');
-
-function getTodayStr() {
-    return new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-}
+const { toDateStr, currentDay } = require('./utils/date');
 
 const AMOUNT_COMPARISON_EPSILON = 0.0001;
 
@@ -67,7 +63,7 @@ function memberStartMonth(person) {
  * joins later - against that credit and the payments from the day on. "member since", the payments and the status
  * history are only read, never changed.
  */
-function feeAccount(person, settings = {}, feeResets = [], today = getTodayStr(), schedule = null) {
+function feeAccount(person, settings = {}, feeResets = [], today = currentDay(), schedule = null) {
     const memberTotal = memberStartMonth(person);
     const account = { year: Math.floor(memberTotal / 12), month: memberTotal % 12, paid: person.totalPaid || 0, feesAt: () => settings, reset: null, carriedOver: 0, writtenOff: 0 };
     const resets = Array.isArray(feeResets) ? feeResets : [];
@@ -303,7 +299,7 @@ function getActiveStandingOrders(person, todayStr) {
 }
 
 function calculateAnticipatedStandingOrderPayment(person, today = new Date()) {
-    const todayStr = getTodayStr();
+    const todayStr = currentDay();
     const activeSOs = getActiveStandingOrders(person, todayStr);
     let anticipated = 0;
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -375,7 +371,7 @@ function prepareStatusHistory(person) {
 function preprocessPersonServerSide(person, settings, feeResets = [], schedule = null) {
     prepareStatusHistory(person);
 
-    const account = feeAccount(person, settings, feeResets, getTodayStr(), schedule);
+    const account = feeAccount(person, settings, feeResets, currentDay(), schedule);
     const { paidUntil, remainingCredit } = calculatePaymentStatus(person, settings, account);
     // Served in whole cents: added up as they are, amounts like 49.99 leave a balance of a fraction of a cent, which
     // an app would show as "-0.00"

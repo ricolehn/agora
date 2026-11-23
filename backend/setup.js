@@ -2,6 +2,7 @@
 const fs = require('fs');
 const { churchLogoFile } = require('./context');
 const { isSafeSvg } = require('./svgValidation');
+const { currentDay } = require('./utils/date');
 
 function validateSetupPayload(body = {}) {
   const appName = typeof body.appName === 'string' ? body.appName.trim() : '';
@@ -37,7 +38,7 @@ function validateSetupPayload(body = {}) {
   const logoSvg = typeof body.logoSvg === 'string' ? body.logoSvg : null;
   const adminMemberSince = typeof adminUser.memberSince === 'string' && adminUser.memberSince.trim()
     ? adminUser.memberSince.trim()
-    : new Date().toISOString().slice(0, 10);
+    : currentDay();
 
   return {
     appName,

@@ -52,7 +52,7 @@ const {
 
 const { feeResetImpact, feeChangeImpact } = require('../derivedData');
 
-const { toDateStr } = require('../utils/date');
+const { currentDay } = require('../utils/date');
 const { route } = require('./http');
 const { httpError, invalid, notFound, conflict } = require('../httpError');
 const { isAdmin, can } = require('../permissions');
@@ -154,7 +154,7 @@ router.post('/api/db/transaction', dbRateLimit, verifyToken, route('Transaction 
 const isFeeInsider = (user) => isAdmin(user) || can(user, 'view_finances');
 
 function feeResetAnswer(state, user) {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   const insider = isFeeInsider(user);
   return {
     today,
@@ -207,7 +207,7 @@ router.get('/api/fee-reset', dbRateLimit, verifyToken, route('The fresh start co
 
 // What a day would change (or taking one back), in numbers, before anything is confirmed
 router.get('/api/admin/fee-reset/preview', verifyToken, verifyAdmin, route('The fresh start could not be loaded.', async (req, res) => {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
   let date;
   if (req.query.remove === '1') {
@@ -222,7 +222,7 @@ router.get('/api/admin/fee-reset/preview', verifyToken, verifyAdmin, route('The 
 }));
 
 router.post('/api/admin/fee-reset', authRateLimit, verifyToken, verifyAdmin, route('The fresh start could not be saved.', async (req, res) => {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   // What is wrong with the day itself is said before the password is asked for
   const early = checkNewFeeReset((await getFeeState(context.appConfig)).resets, req.body?.date, today);
   if (early.error) throw httpError(early.status, early.error);
@@ -271,7 +271,7 @@ router.post('/api/admin/fee-reset/remove', authRateLimit, verifyToken, verifyAdm
 // of the history its numbers were shown for, so nothing is saved on top of a change someone else made in between.
 
 function feeAnswer(fees, user) {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   const insider = isFeeInsider(user);
   return {
     today,
@@ -311,7 +311,7 @@ router.get('/api/fees', dbRateLimit, verifyToken, route('The fees could not be l
 // What a change would do, in numbers, before anything is saved: who owes more or less today, and which months
 // cost something else. The version in the answer goes back with the call that saves it
 router.post('/api/admin/fees/preview', protectedActionRateLimit, verifyToken, verifyAdmin, route('The fees could not be loaded.', async (req, res) => {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   const [fees, people] = await Promise.all([getFeeState(context.appConfig), listPeopleRecords(context.appConfig)]);
   const { after, entry } = wantedFees(fees.schedule, req.body, today);
   res.json({
@@ -324,7 +324,7 @@ router.post('/api/admin/fees/preview', protectedActionRateLimit, verifyToken, ve
 }));
 
 async function changeFees(req, res, body) {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   const { by, byName } = actingAdmin(req.user);
   const at = Date.now();
   let saved = null;

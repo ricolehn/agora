@@ -20,7 +20,7 @@ const { seatCounts } = require('./eventSeats');
 const { canUserAccessEventDutyPlan } = require('./eventAccess');
 const { can } = require('./permissions');
 const { plainText } = require('./eventContext');
-const { toDateStr } = require('./utils/date');
+const { toDateStr, currentDay } = require('./utils/date');
 const { fullName } = require('./utils/names');
 
 
@@ -293,7 +293,7 @@ function paymentPattern(payments, start, end) {
 const span = (start, end) => `${start || '?'}–${end || ''}`;
 
 async function membersLookup(args, user, limits) {
-  const today = toDateStr(new Date());
+  const today = currentDay();
   const from = dayFrom(args.from);
   const to = dayTo(args.to);
   const until = to && to < today ? to : today;

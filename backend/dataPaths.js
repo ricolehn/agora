@@ -7,7 +7,7 @@ const { withDecisionTimestamp, isExpiredRequest } = require('./requestRetention'
 const { mergeNotificationSettings } = require('./notificationPrefs');
 const { REQUEST_TYPE_LABELS, notifyRequestDecision } = require('./requestMessages');
 const { settingsOn } = require('./feeState');
-const { toDateStr } = require('./utils/date');
+const { currentDay } = require('./utils/date');
 const {
   DEFAULT_SETTINGS,
   DEFAULT_SYSTEM_STATE,
@@ -74,7 +74,7 @@ async function readLogicalPath(targetPath, query, user) {
     // With the fees of this month, whatever was stored last: a change of the fees may count from a month that has
     // come since (feeState.js)
     const [record, fees] = await Promise.all([getStateRecord(context.appConfig, 'settings'), getFeeState(context.appConfig)]);
-    return { value: settingsOn(fees, toDateStr(new Date())), version: record?.updated || null };
+    return { value: settingsOn(fees, currentDay()), version: record?.updated || null };
   }
 
   if (root === 'system' && !id) {

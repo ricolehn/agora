@@ -33,6 +33,7 @@ const {
   queueRecordWrite
 } = require('../pocketbase');
 const { route } = require('./http');
+const { currentDay } = require('../utils/date');
 
 const router = express.Router();
 
@@ -102,7 +103,7 @@ router.post('/api/setup', setupRateLimit, async (req, res) => {
     await updateUserRecord(newConfig, auth.user.id, { admin: true, owner: true, superAdmin: true, pays: true, groups: ownerGroups });
 
     const personKey = auth.user.id;
-    const memberSinceDate = adminUser.memberSince || new Date().toISOString().slice(0, 10);
+    const memberSinceDate = adminUser.memberSince || currentDay();
     const fullName = `${adminUser.firstName} ${adminUser.lastName}`.trim();
     await upsertPeopleRecord(newConfig, personKey, newPersonRecord(personKey, fullName, memberSinceDate));
 
@@ -237,7 +238,7 @@ router.post('/api/auth/register', authRateLimit, route('The account could not be
       if (unused.length === 1) {
         await upsertPeopleRecord(context.appConfig, unused[0].personKey, { ...(unused[0].data || {}), uid, name: fullName });
       } else if (unused.length === 0) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = currentDay();
         await upsertPeopleRecord(context.appConfig, uid, newPersonRecord(uid, fullName, today));
       }
     }

@@ -17,7 +17,7 @@ const { queueRecordWrite } = require('../writeQueue');
 const { readFeeState, changeFeeSchedule, changeFeeResets, saveFeeSettings } = require('../../feeState');
 const { normalizeFeeSchedule, normalizeFeeScheduleLog, FEE_SCHEDULE_STATE_KEY } = require('../../feeSchedule');
 const { normalizeFeeResets, normalizeFeeResetLog, FEE_RESET_STATE_KEY } = require('../../feeReset');
-const { toDateStr } = require('../../utils/date');
+const { currentDay } = require('../../utils/date');
 const { toCents, fromCents, has } = require('../codec');
 const { DEFAULT_SETTINGS } = require('../defaults');
 const { conflict, invalid } = require('../../httpError');
@@ -237,7 +237,6 @@ async function getPeopleRecord(appConfig, personKey) {
 // the books' tables stand, and only if they changed are the members read anew - in the background, while the kept ones
 // are handed out.
 const MEMBERS_MEMO_MS = 30 * 1000;
-const localDay = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const ROW_TABLES = new Set([MEMBERS, PAYMENTS, PERIODS, STANDING_ORDERS]);
 const FEE_TABLES = new Set([FEE_CHANGES, FRESH_STARTS]);
 
@@ -276,7 +275,7 @@ function pendingChanges(seq) {
 async function buildMemo(appConfig) {
   const seq = client.writeGeneration();
   const at = Date.now();
-  const day = localDay();
+  const day = currentDay();
   // How the tables stand before they are read: whatever changes after this is seen by the next look (refreshMemo)
   const stand = await rowTablesStand(appConfig);
   const [rows, fees] = await Promise.all([client.listAllRecords(MEMBERS, '', appConfig, '', { cache: false }), getFeeState(appConfig)]);
@@ -289,7 +288,7 @@ async function buildMemo(appConfig) {
 /** [current] brought up to date by [plan] (see pendingChanges): the members it names read again, all worked out anew for new fees or a new day. */
 async function patchMemo(appConfig, current, plan) {
   const seq = client.writeGeneration();
-  const day = localDay();
+  const day = currentDay();
   const fees = plan.fees ? await getFeeState(appConfig) : current.fees;
   const next = { ...current, seq, day, fees, ids: [...current.ids], byId: new Map(current.byId), list: null, readOnly: null };
   const changed = [...plan.members];
@@ -350,7 +349,7 @@ async function currentMemo(appConfig) {
     while (memoUpdate) await memoUpdate.catch(() => {});
     if (memo) {
       const plan = pendingChanges(memo.seq);
-      const idle = !plan.full && !plan.fees && !plan.members.size && memo.day === localDay();
+      const idle = !plan.full && !plan.fees && !plan.members.size && memo.day === currentDay();
       if (idle || round >= 3) {
         if (idle && Date.now() - memo.at >= MEMBERS_MEMO_MS) refreshMemo(appConfig);
         return memo;
@@ -425,7 +424,7 @@ async function membersReadOnly(appConfig) {
 async function memberReadOnly(appConfig, id) {
   const key = String(id || '');
   if (!key) return null;
-  if (memo && !memoUpdate && memo.day === localDay()) {
+  if (memo && !memoUpdate && memo.day === currentDay()) {
     const plan = pendingChanges(memo.seq);
     const few = !plan.full && !plan.fees && plan.members.size <= FEW_MEMBERS && [...plan.members].every((member) => memo.byId.has(member));
     if (few) {
@@ -1179,7 +1178,6 @@ const feeStore = (appConfig) => ({
   get: (key) => getStateValue(appConfig, key),
   set: (key, value) => setStateValue(appConfig, key, value)
 });
-const todayStr = () => toDateStr(new Date());
 
 function getFeeState(appConfig) {
   return readFeeState({
@@ -1193,15 +1191,15 @@ function getFeeState(appConfig) {
 }
 
 function updateFeeResetState(appConfig, change) {
-  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeResets(feeStore(appConfig), change, todayStr()));
+  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeResets(feeStore(appConfig), change, currentDay()));
 }
 
 function updateFeeSchedule(appConfig, change) {
-  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeSchedule(feeStore(appConfig), change, todayStr()));
+  return queueRecordWrite(FEE_STATE_LOCK, () => changeFeeSchedule(feeStore(appConfig), change, currentDay()));
 }
 
 function saveSettings(appConfig, value, actor) {
-  return queueRecordWrite(FEE_STATE_LOCK, () => saveFeeSettings(feeStore(appConfig), value, actor, todayStr(), Date.now()));
+  return queueRecordWrite(FEE_STATE_LOCK, () => saveFeeSettings(feeStore(appConfig), value, actor, currentDay(), Date.now()));
 }
 
 // --- Links to an account that is about to be deleted (see ../links.js) ---------------------------------------------
