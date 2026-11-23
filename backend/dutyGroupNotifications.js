@@ -3,20 +3,11 @@ const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
 const { listUserRecords, listGroupRecords } = require('./pocketbase');
 const { wantsNotification } = require('./notificationPrefs');
 const { formatEventMoment, formatEventShort, pushLine } = require('./eventTexts');
+const { isGroupMember } = require('./eventAccess');
 
 // Members of the group who want duty messages over at least one channel
 function wantsDutyNotifications(user) {
   return wantsNotification(user, 'duties', 'push') || wantsNotification(user, 'duties', 'email');
-}
-
-// user.groups holds group ids, names or {id, name} objects (same matching as the duty-plan access check)
-function isGroupMember(user, groupId, groupName) {
-  const groups = Array.isArray(user?.groups) ? user.groups : [];
-  return groups.some(g => {
-    const gid = typeof g === 'object' && g ? (g.id || g.name) : String(g);
-    const gname = typeof g === 'object' && g ? g.name : String(g);
-    return gid === groupId || gname === groupId || (groupName && gname === groupName);
-  });
 }
 
 function groupDutyRecipients(users, groupId, groupName, excludeUserId) {
@@ -75,7 +66,6 @@ async function notifyGroupDutyAssigned({ appConfig, groupId, event, duty, assign
 }
 
 module.exports = {
-  isGroupMember,
   groupDutyRecipients,
   buildGroupDutyPush,
   notifyGroupDutyAssigned

@@ -2,8 +2,7 @@
 // Same rules as GET /api/events (own events and those of their target groups), the duty roster and the
 // order of service only where the person may see them (canUserAccessEventDutyPlan), no attendee names.
 const { listEvents, listEventRegistrations, listEventGuests, listEventDuties, listUserRecords, listGroupRecords } = require('./pocketbase');
-const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./eventAccess');
-const { can } = require('./permissions');
+const { seesEvent, canEditEvent, canUserAccessEventDutyPlan } = require('./eventAccess');
 const { createItemStore } = require('./itemStore');
 const { seatCounts } = require('./eventSeats');
 const { toDateStr } = require('./utils/date');
@@ -34,7 +33,6 @@ const addDays = (date, days) => {
 async function buildEventContext(appConfig, user) {
   if (!user) return [];
   const uid = user.uid || user.id;
-  const canManage = can(user, 'manage_events');
   const from = addDays(new Date(), -PAST_DAYS);
   const until = addDays(new Date(), FUTURE_DAYS);
 
@@ -50,7 +48,7 @@ async function buildEventContext(appConfig, user) {
   const groupMap = new Map(groups.map((g) => [g.id, g.name]));
 
   const visible = events
-    .filter((ev) => ev.createdBy === uid || userMatchesTargetGroups(user, ev.targetGroups))
+    .filter((ev) => seesEvent(user, ev))
     .filter((ev) => (ev.endDate || ev.date || '') >= from && (ev.date || '') <= until)
     .slice(0, MAX_EVENTS);
 
@@ -107,7 +105,7 @@ async function buildEventContext(appConfig, user) {
         }));
       }
     }
-    if (ev.createdBy === uid || canManage) entry.canEdit = true;
+    if (canEditEvent(user, ev)) entry.canEdit = true;
     result.push(entry);
   }
   return result;

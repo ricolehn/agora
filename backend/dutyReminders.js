@@ -9,7 +9,7 @@
 // "reminded"), so a moved event reminds again, restarts never send twice and new group members still get one.
 const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
 const { formatEventMoment, pushLine } = require('./eventTexts');
-const { isGroupMember } = require('./dutyGroupNotifications');
+const { isGroupMember } = require('./eventAccess');
 
 const REMINDER_HOURS = 3;
 const ALL_DAY_HOUR = 8;

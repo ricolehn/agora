@@ -407,7 +407,8 @@ describe('notificationPrefs', () => {
 });
 
 describe('dutyGroupNotifications', () => {
-  const { isGroupMember, groupDutyRecipients, buildGroupDutyPush } = require('../backend/dutyGroupNotifications');
+  const { groupDutyRecipients, buildGroupDutyPush } = require('../backend/dutyGroupNotifications');
+  const { isGroupMember } = require('../backend/eventAccess');
 
   test('isGroupMember matches group ids, names and {id, name} objects', () => {
     assert.equal(isGroupMember({ groups: ['g1'] }, 'g1', 'Technik'), true);

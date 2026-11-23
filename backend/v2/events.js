@@ -8,7 +8,7 @@ const eventsStore = require('../db/stores/events');
 const { listGroupRecords, listUserRecords } = require('../pocketbase');
 const { translate, requestLanguage } = require('../i18n');
 const { seatCounts } = require('../eventSeats');
-const { canUserAccessEventDutyPlan } = require('../eventAccess');
+const { seesEvent, canUserAccessEventDutyPlan } = require('../eventAccess');
 const { can } = require('../permissions');
 const eventsRouter = require('../routes/events');
 const data = require('../v2Data');
@@ -17,7 +17,7 @@ const {
   idInput, choiceInput, daysOf, searchOf, matchesSearch, sortable, page, v1Route, runV1, runSteps
 } = require('./http');
 
-const { isoFromMillis, eventOf, seesEvent } = data;
+const { isoFromMillis, eventOf } = data;
 const router = express.Router();
 const BASE = '/api/v2';
 

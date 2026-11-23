@@ -8,7 +8,6 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { rateLimit } = require('express-rate-limit');
 const { isSafeSvg } = require('./svgValidation');
-const { userMatchesTargetGroups, canUserAccessEventDutyPlan } = require('./eventAccess');
 const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests, repairRequestAuthors } = require('./requestRetention');
@@ -1303,12 +1302,10 @@ module.exports = {
   withGroupPermissions,
   sendDutyRequestNotificationEmail,
   invalidateAuthCache,
-  userMatchesTargetGroups,
   DEFAULT_EVENT_SETTINGS,
   formatIcsDateTime,
   escapeIcsText,
   generateIcsCalendar,
-  canUserAccessEventDutyPlan,
   addDaysDriftFree,
   getNextRecurringDate,
   authenticateCalendarFeed

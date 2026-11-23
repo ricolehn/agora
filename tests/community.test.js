@@ -42,6 +42,17 @@ describe('events', () => {
     assert.equal(canUserAccessEventDutyPlan(null, event, duties), false);
   });
 
+  test('an event: its creator sees and edits it, its groups see it, event managers edit every event - an admin sees, but does not edit', () => {
+    const { seesEvent, canEditEvent } = require('../backend/eventAccess');
+    const event = { createdBy: 'creator', targetGroups: ['Jugend'] };
+    const people = {
+      creator: { uid: 'creator' }, member: { uid: 'm', groups: ['Jugend'] }, other: { uid: 'o', groups: ['Senioren'] },
+      manager: { uid: 'e', permissions: ['manage_events'] }, admin: { uid: 'a', admin: true }
+    };
+    const answers = Object.fromEntries(Object.entries(people).map(([who, user]) => [who, [seesEvent(user, event), canEditEvent(user, event)]]));
+    assert.deepEqual(answers, { creator: [true, true], member: [true, false], other: [false, false], manager: [true, true], admin: [true, false] });
+  });
+
   test('event pictures: only uploaded ones count, linked ones stay, unlinked ones go after the grace period', async (t) => {
     const {
       UNLINKED_GRACE_MS, eventImageName, linkedEventImageNames, deleteUnlinkedEventImages, staleUnlinkedEventImages

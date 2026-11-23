@@ -11,10 +11,8 @@ const {
   pageRateLimit,
   eventImageUpload,
   broadcastDataUpdate,
-  userMatchesTargetGroups,
   DEFAULT_EVENT_SETTINGS,
   generateIcsCalendar,
-  canUserAccessEventDutyPlan,
   addDaysDriftFree,
   getNextRecurringDate,
   sendDutyRequestNotificationEmail,
@@ -48,6 +46,8 @@ const {
 
 const { notifyUsers, originOf } = require('../notify');
 const { isAdmin, can, resolveUserPermissions } = require('../permissions');
+const { userMatchesTargetGroups, seesEvent, canEditEvent, canUserAccessEventDutyPlan } = require('../eventAccess');
+const { notFound } = require('../httpError');
 const { userLanguage, translate, requestLanguage, instanceLanguage } = require('../i18n');
 const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
 const { createItemStore } = require('../itemStore');
@@ -75,8 +75,19 @@ function participantLimitsError(minParticipants, maxParticipants) {
   return null;
 }
 
-// Seeing every event (calendar feed) stays open to admins; creating and managing events needs manage_events
-const seesAllEvents = (user) => can(user, 'manage_events') || isAdmin(user);
+/** The event [id]; 404 for the person when there is none. */
+async function eventOr404(id) {
+  const event = await getEventRecord(context.appConfig, id);
+  if (!event) throw notFound('Event not found');
+  return event;
+}
+
+/** The duty [id]; 404 for the person when there is none. */
+async function dutyOr404(id) {
+  const duty = await getEventDuty(context.appConfig, id);
+  if (!duty) throw notFound('Duty not found');
+  return duty;
+}
 
 router.get('/api/events', verifyToken, route('Events could not be loaded', async (req, res) => {
   const currentUid = req.user.uid;
@@ -107,16 +118,10 @@ router.get('/api/events', verifyToken, route('Events could not be loaded', async
   const guestsByEvent = byEvent(allGuests);
   const dutiesByEvent = byEvent(allDuties);
 
-  const visibleEvents = allEvents.filter(ev => {
-    const isCreator = ev.createdBy === currentUid;
-    if (isCreator) return true;
-    return userMatchesTargetGroups(req.user, ev.targetGroups);
-  });
+  const visibleEvents = allEvents.filter((ev) => seesEvent(req.user, ev));
 
   const formatted = visibleEvents.map(ev => {
-    const isCreator = ev.createdBy === currentUid;
-    const canManageEvents = can(req.user, 'manage_events');
-    const canEdit = isCreator || canManageEvents;
+    const canEdit = canEditEvent(req.user, ev);
     const isCreatorManager = managerUserIds.has(ev.createdBy);
     const isOfficial = Boolean(ev.eventType === 'termin' || ev.isRecurring);
 
@@ -372,16 +377,11 @@ router.get('/api/events/settings', verifyToken, (req, res) => {
 
 router.patch('/api/events/:id', verifyToken, route('The event could not be updated', async (req, res) => {
   const currentUid = req.user.uid;
-  const event = await getEventRecord(context.appConfig, req.params.id);
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found' });
-  }
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  if (!isCreator && !canManageEvents) {
+  const event = await eventOr404(req.params.id);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to edit this event' });
   }
+  const canManageEvents = can(req.user, 'manage_events');
 
   const {
     title,
@@ -501,15 +501,8 @@ router.patch('/api/events/:id', verifyToken, route('The event could not be updat
 }));
 
 router.delete('/api/events/:id', verifyToken, route('The event could not be deleted', async (req, res) => {
-  const currentUid = req.user.uid;
-  const event = await getEventRecord(context.appConfig, req.params.id);
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found' });
-  }
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  if (!isCreator && !canManageEvents) {
+  const event = await eventOr404(req.params.id);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to delete this event' });
   }
 
@@ -526,7 +519,7 @@ async function programAccess(req, eventId) {
   if (!programStore.isValidKey(eventId)) return null;
   const event = await getEventRecord(context.appConfig, eventId);
   if (!event) return null;
-  const canEdit = event.createdBy === req.user.uid || can(req.user, 'manage_events');
+  const canEdit = canEditEvent(req.user, event);
   if (canEdit) return { event, canEdit, canSee: true };
   let groups = [];
   try { groups = await listGroupRecords(context.appConfig); } catch {}
@@ -557,16 +550,11 @@ router.put('/api/events/:id/program', protectedActionRateLimit, verifyToken, rou
 
 router.post('/api/events/:id/register', verifyToken, route('Registration failed', async (req, res) => {
   const currentUid = req.user.uid;
-  const event = await getEventRecord(context.appConfig, req.params.id);
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found' });
-  }
+  const event = await eventOr404(req.params.id);
   if (!event.requiresRegistration) {
     return res.status(400).json({ error: 'This event does not require registration' });
   }
-
-  const isCreator = event.createdBy === currentUid;
-  if (!isCreator && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+  if (!seesEvent(req.user, event)) {
     return res.status(403).json({ error: 'You do not have access to this event' });
   }
 
@@ -657,18 +645,10 @@ router.get('/api/events/my-requests', verifyToken, route('Duty requests could no
 
 router.patch('/api/events/duties/:dutyId', verifyToken, route('The duty could not be updated', async (req, res) => {
   const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) {
-    return res.status(404).json({ error: 'Duty not found' });
-  }
-
-  const event = await getEventRecord(context.appConfig, duty.event);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
+  const duty = await dutyOr404(req.params.dutyId);
+  const event = await eventOr404(duty.event);
   const isAssigned = duty.assignedUser === currentUid;
-  const canManage = isCreator || canManageEvents;
+  const canManage = canEditEvent(req.user, event);
 
   const { notes, status, roleName, section, assignedGroup, assignedUser } = req.body || {};
 
@@ -707,13 +687,8 @@ router.patch('/api/events/duties/:dutyId', verifyToken, route('The duty could no
 
 router.post('/api/events/:id/duties', verifyToken, route('The duty could not be added', async (req, res) => {
   const currentUid = req.user.uid;
-  const event = await getEventRecord(context.appConfig, req.params.id);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  const canManage = isCreator || canManageEvents;
-  if (!canManage) {
+  const event = await eventOr404(req.params.id);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to create duties' });
   }
 
@@ -772,17 +747,9 @@ router.post('/api/events/:id/duties', verifyToken, route('The duty could not be 
 }));
 
 router.delete('/api/events/duties/:dutyId', verifyToken, route('The duty could not be deleted', async (req, res) => {
-  const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) return res.status(404).json({ error: 'Duty not found' });
-
-  const event = await getEventRecord(context.appConfig, duty.event);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  const canManage = isCreator || canManageEvents;
-  if (!canManage) {
+  const duty = await dutyOr404(req.params.dutyId);
+  const event = await eventOr404(duty.event);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to delete this duty' });
   }
 
@@ -793,16 +760,9 @@ router.delete('/api/events/duties/:dutyId', verifyToken, route('The duty could n
 
 router.post('/api/events/duties/:dutyId/request', verifyToken, route('The request could not be sent', async (req, res) => {
   const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) return res.status(404).json({ error: 'Duty not found' });
-
-  const event = await getEventRecord(context.appConfig, duty.event);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  const canManage = isCreator || canManageEvents;
-  if (!canManage) {
+  const duty = await dutyOr404(req.params.dutyId);
+  const event = await eventOr404(duty.event);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to send duty requests' });
   }
 
@@ -837,16 +797,9 @@ router.post('/api/events/duties/:dutyId/request', verifyToken, route('The reques
 
 router.post('/api/events/duties/:dutyId/assign', verifyToken, route('The duty could not be assigned', async (req, res) => {
   const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) return res.status(404).json({ error: 'Duty not found' });
-
-  const event = await getEventRecord(context.appConfig, duty.event);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  const canManage = isCreator || canManageEvents;
-  if (!canManage) {
+  const duty = await dutyOr404(req.params.dutyId);
+  const event = await eventOr404(duty.event);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to assign this duty' });
   }
 
@@ -896,13 +849,8 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, route('The duty co
 
 router.post('/api/events/duties/:dutyId/respond', verifyToken, route('The answer could not be sent', async (req, res) => {
   const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) return res.status(404).json({ error: 'Duty not found' });
-
-  const isTarget = duty.requestedUser === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  const isPlanner = canManageEvents;
-  if (!isTarget && !isPlanner) {
+  const duty = await dutyOr404(req.params.dutyId);
+  if (duty.requestedUser !== currentUid && !can(req.user, 'manage_events')) {
     return res.status(403).json({ error: 'Only the requested user can answer this request' });
   }
 
@@ -1026,17 +974,9 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, route('The answer
 }));
 
 router.post('/api/events/duties/:dutyId/cancel-request', verifyToken, route('The request could not be withdrawn', async (req, res) => {
-  const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) return res.status(404).json({ error: 'Duty not found' });
-
-  const event = await getEventRecord(context.appConfig, duty.event);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  const canCancel = isCreator || duty.requestedBy === currentUid || canManageEvents;
-  if (!canCancel) {
+  const duty = await dutyOr404(req.params.dutyId);
+  const event = await eventOr404(duty.event);
+  if (duty.requestedBy !== req.user.uid && !canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to withdraw the request' });
   }
 
@@ -1052,21 +992,13 @@ router.post('/api/events/duties/:dutyId/cancel-request', verifyToken, route('The
 
 router.post('/api/events/duties/:dutyId/claim', verifyToken, route('The duty could not be taken over', async (req, res) => {
   const currentUid = req.user.uid;
-  const duty = await getEventDuty(context.appConfig, req.params.dutyId);
-  if (!duty) return res.status(404).json({ error: 'Duty not found' });
-
+  const duty = await dutyOr404(req.params.dutyId);
   const { action } = req.body || {};
 
   if (action === 'unclaim') {
-    const isAssigned = duty.assignedUser === currentUid;
-    let canManage = false;
+    // Who has the duty gives it back; who edits the event takes it from them
     const event = await getEventRecord(context.appConfig, duty.event);
-    if (event) {
-      const isCreator = event.createdBy === currentUid;
-      const canManageEvents = can(req.user, 'manage_events');
-      canManage = isCreator || canManageEvents;
-    }
-    if (!isAssigned && !canManage) {
+    if (duty.assignedUser !== currentUid && !(event && canEditEvent(req.user, event))) {
       return res.status(403).json({ error: 'You cannot remove this assignment' });
     }
     const updated = await updateEventDuty(context.appConfig, duty.id, {
@@ -1082,9 +1014,8 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, route('The duty cou
   // Taking a duty: only who may see the event, and only a duty that is open (or declined) or was asked of this
   // person - not one asked of someone else or given to a group. Read and written in the duty's queue: two at once
   // cannot both get it
-  const event = await getEventRecord(context.appConfig, duty.event);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-  if (event.createdBy !== currentUid && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+  const event = await eventOr404(duty.event);
+  if (!seesEvent(req.user, event)) {
     return res.status(403).json({ error: 'You do not have access to this event' });
   }
   const result = await queueRecordWrite(`duty:${duty.id}`, async () => {
@@ -1107,12 +1038,8 @@ router.post('/api/events/duties/:dutyId/claim', verifyToken, route('The duty cou
 }));
 
 router.get('/api/events/:id/attendees', verifyToken, route('Participants could not be loaded', async (req, res) => {
-  const currentUid = req.user.uid;
-  const event = await getEventRecord(context.appConfig, req.params.id);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  if (!isCreator && !userMatchesTargetGroups(req.user, event.targetGroups)) {
+  const event = await eventOr404(req.params.id);
+  if (!seesEvent(req.user, event)) {
     return res.status(403).json({ error: 'No access to this event' });
   }
 
@@ -1120,7 +1047,7 @@ router.get('/api/events/:id/attendees', verifyToken, route('Participants could n
   const users = await listUserRecords(context.appConfig);
   const userMap = new Map(users.map(u => [u.id, u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
   // Everyone sees who comes; how to reach a guest (and their age) only those who may edit the event
-  const canEdit = isCreator || can(req.user, 'manage_events');
+  const canEdit = canEditEvent(req.user, event);
 
   const people = [
     ...evRegs.map(r => ({
@@ -1155,13 +1082,8 @@ router.get('/api/events/:id/attendees', verifyToken, route('Participants could n
 }));
 
 router.delete('/api/events/:id/attendees/:userId', verifyToken, route('The participant could not be removed', async (req, res) => {
-  const currentUid = req.user.uid;
-  const event = await getEventRecord(context.appConfig, req.params.id);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-
-  const isCreator = event.createdBy === currentUid;
-  const canManageEvents = can(req.user, 'manage_events');
-  if (!isCreator && !canManageEvents) {
+  const event = await eventOr404(req.params.id);
+  if (!canEditEvent(req.user, event)) {
     return res.status(403).json({ error: 'No permission to remove participants of this event' });
   }
 
@@ -1194,11 +1116,8 @@ router.get('/api/events/:id/export.ics', verifyToken, async (req, res) => {
   try {
     const event = await getEventRecord(context.appConfig, req.params.id);
     if (!event) return res.status(404).send('Event not found');
-    // Who may see the event (like signing up): its creator and its target groups
-    const currentUid = req.user.uid;
-    if (event.createdBy !== currentUid && !userMatchesTargetGroups(req.user, event.targetGroups)) {
-      return res.status(404).send('Event not found');
-    }
+    // Only who sees the event (as for signing up)
+    if (!seesEvent(req.user, event)) return res.status(404).send('Event not found');
 
     const appName = context.appConfig?.appName || 'Agora';
     const icsContent = generateIcsCalendar([event], `${appName} - ${event.title || 'Event'}`);
@@ -1258,14 +1177,8 @@ router.get('/api/events/calendar.ics', pageRateLimit, authenticateCalendarFeed, 
         .map(d => d.event)
     );
 
-    const isEventManager = seesAllEvents(req.user);
-
-    const visibleEvents = allEvents.filter(ev => {
-      if (ev.createdBy === currentUid) return true;
-      if (userAssignedEventIds.has(ev.id)) return true;
-      if (isEventManager) return true;
-      return userMatchesTargetGroups(req.user, ev.targetGroups);
-    });
+    // What the person sees in the app, and the events they have a duty in (admins and event managers: every event)
+    const visibleEvents = allEvents.filter((ev) => userAssignedEventIds.has(ev.id) || seesEvent(req.user, ev));
 
     const appName = context.appConfig?.appName || 'Agora';
     const userName = req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();

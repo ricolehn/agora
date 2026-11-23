@@ -1,7 +1,8 @@
 // The data API v2 reads (routes/v2.js), in its shapes - record ids, money in whole cents, days as 'YYYY-MM-DD',
 // moments as ISO 8601 (UTC) - with the permissions of the old API (v1). The AI assistant's lookups (aiTools.js) read
 // through the same functions, so both always see the same data under the same rules.
-const { context, userMatchesTargetGroups } = require('./context');
+const { context } = require('./context');
+const { seesEvent } = require('./eventAccess');
 const { can } = require('./permissions');
 const client = require('./db/client');
 const finance = require('./db/stores/finance');
@@ -316,9 +317,6 @@ const eventOf = (event, counts, mine) => ({
   shareToken: event.isPublic === true && event.publicToken ? event.publicToken : null
 });
 
-/** May [user] see [event] in the calendar: their own events and those of their target groups (as GET /api/events). */
-const seesEvent = (user, event) => event.createdBy === uidOf(user) || userMatchesTargetGroups(user, event.targetGroups);
-
 /** The events [user] sees in the calendar, taking place between the days [from] and [to] (both optional). */
 async function visibleEvents(user, { from, to } = {}) {
   const filters = [];
@@ -374,7 +372,6 @@ module.exports = {
   financeChangesPage,
   messagesPage,
   eventOf,
-  seesEvent,
   visibleEvents,
   seatsOf
 };
