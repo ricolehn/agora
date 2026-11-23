@@ -359,7 +359,7 @@ function page(items, req, sortKey, { ascending = false } = {}) {
 function v1Route(router, method, path) {
   const layer = router.stack.find((entry) => entry.route?.path === path && entry.route.methods[method.toLowerCase()]);
   if (!layer) throw new Error(`API v2: the old API has no route ${method} ${path}`);
-  const { verifyToken } = require('../context');
+  const { verifyToken } = require('../auth');
   return layer.route.stack.map((entry) => entry.handle).filter((fn) => fn !== verifyToken);
 }
 

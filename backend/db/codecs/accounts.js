@@ -17,7 +17,7 @@ function isPlaceholderEmail(email) {
   return str.endsWith('@agora.local') || str.endsWith('@nova.local') || str.endsWith('@local.invalid') || str.startsWith('unclaimed_');
 }
 
-/** What the old server kept in emailNotifications for these settings (context.js writes channels.push || channels.email). */
+/** What the old server kept in emailNotifications for these settings (dataPaths.js writes channels.push || channels.email). */
 function emailNotificationsOf(settings) {
   if (!settings || typeof settings !== 'object') return true;
   const channels = settings.channels && typeof settings.channels === 'object' ? settings.channels : null;

@@ -3,8 +3,9 @@
 // an own random key (kept in their browser, linked in their e-mails) to see or cancel their place - also after
 // the switch was turned off again.
 const express = require('express');
-const rateLimit = require('express-rate-limit');
-const { context, pageRateLimit, broadcastDataUpdate } = require('../context');
+const { context } = require('../context');
+const { MINUTE, rateLimitOf, pageRateLimit } = require('../rateLimits');
+const { broadcastDataUpdate } = require('../liveUpdates');
 const { findEventByPublicToken, getEventRecord, findEventGuestByKey, createEventGuest, deleteEventGuest } = require('../pocketbase');
 const { seatCounts, isBookedOut, withEventSeats, loadSeats, fillFreeSeats } = require('../eventSeats');
 const {
@@ -26,13 +27,7 @@ const { route } = require('./http');
 const router = express.Router();
 
 // Signing up and cancelling without an account: enough for a family, too little for a flood of fake guests
-const guestWriteRateLimit = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many attempts. Please try again in a few minutes.' }
-});
+const guestWriteRateLimit = rateLimitOf(10 * MINUTE, 30, 'Too many attempts. Please try again in a few minutes.');
 
 const LINK_INACTIVE = 'This link is not active.';
 const REGISTRATION_GONE = 'This registration no longer exists.';

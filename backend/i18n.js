@@ -44,6 +44,7 @@ function languageFromHeader(header) {
 }
 
 function instanceLanguage() {
+  // Read when asked: the translations load without the server's state and folders (scripts, tests)
   const { context } = require('./context');
   return normalizeLanguage(context.appConfig?.defaultLanguage) || BASE_LANGUAGE;
 }

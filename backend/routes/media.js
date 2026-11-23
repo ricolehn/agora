@@ -6,17 +6,11 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
-const { rateLimit } = require('express-rate-limit');
 const { Readable } = require('stream');
-const {
-  context,
-  dataDir,
-  verifyToken,
-  verifyAdmin,
-  requires,
-  protectedActionRateLimit,
-  broadcastDataUpdate
-} = require('../context');
+const { context, dataDir } = require('../context');
+const { verifyToken, verifyAdmin, requires } = require('../auth');
+const { MINUTE, rateLimitOf, protectedActionRateLimit } = require('../rateLimits');
+const { broadcastDataUpdate } = require('../liveUpdates');
 const { getStateValue, upsertStateValue, listGroupRecords, listUserRecords, queueRecordWrite } = require('../pocketbase');
 const { instanceSecret } = require('../instanceSecret');
 const media = require('../media');
@@ -138,7 +132,7 @@ async function withPreviewSlot(work) {
 }
 
 // Thumbnails: a folder of pictures asks for many at once
-const mediaFileRateLimit = rateLimit({ windowMs: 60 * 1000, max: 3000, standardHeaders: true, legacyHeaders: false });
+const mediaFileRateLimit = rateLimitOf(MINUTE, 3000);
 
 // --- For everyone: is there anything to see? ---
 

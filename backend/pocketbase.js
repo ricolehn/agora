@@ -200,7 +200,7 @@ async function getStateValue(appConfig, key, fallback = null) {
 }
 
 async function ensureStateDefaults(appConfig) {
-  // The fee settings are kept by the books (context.js writes them at every start); donations start as the empty map
+  // The fee settings are kept by the books (runtime.js writes them at every start); donations start as the empty map
   const defaults = new Map([
     ['system', DEFAULT_SYSTEM_STATE]
   ]);

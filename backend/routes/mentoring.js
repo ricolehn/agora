@@ -1,11 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
-const {
-  context,
-  verifyToken,
-  verifyManageMentoring,
-  broadcastDataUpdate
-} = require('../context');
+const { context } = require('../context');
+const { verifyToken, verifyManageMentoring } = require('../auth');
+const { broadcastDataUpdate } = require('../liveUpdates');
 
 const {
   listMentorRecords,

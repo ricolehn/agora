@@ -10,7 +10,12 @@
 const express = require('express');
 const crypto = require('crypto');
 const { isDeepStrictEqual } = require('util');
-const { context, verifyToken, protectedActionRateLimit, broadcastDataUpdate, writeLogicalPath, isOwnFullNameMatch, NO_REASON_GIVEN, rejectionReasonText } = require('../context');
+const { context } = require('../context');
+const { verifyToken } = require('../auth');
+const { protectedActionRateLimit } = require('../rateLimits');
+const { broadcastDataUpdate } = require('../liveUpdates');
+const { writeLogicalPath, isOwnFullNameMatch } = require('../dataPaths');
+const { NO_REASON_GIVEN, rejectionReasonText } = require('../requestMessages');
 const { listUserRecords, getUserRecord } = require('../pocketbase');
 const { isAdmin, can } = require('../permissions');
 const client = require('../db/client');

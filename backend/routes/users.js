@@ -2,15 +2,10 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const { rateLimit } = require('express-rate-limit');
-const {
-  context,
-  verifyToken,
-  protectedActionRateLimit,
-  profileUpload,
-  profilesDir,
-  verifyAdmin
-} = require('../context');
+const { context, profilesDir } = require('../context');
+const { verifyToken, verifyAdmin } = require('../auth');
+const { MINUTE, rateLimitOf, protectedActionRateLimit } = require('../rateLimits');
+const { profileUpload } = require('../uploads');
 const { notifyUsers, adminUsers, originOf } = require('../notify');
 const { buildReport, storeReport, listReports, resolveReport } = require('../contentReports');
 
@@ -67,7 +62,7 @@ const forgetPictureVersions = () => { pictureVersionCache = null; };
 
 // Small files, many at once on a list: their own generous limit (they used to count against the 300 actions per
 // minute that saving and sending share)
-const pictureRateLimit = rateLimit({ windowMs: 60 * 1000, max: 3000, standardHeaders: true, legacyHeaders: false });
+const pictureRateLimit = rateLimitOf(MINUTE, 3000);
 
 router.get('/api/profile/pictures', verifyToken, (req, res) => {
   res.setHeader('Cache-Control', 'private, no-cache');

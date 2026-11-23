@@ -6,15 +6,13 @@ const cron = require('node-cron');
 const {
   context,
   isStarting,
-  loadConfig,
-  logoAssetRateLimit,
-  pageRateLimit,
-  adminRateLimit,
   churchLogoFile,
   bundledChurchLogoFile,
   resolvedFrontendDir,
   eventImagesDir
 } = require('./context');
+const { loadConfig } = require('./runtime');
+const { logoAssetRateLimit, pageRateLimit, adminRateLimit } = require('./rateLimits');
 
 const { selectChurchLogoFilePath } = require('./logoStorage');
 const { formatEventMoment } = require('./eventTexts');

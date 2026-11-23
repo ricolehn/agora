@@ -2,21 +2,13 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const {
-  context,
-  verifyToken,
-  protectedActionRateLimit,
-  uploadDir,
-  eventImagesDir,
-  pageRateLimit,
-  eventImageUpload,
-  broadcastDataUpdate,
-  DEFAULT_EVENT_SETTINGS,
-  generateIcsCalendar,
-  addDaysDriftFree,
-  getNextRecurringDate,
-  authenticateCalendarFeed
-} = require('../context');
+const { context, uploadDir, eventImagesDir } = require('../context');
+const { verifyToken, authenticateCalendarFeed } = require('../auth');
+const { protectedActionRateLimit, pageRateLimit } = require('../rateLimits');
+const { eventImageUpload } = require('../uploads');
+const { broadcastDataUpdate } = require('../liveUpdates');
+const { generateIcsCalendar } = require('../ics');
+const { addDaysDriftFree, getNextRecurringDate } = require('../utils/date');
 const { formatEventMoment, formatEventShort, pushLine } = require('../eventTexts');
 
 const {
@@ -58,6 +50,15 @@ const { newPublicToken, sendGuestEmail, tellPromotedGuests, localToday } = requi
 const { route } = require('./http');
 
 const router = express.Router();
+// Suggested duties until an instance saves its own list (in the instance's default language)
+const DEFAULT_DUTY_NAMES = ['Bistro team', 'Tech', 'Welcome', 'Host', 'Music / worship'];
+const DEFAULT_EVENT_SETTINGS = {
+  allowMemberCreation: true,
+  get defaultDuties() {
+    return DEFAULT_DUTY_NAMES.map((name) => translate(instanceLanguage(), name));
+  }
+};
+
 // Order of service per event (key = event id), readable only by the server
 const programStore = createItemStore('event_programs');
 

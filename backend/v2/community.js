@@ -2,7 +2,11 @@
 // writes run the old API's own handlers (v1Route / runV1): the same checks, encryption and notifications as v1.
 const crypto = require('crypto');
 const express = require('express');
-const { context, verifyToken, protectedActionRateLimit, writeLogicalPath, broadcastDataUpdate } = require('../context');
+const { context } = require('../context');
+const { verifyToken } = require('../auth');
+const { protectedActionRateLimit } = require('../rateLimits');
+const { writeLogicalPath } = require('../dataPaths');
+const { broadcastDataUpdate } = require('../liveUpdates');
 const { createItemStore } = require('../itemStore');
 const {
   listGroupRecords, listMentoringThreadsForUser, listMentorRecords, listUserRecords, decryptMentoringText, getMentorByUserId, getMentoringThreadSummary,

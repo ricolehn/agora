@@ -674,7 +674,7 @@ describe('event guests and places (backend/eventGuests.js, backend/eventSeats.js
 });
 
 describe('calendar file (.ics) of the real generator', () => {
-  const { generateIcsCalendar } = require('../backend/context');
+  const { generateIcsCalendar } = require('../backend/ics');
   const lines = (ics) => ics.split('\r\n');
   const one = (event, uid, duties) => lines(generateIcsCalendar([event], 'Test', uid, duties, 'en'));
 

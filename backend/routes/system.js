@@ -4,21 +4,13 @@ const { cleanCcli } = require('../songbook');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const {
-  context,
-  sseClients,
-  broadcastDataUpdate,
-  churchLogoFile,
-  logoUpload,
-  verifyToken,
-  verifyAdmin,
-  protectedActionRateLimit,
-  buildSmtpTransport,
-  configFile,
-  profilesDir,
-  dataDir,
-  newPersonRecord
-} = require('../context');
+const { context, churchLogoFile, configFile, profilesDir, dataDir } = require('../context');
+const { sseClients, broadcastDataUpdate } = require('../liveUpdates');
+const { logoUpload } = require('../uploads');
+const { verifyToken, verifyAdmin } = require('../auth');
+const { protectedActionRateLimit } = require('../rateLimits');
+const { buildSmtpTransport } = require('../runtime');
+const { newPersonRecord } = require('../dataPaths');
 const { deleteAccountData } = require('../accountDeletion');
 const { normalizePublicUrl } = require('../notify');
 const { wantsNotification } = require('../notificationPrefs');

@@ -2,7 +2,7 @@
 // runs the old API's own handlers (routes/media.js): the same rights on every call, files streamed as v1 streams them,
 // answers in the shapes of v2 and every error in its shape.
 const express = require('express');
-const { verifyToken } = require('../context');
+const { verifyToken } = require('../auth');
 const mediaRouter = require('../routes/media');
 const { handle, bodyOf, page, sortable, v1Route, runV1, runSteps } = require('./http');
 

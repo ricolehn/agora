@@ -1,6 +1,7 @@
 // One way to notify people: push (web push + FCM) and/or e-mail, each only when the person wants this kind of
 // message over that channel (notificationPrefs.js). E-mails share one template with the app name, a heading, a few
 // lines, optional detail rows and a button into the app.
+const { context } = require('./context');
 const { wantsNotification } = require('./notificationPrefs');
 const { sendPushToUser } = require('./pushNotifications');
 const { translator, userLanguage, BASE_LANGUAGE } = require('./i18n');
@@ -32,7 +33,6 @@ function normalizePublicUrl(value) {
  * Host header cannot put arbitrary text into the links.
  */
 function originOf(req) {
-  const { context } = require('./context');
   const configured = normalizePublicUrl(context.appConfig?.publicUrl);
   if (configured) return configured;
   const host = String(req?.get?.('host') || '');
@@ -82,7 +82,6 @@ function buildEmail({ appName, recipientName, heading, lines = [], rows = [], ac
 
 /** Sends one e-mail if SMTP is set up; failures are logged, never thrown. Texts are in the recipient's language. */
 async function sendNotificationEmail(user, { subject, heading, lines, rows, actionLabel, path, accent, footer }, origin = '', lang = userLanguage(user)) {
-  const { context } = require('./context');
   const appConfig = context.appConfig;
   if (!user?.email || !context.transporter || !appConfig?.smtp?.user) return false;
   try {

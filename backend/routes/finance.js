@@ -3,23 +3,12 @@ const { notifyUsers, financeManagers, originOf } = require('../notify');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { rateLimit } = require('express-rate-limit');
-const {
-  context,
-  dbRateLimit,
-  authRateLimit,
-  protectedActionRateLimit,
-  verifyToken,
-  verifyAdmin,
-  uploadDir,
-  dataDir,
-  upload,
-  verifyOptionalUser,
-  readLogicalPath,
-  writeLogicalPath,
-  removeLogicalPath,
-  broadcastDataUpdate
-} = require('../context');
+const { context, uploadDir, dataDir } = require('../context');
+const { MINUTE, rateLimitOf, dbRateLimit, authRateLimit, protectedActionRateLimit } = require('../rateLimits');
+const { verifyToken, verifyAdmin, verifyOptionalUser } = require('../auth');
+const { upload } = require('../uploads');
+const { readLogicalPath, writeLogicalPath, removeLogicalPath } = require('../dataPaths');
+const { broadcastDataUpdate } = require('../liveUpdates');
 
 const {
   aggregateStats
@@ -422,7 +411,7 @@ router.get('/api/receipts/:filename', protectedActionRateLimit, verifyToken, asy
 });
 
 // Every member can trigger it (after filing a request): a few per quarter hour are enough
-const notifyAdminsRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+const notifyAdminsRateLimit = rateLimitOf(15 * MINUTE, 20);
 
 router.post('/api/notify-admins', notifyAdminsRateLimit, verifyToken, route('Failed to notify admins', async (req, res) => {
   const { reqType } = req.body || {};

@@ -1,25 +1,13 @@
 const express = require('express');
 const { normalizeLanguage, languageFromHeader, BASE_LANGUAGE } = require('../i18n');
 const crypto = require('crypto');
-const {
-  context,
-  setupRateLimit,
-  authRateLimit,
-  pageRateLimit,
-  validateSetupPayload,
-  saveOptionalLogo,
-  setRuntimeConfig,
-  resetToSetupMode,
-  setAuthCookie,
-  clearAuthCookie,
-  verifyToken,
-  withGroupPermissions,
-  broadcastDataUpdate,
-  configFile,
-  profilesDir,
-  dataDir,
-  newPersonRecord
-} = require('../context');
+const { context, configFile, profilesDir, dataDir } = require('../context');
+const { setupRateLimit, authRateLimit, pageRateLimit } = require('../rateLimits');
+const { validateSetupPayload, saveOptionalLogo } = require('../setup');
+const { setRuntimeConfig, resetToSetupMode } = require('../runtime');
+const { setAuthCookie, clearAuthCookie, verifyToken, withGroupPermissions } = require('../auth');
+const { broadcastDataUpdate } = require('../liveUpdates');
+const { newPersonRecord } = require('../dataPaths');
 const fs = require('fs');
 const { deleteAccountData } = require('../accountDeletion');
 

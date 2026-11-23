@@ -8,7 +8,7 @@
 // the new tables; writes go through the same functions and handlers as v1 - the balances, the change log, the checks
 // for conflicting changes, the notifications work exactly alike.
 const express = require('express');
-const { verifyToken } = require('../context');
+const { verifyToken } = require('../auth');
 const { fail, errorShape, errorHandler } = require('../v2/http');
 const finance = require('../v2/finance');
 const events = require('../v2/events');

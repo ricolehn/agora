@@ -2,7 +2,9 @@
 // requests, the order of service, pictures and the personal calendar feed. Reads come from the new tables; writes run
 // the old API's own handlers (v1Route / runV1): the same permissions, places, waiting list, notifications and e-mails.
 const express = require('express');
-const { context, verifyToken, protectedActionRateLimit } = require('../context');
+const { context } = require('../context');
+const { verifyToken } = require('../auth');
+const { protectedActionRateLimit } = require('../rateLimits');
 const client = require('../db/client');
 const eventsStore = require('../db/stores/events');
 const { listGroupRecords, listUserRecords } = require('../pocketbase');

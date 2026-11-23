@@ -1,11 +1,8 @@
 const express = require('express');
-const {
-  context,
-  dataDir,
-  verifyToken,
-  protectedActionRateLimit,
-  broadcastDataUpdate
-} = require('../context');
+const { context, dataDir } = require('../context');
+const { verifyToken } = require('../auth');
+const { protectedActionRateLimit } = require('../rateLimits');
+const { broadcastDataUpdate } = require('../liveUpdates');
 const { createItemStore } = require('../itemStore');
 const { buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate } = require('../polls');
 const { instanceSecret } = require('../instanceSecret');
