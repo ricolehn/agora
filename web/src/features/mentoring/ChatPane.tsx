@@ -5,6 +5,7 @@ import { t } from '../../app/i18n';
 import { isCurrentUser } from '../../app/session';
 import { fitChatInput, onChatInputKey } from '../../ui/chatInput';
 import { Icon } from '../../ui/Icon';
+import { onMenuKeyDown } from '../../ui/keys';
 import {
   blockCurrentThread, chatFullscreen, chatTime, closeMentoringChatMobile, draft, inChat, menuOpen, pane, paneMessageList, paneThread,
   reportCurrentThread, sendMentoringMessage, sending, setDraft, setMenuOpen, setMessagesElement, threadPartner, toggleChatMenu,
@@ -84,13 +85,25 @@ function ChatHeader() {
   );
 }
 
-const MENU_ITEM = 'flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-left text-[0.88rem] font-semibold transition-[background] duration-150';
+const MENU_ITEM =
+  'flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-left text-[0.88rem] font-semibold transition-[background] duration-150 ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary';
 const MENU_DANGER = 'text-danger hover:bg-[rgba(239,68,68,0.12)]';
 
-/** The ⋮ of the open chat: report it, block the other person, end the conversation. */
+/**
+ * The ⋮ of the open chat: report it, block the other person, end the conversation. A menu for the keyboard too: it opens
+ * with the focus on its first entry, the arrows go from entry to entry, Escape and Tab close it (back to the ⋮).
+ */
 function ChatMenu() {
   let button: HTMLButtonElement | undefined;
   let menu: HTMLDivElement | undefined;
+  const closeToButton = () => {
+    setMenuOpen(false);
+    button?.focus();
+  };
+  createEffect(menuOpen, open => {
+    if (open) menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  });
   onSettled(() => {
     // A click anywhere else closes the menu
     const onClick = (e: MouseEvent) => {
@@ -107,6 +120,7 @@ function ChatMenu() {
         type="button"
         title={t('mentoring_chat_options', 'Options')}
         aria-label={t('mentoring_chat_options', 'Options')}
+        aria-haspopup="menu"
         aria-expanded={menuOpen() ? 'true' : 'false'}
         class={[
           'inline-flex size-9 items-center justify-center rounded-[10px] border border-border-light bg-surface-alt p-0 text-text-secondary',
@@ -118,20 +132,26 @@ function ChatMenu() {
         <Icon name="kebab" size={18} strokeWidth={2.5} />
       </button>
       <Show when={menuOpen()}>
-        <div ref={menu} class="absolute top-[calc(100%+8px)] right-0 z-[100] min-w-[190px] rounded-xl border border-border bg-surface p-1.5 shadow-[0_10px_25px_rgba(0,0,0,0.25)]">
-          <button type="button" class={[MENU_ITEM, 'text-text hover:bg-surface-alt']} onClick={() => void reportCurrentThread()}>
+        <div
+          ref={menu}
+          role="menu"
+          aria-label={t('mentoring_chat_options', 'Options')}
+          class="absolute top-[calc(100%+8px)] right-0 z-[100] min-w-[190px] rounded-xl border border-border bg-surface p-1.5 shadow-[0_10px_25px_rgba(0,0,0,0.25)]"
+          onKeyDown={e => onMenuKeyDown(e, closeToButton)}
+        >
+          <button type="button" role="menuitem" class={[MENU_ITEM, 'text-text hover:bg-surface-alt']} onClick={() => void reportCurrentThread()}>
             <Icon name="flagSharp" size={16} />
             <span>{t('mentoring_chat_report', 'Report conversation')}</span>
           </button>
           {/* Like the Android app: "Report" always; "Block" until blocked, "End" while it is open */}
           <Show when={!paneThread()?.blocked}>
-            <button type="button" class={[MENU_ITEM, MENU_DANGER]} onClick={() => void blockCurrentThread()}>
+            <button type="button" role="menuitem" class={[MENU_ITEM, MENU_DANGER]} onClick={() => void blockCurrentThread()}>
               <Icon name="block" size={16} />
               <span>{t('mentoring_chat_block', 'Block')}</span>
             </button>
           </Show>
           <Show when={!isClosed()}>
-            <button type="button" class={[MENU_ITEM, MENU_DANGER]} onClick={() => void toggleCloseCurrentThread('closed')}>
+            <button type="button" role="menuitem" class={[MENU_ITEM, MENU_DANGER]} onClick={() => void toggleCloseCurrentThread('closed')}>
               <Icon name="xCircle" size={16} />
               <span>{t('mentoring_chat_end', 'End conversation')}</span>
             </button>

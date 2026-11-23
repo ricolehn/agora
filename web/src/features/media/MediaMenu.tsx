@@ -2,6 +2,7 @@
 // placed at the pointer (or under its button) and kept on screen. Any tap elsewhere, scrolling or resizing closes it.
 import { For, Show, createEffect, createSignal, onSettled } from 'solid-js';
 import { Icon, type IconName } from '../../ui/Icon';
+import { onMenuKeyDown } from '../../ui/keys';
 import { MotifSvg } from './motif';
 
 export interface MediaMenuItem {
@@ -83,6 +84,8 @@ export function MediaMenu() {
           ref={el}
           role="menu"
           aria-label={state().label || undefined}
+          // The arrows go from entry to entry (Escape: MediaPage; a tap elsewhere, scrolling: see above)
+          onKeyDown={e => onMenuKeyDown(e)}
           class={[
             'fixed z-[3000] max-w-[min(300px,calc(100vw-16px))] min-w-[210px] rounded-2xl border border-hairline bg-surface p-1.5 text-text',
             'animate-[mediaMenuIn_0.14s_var(--ease)] shadow-[0_18px_40px_-12px_rgba(28,25,23,0.35),0_2px_6px_rgba(28,25,23,0.08)] dark:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.7)]'

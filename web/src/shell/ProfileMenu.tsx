@@ -12,6 +12,7 @@ import { closeProfileMenu, profileMenuOpen, profileMenuPosition } from '../app/s
 import { fullName } from '../app/util';
 import { RING_FRAME, RING_GRADIENT } from '../ui/Avatar';
 import { Icon, type IconName } from '../ui/Icon';
+import { onMenuKeyDown } from '../ui/keys';
 
 /** The own picture inside the role ring's 2px gap (or the person symbol), filling its button. */
 export function ProfilePicture() {
@@ -57,25 +58,6 @@ function MenuItem(props: { icon: IconName; danger?: boolean; onClick: () => void
   );
 }
 
-// The keys of a menu: the arrows (and Home, End) go from entry to entry; Tab leaves it, back to the profile button
-function onMenuKeyDown(e: KeyboardEvent & { currentTarget: HTMLElement }) {
-  const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-  const at = items.indexOf(document.activeElement as HTMLElement);
-  const next =
-    e.key === 'ArrowDown' ? (at + 1) % items.length
-    : e.key === 'ArrowUp' ? (at - 1 + items.length) % items.length
-    : e.key === 'Home' ? 0
-    : e.key === 'End' ? items.length - 1
-    : -1;
-  if (next >= 0 && items.length) {
-    e.preventDefault();
-    items[next].focus();
-  } else if (e.key === 'Tab') {
-    e.preventDefault();
-    closeProfileMenu(true);
-  }
-}
-
 export function ProfileMenu() {
   const open = () => profileMenuOpen();
   const go = (tab: 'settings' | 'super-admin-settings') => {
@@ -91,7 +73,8 @@ export function ProfileMenu() {
       />
       <div
         id="profileDropdown"
-        onKeyDown={onMenuKeyDown}
+        // The arrows go from entry to entry; Escape and Tab leave it, back to the profile button
+        onKeyDown={e => onMenuKeyDown(e, () => closeProfileMenu(true))}
         class={[
           'fixed z-[1101] flex w-max max-w-[min(300px,calc(100vw-24px))] min-w-[240px] flex-col rounded-[28px] border border-transparent p-2',
           'bg-[var(--frost-surface)] shadow-[var(--shadow-lg),0_0_0_1px_var(--hairline)] [backdrop-filter:var(--frost)] [--profile-pic:38px] md:[--profile-pic:44px]',
