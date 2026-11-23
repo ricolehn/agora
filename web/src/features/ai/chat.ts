@@ -5,6 +5,7 @@ import { API, auth } from '../../app/api';
 import { t } from '../../app/i18n';
 import { activeTab } from '../../app/router';
 import { scrollContainer } from '../../app/shell';
+import { fitChatInput, onChatInputKey } from '../../ui/chatInput';
 import { splitAiThinking } from '../../lib/aiReply.js';
 import type { AiSignState } from './AiSign';
 import { createAiReply, type AiReply } from './reply';
@@ -39,16 +40,11 @@ const putWelcome = (next: 'shown' | 'leaving' | 'gone') => {
   setWelcome(next);
 };
 
-const MAX_AI_CHAT_INPUT_HEIGHT = 110;
 // Without a single byte for this long (the server sends a sign of life every 15 s) the connection is gone
 const AI_IDLE_TIMEOUT_MS = 75000;
 
 /** The input grows with its text (up to a limit, then it scrolls). */
-export function adjustAiInputHeight(input = chatElements.input) {
-  if (!input) return;
-  input.style.height = 'auto';
-  input.style.height = `${Math.max(24, Math.min(input.scrollHeight, MAX_AI_CHAT_INPUT_HEIGHT))}px`;
-}
+export const adjustAiInputHeight = (input = chatElements.input) => fitChatInput(input);
 
 /** A new chat: a friendly start with three questions the assistant can answer. */
 export function clearAiChat() {
@@ -83,10 +79,8 @@ export function askAi(text: string) {
 
 /** Ctrl/Cmd+Enter sends; plain Enter inserts a new line and grows the field. */
 export function onAiInputKey(event: KeyboardEvent) {
-  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-    event.preventDefault();
-    void sendAiMessage();
-  } else if (event.key === 'Enter') {
+  if (onChatInputKey(event, () => void sendAiMessage())) return;
+  if (event.key === 'Enter') {
     const input = event.currentTarget as HTMLTextAreaElement;
     setTimeout(() => adjustAiInputHeight(input), 0);
   }

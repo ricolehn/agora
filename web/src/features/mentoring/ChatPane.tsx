@@ -3,6 +3,7 @@
 import { For, Show, createEffect, onSettled } from 'solid-js';
 import { t } from '../../app/i18n';
 import { isCurrentUser } from '../../app/session';
+import { fitChatInput, onChatInputKey } from '../../ui/chatInput';
 import { Icon } from '../../ui/Icon';
 import {
   blockCurrentThread, chatFullscreen, chatTime, closeMentoringChatMobile, draft, inChat, menuOpen, pane, paneMessageList, paneThread,
@@ -215,17 +216,11 @@ function SendingBubble(props: { entry: SendingMessage }) {
 }
 
 /** The field grows with its text (up to about five lines). */
-function autosize(input: HTMLTextAreaElement | undefined) {
-  if (!input) return;
-  input.style.height = 'auto';
-  input.style.height = Math.max(24, Math.min(input.scrollHeight, 110)) + 'px';
-}
-
 function ChatInput() {
   let input: HTMLTextAreaElement | undefined;
   createEffect(
     () => [draft(), pane()?.id],
-    () => autosize(input)
+    () => fitChatInput(input)
   );
   return (
     <div class={['border-t border-border-light bg-surface px-[18px] py-3', chatFullscreen() ? 'max-md:shrink-0 max-md:px-3 max-md:py-2' : 'max-md:px-3 max-md:py-2.5']}>
@@ -239,12 +234,7 @@ function ChatInput() {
           title={t('chat_enter_hint', 'Enter for new line, Ctrl+Enter to send')}
           class="m-0 block h-6 max-h-[110px] min-h-6 flex-1 resize-none border-none bg-transparent p-0 font-[inherit] text-[0.95rem] leading-6 text-text shadow-none outline-none"
           onInput={e => setDraft(e.currentTarget.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              void sendMentoringMessage();
-            }
-          }}
+          onKeyDown={e => onChatInputKey(e, () => void sendMentoringMessage())}
         />
         <button
           type="button"
