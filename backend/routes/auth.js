@@ -30,7 +30,8 @@ const {
   updateOwnPassword,
   updateSystemState,
   SYSTEM_STATE_LOCK,
-  queueRecordWrite
+  queueRecordWrite,
+  ownerUidOf
 } = require('../pocketbase');
 const { route } = require('./http');
 const { currentDay } = require('../utils/date');
@@ -290,8 +291,7 @@ router.post('/api/auth/delete-account', authRateLimit, verifyToken, route('The a
   if (!password) {
     return res.status(400).json({ error: 'Please confirm the deletion with your password.' });
   }
-  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  const ownerUid = await ownerUidOf(context.appConfig);
   if (uid === ownerUid || req.user.owner === true || req.user.superAdmin === true) {
     return res.status(400).json({ error: 'The owner account manages this instance and cannot be deleted.' });
   }

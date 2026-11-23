@@ -16,10 +16,8 @@ const { normalizePublicUrl } = require('../notify');
 const { wantsNotification } = require('../notificationPrefs');
 
 const {
-  DEFAULT_SYSTEM_STATE,
   ownerClaim,
   updateSystemState,
-  getStateValue,
   updateUserRecord,
   listUserRecords,
   listPeopleRecords,
@@ -38,7 +36,8 @@ const {
   deleteFcmToken,
   isPlaceholderEmail,
   listEvents,
-  updateEventRecord
+  updateEventRecord,
+  ownerUidOf
 } = require('../pocketbase');
 const { SYSTEM_PERMISSIONS, permissionFlags, resolveUserPermissions } = require('../permissions');
 
@@ -229,8 +228,7 @@ router.get('/api/admin/users', verifyToken, verifyAdmin, route('Failed to list u
   const groups = await listGroupRecords(context.appConfig);
   const approvedMentors = await listMentorRecords(context.appConfig, 'status = "approved"').catch(() => []);
   const approvedMentorUserIds = new Set(approvedMentors.map(m => m.user));
-  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  const ownerUid = await ownerUidOf(context.appConfig);
 
   const formatted = users.map((u) => {
     const isOwner = u.id === ownerUid || u.owner === true || u.superAdmin === true;
@@ -333,8 +331,7 @@ router.delete('/api/admin/groups/:id', verifyToken, verifyAdmin, route('Failed t
 // True (and answered with 403) when a non-owner admin tries to change the owner's account
 async function blockOwnerChange(req, res, uid) {
   if (req.user?.owner === true) return false;
-  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  const ownerUid = await ownerUidOf(context.appConfig);
   const target = uid === ownerUid ? null : await getUserRecord(context.appConfig, uid).catch(() => null);
   if (uid === ownerUid || target?.owner === true || target?.superAdmin === true) {
     res.status(403).json({ error: 'Only the owner can change the owner account.' });
@@ -408,8 +405,7 @@ router.post('/api/admin/users', verifyToken, verifyAdmin, route('Failed to creat
 router.put('/api/admin/users/:uid/admin', verifyToken, verifyAdmin, route('Failed to update admin role', async (req, res) => {
   const { uid } = req.params;
   const makeAdmin = req.body?.admin === true;
-  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  const ownerUid = await ownerUidOf(context.appConfig);
 
   if (uid === ownerUid && !makeAdmin) {
     return res.status(400).json({ error: 'The owner cannot lose administrator rights.' });
@@ -502,8 +498,7 @@ router.put('/api/admin/users/:uid/password', verifyToken, verifyAdmin, route('Re
 
 router.delete('/api/admin/users/:uid', verifyToken, verifyAdmin, route('Failed to delete user', async (req, res) => {
   const { uid } = req.params;
-  const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-  const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+  const ownerUid = await ownerUidOf(context.appConfig);
 
   if (uid === ownerUid) {
     return res.status(400).json({ error: 'The owner account cannot be deleted.' });

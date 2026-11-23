@@ -15,7 +15,6 @@ const {
   normalizeDataPath,
   sanitizeSelfUserWrite,
   getStateRecord,
-  getStateValue,
   upsertStateValue,
   updateSystemState,
   getFeeState,
@@ -35,7 +34,8 @@ const {
   listRequestRecords,
   getRequestRecord,
   upsertRequestRecord,
-  queueRecordWrite
+  queueRecordWrite,
+  ownerUidOf
 } = require('./pocketbase');
 const { fullName } = require('./utils/names');
 
@@ -281,8 +281,7 @@ async function writeLogicalPath(targetPath, value, user, method = 'set', options
       throw notFound('User not found');
     }
 
-    const system = await getStateValue(context.appConfig, 'system', DEFAULT_SYSTEM_STATE);
-    const ownerUid = system?.ownerUid || system?.superAdminUid || null;
+    const ownerUid = await ownerUidOf(context.appConfig);
     const isTargetOwner = id === ownerUid || existing.owner === true || existing.superAdmin === true;
 
     // Like the admin routes: only the owner changes the owner's rights - also groups (they carry the permissions)

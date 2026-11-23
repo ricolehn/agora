@@ -325,6 +325,12 @@ async function grantNewPermission(appConfig, permission, flag, what) {
   await updateSystemState(appConfig, (current) => ({ ...current, [flag]: true }));
 }
 
+/** The id of the owner's account, as the instance's settings name it (ownerUid; older instances superAdminUid). */
+async function ownerUidOf(appConfig) {
+  const system = await getStateValue(appConfig, 'system', DEFAULT_SYSTEM_STATE);
+  return system?.ownerUid || system?.superAdminUid || null;
+}
+
 const SYSTEM_STATE_LOCK = 'state:system';
 
 /**
@@ -734,6 +740,7 @@ module.exports = {
   financeStore,
   withSecureInviteCode,
   ownerClaim,
+  ownerUidOf,
   invalidateReadCache,
   getPushSubscriptionByEndpoint,
   upsertPushSubscription,
