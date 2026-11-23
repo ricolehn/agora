@@ -3,6 +3,7 @@
 import { For, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import { t } from '../../../app/i18n';
 import { groupBy } from '../../../app/util';
+import { ProgressBar } from '../../../ui/feedback';
 import { Icon } from '../../../ui/Icon';
 import { appEvents, type AppEvent } from '../store';
 import { openPlanEntry } from './entry';
@@ -184,15 +185,11 @@ export function EventPlan(props: { event: AppEvent }) {
             </span>
           </summary>
           <Show when={duties().length}>
-            <div class="mt-3 h-1.5 overflow-hidden rounded-full border border-border-light bg-surface-alt">
-              <div
-                class={[
-                  'h-full rounded-full transition-[width] duration-300 ease-in-out',
-                  filled() === duties().length ? 'bg-gradient-primary' : 'bg-[linear-gradient(90deg,#818cf8_0%,#6366f1_100%)]'
-                ]}
-                style={{ width: `${Math.round((filled() / duties().length) * 100)}%` }}
-              />
-            </div>
+            <ProgressBar
+              class="mt-3 border border-border-light"
+              fill={filled() === duties().length ? 'bg-gradient-primary' : 'bg-[linear-gradient(90deg,#818cf8_0%,#6366f1_100%)]'}
+              percent={(filled() / duties().length) * 100}
+            />
           </Show>
           <div class="mt-1.5 flex flex-col">
             <Show

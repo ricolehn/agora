@@ -7,6 +7,7 @@ import { t } from '../../app/i18n';
 import { confirmAction } from '../../app/toast';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
+import { ProgressBar } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
 import { eventAction, isEventPast, toggleEventRegistration, type AppEvent } from './store';
 
@@ -36,12 +37,11 @@ export function CapacityBar(props: { event: AppEvent }) {
   const full = () => max() > 0 && count() >= max();
   return (
     <Show when={max() > 0}>
-      <div class="mt-3 h-1.5 overflow-hidden rounded-full border border-border-light bg-surface-alt">
-        <div
-          class={['h-full rounded-full transition-[width] duration-300 ease-[ease]', full() ? 'bg-[linear-gradient(90deg,#f59e0b_0%,#ef4444_100%)]' : 'bg-gradient-primary']}
-          style={{ width: `${Math.min(100, Math.round((count() / max()) * 100))}%` }}
-        />
-      </div>
+      <ProgressBar
+        class="mt-3 border border-border-light"
+        fill={full() ? 'bg-[linear-gradient(90deg,#f59e0b_0%,#ef4444_100%)]' : undefined}
+        percent={(count() / max()) * 100}
+      />
     </Show>
   );
 }

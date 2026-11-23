@@ -97,6 +97,22 @@ export function SearchInput(props: {
  * A count on a navigation entry or a tab (.mentoring-badge-count): nothing at 0, "99+" above 99. The brand colour,
  * or red (danger). Its size yields to `class`.
  */
+/**
+ * A thin bar filled to [percent] (rounded; above 100 it is full): the track in [track] (the soft fill by default), the
+ * fill in [fill] (the brand gradient by default). [class] places the track (margins, a frame).
+ */
+export function ProgressBar(props: { percent: number; track?: string; fill?: string; class?: JSX.ClassValue; fillId?: string }) {
+  return (
+    <span class={['block h-1.5 overflow-hidden rounded-full', props.track ?? 'bg-surface-alt', props.class]}>
+      <span
+        id={props.fillId}
+        class={['block h-full rounded-[inherit] transition-[width] duration-300 ease-[ease]', props.fill ?? 'bg-gradient-primary']}
+        style={{ width: `${Math.min(100, Math.round(props.percent))}%` }}
+      />
+    </span>
+  );
+}
+
 /** A count as a badge shows it: "99+" above 99. */
 export const badgeText = (count: number) => (count > 99 ? '99+' : String(count));
 

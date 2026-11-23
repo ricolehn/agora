@@ -3,6 +3,7 @@
 import type { JSX } from '@solidjs/web';
 import { Show } from 'solid-js';
 import { t } from '../../app/i18n';
+import { ProgressBar } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
 import {
   dutyViaGroup, eventCategory, eventDateParts, eventStatusInfo, eventTimeRange, formatEventDateSpanShort, isMultiDay,
@@ -285,9 +286,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
               <Show when={max() > 0} fallback={<FooterPill>{t('events_registered_count', '{count} registered', { count: count() })}</FooterPill>}>
                 <div class="flex min-w-[120px] flex-col gap-[5px]" title={t('events_capacity_taken', '{count} of {max} places taken', { count: count(), max: max() })}>
                   <span class="text-[0.76rem] font-semibold text-text">{t('events_capacity_short', '{count}/{max} places', { count: count(), max: max() })}</span>
-                  <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-alt">
-                    <div class="h-full rounded-full bg-gradient-primary transition-[width] duration-300" style={{ width: `${Math.min(100, Math.round((count() / max()) * 100))}%` }} />
-                  </div>
+                  <ProgressBar class="w-full" percent={(count() / max()) * 100} />
                 </div>
               </Show>
             </Show>

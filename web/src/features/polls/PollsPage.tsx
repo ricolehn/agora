@@ -2,6 +2,7 @@
 import { For, Match, Show, Switch } from 'solid-js';
 import { t } from '../../app/i18n';
 import { openModal } from '../../app/modals';
+import { ProgressBar } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
 import {
   type Poll, type PollFilter, loadPolls, pollEndDate, pollFilter, pollLeader, polls, pollsError, pollsLoaded, pollTimeLabel,
@@ -107,9 +108,7 @@ function PollCard(props: { poll: Poll }) {
               </span>
               <strong>{lead().share}%</strong>
             </span>
-            <span class="h-1.5 overflow-hidden rounded-full bg-border-light">
-              <span class="block h-full rounded-[inherit] bg-gradient-primary" style={{ width: `${lead().share}%` }} />
-            </span>
+            <ProgressBar track="bg-border-light" percent={lead().share} />
           </span>
         )}
       </Show>

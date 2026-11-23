@@ -9,7 +9,7 @@ import { t, uiLang, uiLocale } from '../../app/i18n';
 import { anyModalOpen } from '../../app/modals';
 import { activeTab } from '../../app/router';
 import { Button } from '../../ui/Button';
-import { Spinner } from '../../ui/feedback';
+import { ProgressBar, Spinner } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
 import { MEDIA_FIELD, breadcrumb, fileLook, formatSize, pathSteps, previewUrl, shownName, typeLabel } from '../../lib/media.js';
 import { seedOf } from '../../lib/motifs.js';
@@ -389,9 +389,7 @@ function UploadProgress() {
     <Show when={mediaUpload()}>
       {state => (
         <div id="media-upload" class="mb-3.5 flex items-center gap-3 rounded-[14px] border border-border-light bg-surface px-3.5 py-2.5">
-          <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-alt">
-            <span id="media-upload-fill" class="block h-full rounded-[inherit] bg-primary transition-[width] duration-200 ease-[ease]" style={{ width: `${state().percent ?? 0}%` }} />
-          </div>
+          <ProgressBar class="flex-1" fill="bg-primary" fillId="media-upload-fill" percent={state().percent ?? 0} />
           <span id="media-upload-text" class="whitespace-nowrap text-[0.8rem] font-semibold text-text-secondary">
             {text(state())}
           </span>
