@@ -1,9 +1,10 @@
 // System settings: the AI provider (service, address, key, model, effort per question) and whether the AI is on.
-import { createSignal, createStore } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { API, apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser, setAiEnabled } from '../../app/session';
 import { showToast } from '../../app/toast';
+import { createForm } from '../../ui/form';
 import { flushNow } from '../../app/flush';
 
 export type AiProvider = 'anthropic' | 'gemini' | 'openai' | 'custom';
@@ -28,15 +29,8 @@ export interface AiForm {
   model: string;
   effort: AiEffort;
 }
-const [aiForm, setAiForm] = createStore<AiForm>({ enabled: false, provider: 'custom', baseUrl: '', apiKey: '', model: '', effort: 'medium' });
-export { aiForm };
-export function setAiField<K extends keyof AiForm>(key: K, value: AiForm[K]) {
-  setAiForm(form => {
-    form[key] = value;
-  });
-  // Applied at once: a save right after the change reads it
-  flushNow();
-}
+const [aiForm, setAiField, setAiForm] = createForm<AiForm>({ enabled: false, provider: 'custom', baseUrl: '', apiKey: '', model: '', effort: 'medium' });
+export { aiForm, setAiField };
 
 // Does the server store the service and the effort level? A server of an earlier version does not - also the previous
 // backend that runs while the database upgrade could not finish (backend/legacy): it answers without a service, talks

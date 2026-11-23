@@ -1,10 +1,27 @@
 import type { JSX } from '@solidjs/web';
-import { Show, createSignal, omit, useContext } from 'solid-js';
+import { Show, createSignal, createStore, omit, useContext } from 'solid-js';
+import { flushNow } from '../app/flush';
 import { t } from '../app/i18n';
 import { DialogBodyContext } from './context';
 import { Icon } from './Icon';
 
 // Named Tailwind text sizes also set a line height: only arbitrary sizes here, the line height stays the browser's.
+
+/**
+ * The fields of a form as a store, with a setter for one field that applies at once (a save right after the change
+ * reads it) and the store's own setter for many at a time (filling the form).
+ */
+export function createForm<T extends object>(initial: T) {
+  // A form is a record of values, never a function: Solid's typing of createStore cannot tell that for any T
+  const [form, setForm] = createStore<T>(initial as Exclude<T, Function>);
+  const setField = <K extends keyof T>(key: K, value: T[K]) => {
+    setForm(draft => {
+      (draft as T)[key] = value;
+    });
+    flushNow();
+  };
+  return [form, setField, setForm] as const;
+}
 
 /** A field label (.form-label); smaller inside a dialog's body. */
 export function Label(props: { for?: string; id?: string; class?: string; children?: JSX.Element }) {

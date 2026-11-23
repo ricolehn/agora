@@ -1,12 +1,13 @@
 // System settings: the instance's configuration (name, public address, default language, CCLI licence, SMTP) and
 // its logo.
-import { createStore, snapshot } from 'solid-js';
+import { snapshot } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { bumpLogoVersion, config, setAppName } from '../../app/config';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser } from '../../app/session';
 import { attempt, showToast } from '../../app/toast';
 import { toFormData } from '../../app/util';
+import { createForm } from '../../ui/form';
 import { loadAiConfig } from './ai';
 import { flushNow } from '../../app/flush';
 
@@ -24,17 +25,10 @@ export interface ConfigForm {
   smtpUser: string;
   smtpPass: string;
 }
-const [configForm, setConfigForm] = createStore<ConfigForm>({
+const [configForm, setConfigField, setConfigForm] = createForm<ConfigForm>({
   appName: '', publicUrl: '', defaultLanguage: BASE_LANGUAGE, ccli: '', smtpHost: '', smtpPort: '', smtpSecure: false, smtpUser: '', smtpPass: ''
 });
-export { configForm };
-export function setConfigField<K extends keyof ConfigForm>(key: K, value: ConfigForm[K]) {
-  setConfigForm(form => {
-    form[key] = value;
-  });
-  // Applied at once: a save right after the change reads it
-  flushNow();
-}
+export { configForm, setConfigField };
 
 // The form shows the stored configuration (every load of the data asks again: the full one refills the form, the
 // configuration page does when it opens next), and the name it was stored with

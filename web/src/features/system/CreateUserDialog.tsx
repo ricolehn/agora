@@ -1,5 +1,5 @@
 // The dialog that creates an account (with or without a login) and, for members who pay, their finance record.
-import { Show, createStore } from 'solid-js';
+import { Show } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { loadData } from '../../app/data';
 import { t } from '../../app/i18n';
@@ -7,7 +7,7 @@ import { closeModal, openModal } from '../../app/modals';
 import { attempt, showToast } from '../../app/toast';
 import { getTodayStr } from '../../app/util';
 import { Button } from '../../ui/Button';
-import { Field, Input, PasswordInput, Select } from '../../ui/form';
+import { Field, Input, PasswordInput, Select, createForm } from '../../ui/form';
 import { Modal } from '../../ui/Modal';
 import { SwitchRow } from './parts';
 import { flushNow } from '../../app/flush';
@@ -25,14 +25,7 @@ interface NewUser {
   admin: boolean;
 }
 const empty = (): NewUser => ({ firstName: '', lastName: '', email: '', password: '', pays: true, status: 'vollverdiener', memberSince: getTodayStr(), admin: false });
-const [form, setForm] = createStore<NewUser>(empty());
-function setField<K extends keyof NewUser>(key: K, value: NewUser[K]) {
-  setForm(draft => {
-    draft[key] = value;
-  });
-  // Applied at once: a save right after the change reads it
-  flushNow();
-}
+const [form, setField, setForm] = createForm<NewUser>(empty());
 
 export function openCreateUserModal() {
   setForm(draft => {

@@ -1,11 +1,12 @@
 // System settings: the connection to Nextcloud that holds the media library (address, account, app password, base
 // folder), its test and whether Media is on.
-import { createSignal, createStore } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { loadMediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser } from '../../app/session';
 import { attempt, showToast } from '../../app/toast';
+import { createForm } from '../../ui/form';
 import { flushNow } from '../../app/flush';
 
 export interface MediaForm {
@@ -15,15 +16,8 @@ export interface MediaForm {
   password: string;
   root: string;
 }
-const [mediaForm, setMediaForm] = createStore<MediaForm>({ enabled: false, url: '', user: '', password: '', root: '' });
-export { mediaForm };
-export function setMediaField<K extends keyof MediaForm>(key: K, value: MediaForm[K]) {
-  setMediaForm(form => {
-    form[key] = value;
-  });
-  // Applied at once: a save right after the change reads it
-  flushNow();
-}
+const [mediaForm, setMediaField, setMediaForm] = createForm<MediaForm>({ enabled: false, url: '', user: '', password: '', root: '' });
+export { mediaForm, setMediaField };
 
 /** What the last test found: the folders of the base folder, or why there is no connection. */
 export type MediaTestResult = { ok: true; folders: string[]; folderCount: number } | { ok: false; message: string };
