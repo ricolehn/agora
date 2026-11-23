@@ -4,7 +4,6 @@ import { For, Show, createEffect, onSettled } from 'solid-js';
 import { t } from '../../app/i18n';
 import { isCurrentUser } from '../../app/session';
 import { Icon } from '../../ui/Icon';
-import { BackArrowIcon, BackChevronIcon, BlockIcon, EndIcon, FlagIcon, KebabIcon, ReopenIcon, SendIcon } from './icons';
 import {
   blockCurrentThread, chatFullscreen, chatTime, closeMentoringChatMobile, draft, inChat, menuOpen, pane, paneMessageList, paneThread,
   reportCurrentThread, sendMentoringMessage, sending, setDraft, setMenuOpen, setMessagesElement, threadPartner, toggleChatMenu,
@@ -68,8 +67,8 @@ function ChatHeader() {
         ]}
         onClick={() => closeMentoringChatMobile()}
       >
-        <BackChevronIcon class={chatFullscreen() ? 'hidden' : 'block'} />
-        <BackArrowIcon class={chatFullscreen() ? 'block' : 'hidden'} />
+        <Icon name="chevronLeftSharp" size={18} strokeWidth={2.5} class={chatFullscreen() ? 'hidden' : 'block'} />
+        <Icon name="arrowLeft" size={20} strokeWidth={2.5} class={chatFullscreen() ? 'block' : 'hidden'} />
       </button>
       <div class={['flex flex-1 flex-col gap-px', { 'max-md:min-w-0 max-md:items-start max-md:text-left': chatFullscreen() }]}>
         <div id="mentoring-chat-title" class={['text-[1.05rem] font-extrabold text-text', { 'max-md:text-[1.1rem]': chatFullscreen() }]}>
@@ -115,24 +114,24 @@ function ChatMenu() {
         ]}
         onClick={e => toggleChatMenu(e)}
       >
-        <KebabIcon />
+        <Icon name="kebab" size={18} strokeWidth={2.5} />
       </button>
       <Show when={menuOpen()}>
         <div ref={menu} class="absolute top-[calc(100%+8px)] right-0 z-[100] min-w-[190px] rounded-xl border border-border bg-surface p-1.5 shadow-[0_10px_25px_rgba(0,0,0,0.25)]">
           <button type="button" class={[MENU_ITEM, 'text-text hover:bg-surface-alt']} onClick={() => void reportCurrentThread()}>
-            <FlagIcon />
+            <Icon name="flagSharp" size={16} />
             <span>{t('mentoring_chat_report', 'Report conversation')}</span>
           </button>
           {/* Like the Android app: "Report" always; "Block" until blocked, "End" while it is open */}
           <Show when={!paneThread()?.blocked}>
             <button type="button" class={[MENU_ITEM, MENU_DANGER]} onClick={() => void blockCurrentThread()}>
-              <BlockIcon />
+              <Icon name="block" size={16} />
               <span>{t('mentoring_chat_block', 'Block')}</span>
             </button>
           </Show>
           <Show when={!isClosed()}>
             <button type="button" class={[MENU_ITEM, MENU_DANGER]} onClick={() => void toggleCloseCurrentThread('closed')}>
-              <EndIcon />
+              <Icon name="xCircle" size={16} />
               <span>{t('mentoring_chat_end', 'End conversation')}</span>
             </button>
           </Show>
@@ -258,7 +257,7 @@ function ChatInput() {
           ]}
           onClick={() => void sendMentoringMessage()}
         >
-          <SendIcon />
+          <Icon name="send" size={18} strokeWidth={2.2} />
         </button>
       </div>
     </div>
@@ -294,7 +293,7 @@ function ClosedBar() {
           ]}
           onClick={() => void toggleCloseCurrentThread('active')}
         >
-          <ReopenIcon />
+          <Icon name="undo" size={15} />
           <span>{t('mentoring_chat_reopen', 'Reopen')}</span>
         </button>
       </Show>

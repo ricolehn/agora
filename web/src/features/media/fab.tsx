@@ -3,7 +3,6 @@ import type { FabItem } from '../../app/registry';
 import { t } from '../../app/i18n';
 import { Icon } from '../../ui/Icon';
 import { pickMediaFiles } from './actions';
-import { FolderPlusIcon } from './icons';
 import { openMediaFolderDialog } from './MediaFolderDialog';
 
 export const mediaFabItems = (): FabItem[] => [
@@ -15,7 +14,7 @@ export const mediaFabItems = (): FabItem[] => [
     onClick: pickMediaFiles
   },
   {
-    icon: () => <FolderPlusIcon />,
+    icon: () => <Icon name="folderPlus" size={24} />,
     tint: { background: 'rgba(217, 119, 6, 0.14)', color: '#d97706' },
     title: () => t('media_new_folder', 'New folder'),
     subtitle: () => t('media_new_folder_sub', 'Inside the folder that is open'),

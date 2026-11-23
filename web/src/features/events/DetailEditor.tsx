@@ -12,7 +12,6 @@ import { toFormData } from '../../app/util';
 import { Icon } from '../../ui/Icon';
 import { openImageCrop } from '../../ui/crop';
 import { CoverHero } from './DetailView';
-import { CameraIcon, InfoIcon, PenIcon, TextIcon, UserCheckIcon } from './icons';
 import {
   EVENT_DIALOG_ID, cancelDetailEditMode, chosenGroupNames, currentDetailEvent, draft, groupChosen, loadEventsData,
   openEventDetailModal, setDraft, setDraftType, type EventDraft, type EventKind, type RecurringRule
@@ -212,7 +211,7 @@ function CoverEdit(props: { onPick: () => void }) {
       <CoverHero src={draft.imageUrl}>
         <div class="pointer-events-auto absolute bottom-3.5 right-4 z-[15] inline-flex gap-2">
           <button type="button" class={[glass, 'border-white/25 bg-[rgba(28,25,23,0.75)] hover:border-white/45 hover:bg-[rgba(28,25,23,0.9)]']} title={t('events_cover_change', 'Change image')} onClick={() => props.onPick()}>
-            <CameraIcon size={13} />
+            <Icon name="camera" size={13} />
             <span>{t('events_cover_change', 'Change image')}</span>
           </button>
           <button type="button" class={[glass, 'border-white/30 bg-[rgba(239,68,68,0.75)] hover:border-white/50 hover:bg-[rgba(239,68,68,0.95)]']} title={t('events_cover_remove', 'Remove image')} onClick={() => set('imageUrl', '')}>
@@ -247,10 +246,10 @@ function TypeCard() {
     <div class={CARD}>
       <div class={['grid grid-cols-2 gap-1 rounded-[14px] border border-border-light p-1', FIELD_BG]}>
         {option('termin', <Icon name="calendar" size={12} />, ['bg-brand/12 text-brand', 'bg-brand text-white'], () => t('detail_groups_termin', 'Appointment'))}
-        {option('event', <UserCheckIcon size={12} />, ['bg-[rgba(16,185,129,0.12)] text-[#10b981]', 'bg-[#10b981] text-white'], () => t('detail_groups_event', 'Event'))}
+        {option('event', <Icon name="userCheck" size={12} />, ['bg-[rgba(16,185,129,0.12)] text-[#10b981]', 'bg-[#10b981] text-white'], () => t('detail_groups_event', 'Event'))}
       </div>
       <div class="mt-1.5 flex items-center gap-1.5 rounded-md px-1 text-[0.84rem] font-medium leading-[1.45] text-text-secondary">
-        <InfoIcon size={12} class="shrink-0 text-primary" />
+        <Icon name="info" size={12} class="shrink-0 text-primary" />
         <span>
           {isTermin()
             ? t('events_type_termin_desc', 'Regular appointment (e.g. bistro, prayer meeting, rehearsal) – appears in the appointment calendar.')
@@ -345,7 +344,7 @@ function WhenCard(props: { dateRef: (el: HTMLInputElement) => void }) {
           when={!draft.isMultiDay}
           fallback={
             <div class="flex items-center gap-1.5 rounded-xl bg-brand/8 px-3 py-[9px] text-[0.82rem] leading-[1.25] text-primary">
-              <InfoIcon size={12} class="shrink-0" />
+              <Icon name="info" size={12} class="shrink-0" />
               <span>{t('events_multiday_hint', 'Multi-day appointment – no time')}</span>
             </div>
           }
@@ -444,7 +443,7 @@ function DescriptionCard() {
   onSettled(autoResize);
   return (
     <div class={CARD}>
-      <SectionHead icon={<TextIcon size={16} />} tint="bg-[rgba(245,158,11,0.13)] text-[#d97706] dark:text-[#fbbf24]" for="detail-edit-description">
+      <SectionHead icon={<Icon name="text" size={16} />} tint="bg-[rgba(245,158,11,0.13)] text-[#d97706] dark:text-[#fbbf24]" for="detail-edit-description">
         {t('events_input_desc', 'Description')}
       </SectionHead>
       <textarea
@@ -635,7 +634,7 @@ export function DetailEditor() {
           <TypeCard />
         </Show>
         <div class={CARD}>
-          <SectionHead icon={<PenIcon size={16} />} tint="bg-brand/12 text-brand-deep dark:text-brand" for="detail-edit-title">
+          <SectionHead icon={<Icon name="pen" size={16} />} tint="bg-brand/12 text-brand-deep dark:text-brand" for="detail-edit-title">
             {t('events_field_title', 'Title')} <span class="text-danger">*</span>
           </SectionHead>
           <input

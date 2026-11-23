@@ -7,7 +7,6 @@ import { t } from '../../app/i18n';
 import { Icon } from '../../ui/Icon';
 import { EventPlan, openEventShare } from './plan/api';
 import { formatEventDateSpanCompact, eventTimeRange, isEventKind, isMapPlace, isMultiDay, mapsUrl } from './format';
-import { ExternalIcon, ShareIcon, TextIcon } from './icons';
 import { renderMarkdown } from '../../ui/markdown';
 import { RegistrationCard } from './Registration';
 import { currentDetailEvent, deleteCurrentEvent, enterDetailEditMode, eventImage, type AppEvent } from './store';
@@ -118,7 +117,7 @@ function TitleBlock(props: { event: AppEvent }) {
           title={t('events_share', 'Share')}
           onClick={() => openEventShare(props.event.id)}
         >
-          <ShareIcon size={21} strokeWidth={2.1} />
+          <Icon name="share" size={21} strokeWidth={2.1} />
         </button>
       </div>
       <GroupsLine event={props.event} />
@@ -197,7 +196,7 @@ export function InfoCells(props: { event: AppEvent }) {
             rel="noopener noreferrer"
             title={t('events_open_maps', 'Open in Google Maps')}
           >
-            <ExternalIcon size={14} class="max-[640px]:size-[13px]" />
+            <Icon name="external" size={14} class="max-[640px]:size-[13px]" />
           </a>
         </Show>
       </div>
@@ -223,7 +222,7 @@ export function Description(props: { text: string }) {
   return (
     <div class="rounded-[18px] border border-hairline bg-surface px-4 py-3.5 shadow-card">
       <div class="mb-2.5 flex items-center gap-2 text-[0.95rem] font-[650] text-text">
-        <TextIcon size={15} class="shrink-0 text-text-secondary" />
+        <Icon name="text" size={15} class="shrink-0 text-text-secondary" />
         <span>{t('events_about', 'About this appointment')}</span>
       </div>
       <div

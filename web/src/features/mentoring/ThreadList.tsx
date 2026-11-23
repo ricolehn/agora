@@ -5,7 +5,6 @@ import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
 import { CountBadge } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
-import { SearchIcon } from './icons';
 import { onActivateKey } from '../../ui/keys';
 import {
   activeThreadId, inChat, isThreadUnread, openMentoringThread, setThreadSearch, switchMentoringSubTab, threadMatches, threadRow,
@@ -30,7 +29,7 @@ export function ThreadSidebar() {
           onInput={e => setThreadSearch(e.currentTarget.value)}
           class="w-full border-none bg-transparent py-0.5 text-[0.86rem] text-text outline-none placeholder:text-text-secondary placeholder:opacity-75"
         />
-        <SearchIcon class="ml-1.5 shrink-0 text-text-secondary" />
+        <Icon name="magnifier" size={18} strokeWidth={2.2} class="ml-1.5 shrink-0 text-text-secondary" />
       </div>
       <div id="mentoring-threads-list" class="flex flex-1 flex-col gap-2.5 overflow-y-auto px-0.5 pt-0.5 pb-2">
         <Show when={threadsLoaded() && threads().length === 0} fallback={<For each={threads()} keyed={thread => thread.id}>{thread => <ThreadItem thread={thread()} />}</For>}>

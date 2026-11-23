@@ -13,7 +13,6 @@ import { CalendarSettings } from './CalendarSettings';
 import { EventDialog } from './EventDialog';
 import { EventsPage } from './EventsPage';
 import { hasGuestLink, openGuestEvent } from './guest/api';
-import { UserCheckIcon } from './icons';
 import { refreshProgram } from './plan/api';
 import {
   EVENT_DIALOG_ID, appEvents, currentDetailEvent, detailCloseGuard, eventDay, eventSlug, loadEventsData, onEventsLoaded,
@@ -72,7 +71,7 @@ const fabItems = (): FabItem[] => [
     onClick: () => openNewEventDetailModal('termin')
   },
   {
-    icon: () => UserCheckIcon({ size: 24 }),
+    icon: () => Icon({ name: 'userCheck', size: 24 }),
     tint: { background: 'rgba(99, 102, 241, 0.15)', color: '#6366f1' },
     title: () => t('events_btn_new', 'New Event'),
     subtitle: () => t('fab_new_event_sub', 'Event with flyer & registration'),

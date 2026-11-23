@@ -8,7 +8,6 @@ import { Icon } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
 import { CoverHero, Description, InfoCells, SphereBand, TopBadges } from '../DetailView';
 import { BackButton } from '../EventDialog';
-import { ShareIcon } from '../icons';
 import { openGuestShare } from '../share/share';
 import { eventImage } from '../store';
 import { GUEST_LINK, GuestRegistration } from './GuestRegistration';
@@ -84,7 +83,7 @@ function GuestEvent(props: { view: GuestView }) {
                   title={t('events_share', 'Share')}
                   onClick={openGuestShare}
                 >
-                  <ShareIcon size={21} strokeWidth={2.1} />
+                  <Icon name="share" size={21} strokeWidth={2.1} />
                 </button>
               </Show>
             </div>

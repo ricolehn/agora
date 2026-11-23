@@ -5,9 +5,9 @@ import { avatarRing, currentUid, currentUser } from '../../../app/session';
 import { Avatar } from '../../../ui/Avatar';
 import { Button } from '../../../ui/Button';
 import { Card } from '../../../ui/Card';
-import { CameraIcon } from '../icons';
 import { openProfileCrop } from '../picture';
 import { profileName } from '../state';
+import { Icon } from '../../../ui/Icon';
 
 /** The big picture with the role ring, name, e-mail address and the upload of a new picture. */
 export function ProfilePage() {
@@ -27,7 +27,7 @@ export function ProfilePage() {
         <div class="text-[0.9rem] text-text-secondary [overflow-wrap:anywhere]">{email()}</div>
       </Show>
       <Button variant="secondary" class="mt-[18px]" onClick={() => fileInput.click()}>
-        <CameraIcon />
+        <Icon name="camera" size={16} />
         <span>{t('btn_upload_pic', 'Upload picture')}</span>
       </Button>
       <input

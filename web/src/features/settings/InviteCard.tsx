@@ -2,7 +2,6 @@ import { inviteCode } from '../../app/data';
 import { t } from '../../app/i18n';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
-import { CopyIcon } from './icons';
 import { copyInviteCode, generateNewCode } from './invite';
 
 /** The registration code with "Copy" and "New" (for those who manage it; on top of the settings menu). */
@@ -24,7 +23,7 @@ export function InviteCard() {
           </div>
           <div class="flex items-center gap-2.5">
             <Button variant="premium" aria-label={t('invite_copy_code', 'Copy code')} title={t('invite_copy_code', 'Copy code')} onClick={() => void copyInviteCode()}>
-              <CopyIcon />
+              <Icon name="copy" size={16} />
               <span>{t('copy_btn', 'Copy')}</span>
             </Button>
             <Button variant="premium" aria-label={t('invite_generate_code', 'Generate new code')} onClick={() => void generateNewCode()}>

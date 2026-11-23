@@ -6,7 +6,6 @@ import { Input, Switch } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
 import { Modal } from '../../../ui/Modal';
 import { formatEventDateSpanCompact } from '../format';
-import { ShareIcon } from '../icons';
 import { SHARE_MODAL, canShareNatively, copyEventShareLink, sendEventShareLink, shareTarget, switching, toggleEventPublic } from './share';
 
 // The sheet's own symbols (copy, send, the world) are not in the app's icon set
@@ -47,7 +46,7 @@ export function ShareDialog() {
       id={SHARE_MODAL}
       title={t('events_share', 'Share')}
       subtitle={subtitle()}
-      icon={<ShareIcon size={18} strokeWidth={2.2} />}
+      icon={<Icon name="share" size={18} strokeWidth={2.2} />}
       iconClass="bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary"
       maxWidth="440px"
       bodyClass="!gap-[14px]"

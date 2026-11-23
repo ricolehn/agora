@@ -18,7 +18,6 @@ import {
   openMediaPathMenu, openMediaSortMenu, setMediaFileInput, uploadMediaFiles
 } from './actions';
 import { MEDIA_EASE, folderMeta, mediaTileSize } from './files';
-import { PlayIcon, RulesIcon, SelectAllIcon } from './icons';
 import {
   clearMediaSelection, dropMediaPage, dropMediaTitle, isMediaSelected, loadMediaFolder, mediaBack, mediaError, mediaFolder,
   mediaListing, mediaOrder, mediaPages, mediaSelected, mediaTitles, openMediaCrumb, selectAllMedia, toggleMediaSelected,
@@ -153,7 +152,7 @@ function MediaHead() {
             aria-label={t('media_rules_overview', 'All folder rights')}
             onClick={() => void openMediaRulesOverview()}
           >
-            <RulesIcon />
+            <Icon name="list" size={18} />
           </button>
         </Show>
       </div>
@@ -224,7 +223,7 @@ function SelectBar() {
         {count() === 1 ? t('media_selected_one', '1 selected') : t('media_selected', '{count} selected', { count: count() })}
       </span>
       <button type="button" class={[SELECT_BTN, SELECT_BTN_WIDE, 'border-transparent bg-transparent text-text-secondary']} onClick={toggleSelectAllMedia}>
-        <SelectAllIcon />
+        <Icon name="checkSquare" size={16} strokeWidth={2.4} />
         <span id="media-select-all-label">{count() >= mediaOrder().length ? t('media_select_none', 'Select none') : t('media_select_all', 'Select all')}</span>
       </button>
       <button
@@ -752,7 +751,7 @@ function FileTile(props: { file: MediaFile }) {
           </Show>
           <Show when={props.file.kind === 'video' && preview()}>
             <span class="pointer-events-none absolute top-1/2 left-1/2 z-[2] -mt-[17px] -ml-[17px] flex size-[34px] items-center justify-center rounded-full bg-white/90 text-[#2a2830] shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
-              <PlayIcon />
+              <Icon name="playFilled" size={21} />
             </span>
           </Show>
           <Show when={type() && !preview()}>
