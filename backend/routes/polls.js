@@ -3,11 +3,12 @@ const { context, dataDir } = require('../context');
 const { verifyToken } = require('../auth');
 const { protectedActionRateLimit } = require('../rateLimits');
 const { broadcastDataUpdate } = require('../liveUpdates');
-const { createItemStore } = require('../itemStore');
+const { createItemStore, changeItem } = require('../itemStore');
 const { buildPoll, castVote, publicPoll, isMine, endPoll, sealIfTooFew, canCreate } = require('../polls');
 const { instanceSecret } = require('../instanceSecret');
 const { isAdmin } = require('../permissions');
 const { route } = require('./http');
+const { forbidden } = require('../httpError');
 
 const router = express.Router();
 const store = createItemStore('polls');
@@ -16,8 +17,6 @@ const store = createItemStore('polls');
 const pollSecret = instanceSecret(dataDir, 'polls-secret', 'Polls are not available right now.');
 
 const view = (poll, req) => publicPoll(poll, { uid: req.user.uid, secret: pollSecret() });
-
-const notFound = (res) => res.status(404).json({ error: 'Poll not found' });
 
 router.get('/api/polls', verifyToken, route('Polls could not be loaded', async (req, res) => {
   const now = Date.now();
@@ -45,38 +44,30 @@ router.post('/api/polls', protectedActionRateLimit, verifyToken, route('The poll
 }));
 
 router.post('/api/polls/:id/vote', protectedActionRateLimit, verifyToken, route('The vote could not be saved', async (req, res) => {
-  if (!store.isValidKey(req.params.id)) return notFound(res);
-  const result = await store.update(context.appConfig, req.params.id, (poll) => {
+  const result = await changeItem(context.appConfig, store, req.params.id, 'Poll not found', (poll) => {
     const outcome = castVote(poll, req.body?.optionIds, { uid: req.user.uid, secret: pollSecret() });
     return outcome.error ? outcome : { ...outcome, save: outcome.poll };
   });
-  if (result.error) return res.status(result.status || 400).json({ error: result.error });
   // No live update per vote: it would tell everyone the moment each person voted
   res.json(view(result.poll, req));
 }));
 
 // End a poll now (creator or admin); the results show right away if there are enough votes
 router.post('/api/polls/:id/close', protectedActionRateLimit, verifyToken, route('The poll could not be ended', async (req, res) => {
-  if (!store.isValidKey(req.params.id)) return notFound(res);
-  const result = await store.update(context.appConfig, req.params.id, (poll) => {
-    if (!poll) return { error: 'Poll not found', status: 404 };
-    if (!isMine(poll, req.user.uid, pollSecret()) && !isAdmin(req.user)) return { error: 'Only the person who created the poll can end it.', status: 403 };
+  const result = await changeItem(context.appConfig, store, req.params.id, 'Poll not found', (poll) => {
+    if (!isMine(poll, req.user.uid, pollSecret()) && !isAdmin(req.user)) throw forbidden('Only the person who created the poll can end it.');
     const ended = endPoll(poll);
     return { poll: ended, save: ended };
   });
-  if (result.error) return res.status(result.status).json({ error: result.error });
   broadcastDataUpdate('polls');
   res.json(view(result.poll, req));
 }));
 
 router.delete('/api/polls/:id', protectedActionRateLimit, verifyToken, route('The poll could not be deleted', async (req, res) => {
-  if (!store.isValidKey(req.params.id)) return notFound(res);
-  const result = await store.update(context.appConfig, req.params.id, (poll) => {
-    if (!poll) return { error: 'Poll not found', status: 404 };
-    if (!isMine(poll, req.user.uid, pollSecret()) && !isAdmin(req.user)) return { error: 'Only the person who created the poll can delete it.', status: 403 };
+  await changeItem(context.appConfig, store, req.params.id, 'Poll not found', (poll) => {
+    if (!isMine(poll, req.user.uid, pollSecret()) && !isAdmin(req.user)) throw forbidden('Only the person who created the poll can delete it.');
     return { remove: true };
   });
-  if (result.error) return res.status(result.status).json({ error: result.error });
   broadcastDataUpdate('polls');
   res.json({ success: true });
 }));

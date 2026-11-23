@@ -3,10 +3,11 @@ const { context, dataDir } = require('../context');
 const { verifyToken } = require('../auth');
 const { protectedActionRateLimit } = require('../rateLimits');
 const { broadcastDataUpdate } = require('../liveUpdates');
-const { createItemStore } = require('../itemStore');
+const { createItemStore, changeItem } = require('../itemStore');
 const { queueRecordWrite } = require('../pocketbase');
 const { instanceSecret } = require('../instanceSecret');
 const { route } = require('./http');
+const { forbidden } = require('../httpError');
 const { canModerate, buildPrayer, canCreate, ownerUpdate, isMine, isGone, publicPrayer, visiblePrayers } = require('../prayers');
 const { fullName } = require('../utils/names');
 
@@ -18,8 +19,6 @@ const prayerSecret = instanceSecret(dataDir, 'prayers-secret', 'Prayer requests 
 
 const userName = (req) => fullName(req.user) || req.user?.email || '';
 const viewOf = (prayer, req) => publicPrayer(prayer, { uid: req.user.uid, secret: prayerSecret(), moderator: canModerate(req.user) });
-
-const notFound = (res) => res.status(404).json({ error: 'Prayer request not found' });
 
 router.get('/api/prayers', verifyToken, route('Prayer requests could not be loaded', async (req, res) => {
   const now = Date.now();
@@ -50,29 +49,21 @@ router.post('/api/prayers', protectedActionRateLimit, verifyToken, route('The pr
 
 // The owner: extend
 router.patch('/api/prayers/:id', protectedActionRateLimit, verifyToken, route('The prayer request could not be saved', async (req, res) => {
-  if (!store.isValidKey(req.params.id)) return notFound(res);
-  const result = await store.update(context.appConfig, req.params.id, (prayer) => {
-    if (!prayer) return { error: 'Prayer request not found', status: 404 };
-    if (!isMine(prayer, req.user.uid, prayerSecret())) return { error: 'Only the person who shared it can change this request.', status: 403 };
+  const result = await changeItem(context.appConfig, store, req.params.id, 'Prayer request not found', (prayer) => {
+    if (!isMine(prayer, req.user.uid, prayerSecret())) throw forbidden('Only the person who shared it can change this request.');
     const next = ownerUpdate(prayer, req.body);
     return { ...next, save: next.prayer };
   });
-  if (result.error) return res.status(result.status).json({ error: result.error });
   broadcastDataUpdate('prayers');
   res.json(viewOf(result.prayer, req));
 }));
 
 // The owner, or a member with the manage_prayers permission
 router.delete('/api/prayers/:id', protectedActionRateLimit, verifyToken, route('The prayer request could not be deleted', async (req, res) => {
-  if (!store.isValidKey(req.params.id)) return notFound(res);
-  const result = await store.update(context.appConfig, req.params.id, (prayer) => {
-    if (!prayer) return { error: 'Prayer request not found', status: 404 };
-    if (!isMine(prayer, req.user.uid, prayerSecret()) && !canModerate(req.user)) {
-      return { error: 'You may not delete this prayer request.', status: 403 };
-    }
+  await changeItem(context.appConfig, store, req.params.id, 'Prayer request not found', (prayer) => {
+    if (!isMine(prayer, req.user.uid, prayerSecret()) && !canModerate(req.user)) throw forbidden('You may not delete this prayer request.');
     return { remove: true };
   });
-  if (result.error) return res.status(result.status).json({ error: result.error });
   broadcastDataUpdate('prayers');
   res.json({ success: true });
 }));
