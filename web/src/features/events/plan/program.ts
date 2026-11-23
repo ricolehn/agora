@@ -6,6 +6,7 @@ import { apiJson } from '../../../app/api';
 import { flushNow } from '../../../app/flush';
 import { t } from '../../../app/i18n';
 import { isModalOpen } from '../../../app/modals';
+import { newestWins } from '../../../app/util';
 import { keySteps } from '../../../lib/songbook';
 import { loadSongs, openSong, songbookLoaded, songs } from '../../songbook/api';
 import { appEvents, type AppEvent } from '../store';
@@ -34,16 +35,16 @@ export function setProgramItems(eventId: string, items: ProgramItem[]) {
   flushNow();
 }
 
-let programLoad = 0;
+const programLoad = newestWins();
 /** Loads the order of service of an event (the same event keeps its order until the fresh one is there: no flicker). */
 export async function loadProgram(eventId: string): Promise<void> {
-  const load = ++programLoad;
+  const isNewest = programLoad();
   try {
     const data = await apiJson(`/events/${encodeURIComponent(eventId)}/program`);
-    if (load !== programLoad) return;
+    if (!isNewest()) return;
     const items: ProgramItem[] = Array.isArray(data.items) ? data.items : [];
     if (items.some(item => item.songId) && !songbookLoaded()) await loadSongs();
-    if (load !== programLoad) return;
+    if (!isNewest()) return;
     setProgramItems(eventId, items);
   } catch {
     /* the roster stays without the order */

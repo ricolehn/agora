@@ -6,6 +6,7 @@ import { Show, createSignal, onSettled } from 'solid-js';
 import { API } from '../../app/api';
 import { t } from '../../app/i18n';
 import { onModalClosed, openModal, topModal } from '../../app/modals';
+import { newestWins } from '../../app/util';
 import { Modal } from '../../ui/Modal';
 import { Icon } from '../../ui/Icon';
 import {
@@ -39,7 +40,8 @@ const [animating, setAnimating] = createSignal(false);
 const current = () => pictures()[index()];
 // The view as the gestures need it right away (signals show it on the next frame)
 let view: View = WHOLE;
-let token = 0;
+// The picture on its way: one shown or closed since makes it stale
+const pictureLoad = newestWins();
 let img: HTMLImageElement | undefined;
 let stage: HTMLDivElement | undefined;
 
@@ -62,7 +64,7 @@ export function openMediaViewer(fileIndex: number) {
   gesture = null;
   lastTap = { time: 0, x: 0, y: 0 };
   onModalClosed(ID, () => {
-    token++;
+    pictureLoad();
     setSrc(null);
   });
   openModal(ID);
@@ -81,7 +83,7 @@ function setView(next: View, animate = false) {
 function showPicture() {
   const file = current();
   if (!file) return;
-  const mine = ++token;
+  const isNewest = pictureLoad();
   view = WHOLE;
   setAnimating(false);
   setTransform('');
@@ -95,14 +97,14 @@ function showPicture() {
   const large = new Image();
   large.decoding = 'async';
   large.onload = () => {
-    if (mine !== token) return;
+    if (!isNewest()) return;
     setSrc(large.src);
     setSoft(false);
     setLoading(false);
   };
   // No large preview: never the original instead (see above), only the download
   large.onerror = () => {
-    if (mine !== token) return;
+    if (!isNewest()) return;
     setLoading(false);
     showError();
   };

@@ -5,6 +5,7 @@ import { For, Show, createEffect, createSignal } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
 import { confirmAction } from '../../app/toast';
+import { newestWins } from '../../app/util';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
 import { ProgressBar } from '../../ui/feedback';
@@ -90,13 +91,13 @@ interface Attendees {
   waitlist: any[];
 }
 const [attendees, setAttendees] = createSignal<Attendees | null>(null);
-let attendeesLoad = 0;
+const attendeesLoad = newestWins();
 
 async function loadEventAttendees(eventId: string) {
-  const load = ++attendeesLoad;
+  const isNewest = attendeesLoad();
   try {
     const data = await apiJson(`/events/${eventId}/attendees`);
-    if (load !== attendeesLoad) return;
+    if (!isNewest()) return;
     setAttendees({ eventId, registered: data.registered || [], waitlist: data.waitlist || [] });
   } catch (err) {
     console.warn('Failed to load event attendees:', err);

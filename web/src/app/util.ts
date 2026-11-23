@@ -35,6 +35,18 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, wait: nu
   };
 }
 
+/**
+ * For runs where the newest wins (a load still on its way must not overwrite what a newer one brought): each call
+ * starts a run and returns whether that run is still the newest one.
+ */
+export function newestWins(): () => () => boolean {
+  let newest = 0;
+  return () => {
+    const mine = ++newest;
+    return () => mine === newest;
+  };
+}
+
 // One run at a time per action: a double tap on a slow network sent it twice - the second failed ("not found",
 // "only the requested user can answer") and its error replaced the first one's success
 const runningActions = new Set<string>();

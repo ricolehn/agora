@@ -13,7 +13,7 @@ import { sendReport } from '../../app/reports';
 import { HOME_TAB, activeTab, forgetTabHistory, switchTab, syncUrl } from '../../app/router';
 import { canManageMentoring, canUseMentoring, currentUid, isCurrentUser } from '../../app/session';
 import { confirmAction, showToast } from '../../app/toast';
-import { isMobile, once } from '../../app/util';
+import { isMobile, newestWins, once } from '../../app/util';
 
 export interface Thread {
   id: string;
@@ -581,20 +581,20 @@ async function submitMentorApplicationNow() {
 
 // --- Review of the applications (mentoring managers) ---
 // Counts the loads: only the latest one shows (a slow answer for the filter chosen before must not replace it)
-let reviewLoads = 0;
+const reviewLoad = newestWins();
 export async function loadMentoringReviewList() {
   if (!canManageMentoring()) return;
-  const load = ++reviewLoads;
+  const isNewest = reviewLoad();
   const status = reviewFilter();
   setReview({ state: 'loading' });
   try {
     const list = await apiJson(`/mentoring/mentors?status=${encodeURIComponent(status)}`);
-    if (load !== reviewLoads) return;
+    if (!isNewest()) return;
     setReview(Array.isArray(list) && list.length ? { state: 'list', list } : { state: 'empty', status });
   } catch (err) {
     console.warn('Failed to load review list:', err);
     // Not "Loading applications..." forever
-    if (load === reviewLoads) setReview({ state: 'failed' });
+    if (isNewest()) setReview({ state: 'failed' });
   }
 }
 

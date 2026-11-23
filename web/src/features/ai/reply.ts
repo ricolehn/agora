@@ -14,6 +14,7 @@
 // flushNow() puts a change on the page before it is measured.
 import { createSignal, createStore } from 'solid-js';
 import { euro, t } from '../../app/i18n';
+import { newestWins } from '../../app/util';
 import {
   createReplyWork, createTitlePacer, liveLabel, lookupFound, lookupTitle, lookupWhat, readingTime, splitAiThinking
 } from '../../lib/aiReply.js';
@@ -335,14 +336,14 @@ export function createAiReply() {
   };
 
   // Text that turned out to be a note on the way (a lookup followed) leaves the answer: it folds away
-  let ghostRound = 0;
+  const ghostRound = newestWins();
   const foldAway = (text: string) => {
     if (!moves(els.answer)) return put({ answer: '' });
-    const round = ++ghostRound;
+    const isNewest = ghostRound();
     put({ leavingAnswer: text, answer: '' });
     flushNow();
     const ghost = els.ghost;
-    const gone = () => round === ghostRound && put({ leavingAnswer: '' });
+    const gone = () => isNewest() && put({ leavingAnswer: '' });
     if (!moves(ghost)) return gone();
     ghost.animate([{ height: `${ghost.getBoundingClientRect().height}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 220, easing: AI_EASE }).finished.then(gone, gone);
     return undefined;

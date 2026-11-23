@@ -10,6 +10,7 @@ import { activeTab, leaveHistoryLevels, switchTab, syncUrl } from '../../app/rou
 import { scrollContainer } from '../../app/shell';
 import { readStored, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
+import { newestWins } from '../../app/util';
 import { folderDepth, folderFromRoute, parentPath, sortEntries } from '../../lib/media.js';
 import { motionAllowed } from './files';
 import type { MediaAccess, MediaEntry, MediaFile, MediaFolder, MediaListing, MediaSort } from './types';
@@ -193,12 +194,12 @@ function rememberListing(path: string, value: MediaListing) {
   cache.set(path, value);
   if (cache.size > MEDIA_CACHE_SIZE) cache.delete(cache.keys().next().value!);
 }
-let requestSeq = 0;
+const folderLoad = newestWins();
 
 /** Loads the open folder. silent: a refresh in the background (a failure keeps what is shown). */
 export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
   const path = folder();
-  const requestId = ++requestSeq;
+  const isNewest = folderLoad();
   if (loadedPath() !== path || error()) {
     const cached = cache.get(path);
     setListing(cached || null);
@@ -212,7 +213,7 @@ export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
   const shownJson = before && loadedPath() === path ? JSON.stringify(before) : null;
   try {
     const result = await apiJson<MediaListing>(`/media/list?path=${encodeURIComponent(path)}`, 'GET', undefined, t('media_load_failed', 'The folder could not be loaded'));
-    if (requestId !== requestSeq) return;
+    if (!isNewest()) return;
     rememberListing(path, result);
     setListing(result);
     setLoadedPath(path);
@@ -223,7 +224,7 @@ export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
       return;
     }
   } catch (err: any) {
-    if (requestId !== requestSeq) return;
+    if (!isNewest()) return;
     // A folder that is gone (or no longer visible): one level up
     if (err?.status === 404 && path) {
       cache.delete(path);

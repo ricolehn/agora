@@ -6,7 +6,7 @@ import { flushNow } from '../../../app/flush';
 import { apiJson } from '../../../app/api';
 import { activeTab, syncUrl } from '../../../app/router';
 import { canViewFinances } from '../../../app/session';
-import { debounce } from '../../../app/util';
+import { debounce, newestWins } from '../../../app/util';
 
 export type FinanceSubpage = 'history' | 'members';
 
@@ -84,13 +84,13 @@ export function switchFinanceSubpage(page: FinanceSubpage) {
 const [balance, setBalance] = createSignal<number | null>(null);
 export { balance };
 // A newer load wins over an older one still on its way (a booking's refresh and a live update's right after it)
-let statsSeq = 0;
+const statsLoad = newestWins();
 
 export async function loadStats() {
-  const seq = ++statsSeq;
+  const isNewest = statsLoad();
   try {
     const total = Number((await apiJson('/stats')).totalBalance) || 0;
-    if (seq === statsSeq) setBalance(total);
+    if (isNewest()) setBalance(total);
   } catch (err) {
     console.error('Could not load the statistics:', err);
   }
@@ -110,7 +110,7 @@ export { transactions, transactionTotal, historyView, historySearch };
 let loadedQuery = '';
 let transactionPage = 1;
 // A newer load replaces an older one still on its way (fast typing in the search)
-let historySeq = 0;
+const historyLoad = newestWins();
 
 const searchHistory = debounce((text: string) => {
   if (text.trim() !== loadedQuery) void loadHistory(true);
@@ -127,7 +127,7 @@ export function setHistorySearch(text: string) {
  * bookings as were shown.
  */
 export async function loadHistory(reset = true, { quiet = false } = {}) {
-  const seq = ++historySeq;
+  const isNewest = historyLoad();
   const query = (loadedQuery = historySearch().trim());
   let page = transactionPage;
   let perPage = TRANSACTIONS_PER_PAGE;
@@ -141,13 +141,13 @@ export async function loadHistory(reset = true, { quiet = false } = {}) {
   }
   try {
     const data = await apiJson(`/transactions?page=${page}&perPage=${perPage}${query ? `&search=${encodeURIComponent(query)}` : ''}`);
-    if (seq !== historySeq) return;
+    if (!isNewest()) return;
     const items: Transaction[] = Array.isArray(data.items) ? data.items : [];
     setTransactions(reset || quiet ? items : [...(transactions() || []), ...items]);
     setTransactionTotal(Number(data.totalItems) || 0);
     setHistoryView('list');
   } catch (err) {
-    if (seq !== historySeq) return;
+    if (!isNewest()) return;
     console.error('Could not load the transactions:', err);
     setHistoryView('error');
   }
