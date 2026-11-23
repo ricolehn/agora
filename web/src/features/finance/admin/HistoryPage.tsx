@@ -85,7 +85,10 @@ function TransactionRow(props: { tx: Transaction }) {
       tabindex="0"
       onClick={open}
       onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') open();
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        // Space acts as on a button: it opens the booking, it does not also scroll the page
+        e.preventDefault();
+        open();
       }}
     >
       <div class="flex min-w-0 flex-1 items-center">
