@@ -45,6 +45,97 @@ describe('pushNotifications', () => {
   });
 });
 
+// A fake PocketBase and FCM for the tests that send pushes
+const { resetFcmState } = require('../backend/fcmNotifications');
+
+const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  publicKeyEncoding: { type: 'spki', format: 'pem' }
+});
+
+const serviceAccountJson = JSON.stringify({
+  type: 'service_account',
+  project_id: 'agora-test',
+  client_email: 'fcm@agora-test.iam.gserviceaccount.com',
+  private_key: privateKey,
+  token_uri: 'https://oauth2.googleapis.com/token'
+});
+
+const googleServicesJson = JSON.stringify({
+  project_info: { project_number: '123456', project_id: 'agora-test' },
+  client: [{ client_info: { mobilesdk_app_id: '1:123456:android:agora', android_client_info: { package_name: 'org.agora.app' } }, api_key: [{ current_key: 'AIzaTest' }] }]
+});
+
+const mockAppConfig = {
+  appName: 'Agora Test',
+  pocketbase: { adminEmail: 'admin@local.invalid', adminPassword: 'secret' },
+  _mockGetState: async () => null,
+  _mockUpsertState: async () => {}
+};
+
+function jsonResponse(status, body) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+/**
+ * Installs a fetch mock that answers Google OAuth, FCM and PocketBase requests.
+ * fcmResponder(token) decides the FCM response per registration token.
+ */
+function installFetchMock(t, { users = [], fcmTokens = [], records = {}, fcmResponder = () => jsonResponse(200, { name: 'ok' }) } = {}) {
+  const calls = { tokenRequests: 0, fcmSends: [], deleted: [] };
+  // Every test answers with its own records: nothing of an earlier test may come from the server's read cache
+  require('../backend/pocketbase').invalidateReadCache();
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options = {}) => {
+    const href = String(url);
+    const method = options.method || 'GET';
+    if (href === 'https://oauth2.googleapis.com/token') {
+      calls.tokenRequests += 1;
+      return jsonResponse(200, { access_token: 'ya29.test', expires_in: 3599, token_type: 'Bearer' });
+    }
+    if (href.startsWith('https://fcm.googleapis.com/')) {
+      const body = JSON.parse(options.body);
+      calls.fcmSends.push(body.message);
+      return fcmResponder(body.message.token);
+    }
+    if (href.includes('/api/collections/_superusers/auth-with-password')) {
+      return jsonResponse(200, { token: 'pb-superuser' });
+    }
+    // Push devices: web push subscriptions and Android tokens share system_push_devices (kind webPush / fcm)
+    if (href.includes('/api/collections/system_push_devices/records/') && method === 'DELETE') {
+      calls.deleted.push(href.split('/').pop());
+      return new Response(null, { status: 204 });
+    }
+    if (href.includes('/api/collections/system_push_devices/records?')) {
+      const filter = new URL(href).searchParams.get('filter') || '';
+      const items = filter.includes('kind = "fcm"')
+        ? fcmTokens.filter(rec => filter.includes(JSON.stringify(rec.user)))
+          .map(rec => ({ collectionId: 'pbc_devices', kind: 'fcm', platform: 'android', created: '', updated: '', original: null, ...rec }))
+        : [];
+      return jsonResponse(200, { items, totalPages: 1 });
+    }
+    if (href.includes('/api/collections/users/records?')) {
+      return jsonResponse(200, { items: users, totalPages: 1 });
+    }
+    // One record by its id ([records]: id -> record), else none
+    const one = /\/api\/collections\/[^/]+\/records\/([^/?]+)$/.exec(href);
+    if (one && method === 'GET') return records[one[1]] ? jsonResponse(200, records[one[1]]) : jsonResponse(404, { status: 404, message: 'Not found.' });
+    return jsonResponse(200, { items: [], totalPages: 1 });
+  };
+  withEnv(t, {
+    FCM_SERVICE_ACCOUNT_FILE: undefined,
+    FCM_SERVICE_ACCOUNT_JSON: serviceAccountJson,
+    FCM_GOOGLE_SERVICES_JSON: googleServicesJson
+  });
+  resetFcmState();
+  t.after(() => {
+    global.fetch = originalFetch;
+    resetFcmState();
+  });
+  return calls;
+}
+
 describe('fcmNotifications', () => {
   const {
     loadServiceAccount,
@@ -53,95 +144,9 @@ describe('fcmNotifications', () => {
     getAccessToken,
     buildFcmMessage,
     isStaleTokenError,
-    sendFcmToToken,
-    resetFcmState
+    sendFcmToToken
   } = require('../backend/fcmNotifications');
   const { sendPushToUser, sendPushToAdmins } = require('../backend/pushNotifications');
-
-  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    publicKeyEncoding: { type: 'spki', format: 'pem' }
-  });
-
-  const serviceAccountJson = JSON.stringify({
-    type: 'service_account',
-    project_id: 'agora-test',
-    client_email: 'fcm@agora-test.iam.gserviceaccount.com',
-    private_key: privateKey,
-    token_uri: 'https://oauth2.googleapis.com/token'
-  });
-
-  const googleServicesJson = JSON.stringify({
-    project_info: { project_number: '123456', project_id: 'agora-test' },
-    client: [{ client_info: { mobilesdk_app_id: '1:123456:android:agora', android_client_info: { package_name: 'org.agora.app' } }, api_key: [{ current_key: 'AIzaTest' }] }]
-  });
-
-  const mockAppConfig = {
-    appName: 'Agora Test',
-    pocketbase: { adminEmail: 'admin@local.invalid', adminPassword: 'secret' },
-    _mockGetState: async () => null,
-    _mockUpsertState: async () => {}
-  };
-
-  function jsonResponse(status, body) {
-    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  /**
-   * Installs a fetch mock that answers Google OAuth, FCM and PocketBase requests.
-   * fcmResponder(token) decides the FCM response per registration token.
-   */
-  function installFetchMock(t, { users = [], fcmTokens = [], fcmResponder = () => jsonResponse(200, { name: 'ok' }) } = {}) {
-    const calls = { tokenRequests: 0, fcmSends: [], deleted: [] };
-    // Every test answers with its own records: nothing of an earlier test may come from the server's read cache
-    require('../backend/pocketbase').invalidateReadCache();
-    const originalFetch = global.fetch;
-    global.fetch = async (url, options = {}) => {
-      const href = String(url);
-      const method = options.method || 'GET';
-      if (href === 'https://oauth2.googleapis.com/token') {
-        calls.tokenRequests += 1;
-        return jsonResponse(200, { access_token: 'ya29.test', expires_in: 3599, token_type: 'Bearer' });
-      }
-      if (href.startsWith('https://fcm.googleapis.com/')) {
-        const body = JSON.parse(options.body);
-        calls.fcmSends.push(body.message);
-        return fcmResponder(body.message.token);
-      }
-      if (href.includes('/api/collections/_superusers/auth-with-password')) {
-        return jsonResponse(200, { token: 'pb-superuser' });
-      }
-      // Push devices: web push subscriptions and Android tokens share system_push_devices (kind webPush / fcm)
-      if (href.includes('/api/collections/system_push_devices/records/') && method === 'DELETE') {
-        calls.deleted.push(href.split('/').pop());
-        return new Response(null, { status: 204 });
-      }
-      if (href.includes('/api/collections/system_push_devices/records?')) {
-        const filter = new URL(href).searchParams.get('filter') || '';
-        const items = filter.includes('kind = "fcm"')
-          ? fcmTokens.filter(rec => filter.includes(JSON.stringify(rec.user)))
-            .map(rec => ({ collectionId: 'pbc_devices', kind: 'fcm', platform: 'android', created: '', updated: '', original: null, ...rec }))
-          : [];
-        return jsonResponse(200, { items, totalPages: 1 });
-      }
-      if (href.includes('/api/collections/users/records?')) {
-        return jsonResponse(200, { items: users, totalPages: 1 });
-      }
-      return jsonResponse(200, { items: [], totalPages: 1 });
-    };
-    withEnv(t, {
-      FCM_SERVICE_ACCOUNT_FILE: undefined,
-      FCM_SERVICE_ACCOUNT_JSON: serviceAccountJson,
-      FCM_GOOGLE_SERVICES_JSON: googleServicesJson
-    });
-    resetFcmState();
-    t.after(() => {
-      global.fetch = originalFetch;
-      resetFcmState();
-    });
-    return calls;
-  }
 
   test('loadServiceAccount prefers the file env, then raw JSON, then the data directory fallback', () => {
     const files = {
@@ -406,8 +411,8 @@ describe('notificationPrefs', () => {
   });
 });
 
-describe('dutyGroupNotifications', () => {
-  const { groupDutyRecipients, buildGroupDutyPush } = require('../backend/dutyGroupNotifications');
+describe('dutyNotifications', () => {
+  const { groupDutyRecipients, buildGroupDutyPush } = require('../backend/dutyNotifications');
   const { isGroupMember } = require('../backend/eventAccess');
 
   test('isGroupMember matches group ids, names and {id, name} objects', () => {
@@ -445,6 +450,34 @@ describe('dutyGroupNotifications', () => {
       assert.equal(push.tag, 'agora-duty-d1');
     }
     assert.equal(buildGroupDutyPush(input).title, 'Technik is on duty: Ton', 'English without a language');
+  });
+
+  const { askForDuty, tellDutyRequester } = require('../backend/dutyNotifications');
+  const people = [
+    { id: 'anna', firstName: 'Anna', lastName: 'Becker' },
+    { id: 'clara', firstName: 'Clara', lastName: 'Schmidt', language: 'de' }
+  ];
+  const devices = [{ id: 'rec-a', user: 'anna', token: 'token-anna' }, { id: 'rec-c', user: 'clara', token: 'token-clara' }];
+
+  test('asking for a duty: the person asked gets a push in their language - also when the e-mail is left out', async (t) => {
+    const calls = installFetchMock(t, { users: people, fcmTokens: devices });
+    const event = { id: 'e1', title: 'Gottesdienst', date: '2026-09-30', startTime: '10:00', location: 'Saal' };
+    for (const sendEmail of [true, false]) {
+      await askForDuty({ appConfig: mockAppConfig, recipientId: 'clara', requesterId: 'anna', event, duty: { id: 'd1', roleName: 'Ton' }, sendEmail });
+    }
+    assert.deepEqual(calls.fcmSends.map((message) => [message.token, message.data.title, message.data.url]),
+      [['token-clara', 'Anna Becker fragt dich an: Ton', '/#events'], ['token-clara', 'Anna Becker fragt dich an: Ton', '/#events']]);
+  });
+
+  test('the answer to a duty request reaches who asked - accepted or declined, never their own answer', async (t) => {
+    const calls = installFetchMock(t, { users: people, fcmTokens: devices });
+    const duty = { id: 'd1', event: 'e1', roleName: 'Ton', requestedBy: 'clara' };
+    await tellDutyRequester({ appConfig: mockAppConfig, duty, responderId: 'anna', answer: 'accepted' });
+    await tellDutyRequester({ appConfig: mockAppConfig, duty, responderId: 'anna', answer: 'declined' });
+    await tellDutyRequester({ appConfig: mockAppConfig, duty, responderId: 'clara', answer: 'accepted' });
+    await tellDutyRequester({ appConfig: mockAppConfig, duty: { ...duty, requestedBy: '' }, responderId: 'anna', answer: 'accepted' });
+    assert.deepEqual(calls.fcmSends.map((message) => [message.token, message.data.title]),
+      [['token-clara', 'Anna Becker hat zugesagt: Ton'], ['token-clara', 'Anna Becker hat abgesagt: Ton']]);
   });
 });
 

@@ -11,9 +11,9 @@ const { isSafeSvg } = require('./svgValidation');
 const { resolveDataDirectory, resolveFrontendDirectory } = require('./pathConfig');
 const { runAutomatedStandingOrders } = require('./standingOrders');
 const { withDecisionTimestamp, isExpiredRequest, purgeExpiredRequests, repairRequestAuthors } = require('./requestRetention');
-const { wantsNotification, mergeNotificationSettings } = require('./notificationPrefs');
+const { mergeNotificationSettings } = require('./notificationPrefs');
 const { translate, translator, userLanguage, instanceLanguage, normalizeLanguage, localeOf, BASE_LANGUAGE } = require('./i18n');
-const { formatEventMoment, formatEventShort, pushLine } = require('./eventTexts');
+const { pushLine } = require('./eventTexts');
 const { settingsOn } = require('./feeState');
 const { toDateStr } = require('./utils/date');
 
@@ -52,10 +52,6 @@ const {
   toPublicUser,
   findUserByCalendarToken
 } = require('./pocketbase');
-
-const {
-  sendPushToUser
-} = require('./pushNotifications');
 
 const sseClients = new Set();
 // Tells the connected clients that data changed. [scope] lets them reload only that area ('mentoring', 'events');
@@ -129,10 +125,6 @@ function buildSmtpTransport(smtp) {
 }
 
 // channel: 'push' or 'email' (see notificationPrefs.js)
-function userWantsNotification(user, type, channel = 'push') {
-  return wantsNotification(user, type, channel);
-}
-
 /** A configuration that can start the runtime (what the setup writes). */
 const isCompleteConfig = (config) => Boolean(config?.appName && config?.pocketbase?.adminEmail && config?.pocketbase?.adminPassword);
 
@@ -1011,59 +1003,6 @@ async function notifyRequestDecision(request, origin = '') {
   });
 }
 
-// Duty request to one member: push and e-mail (template of notify.js), each over the channels the member chose.
-// sendEmailRequested = false (the organiser unticked "per E-Mail") only skips the e-mail.
-async function sendDutyRequestNotificationEmail({ recipientUserId, requestedByUserId, event, duty, appConfig, sendEmailRequested = true, origin = '' }) {
-  try {
-    const { sendNotificationEmail } = require('./notify');
-    const allUsers = await listUserRecords(appConfig);
-    const recipient = allUsers.find(u => u.id === recipientUserId);
-    const lang = userLanguage(recipient);
-    const tr = translator(lang);
-    const requester = allUsers.find(u => u.id === requestedByUserId);
-    const requesterName = requester ? (requester.name || `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email) : tr('An event organiser');
-    const dutyName = duty.roleName || duty.section || tr('Duty');
-    const eventTitle = event.title || 'Event';
-
-    if (userWantsNotification(recipient, 'duties')) {
-      // "Anna Becker asks you: Sound" - "Sunday service · Sun 1 Nov, 10:00 · Main hall"
-      sendPushToUser(appConfig, recipientUserId, {
-        title: tr('{name} asks you: {duty}', { name: requesterName, duty: dutyName }),
-        body: pushLine(eventTitle, formatEventShort(event, lang), event.location),
-        data: { url: '/#events', eventId: event.id || '' },
-        tag: `agora-duty-request-${duty.id || ''}`
-      }).catch(err => console.warn('[WebPush] Failed sending duty push:', err.message));
-    }
-
-    if (sendEmailRequested === false) return { skipped: true, reason: 'user_disabled' };
-    if (!recipient || !recipient.email || !userWantsNotification(recipient, 'duties', 'email')) {
-      return { skipped: true, reason: 'recipient_no_email_or_disabled' };
-    }
-
-    const sent = await sendNotificationEmail(recipient, {
-      subject: tr('Duty request: {duty}', { duty: dutyName }),
-      heading: tr('Duty request: {duty}', { duty: dutyName }),
-      lines: [tr('{name} asked you to do a duty. Please accept or decline the request in the app.', { name: requesterName })],
-      rows: [
-        [tr('Duty'), dutyName],
-        [tr('Event'), eventTitle],
-        [tr('Date'), formatEventMoment(event, lang)],
-        ...(event.location ? [[tr('Location'), event.location]] : []),
-        ...(duty.notes ? [[tr('Notes'), duty.notes]] : [])
-      ],
-      actionLabel: tr('Answer the request'),
-      path: '/#events',
-      accent: '#6366f1'
-    }, origin, lang);
-    return sent ? { success: true } : { skipped: true, reason: 'smtp_not_configured' };
-  } catch (err) {
-    console.warn('Could not send duty request email (non-fatal):', err.message);
-    return { error: err.message };
-  }
-}
-
-
-
 // Suggested duties until an instance saves its own list (in the instance's default language)
 const DEFAULT_DUTY_NAMES = ['Bistro team', 'Tech', 'Welcome', 'Host', 'Music / worship'];
 const DEFAULT_EVENT_SETTINGS = {
@@ -1262,7 +1201,6 @@ module.exports = {
   authCookieName,
   legacyAuthCookieName,
   buildSmtpTransport,
-  userWantsNotification,
   initializeRuntime,
   setRuntimeConfig,
   loadConfig,
@@ -1300,7 +1238,6 @@ module.exports = {
   verifyOptionalUser,
   newPersonRecord,
   withGroupPermissions,
-  sendDutyRequestNotificationEmail,
   invalidateAuthCache,
   DEFAULT_EVENT_SETTINGS,
   formatIcsDateTime,

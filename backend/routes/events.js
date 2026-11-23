@@ -15,7 +15,6 @@ const {
   generateIcsCalendar,
   addDaysDriftFree,
   getNextRecurringDate,
-  sendDutyRequestNotificationEmail,
   authenticateCalendarFeed
 } = require('../context');
 const { formatEventMoment, formatEventShort, pushLine } = require('../eventTexts');
@@ -49,7 +48,7 @@ const { isAdmin, can, resolveUserPermissions } = require('../permissions');
 const { userMatchesTargetGroups, seesEvent, canEditEvent, canUserAccessEventDutyPlan } = require('../eventAccess');
 const { notFound } = require('../httpError');
 const { userLanguage, translate, requestLanguage, instanceLanguage } = require('../i18n');
-const { notifyGroupDutyAssigned } = require('../dutyGroupNotifications');
+const { askForDuty, tellDutyRequester, notifyGroupDutyAssigned } = require('../dutyNotifications');
 const { createItemStore } = require('../itemStore');
 const { buildProgram } = require('../program');
 const { DUTY_STATES, dutyStatusOf } = require('../dutyStatus');
@@ -728,15 +727,8 @@ router.post('/api/events/:id/duties', verifyToken, route('The duty could not be 
   });
 
   if (finalRequestedUser && sendEmail !== false) {
-    sendDutyRequestNotificationEmail({
-      recipientUserId: finalRequestedUser,
-      requestedByUserId: currentUid,
-      event,
-      duty,
-      appConfig: context.appConfig,
-      sendEmailRequested: sendEmail !== false,
-      origin: originOf(req)
-    }).catch(e => console.warn('Duty email error:', e));
+    askForDuty({ appConfig: context.appConfig, recipientId: finalRequestedUser, requesterId: currentUid, event, duty, sendEmail, origin: originOf(req) })
+      .catch((err) => console.warn('[Notify] Duty request:', err.message));
   }
 
   broadcastDataUpdate('events');
@@ -780,15 +772,8 @@ router.post('/api/events/duties/:dutyId/request', verifyToken, route('The reques
   });
 
   if (sendEmail !== false) {
-    sendDutyRequestNotificationEmail({
-      recipientUserId: String(targetUserId).trim(),
-      requestedByUserId: currentUid,
-      event,
-      duty: updated,
-      appConfig: context.appConfig,
-      sendEmailRequested: sendEmail !== false,
-      origin: originOf(req)
-    }).catch(e => console.warn('Duty email error:', e));
+    askForDuty({ appConfig: context.appConfig, recipientId: String(targetUserId).trim(), requesterId: currentUid, event, duty: updated, sendEmail, origin: originOf(req) })
+      .catch((err) => console.warn('[Notify] Duty request:', err.message));
   }
 
   broadcastDataUpdate('events');
@@ -829,15 +814,8 @@ router.post('/api/events/duties/:dutyId/assign', verifyToken, route('The duty co
   const updated = await updateEventDuty(context.appConfig, duty.id, updates);
 
   if (updates.requestedUser && sendEmail !== false) {
-    sendDutyRequestNotificationEmail({
-      recipientUserId: updates.requestedUser,
-      requestedByUserId: currentUid,
-      event,
-      duty: updated,
-      appConfig: context.appConfig,
-      sendEmailRequested: sendEmail !== false,
-      origin: originOf(req)
-    }).catch(e => console.warn('Duty email error:', e));
+    askForDuty({ appConfig: context.appConfig, recipientId: updates.requestedUser, requesterId: currentUid, event, duty: updated, sendEmail, origin: originOf(req) })
+      .catch((err) => console.warn('[Notify] Duty request:', err.message));
   }
 
   broadcastDataUpdate('events');
@@ -863,52 +841,8 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, route('The answer
       status: 'confirmed'
     });
 
-    if (duty.requestedBy && duty.requestedBy !== currentUid) {
-      try {
-        const allUsers = await listUserRecords(context.appConfig);
-        const requesterUser = allUsers.find(u => u.id === duty.requestedBy);
-        if (requesterUser) {
-          const responder = allUsers.find(u => u.id === currentUid);
-          const event = await getEventRecord(context.appConfig, duty.event);
-          // texts in the requester's language
-          const texts = (tr) => {
-            const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : tr('A helper');
-            const dutyName = duty.roleName || duty.section || tr('Duty');
-            const eventTitle = event?.title || 'Event';
-            return {
-              responderName, dutyName, eventTitle,
-              title: tr('Duty request accepted: {duty}', { duty: dutyName }),
-              body: tr('{name} accepted the request for "{duty}" ({event}).', { name: responderName, duty: dutyName, event: eventTitle })
-            };
-          };
-          notifyUsers(context.appConfig, [requesterUser], 'duties', {
-            origin: originOf(req),
-            // "Clara Schmidt accepted: Sound" - "Sunday service · Sun 1 Nov, 10:00"
-            push: (tr) => {
-              const x = texts(tr);
-              return {
-                title: tr('{name} accepted: {duty}', { name: x.responderName, duty: x.dutyName }),
-                body: pushLine(x.eventTitle, formatEventShort(event, userLanguage(requesterUser))),
-                data: { url: '/#events', eventId: event?.id || '' },
-                tag: `agora-duty-answer-${duty.id}`
-              };
-            },
-            email: (tr) => {
-              const x = texts(tr);
-              return {
-                subject: x.title,
-                heading: tr('Duty request accepted'),
-                lines: [x.body],
-                rows: [[tr('Duty'), x.dutyName], [tr('Event'), x.eventTitle], [tr('From'), x.responderName]],
-                actionLabel: tr('View the duty roster'),
-                path: '/#events',
-                accent: '#059669'
-              };
-            }
-          }).catch(e => console.warn('[Notify] Duty accept:', e.message));
-        }
-      } catch (e) {}
-    }
+    tellDutyRequester({ appConfig: context.appConfig, duty, responderId: currentUid, answer: 'accepted', origin: originOf(req) })
+      .catch((err) => console.warn('[Notify] Duty accept:', err.message));
 
     broadcastDataUpdate('events');
     return res.json({ success: true, duty: updated, message: 'Duty request accepted' });
@@ -919,52 +853,8 @@ router.post('/api/events/duties/:dutyId/respond', verifyToken, route('The answer
       status: 'declined'
     });
 
-    if (duty.requestedBy && duty.requestedBy !== currentUid) {
-      try {
-        const allUsers = await listUserRecords(context.appConfig);
-        const requesterUser = allUsers.find(u => u.id === duty.requestedBy);
-        if (requesterUser) {
-          const responder = allUsers.find(u => u.id === currentUid);
-          const event = await getEventRecord(context.appConfig, duty.event);
-          // texts in the requester's language
-          const texts = (tr) => {
-            const responderName = responder ? (responder.name || `${responder.firstName || ''} ${responder.lastName || ''}`.trim() || responder.email) : tr('A helper');
-            const dutyName = duty.roleName || duty.section || tr('Duty');
-            const eventTitle = event?.title || 'Event';
-            return {
-              responderName, dutyName, eventTitle,
-              title: tr('Duty request declined: {duty}', { duty: dutyName }),
-              body: tr('{name} declined the request for "{duty}" ({event}).', { name: responderName, duty: dutyName, event: eventTitle })
-            };
-          };
-          notifyUsers(context.appConfig, [requesterUser], 'duties', {
-            origin: originOf(req),
-            // "Clara Schmidt declined: Sound" - "Sunday service · Sun 1 Nov, 10:00"
-            push: (tr) => {
-              const x = texts(tr);
-              return {
-                title: tr('{name} declined: {duty}', { name: x.responderName, duty: x.dutyName }),
-                body: pushLine(x.eventTitle, formatEventShort(event, userLanguage(requesterUser))),
-                data: { url: '/#events', eventId: event?.id || '' },
-                tag: `agora-duty-answer-${duty.id}`
-              };
-            },
-            email: (tr) => {
-              const x = texts(tr);
-              return {
-                subject: x.title,
-                heading: tr('Duty request declined'),
-                lines: [x.body],
-                rows: [[tr('Duty'), x.dutyName], [tr('Event'), x.eventTitle], [tr('From'), x.responderName]],
-                actionLabel: tr('View the duty roster'),
-                path: '/#events',
-                accent: '#dc2626'
-              };
-            }
-          }).catch(e => console.warn('[Notify] Duty decline:', e.message));
-        }
-      } catch (e) {}
-    }
+    tellDutyRequester({ appConfig: context.appConfig, duty, responderId: currentUid, answer: 'declined', origin: originOf(req) })
+      .catch((err) => console.warn('[Notify] Duty decline:', err.message));
 
     broadcastDataUpdate('events');
     return res.json({ success: true, duty: updated, message: 'Duty request declined' });
