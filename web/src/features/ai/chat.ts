@@ -39,7 +39,7 @@ const putWelcome = (next: 'shown' | 'leaving' | 'gone') => {
   setWelcome(next);
 };
 
-const MAX_AI_CHAT_INPUT_HEIGHT = 120;
+const MAX_AI_CHAT_INPUT_HEIGHT = 110;
 // Without a single byte for this long (the server sends a sign of life every 15 s) the connection is gone
 const AI_IDLE_TIMEOUT_MS = 75000;
 

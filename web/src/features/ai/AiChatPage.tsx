@@ -125,7 +125,7 @@ function ChatInput() {
         <textarea
           ref={el => (chatElements.input = el)}
           rows={1}
-          class="m-0 block h-6 max-h-[110px] min-h-6 flex-1 resize-none border-none bg-transparent p-0 text-[0.95rem] leading-6 text-text shadow-none outline-none"
+          class="m-0 block h-6 min-h-6 flex-1 resize-none border-none bg-transparent p-0 text-[0.95rem] leading-6 text-text shadow-none outline-none"
           placeholder={t('ai_chat_input_placeholder', 'Type a message…')}
           title={t('chat_enter_hint', 'Enter for new line, Ctrl+Enter to send')}
           aria-label={t('ai_chat_input_aria', 'Enter a message for the AI')}
