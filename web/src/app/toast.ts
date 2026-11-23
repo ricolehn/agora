@@ -30,7 +30,7 @@ export function showToast(message: string, type: ToastType | string = 'success')
 /** The sign in front of a toast's text. */
 export const toastSign = (type: ToastType) => ({ success: '✅', info: 'ℹ️' } as Record<string, string>)[type] || '⚠️';
 
-/** The browser's confirm dialog (as before); empty texts are not asked. */
+/** The browser's confirm dialog (as before). */
 export function confirmAction(text: string): boolean {
   return window.confirm(text);
 }
