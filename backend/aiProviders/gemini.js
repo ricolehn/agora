@@ -1,7 +1,7 @@
 // Gemini through Google's own interface, the Gemini API: Gemini's thinking comes as a readable summary
 // (thinkingConfig.includeThoughts), which the chat shows; it decides itself how long it thinks. The parts of its turns
 // - with their thought signatures - go back unchanged with the next turn of a question, as the API requires.
-const { TOOLS_REFUSED, mayBeRefusal, readEvents, fromFirstQuestion, resultObject } = require('./shared');
+const { TOOLS_REFUSED, mayBeRefusal, postTurn, readEvents, fromFirstQuestion, resultObject } = require('./shared');
 
 module.exports = {
   start: ({ system, messages }) => ({
@@ -19,13 +19,9 @@ module.exports = {
     if (!leave.has('thinking')) body.generationConfig = { thinkingConfig: { includeThoughts: true } };
     const sent = { tools: Boolean(body.tools), thinking: Boolean(body.generationConfig) };
 
-    const response = await fetch(`${provider.baseUrl}/v1beta/models/${encodeURIComponent(provider.model)}:streamGenerateContent?alt=sse`, {
-      method: 'POST',
-      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal
-    });
-    if (!response.ok) return { ok: false, status: response.status, text: await response.text().catch(() => ''), sent };
+    const url = `${provider.baseUrl}/v1beta/models/${encodeURIComponent(provider.model)}:streamGenerateContent?alt=sse`;
+    const { response, failed } = await postTurn(url, { 'x-goog-api-key': apiKey }, body, { signal, sent });
+    if (failed) return failed;
 
     const parts = [];
     const calls = [];

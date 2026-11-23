@@ -4,7 +4,7 @@
 // without them.
 const crypto = require('crypto');
 const { addToolCallParts, reasoningKeyOf, aiStreamEvents } = require('../ai');
-const { TOOLS_REFUSED, mayBeRefusal } = require('./shared');
+const { TOOLS_REFUSED, mayBeRefusal, postTurn } = require('./shared');
 
 // The effort levels as reasoning_effort: only from "high" on (below, the service's own default, as before)
 const REASONING_EFFORT = { high: 'high', xhigh: 'high', max: 'high' };
@@ -37,13 +37,8 @@ module.exports = {
       reasoningContent: messages.some((message) => message.reasoning_content !== undefined)
     };
 
-    const response = await fetch(`${provider.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal
-    });
-    if (!response.ok) return { ok: false, status: response.status, text: await response.text().catch(() => ''), sent };
+    const { response, failed } = await postTurn(`${provider.baseUrl}/chat/completions`, { Authorization: `Bearer ${apiKey}` }, body, { signal, sent });
+    if (failed) return failed;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();

@@ -2,7 +2,7 @@
 // (reasoning.summary), which the chat shows, and the effort level sets how much they think (reasoning.effort).
 // Nothing is kept at OpenAI (store: false): the model's reasoning goes back encrypted with the next turn of the
 // question. Models without reasoning refuse those parts once; the chat remembers that.
-const { TOOLS_REFUSED, mayBeRefusal, readEvents, fromFirstQuestion } = require('./shared');
+const { TOOLS_REFUSED, mayBeRefusal, postTurn, readEvents, fromFirstQuestion } = require('./shared');
 
 // The effort levels as reasoning.effort
 const EFFORT = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'xhigh' };
@@ -25,13 +25,8 @@ module.exports = {
     }
     const sent = { tools: Boolean(body.tools), reasoning: Boolean(body.reasoning), effort: Boolean(body.reasoning?.effort), summary: Boolean(body.reasoning?.summary) };
 
-    const response = await fetch(`${provider.baseUrl}/responses`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal
-    });
-    if (!response.ok) return { ok: false, status: response.status, text: await response.text().catch(() => ''), sent };
+    const { response, failed } = await postTurn(`${provider.baseUrl}/responses`, { Authorization: `Bearer ${apiKey}` }, body, { signal, sent });
+    if (failed) return failed;
 
     let output = null;
     let failure = null;

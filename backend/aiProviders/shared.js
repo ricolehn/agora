@@ -1,5 +1,5 @@
-// What the connections to the AI services share (backend/aiProviders): reading server-sent events, the output of one
-// turn, and telling a refused part of a request apart from other errors.
+// What the connections to the AI services share (backend/aiProviders): sending a turn, reading server-sent events, the
+// output of one turn, and telling a refused part of a request apart from other errors.
 
 // A request that is too long, a missing key or a rate limit is no refusal of a part of the request
 const TOO_LONG = /context[ _-]?length|maximum context|too many tokens|too long|reduce the length|token limit/i;
@@ -24,6 +24,16 @@ function roundOutput(send, last, laterRound) {
     send({ [kind]: text });
   };
   return { reasoning: emit('reasoning'), content: emit('content'), error: (message) => send({ error: String(message).slice(0, 300) }) };
+}
+
+/**
+ * Sends one turn ([body] as JSON to [url] with [headers]): { response } to read the stream from, or { failed } when the
+ * service refused it - its status and text, and [sent] (which parts the request had) for the connection's refused().
+ */
+async function postTurn(url, headers, body, { signal, sent }) {
+  const response = await fetch(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  if (response.ok) return { response };
+  return { failed: { ok: false, status: response.status, text: await response.text().catch(() => ''), sent } };
 }
 
 /** Reads the server-sent events of [response] and calls [onEvent](data, eventName) for each of them. */
@@ -78,4 +88,4 @@ function resultObject(text) {
   return { result: text };
 }
 
-module.exports = { TOO_LONG, TOOLS_REFUSED, mayBeRefusal, roundOutput, readEvents, fromFirstQuestion, resultObject };
+module.exports = { TOO_LONG, TOOLS_REFUSED, mayBeRefusal, roundOutput, postTurn, readEvents, fromFirstQuestion, resultObject };
