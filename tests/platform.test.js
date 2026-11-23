@@ -214,6 +214,14 @@ describe('compression', () => {
     assert.equal(zlib.gunzipSync(again.body).toString(), changed);
     assert.notEqual(again.headers.etag, res.headers.etag);
 
+    // JavaScript modules by their own extension (the PDF viewer's worker) are scripts as well
+    const worker = path.join(dir, 'pdf.worker.min.mjs');
+    fs.writeFileSync(worker, content);
+    const module = fakeRes();
+    assert.equal(sendCompressedFile(req('br'), module, worker), true);
+    assert.equal(module.headers['content-type'], 'application/javascript; charset=utf-8');
+    assert.equal(zlib.brotliDecompressSync(module.body).toString(), content);
+
     assert.equal(sendCompressedFile(req(''), fakeRes(), file), false, 'client without compression');
     assert.equal(sendCompressedFile(req('br'), fakeRes(), path.join(dir, 'small.js')), false, 'tiny file');
     assert.equal(sendCompressedFile(req('br'), fakeRes(), path.join(dir, 'image.png')), false, 'binary type');

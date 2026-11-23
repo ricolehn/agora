@@ -10,6 +10,8 @@ const MIN_BYTES = 1024;
 const STATIC_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  // JavaScript modules by their own extension: the PDF viewer's worker (1.3 MB, 0.34 MB with brotli)
+  '.mjs': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml'
