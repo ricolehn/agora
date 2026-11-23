@@ -575,87 +575,45 @@ describe('years of a community against a second set of books', () => {
 // planned must have come into effect, the standing orders must have been booked, and every number it serves - to
 // the treasury, to the member, on the fees page, to an older app - must be that of the second books.
 const fs = require('fs');
-const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
-
-const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
-const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
-const PASSWORD = 'test-Passwort-1';
+const { PASSWORD, hasPocketBase, makeRoot, startPocketBase, startBackend, httpClient, setUpOwner, addTreasurer, stop } = require('./instance');
 
 describe('years with the real server and database', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP tests' }, () => {
   const { before, after } = require('node:test');
-  const processes = [];
-  const tokens = {};
+  const http = httpClient();
+  const { call, ok } = http;
   // The keys of the member records of the owner and the treasurer (they are members too)
   const staff = {};
-  let base;
-  let dataRoot;
-  let backendEnv;
+  let root;
+  let pocketbase;
   let backend = null;
-  let isSetUp = false;
-
-  async function call(who, method, url, body) {
-    const headers = { 'X-Forwarded-For': `10.43.0.${Object.keys(tokens).indexOf(who) + 2}` };
-    if (who && tokens[who]) headers.Authorization = `Bearer ${tokens[who]}`;
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
-    const res = await fetch(base + url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    const text = await res.text();
-    let parsed = text;
-    try { parsed = JSON.parse(text); } catch { /* text body */ }
-    return { status: res.status, body: parsed };
-  }
-  const ok = async (promise) => {
-    const res = await promise;
-    assert.ok(res.status < 300, `expected success, got ${res.status}: ${JSON.stringify(res.body).slice(0, 300)}`);
-    return res.body;
-  };
   const read = async (who, dbPath) => (await ok(call(who, 'GET', `/api/db?path=${dbPath}`))) || {};
 
-  /** The server is stopped and wakes up at noon on [day]. */
+  /** The server is stopped and wakes up at noon on [day] (on the same address), ready once it is set up. */
   async function visit(day) {
-    await stop(backend);
-    backend = start('backend', process.execPath, ['--require', path.join(__dirname, 'clock.js'), SERVER_ENTRY], { ...backendEnv, AGORA_TEST_NOW: `${day}T12:00:00` });
-    processes.push(backend);
-    await waitFor(`${base}/api/status`, `the server on ${day}`, [processes[0], backend], 50);
-    // An instance that is set up starts its runtime first (status: ready); until then it asks the apps to try again
-    for (let i = 0; isSetUp; i += 1) {
-      const status = await fetch(`${base}/api/status`).then((res) => res.json()).catch(() => null);
-      if (status?.ready === true) break;
-      assert.ok(i < 600 && backend.exitCode === null, `the server on ${day} did not get ready\n${backend.log.join('')}`);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    await stop(backend?.process);
+    backend = await startBackend(root, pocketbase.port, {
+      port: backend?.port, nodeArgs: ['--require', path.join(__dirname, 'clock.js')],
+      env: { NODE_ENV: 'test', AGORA_FEATURE_POLLS: '', AGORA_TEST_NOW: `${day}T12:00:00` }, label: `the server on ${day}`
+    });
+    http.base = backend.base;
   }
 
   /** A new account with its member record; returns the key of the record. [name] signs in with call(name, …). */
-  async function addMember(name, since, status) {
-    const email = `${name}@test.local`;
-    await ok(call('owner', 'POST', '/api/admin/users', { firstName: name[0].toUpperCase() + name.slice(1), lastName: 'Test', email, password: PASSWORD, pays: true, admin: false, status, memberSince: since }));
-    tokens[name] = (await ok(call(null, 'POST', '/api/auth/login', { email, password: PASSWORD }))).token;
-    return (await ok(call(name, 'GET', '/api/auth/me'))).user.uid;
-  }
+  const addMember = (name, since, status) => http.account(name, name[0].toUpperCase() + name.slice(1), { status, memberSince: since });
 
   before(async () => {
-    const [port, pbPort] = await Promise.all([freePort(), freePort()]);
-    dataRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agora-years-'));
-    const pbDir = path.join(dataRoot, 'pb');
-    base = `http://127.0.0.1:${port}`;
-    backendEnv = { PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: FRONTEND_FIXTURE, NODE_ENV: 'test' };
-    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
-    await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
-
-    // The first day: the instance is set up, with a treasurer (a group with manage_finances)
+    root = makeRoot('agora-years-');
+    pocketbase = await startPocketBase(root);
+    // The first day: the instance is set up, with a treasurer (a group with manage_finances), both members since then
     await visit('2026-11-15');
-    const setup = await ok(call(null, 'POST', '/api/setup', { appName: 'Testgemeinde', adminUser: { firstName: 'Olga', lastName: 'Owner', email: 'owner@test.local', password: PASSWORD, memberSince: '2026-11-15' } }));
-    tokens.owner = setup.token;
-    isSetUp = true;
-    staff.owner = setup.user.id || setup.user.uid;
-    const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Kasse', permissions: ['manage_finances'] }));
-    staff.treasurer = await addMember('treasurer', '2026-11-15', 'pausiert');
-    await ok(call('owner', 'PUT', `/api/admin/users/${staff.treasurer}/groups`, { groups: [group.id || group.group?.id] }));
+    staff.owner = await setUpOwner(http, { memberSince: '2026-11-15' });
+    staff.treasurer = await addTreasurer(http, { status: 'pausiert', memberSince: '2026-11-15' });
   });
 
-  after(() => {
-    for (const child of processes.reverse()) if (child.exitCode === null) child.kill();
-    if (dataRoot) fs.rmSync(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  after(async () => {
+    await stop(backend?.process);
+    await stop(pocketbase?.process);
+    if (root) fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   });
 
   test('five years: the server wakes up on another day, and every number is that of the books', async () => {

@@ -8,6 +8,11 @@ const path = require('path');
 const { REPO_ROOT, BACKEND_DIR, freePort, waitFor, start, stop, FRONTEND_FIXTURE } = require('./helpers');
 
 const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
+// Without the binary the HTTP tests are skipped; in CI (REQUIRE_POCKETBASE=1) a missing one is a failure instead
+const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
+if (!hasPocketBase && process.env.REQUIRE_POCKETBASE === '1') {
+  throw new Error(`REQUIRE_POCKETBASE=1 but no PocketBase binary at POCKETBASE_BIN="${POCKETBASE_BIN}"`);
+}
 const PASSWORD = 'test-Passwort-1';
 const LEGACY_SERVER = path.join(BACKEND_DIR, 'legacy', 'server.js');
 const CURRENT_SERVER = path.join(BACKEND_DIR, 'server.js');
@@ -24,10 +29,13 @@ async function startPocketBase(root, port) {
   return { process: pocketbase, port: pbPort };
 }
 
-/** Starts [entry] (a server.js) on the instance; waits until it is ready (or set up for the first time). */
-async function startBackend(root, pbPort, { entry = CURRENT_SERVER, port, env = {}, waitReady = true, label = 'backend' } = {}) {
+/**
+ * Starts [entry] (a server.js) on the instance, with [nodeArgs] for node itself (e.g. a clock: tests/clock.js); waits
+ * until it is ready (or set up for the first time).
+ */
+async function startBackend(root, pbPort, { entry = CURRENT_SERVER, port, env = {}, nodeArgs = [], waitReady = true, label = 'backend' } = {}) {
   const httpPort = port || await freePort();
-  const backend = start(label, process.execPath, [entry], {
+  const backend = start(label, process.execPath, [...nodeArgs, entry], {
     PORT: String(httpPort),
     POCKETBASE_PORT: String(pbPort),
     POCKETBASE_BIN,
@@ -55,24 +63,26 @@ async function waitUntilReady(base, backend, timeoutMs = 120000) {
 }
 
 /**
- * An HTTP client: call(who, method, url, body) as the person signed in under [who] (null: nobody). Every call comes
- * from its own address, so the rate limits of the server never get in the way of a big seed.
+ * An HTTP client: call(who, method, url, body, { form, lang }) as the person signed in under [who] (null: nobody), in
+ * the language [lang] (Accept-Language) if given; answers { status, body (JSON, else text), headers, buffer }. Every call
+ * comes from its own address, so the rate limits of the server never get in the way of a big seed. [base] may be set
+ * later (client.base), once the server runs.
  */
-function httpClient(base) {
+function httpClient(base = '') {
   const tokens = {};
   const uids = {};
   let counter = 0;
-  async function call(who, method, url, body, { form = false, raw = false } = {}) {
+  async function call(who, method, url, body, { form = false, lang = null } = {}) {
     counter += 1;
     const headers = { 'X-Forwarded-For': `10.${(counter >> 16) & 255}.${(counter >> 8) & 255}.${counter & 255}` };
     if (who && tokens[who]) headers.Authorization = `Bearer ${tokens[who]}`;
+    if (lang) headers['Accept-Language'] = lang;
     if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
     const res = await fetch(client.base + url, { method, headers, body: form ? body : body === undefined ? undefined : JSON.stringify(body) });
-    const text = await res.text();
-    if (raw) return { status: res.status, text, headers: res.headers };
-    let parsed = text;
-    try { parsed = JSON.parse(text); } catch { /* text answer */ }
-    return { status: res.status, body: parsed, headers: res.headers };
+    const buffer = Buffer.from(await res.arrayBuffer());
+    let parsed = buffer.toString('utf8');
+    try { parsed = JSON.parse(parsed); } catch { /* a text or a file */ }
+    return { status: res.status, body: parsed, headers: res.headers, buffer };
   }
   async function ok(promise) {
     const res = await promise;
@@ -84,8 +94,57 @@ function httpClient(base) {
     uids[who] = (await ok(call(who, 'GET', '/api/auth/me'))).user.uid;
     return uids[who];
   }
-  const client = { base, call, ok, login, tokens, uids };
+  /** A new paying member with an account (<who>@test.local), made by the owner and signed in; returns its uid. */
+  async function account(who, firstName, extra = {}) {
+    await ok(call('owner', 'POST', '/api/admin/users', {
+      firstName, lastName: 'Test', email: `${who}@test.local`, password: PASSWORD, pays: true, admin: false, status: 'vollverdiener', memberSince: '2025-01-01', ...extra
+    }));
+    return login(who, `${who}@test.local`);
+  }
+  const client = { base, call, ok, login, account, tokens, uids };
   return client;
+}
+
+/** "Testgemeinde" set up by Olga Owner (her account with [owner] added, e.g. memberSince), signed in as 'owner'. */
+async function setUpOwner(http, owner = {}) {
+  const setup = await http.ok(http.call(null, 'POST', '/api/setup', {
+    appName: 'Testgemeinde', adminUser: { firstName: 'Olga', lastName: 'Owner', email: 'owner@test.local', password: PASSWORD, ...owner }
+  }));
+  http.tokens.owner = setup.token;
+  http.uids.owner = setup.user.id || setup.user.uid;
+  return http.uids.owner;
+}
+
+/** The treasurer Theo ('treasurer', [extra] for the account), in the group "Kasse" with manage_finances. */
+async function addTreasurer(http, extra = {}) {
+  const group = await http.ok(http.call('owner', 'POST', '/api/admin/groups', { name: 'Kasse', permissions: ['manage_finances'] }));
+  const uid = await http.account('treasurer', 'Theo', extra);
+  await http.ok(http.call('owner', 'PUT', `/api/admin/users/${uid}/groups`, { groups: [group.id || group.group?.id] }));
+  return uid;
+}
+
+/** The community most HTTP tests start from: the owner, the treasurer and the members Max and Mia, signed in on [http]. */
+async function setUpCommunity(http) {
+  await setUpOwner(http);
+  await addTreasurer(http);
+  await http.account('max', 'Max');
+  await http.account('mia', 'Mia');
+}
+
+/**
+ * A fresh instance for a suite of HTTP tests: PocketBase and the backend (with [env]) on their own data folder under
+ * the temp directory ([prefix]). close() stops both and removes the folder.
+ */
+async function startInstance(prefix, env = {}) {
+  const root = makeRoot(prefix);
+  const pocketbase = await startPocketBase(root);
+  const backend = await startBackend(root, pocketbase.port, { env });
+  async function close() {
+    await stop(backend.process);
+    await stop(pocketbase.process);
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+  return { root, base: backend.base, pocketbaseUrl: `http://127.0.0.1:${pocketbase.port}`, pocketbase, backend, close };
 }
 
 /** The superuser's own access to PocketBase (credentials from the instance's config.json). */
@@ -161,6 +220,7 @@ function faultyProxy(port, refuse) {
 
 module.exports = {
   POCKETBASE_BIN,
+  hasPocketBase,
   PASSWORD,
   LEGACY_SERVER,
   CURRENT_SERVER,
@@ -169,6 +229,10 @@ module.exports = {
   startBackend,
   waitUntilReady,
   httpClient,
+  setUpOwner,
+  addTreasurer,
+  setUpCommunity,
+  startInstance,
   superuser,
   faultyProxy,
   stop

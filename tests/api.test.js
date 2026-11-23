@@ -5,16 +5,10 @@ const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { REPO_ROOT, BACKEND_DIR, assertHas, freePort, waitFor, start, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
+const { BACKEND_DIR, assertHas } = require('./helpers');
 const { startFakeNextcloud } = require('./fakeNextcloud');
+const { PASSWORD, hasPocketBase, httpClient, setUpCommunity, startInstance } = require('./instance');
 
-const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
-const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
-if (!hasPocketBase && process.env.REQUIRE_POCKETBASE === '1') {
-  throw new Error(`REQUIRE_POCKETBASE=1 but no PocketBase binary at POCKETBASE_BIN="${POCKETBASE_BIN}"`);
-}
-
-const PASSWORD = 'test-Passwort-1';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 /** A ZIP archive's entries by name ({ name: text }; folders end with "/"), checked against their checksums. */
@@ -43,44 +37,15 @@ function unzip(buffer) {
 }
 
 describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP tests' }, () => {
-  const processes = [];
+  let instance;
   let base;
   let pocketbaseUrl;
   let dataRoot;
   let preSetupLogin;
-  const tokens = {};
-  const uids = {};
-
-  // One small client: JSON in, { status, body, headers } out; never throws on HTTP errors
-  async function call(who, method, url, body, { form = false } = {}) {
-    const headers = { 'X-Forwarded-For': `10.42.0.${Object.keys(tokens).indexOf(who) + 2}` };
-    if (who && tokens[who]) headers.Authorization = `Bearer ${tokens[who]}`;
-    if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
-    const res = await fetch(base + url, { method, headers, body: form ? body : body === undefined ? undefined : JSON.stringify(body) });
-    const text = await res.text();
-    let parsed = text;
-    try { parsed = JSON.parse(text); } catch { /* text body */ }
-    return { status: res.status, body: parsed, headers: res.headers };
-  }
-  const ok = async (promise) => {
-    const res = await promise;
-    assert.ok(res.status < 300, `expected success, got ${res.status}: ${JSON.stringify(res.body).slice(0, 300)}`);
-    return res.body;
-  };
+  // The client of the whole suite; account() makes a fresh member for one test (keeps the tests independent)
+  const http = httpClient();
+  const { call, ok, login, account, tokens, uids } = http;
   const read = async (who, dbPath) => (await ok(call(who, 'GET', `/api/db?path=${dbPath}`))) || {};
-  const login = async (who, email) => {
-    tokens[who] = (await ok(call(null, 'POST', '/api/auth/login', { email, password: PASSWORD }))).token;
-    uids[who] = (await ok(call(who, 'GET', '/api/auth/me'))).user.uid;
-  };
-  // A fresh account for one test (keeps the tests independent of each other)
-  const account = async (who, firstName, extra = {}) => {
-    const email = `${who}@test.local`;
-    await ok(call('owner', 'POST', '/api/admin/users', {
-      firstName, lastName: 'Test', email, password: PASSWORD, pays: true, admin: false, status: 'vollverdiener', memberSince: '2025-01-01', ...extra
-    }));
-    await login(who, email);
-    return uids[who];
-  };
   // The database snapshot the AI gets with a question of [who] (a stand-in provider takes the prompt)
   async function aiSnapshot(who) {
     const http = require('http');
@@ -138,57 +103,22 @@ describe('api', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP te
     });
     await new Promise((resolve) => hub.listen(0, '127.0.0.1', resolve));
     hubBase = `http://127.0.0.1:${hub.address().port}`;
-    const [port, pbPort] = await Promise.all([freePort(), freePort()]);
-    dataRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agora-api-'));
-    const pbDir = path.join(dataRoot, 'pb');
-    base = `http://127.0.0.1:${port}`;
-    pocketbaseUrl = `http://127.0.0.1:${pbPort}`;
-
-    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
-    await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
-
-    processes.push(start('backend', process.execPath, [SERVER_ENTRY], {
-      PORT: String(port),
-      POCKETBASE_PORT: String(pbPort),
-      POCKETBASE_BIN,
-      POCKETBASE_DIR: pbDir,
-      DATA_DIR: path.join(dataRoot, 'data'),
-      FRONTEND_DIR: FRONTEND_FIXTURE,
+    instance = await startInstance('agora-api-', {
       NODE_ENV: 'test',
-      // Polls are switched off by default; their API is tested here all the same
-      AGORA_FEATURE_POLLS: '1',
       AGORA_AI_URL_ANTHROPIC: `${hubBase}/anthropic`,
       AGORA_AI_URL_OPENAI: `${hubBase}/openai/v1`,
       AGORA_AI_URL_GEMINI: `${hubBase}/gemini`
-    }));
-    await waitFor(`${base}/api/status`, 'backend', processes);
-
+    });
+    ({ base, pocketbaseUrl, root: dataRoot } = instance);
+    http.base = base;
+    // Before the setup the instance answers nothing but the setup (checked in the first test)
     preSetupLogin = await call(null, 'POST', '/api/auth/login', { email: 'owner@test.local', password: PASSWORD });
-    const setup = await ok(call(null, 'POST', '/api/setup', {
-      appName: 'Testgemeinde',
-      adminUser: { firstName: 'Olga', lastName: 'Owner', email: 'owner@test.local', password: PASSWORD }
-    }));
-    tokens.owner = setup.token;
-    uids.owner = setup.user.id || setup.user.uid;
-
-    // Treasurer (group with manage_finances) and two plain members
-    const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Kasse', permissions: ['manage_finances'] }));
-    const member = (firstName, email) => ok(call('owner', 'POST', '/api/admin/users', {
-      firstName, lastName: 'Test', email, password: PASSWORD, pays: true, admin: false, status: 'vollverdiener', memberSince: '2025-01-01'
-    }));
-    await member('Theo', 'treasurer@test.local');
-    await member('Max', 'max@test.local');
-    await member('Mia', 'mia@test.local');
-    await login('treasurer', 'treasurer@test.local');
-    await login('max', 'max@test.local');
-    await login('mia', 'mia@test.local');
-    await ok(call('owner', 'PUT', `/api/admin/users/${uids.treasurer}/groups`, { groups: [group.id || group.group?.id] }));
+    await setUpCommunity(http);
   });
 
-  after(() => {
+  after(async () => {
     hub?.close();
-    for (const child of processes.reverse()) if (child.exitCode === null) child.kill();
-    if (dataRoot) fs.rmSync(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    await instance?.close();
   });
 
   test('setup mode blocks the API until the first setup, which only runs once', async () => {

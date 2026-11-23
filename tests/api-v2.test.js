@@ -8,16 +8,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { REPO_ROOT, freePort, waitFor, start, SERVER_ENTRY, FRONTEND_FIXTURE } = require('./helpers');
+const { REPO_ROOT } = require('./helpers');
 const { startFakeNextcloud } = require('./fakeNextcloud');
+const { PASSWORD, hasPocketBase, httpClient, setUpCommunity, startInstance } = require('./instance');
 
-const POCKETBASE_BIN = process.env.POCKETBASE_BIN || '';
-const hasPocketBase = POCKETBASE_BIN !== '' && fs.existsSync(POCKETBASE_BIN);
-if (!hasPocketBase && process.env.REQUIRE_POCKETBASE === '1') {
-  throw new Error(`REQUIRE_POCKETBASE=1 but no PocketBase binary at POCKETBASE_BIN="${POCKETBASE_BIN}"`);
-}
-
-const PASSWORD = 'test-Passwort-1';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n');
 
@@ -32,45 +26,16 @@ function inMonth(months, dayOfMonth) {
 }
 
 describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP tests' }, () => {
-  const processes = [];
+  let instance;
   let base;
-  let dataRoot;
-  const tokens = {};
-  const uids = {};
-
-  async function call(who, method, url, body, { form = false, lang = null } = {}) {
-    const headers = { 'X-Forwarded-For': `10.43.0.${Object.keys(tokens).indexOf(who) + 2}` };
-    if (who && tokens[who]) headers.Authorization = `Bearer ${tokens[who]}`;
-    if (lang) headers['Accept-Language'] = lang;
-    if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
-    const res = await fetch(base + url, { method, headers, body: form ? body : body === undefined ? undefined : JSON.stringify(body) });
-    const buffer = Buffer.from(await res.arrayBuffer());
-    let parsed = buffer.toString('utf8');
-    try { parsed = JSON.parse(parsed); } catch { /* text or a file */ }
-    return { status: res.status, body: parsed, headers: res.headers, buffer };
-  }
+  const http = httpClient();
+  const { call, ok, account, uids } = http;
   const v2 = (who, method, url, body, options) => call(who, method, `/api/v2${url}`, body, options);
-  const ok = async (promise) => {
-    const res = await promise;
-    assert.ok(res.status < 300, `expected success, got ${res.status}: ${JSON.stringify(res.body).slice(0, 400)}`);
-    return res.body;
-  };
   const refused = async (promise, status, code) => {
     const res = await promise;
     assert.equal(res.status, status, JSON.stringify(res.body).slice(0, 300));
     assert.equal(res.body?.error?.code, code);
     return res.body.error;
-  };
-  const login = async (who, email) => {
-    tokens[who] = (await ok(call(null, 'POST', '/api/auth/login', { email, password: PASSWORD }))).token;
-    uids[who] = (await ok(call(who, 'GET', '/api/auth/me'))).user.uid;
-  };
-  const account = async (who, firstName, extra = {}) => {
-    await ok(call('owner', 'POST', '/api/admin/users', {
-      firstName, lastName: 'Test', email: `${who}@test.local`, password: PASSWORD, pays: true, admin: false, status: 'vollverdiener', memberSince: '2025-01-01', ...extra
-    }));
-    await login(who, `${who}@test.local`);
-    return uids[who];
   };
   /** The member record of the account [uid], as v2 lists it for the treasurer. */
   const memberOf = async (uid) => (await ok(v2('treasurer', 'GET', '/members?limit=500'))).items.find((member) => member.userId === uid);
@@ -81,32 +46,13 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
   };
 
   before(async () => {
-    const [port, pbPort] = await Promise.all([freePort(), freePort()]);
-    dataRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agora-api-v2-'));
-    const pbDir = path.join(dataRoot, 'pb');
-    base = `http://127.0.0.1:${port}`;
-    processes.push(start('pocketbase', POCKETBASE_BIN, ['serve', '--dir', pbDir, '--automigrate=false', '--http', `127.0.0.1:${pbPort}`], {}));
-    await waitFor(`http://127.0.0.1:${pbPort}/api/health`, 'PocketBase', processes);
-    processes.push(start('backend', process.execPath, [SERVER_ENTRY], {
-      PORT: String(port), POCKETBASE_PORT: String(pbPort), POCKETBASE_BIN, POCKETBASE_DIR: pbDir, DATA_DIR: path.join(dataRoot, 'data'), FRONTEND_DIR: FRONTEND_FIXTURE, NODE_ENV: 'test'
-    }));
-    await waitFor(`${base}/api/status`, 'backend', processes);
-    const setup = await ok(call(null, 'POST', '/api/setup', {
-      appName: 'Testgemeinde', adminUser: { firstName: 'Olga', lastName: 'Owner', email: 'owner@test.local', password: PASSWORD }
-    }));
-    tokens.owner = setup.token;
-    uids.owner = setup.user.id || setup.user.uid;
-    const group = await ok(call('owner', 'POST', '/api/admin/groups', { name: 'Kasse', permissions: ['manage_finances'] }));
-    await account('treasurer', 'Theo');
-    await account('max', 'Max');
-    await account('mia', 'Mia');
-    await ok(call('owner', 'PUT', `/api/admin/users/${uids.treasurer}/groups`, { groups: [group.id || group.group?.id] }));
+    // The apps' view: polls switched off, as on every instance
+    instance = await startInstance('agora-api-v2-', { NODE_ENV: 'test', AGORA_FEATURE_POLLS: '' });
+    base = http.base = instance.base;
+    await setUpCommunity(http);
   });
 
-  after(() => {
-    for (const child of processes.reverse()) if (child.exitCode === null) child.kill();
-    if (dataRoot) fs.rmSync(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  });
+  after(() => instance?.close());
 
   // --- Lists saved as a whole keep every record ------------------------------------------------------------------
 
