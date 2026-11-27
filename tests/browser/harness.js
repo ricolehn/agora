@@ -5,6 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { REPO_ROOT } = require('../helpers');
 const { PASSWORD, hasPocketBase, makeRoot, startPocketBase, startBackend, httpClient, setUpCommunity, stop } = require('../instance');
 
@@ -52,6 +53,28 @@ async function until(check, message = 'the condition', timeout = 10000) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`timed out after ${timeout} ms waiting for ${message}${last instanceof Error ? ` (${last.message})` : ''}`);
+}
+
+/** A PNG picture of [width] x [height] pixels in one colour ([rgb]), to upload. */
+function pngImage(width = 64, height = 64, [r, g, b] = [217, 119, 6]) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(body));
+    return Buffer.concat([head, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  // 8 bits per channel, RGB
+  header[8] = 8;
+  header[9] = 2;
+  // Each row: the filter type (none), then the pixels
+  const line = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [r, g, b]).flat())]);
+  const pixels = zlib.deflateSync(Buffer.concat(Array.from({ length: height }, () => line)));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', pixels), chunk('IEND', Buffer.alloc(0))]);
 }
 
 /**
@@ -110,12 +133,15 @@ async function startApp({ seed } = {}) {
     return session;
   }
 
-  /** A window of its own, signed in through the sign-in form as [who] (an account of the community, e.g. 'max'). */
-  async function signIn(who, options) {
+  /**
+   * A window of its own, signed in through the sign-in form as [who] (an account of the community, e.g. 'max', with
+   * the e-mail address <who>@test.local) with [password] (the community's by default).
+   */
+  async function signIn(who, { password = PASSWORD, ...options } = {}) {
     const session = await visit(options);
     const { page } = session;
     await page.locator('#login-email').fill(`${who}@test.local`);
-    await page.locator('#login-password').fill(PASSWORD);
+    await page.locator('#login-password').fill(password);
     await page.locator('#login-password').press('Enter');
     await page.locator('header button[aria-haspopup="menu"]').waitFor({ timeout: 15000 });
     await page.locator('#loading-overlay').waitFor({ state: 'detached', timeout: 15000 });
@@ -144,4 +170,4 @@ async function startApp({ seed } = {}) {
   return { base: backend.base, http, visit, signIn, endTest, close };
 }
 
-module.exports = { skipReason, startApp, until };
+module.exports = { pngImage, skipReason, startApp, until };
