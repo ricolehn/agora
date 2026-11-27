@@ -114,7 +114,7 @@ export const loadImage = (src: string) =>
 export const isHeic = (name = '', type = '') => /\.hei[cf]$/i.test(name) || type === 'image/heic' || type === 'image/heif';
 
 /** HEIC/HEIF (iPhone photos) to JPEG; the input unchanged when it is no HEIC or the conversion fails. */
-export async function convertHeic<T extends Blob>(file: T, quality: number, name = (file as unknown as File).name || ''): Promise<T | File | Blob> {
+export async function convertHeic<T extends Blob>(file: T, quality: number, name = file instanceof File ? file.name : ''): Promise<T | File | Blob> {
   if (!isHeic(name, file.type)) return file;
   try {
     // 1.3 MB of script: loaded on first use only
