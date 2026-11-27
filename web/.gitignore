@@ -1,2 +1,4 @@
 node_modules/
 dist/
+# A development build for the browser tests (AGORA_WEB_BUILD=web/dist-dev)
+dist-dev/

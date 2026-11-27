@@ -105,6 +105,8 @@ async function startApp({ seed } = {}) {
     page.on('console', message => {
       // The browser reports failed requests itself; the answers are checked below (a 401 before signing in is normal)
       if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) problems.push(`console error: ${message.text()}`);
+      // A development build's Solid reports what it finds as "[CODE] message" (a production build says nothing)
+      else if (message.type() === 'warning' && /^\[[A-Z][A-Z_]+\]/.test(message.text())) problems.push(`solid: ${message.text()}`);
     });
     page.on('response', res => {
       if (res.status() >= 500) problems.push(`${res.status()} ${res.request().method()} ${res.url().replace(backend.base, '')}`);

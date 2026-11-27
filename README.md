@@ -473,10 +473,11 @@ The browser tests need the build and a Chromium for Playwright:
 ```bash
 cd web && npm ci && npm run build
 npx playwright install chromium
-POCKETBASE_BIN=/path/to/pocketbase npm run test:browser   # AGORA_WEB_BUILD=web/dist-dev tests another build (e.g. a development build, whose Solid reports its diagnostics)
+POCKETBASE_BIN=/path/to/pocketbase npm run test:browser
+npm run build:dev && AGORA_WEB_BUILD=web/dist-dev POCKETBASE_BIN=/path/to/pocketbase npm run test:browser   # a development build: Solid reports what its checks find ("[STRICT_READ_UNTRACKED] …") and every report fails the test
 ```
 
-Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` checks, lints and builds the web app, runs the suite and the browser tests on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
+Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` checks, lints and builds the web app, runs the suite and the browser tests on Node 24 (against the production build and a development build), builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
 
 Writing tests that protect without getting in the way:
 

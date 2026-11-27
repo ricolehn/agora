@@ -244,20 +244,23 @@ interface EventActionOptions<T> {
   networkError?: string;
 }
 
-async function runEventAction<T>(path: string, method: string, body: unknown, options: EventActionOptions<T>) {
+/** The call with its toast and a fresh load of the events, ready to run. */
+function eventActionRun<T>(path: string, method: string, body: unknown, options: EventActionOptions<T>) {
   const { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Connection error') } = options;
-  try {
-    const data = await apiJson<T>(path, method, body);
-    showToast(typeof success === 'function' ? success(data) : success, typeof successType === 'function' ? successType(data) : successType);
-    await loadEventsData();
-  } catch (err) {
-    showToast(errorStatus(err) ? (useServerError && asFailure(err).data?.error) || error : networkError, 'error');
-  }
+  return async () => {
+    try {
+      const data = await apiJson<T>(path, method, body);
+      showToast(typeof success === 'function' ? success(data) : success, typeof successType === 'function' ? successType(data) : successType);
+      await loadEventsData();
+    } catch (err) {
+      showToast(errorStatus(err) ? (useServerError && asFailure(err).data?.error) || error : networkError, 'error');
+    }
+  };
 }
 
 /** An event API call with its toast and a reload of the events. The same call twice (a double tap) runs once. */
 export function eventAction<T = unknown>(path: string, method: string, body: unknown, options: EventActionOptions<T>) {
-  return once(`${method} ${path}`, (runEventAction<T>).bind(null, path, method, body, options));
+  return once(`${method} ${path}`, eventActionRun(path, method, body, options));
 }
 
 export const respondToDutyRequest = (dutyId: string, action: 'accept' | 'decline') =>

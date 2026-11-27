@@ -90,8 +90,10 @@ function preloadFont(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [solid(), tailwindcss(), serviceWorker(), preloadFont()],
+// `vite build --mode development` (npm run build:dev) builds with Solid's development runtime and the compiler's dev
+// output: its checks and diagnostics, which the browser tests report (AGORA_WEB_BUILD=web/dist-dev)
+export default defineConfig(({ mode }) => ({
+  plugins: [solid({ dev: mode === 'development' || undefined }), tailwindcss(), serviceWorker(), preloadFont()],
   server: {
     port: Number(process.env.PORT) || 5173,
     strictPort: false,
@@ -125,4 +127,4 @@ export default defineConfig({
       }
     }
   }
-});
+}));
