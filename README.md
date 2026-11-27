@@ -440,7 +440,7 @@ The backend tests do not need the build: they serve a stand-in page (`tests/fixt
 
 ## 🧪 Tests
 
-All tests live in `tests/` and use the built-in Node test runner (Node 24, no extra packages):
+All tests live in `tests/` and use the built-in Node test runner (Node 24; the browser tests also Playwright, a development dependency of the web app):
 
 | File | Covers |
 | --- | --- |
@@ -459,6 +459,7 @@ All tests live in `tests/` and use the built-in Node test runner (Node 24, no ex
 | `database.test.js` | the rules of the database structure (names, help texts, money in cents), what a write makes the server read again, and that docs/DATABASE.md is up to date |
 | `upgrade*.test.js` | the database upgrade: an instance from before it, filled by the frozen previous backend with years of odd data, answers every read of the old API for every role exactly as before; failures fall back to the previous backend; a twin of the instance that stays on the old backend gets the same changes and answers the same; older data the previous version kept as it was (holes in the donations list, times written as text, a sign-up of a deleted event) upgrades; a server stopped during the upgrade is no failed attempt; the dry run; after the switch nothing is undone - a cleanup that fails or is interrupted, or a read of the upgrade's record that fails, is tried again until it is through, and what would stop it for good (something of one's own in PocketBase that depends on an old table) is found before anything changes |
 | `years.test.js` | the fee accounts over years: two communities lived through day by day for twelve years, with everything that can happen in an order nobody planned (payments early, late and corrected, statuses changed after the fact, fees set for months to come and months past, edited, moved and taken back, fresh starts, an older app saving a fee) - every number the apps show compared with a second set of books that shares no code with the server (`tests/feeBooks.js`). And five years with the real server and PocketBase, which is stopped and wakes up on a later day (`tests/clock.js`) |
+| `browser/*.test.js` | the built web app in Chromium against the real server (`tests/browser/harness.js`): signing in and out, every page for every role, what the browser remembers, the menus with the keyboard, prayer requests, polls - every test also fails on a script error, a console error or an answer of 500 and above on its page |
 
 ```bash
 cd backend && npm ci
@@ -467,7 +468,15 @@ YEARS_SEEDS=1-200 node --test ../tests/years.test.js   # a long look: 200 other 
 POCKETBASE_BIN=/path/to/pocketbase node ../tests/benchmark.js 300:30   # the books of 300 members over 30 years, before and after the upgrade: read again, first after a change, and API v2
 ```
 
-Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` checks, lints and builds the web app, runs the suite on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
+The browser tests need the build and a Chromium for Playwright:
+
+```bash
+cd web && npm ci && npm run build
+npx playwright install chromium
+POCKETBASE_BIN=/path/to/pocketbase npm run test:browser   # AGORA_WEB_BUILD=web/dist-dev tests another build (e.g. a development build, whose Solid reports its diagnostics)
+```
+
+Shared helpers (temporary folders, environment variables, a frozen clock, starting the real server) are in `tests/helpers.js`. Every pull request to `develop` checks, lints and builds the web app, runs the suite and the browser tests on Node 24, builds the Docker image and audits the dependencies (`.github/workflows/tests.yml`; the audit only warns).
 
 Writing tests that protect without getting in the way:
 

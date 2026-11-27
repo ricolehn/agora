@@ -19,7 +19,7 @@ jobs:
   test:
     name: Test suite
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,6 +64,18 @@ jobs:
         env:
           REQUIRE_POCKETBASE: '1'
         run: npm test
+
+      # The built web app in Chromium, against the real server (tests/browser)
+      - name: Install the browser for the browser tests
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the browser tests
+        working-directory: web
+        env:
+          REQUIRE_POCKETBASE: '1'
+          REQUIRE_BROWSER: '1'
+        run: npm run test:browser
 
   docker:
     name: Docker image builds

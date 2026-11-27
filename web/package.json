@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "tsc -p . --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test:browser": "node --test --test-timeout=300000 \"../tests/browser/*.test.js\""
   },
   "dependencies": {
     "@solidjs/web": "2.0.3",
@@ -23,6 +24,7 @@
     "@tailwindcss/vite": "4.3.5",
     "eslint": "10.15.0",
     "eslint-plugin-solid": "0.20.0",
+    "playwright": "1.63.0",
     "tailwindcss": "4.3.5",
     "typescript": "6.0.3",
     "typescript-eslint": "8.73.0",
