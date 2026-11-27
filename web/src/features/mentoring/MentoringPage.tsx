@@ -2,13 +2,13 @@
 // managers, the applications) and their views.
 import { t } from '../../app/i18n';
 import { canManageMentoring } from '../../app/session';
+import { Button } from '../../ui/Button';
 import { PillTabs, type PillOption } from '../../ui/PillTabs';
 import { ChatPane } from './ChatPane';
 import { MentorsGrid } from './MentorsGrid';
 import { ReviewList } from './ReviewList';
 import { ThreadSidebar } from './ThreadList';
 import { inChat, myMentorProfile, openMentorApplicationModal, pendingApplications, subTab, switchMentoringSubTab, unreadTotal, type SubTab } from './store';
-import { MentorButton } from './MentorButton';
 
 export function MentoringPage() {
   return (
@@ -50,9 +50,9 @@ function Intro() {
         {t('mentoring_subtitle', 'Personal support, open ears & anonymous conversations')}
       </p>
       <div class="mt-2 flex flex-[0_0_auto] items-center justify-start md:mt-0 md:ml-auto">
-        <MentorButton id="mentor-apply-btn" class="max-md:h-[38px] max-md:w-full max-md:max-w-[280px]" onClick={() => openMentorApplicationModal()}>
+        <Button id="mentor-apply-btn" class="max-md:h-[38px] max-md:w-full max-md:max-w-[280px]" onClick={() => openMentorApplicationModal()}>
           {action()}
-        </MentorButton>
+        </Button>
       </div>
     </div>
   );

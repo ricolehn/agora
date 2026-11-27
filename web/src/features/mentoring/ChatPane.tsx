@@ -3,6 +3,7 @@
 import { For, Show, createEffect, onSettled } from 'solid-js';
 import { t } from '../../app/i18n';
 import { isCurrentUser } from '../../app/session';
+import { Button } from '../../ui/Button';
 import { fitChatInput, onChatInputKey } from '../../ui/chatInput';
 import { Icon } from '../../ui/Icon';
 import { onMenuKeyDown } from '../../ui/keys';
@@ -293,19 +294,10 @@ function ClosedBar() {
         <span>{text()}</span>
       </div>
       <Show when={!paneThread()?.blocked || paneThread()?.blockedByMe}>
-        <button
-          type="button"
-          class={[
-            'inline-flex items-center justify-center gap-1.5 rounded-full border-none bg-gradient-primary px-4 py-2 text-[0.85rem] font-bold text-white max-md:h-[42px] max-md:w-full',
-            '[text-shadow:0_1px_1px_rgba(6,70,62,0.18)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),var(--shadow-brand)]',
-            'dark:[text-shadow:none] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.45)]',
-            'transition-[transform,scale,box-shadow,filter] duration-150 hover:scale-[1.02] hover:bg-gradient-hover hover:shadow-[0_4px_12px_rgba(168,85,247,0.4)] hover:[filter:brightness(1.04)_saturate(1.05)]'
-          ]}
-          onClick={() => void toggleCloseCurrentThread('active')}
-        >
+        <Button size="small" class="max-md:h-[42px] max-md:w-full" onClick={() => void toggleCloseCurrentThread('active')}>
           <Icon name="undo" size={15} />
           <span>{t('mentoring_chat_reopen', 'Reopen')}</span>
-        </button>
+        </Button>
       </Show>
     </div>
   );

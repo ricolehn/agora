@@ -1,16 +1,14 @@
 // "Find mentors": the approved mentors as cards - contact one anonymously, go to the own conversation with them,
 // or edit the own profile. Managers also see fully booked mentors and everyone's capacity.
-import { For, Match, Show, Switch, createSignal } from 'solid-js';
+import { For, Match, Show, Switch } from 'solid-js';
 import { t } from '../../app/i18n';
-import { profilePictureSrc } from '../../app/pictures';
 import { canManageMentoring } from '../../app/session';
-import { RING_FRAME, RING_GRADIENT } from '../../ui/Avatar';
+import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
 import {
   isOwnMentorCard, mentorCapacity, mentorsState, openChatDirect, openMentorApplicationModal, openMentorContactModal, threadWithMentor,
   visibleMentors, type Mentor
 } from './store';
-import { MentorButton } from './MentorButton';
 
 export function MentorsGrid() {
   return (
@@ -43,35 +41,13 @@ export function MentorsGrid() {
   );
 }
 
-/** The picture in the mentor ring (.mentor-card-avatar): the initials of the first two words on the soft fill below it. */
-function MentorAvatar(props: { name: string; src: string }) {
-  const [failed, setFailed] = createSignal(false);
-  const initials = () =>
-    props.name
-      .split(' ')
-      .map(part => part[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  return (
-    <div class={['flex size-[52px] min-w-[52px] shrink-0 items-center justify-center', RING_FRAME, RING_GRADIENT.mentor]}>
-      <div class="relative flex size-full items-center justify-center overflow-hidden rounded-full border-2 border-surface bg-surface-alt text-[1.05rem] font-extrabold text-text">
-        <span class="select-none">{initials()}</span>
-        <Show when={props.src && !failed()}>
-          <img src={props.src} alt={props.name} class="absolute inset-0 size-full rounded-full bg-surface object-cover" onError={() => setFailed(true)} />
-        </Show>
-      </div>
-    </div>
-  );
-}
-
 function MentorCard(props: { mentor: Mentor }) {
   const name = () => props.mentor.name || props.mentor.mentorName || t('mentoring_partner_mentor', 'Mentor');
   const capacity = () => mentorCapacity(props.mentor);
   return (
     <div class="flex min-w-0 flex-col gap-3.5 rounded-[18px] border border-border-light bg-surface p-5 shadow-card transition-[transform,translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-card-lg">
       <div class="flex min-w-0 items-center gap-3">
-        <MentorAvatar name={name()} src={props.mentor.avatar_url || profilePictureSrc(props.mentor.user_id)} />
+        <Avatar ring="mentor" size={46} uid={props.mentor.user_id} src={props.mentor.avatar_url || null} name={name()} initialsClass="text-[0.88rem]" />
         <div class="flex min-w-0 flex-col gap-0.5">
           <h3 class="m-0 text-[1.05rem] font-bold text-text [overflow-wrap:anywhere]">{name()}</h3>
           <span class="text-[0.74rem] font-bold text-primary-dark dark:text-primary">{t('mentoring_verified_badge', 'Verified Mentor')}</span>
@@ -105,9 +81,9 @@ function CardAction(props: { mentor: Mentor; name: string; isFull: boolean }) {
   return (
     <Switch
       fallback={
-        <MentorButton class={`${FOOTER_BUTTON} max-md:h-[38px] max-md:w-full`} disabled={props.isFull} onClick={() => openMentorContactModal(mentorUserId(), props.name)}>
+        <Button size="small" class={`${FOOTER_BUTTON} max-md:h-[38px] max-md:w-full`} disabled={props.isFull} onClick={() => openMentorContactModal(mentorUserId(), props.name)}>
           {props.isFull ? t('mentoring_btn_full', 'Fully booked') : t('mentoring_btn_contact', 'Contact anonymously')}
-        </MentorButton>
+        </Button>
       }
     >
       <Match when={isOwnMentorCard(props.mentor)}>
