@@ -22,6 +22,7 @@ import {
 import { Timeline } from '../Timeline';
 import { openPersonId, peopleSearch, peopleTerm, setOpenPersonId, setPeopleSearch } from './state';
 import { onActivateKey } from '../../../ui/keys';
+import type { StandingOrder, User } from '../../../app/types';
 
 /** Members without a fee (an account that does not pay, deleted ones) are not in the fee list. */
 const isPayingPerson = (p: Person) => !(p.isDeleted || p.data?.isDeleted || p.pays === false || p.data?.pays === false);
@@ -77,7 +78,7 @@ function MemberHero(props: { person: Person }) {
 }
 
 function StandingOrders(props: { person: Person }) {
-  const orders = () => safeList<any>(props.person.standingOrders);
+  const orders = () => safeList<StandingOrder>(props.person.standingOrders);
   return (
     <Show when={orders().length}>
       <div class="mb-3.5">
@@ -272,7 +273,7 @@ async function assignUserToPerson(uid: string, personId: string) {
   }, t('unlinked_alert_failed', 'Assignment failed. Please try again.'));
 }
 
-function UnlinkedUser(props: { user: any; options: Person[] }) {
+function UnlinkedUser(props: { user: User; options: Person[] }) {
   const [choice, setChoice] = createSignal('');
   return (
     <div class="mb-2.5 flex flex-wrap items-center gap-2.5">

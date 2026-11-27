@@ -49,7 +49,7 @@ export function readNotificationSettings(user: User | null = currentUser()): Not
   const stored = user?.notificationSettings && typeof user.notificationSettings === 'object' ? user.notificationSettings : null;
   // Old records: no settings at all and emailNotifications === false meant "nothing at all"
   const legacyAllOff = !stored && user?.emailNotifications === false;
-  const pick = (source: any, fallback: any = {}) =>
+  const pick = (source: Partial<Record<NotificationType, boolean>> | undefined, fallback: Partial<Record<NotificationType, boolean>> = {}) =>
     Object.fromEntries(
       NOTIFICATION_TYPES.map(type => [type, typeof source?.[type] === 'boolean' ? source[type] : typeof fallback[type] === 'boolean' ? fallback[type] : true])
     ) as Choices;

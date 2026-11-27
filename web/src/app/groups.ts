@@ -4,8 +4,9 @@ import { createSignal } from 'solid-js';
 import { api } from './api';
 import { currentUser, isSuperAdminUser } from './session';
 import { flushNow } from './flush';
+import type { Group, Permission, User } from './types';
 
-export const DEFAULT_PERMISSIONS = [
+export const DEFAULT_PERMISSIONS: Permission[] = [
   { id: 'view_finances', name: 'Finance management (read only)', description: 'Allows viewing balances, history, transactions and reports without editing rights' },
   { id: 'manage_finances', name: 'Finance management (full access)', description: 'Allows recording, editing, booking and deleting payments, donations, expenses and standing orders' },
   { id: 'manage_registration_code', name: 'Manage registration code', description: 'Allows viewing, copying and regenerating the registration code for new members' },
@@ -17,21 +18,16 @@ export const DEFAULT_PERMISSIONS = [
   { id: 'manage_media', name: 'Extended media rights', description: 'Allows deciding which groups may read, write or not see a media folder; sees every folder, its files only where the rights allow' }
 ];
 
-const [systemGroups, setSystemGroups] = createSignal<any[]>([]);
-const [systemPermissions, setSystemPermissions] = createSignal<any[]>(DEFAULT_PERMISSIONS);
+const [systemGroups, setSystemGroups] = createSignal<Group[]>([]);
+const [systemPermissions, setSystemPermissions] = createSignal<Permission[]>(DEFAULT_PERMISSIONS);
 export { systemGroups, systemPermissions };
 
 /** The groups as a list (never null). */
 export const groupList = () => (Array.isArray(systemGroups()) ? systemGroups() : []);
 export const findGroup = (idOrName: string) => groupList().find(g => g.id === idOrName || g.name === idOrName);
 
-/** Whether [user] is in the group [groupId] (by id or name; groups are ids, names or objects). */
-export function userInGroup(user: any, groupId: string): boolean {
-  return (Array.isArray(user?.groups) ? user.groups : []).some((g: any) => {
-    const isObj = typeof g === 'object' && g;
-    return (isObj ? g.id || g.name : String(g)) === groupId || (isObj ? g.name : String(g)) === groupId;
-  });
-}
+/** Whether [user] is in the group [groupId] (accounts keep their groups by id, very old ones by name). */
+export const userInGroup = (user: User | null | undefined, groupId: string): boolean => (user?.groups ?? []).includes(groupId);
 
 async function fetchSystemGroups() {
   if (!currentUser()) return;
@@ -40,7 +36,7 @@ async function fetchSystemGroups() {
       try {
         const res = await api('/admin/permissions');
         if (res.ok) {
-          const list = await res.json();
+          const list = (await res.json()) as Permission[];
           setSystemPermissions(Array.isArray(list) && list.length ? list : DEFAULT_PERMISSIONS);
         }
       } catch (err) {
@@ -48,13 +44,13 @@ async function fetchSystemGroups() {
       }
       const res = await api('/admin/groups');
       if (res.ok) {
-        setSystemGroups(await res.json());
+        setSystemGroups((await res.json()) as Group[]);
         flushNow();
         return;
       }
     }
     const res = await api('/groups');
-    if (res.ok) setSystemGroups(await res.json());
+    if (res.ok) setSystemGroups((await res.json()) as Group[]);
     flushNow();
   } catch (err) {
     console.error('Failed to load groups:', err);

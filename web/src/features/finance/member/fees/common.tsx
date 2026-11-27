@@ -9,7 +9,8 @@ import { StatePill } from '../../common';
 
 export const FEE_KEYS = ['vollverdiener', 'geringverdiener', 'keinverdiener'] as const;
 export type FeeKey = (typeof FEE_KEYS)[number];
-export type Fees = Partial<Record<FeeKey, number>>;
+import type { Fees } from '../../../../app/types';
+export type { Fees };
 
 /** "50,00 € / 25,00 € / 10,00 €": the monthly fees in the order of the fee settings. */
 export const feeListText = (fees: Fees | undefined) =>
@@ -69,7 +70,7 @@ export function FormHint(props: { id?: string; children?: JSX.Element }) {
 }
 
 /** Who set or took back what, the newest first (the last ten), folded away below a card. */
-export function FeeLog(props: { id: string; entries: any[]; textOf: (entry: any, name: string) => string }) {
+export function FeeLog<E extends { byName?: string; at?: number }>(props: { id: string; entries: E[]; textOf: (entry: E, name: string) => string }) {
   const lines = () => [...props.entries].reverse().slice(0, 10);
   return (
     <Show when={lines().length > 0}>
@@ -81,9 +82,7 @@ export function FeeLog(props: { id: string; entries: any[]; textOf: (entry: any,
             {entry => (
               <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5">
                 {props.textOf(entry(), entry().byName || t('status_unknown', 'Unknown'))}
-                <Show when={entry().at}>
-                  <span class="whitespace-nowrap opacity-75">{dateTimeFormatter.format(new Date(entry().at))}</span>
-                </Show>
+                <Show when={entry().at}>{at => <span class="whitespace-nowrap opacity-75">{dateTimeFormatter.format(new Date(at()))}</span>}</Show>
               </li>
             )}
           </For>

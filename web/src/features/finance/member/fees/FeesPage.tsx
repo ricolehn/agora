@@ -10,14 +10,13 @@ import { Card } from '../../../../ui/Card';
 import { Icon } from '../../../../ui/Icon';
 import { Field, Input } from '../../../../ui/form';
 import { ROW_FACTS, Row, RowButton, Rows } from '../../common';
-import { FEE_KEYS, FeeCardHead, FeeLog, FormHint, StateBadge, feeListText, feeStateOf, type Fees } from './common';
+import type { FeeLogEntry, FeePlanEntry, FeeResetLogEntry, Fees } from '../../../../app/types';
+import { FEE_KEYS, FeeCardHead, FeeLog, FormHint, StateBadge, feeListText, feeStateOf } from './common';
 import { openFeeChange, reviewFeeRemoval } from './FeeChangeDialog';
 import { feeResetReviewBusy, resetDay, reviewFeeReset, setResetDay } from './FeeResetDialog';
 
-type PlanEntry = { from?: string | null; fees?: Fees; state?: string; setByName?: string };
-
 /** One change of the fees: the month it counts from with what it is today, every fee it changed, who set it. */
-function FeePlanRow(props: { entry: PlanEntry; previous: PlanEntry | null }) {
+function FeePlanRow(props: { entry: FeePlanEntry; previous: FeePlanEntry | null }) {
   const admin = () => isSuperAdminUser();
   const labels = () => getStatusLabels(false);
   const facts = () => {
@@ -55,23 +54,22 @@ function FeePlanRow(props: { entry: PlanEntry; previous: PlanEntry | null }) {
 function FeePlanCard() {
   const admin = () => isSuperAdminUser();
   const labels = () => getStatusLabels(false);
-  const entries = () => safeList<PlanEntry>(feePlan()?.entries);
+  const entries = () => safeList<FeePlanEntry>(feePlan()?.entries);
   // The newest first
   const rows = () => entries().map((entry, i) => ({ entry, previous: i > 0 ? entries()[i - 1] : null })).reverse();
-  const nextFees = (plan: any) => {
-    const next = plan.next;
-    return (
-      FEE_KEYS.filter(key => (plan.current?.[key] || 0) !== (next.fees?.[key] || 0))
-        .map(key => `${labels()[key]} ${euro(next.fees?.[key] || 0)}`)
-        .join(', ') || feeListText(next.fees)
-    );
-  };
-  const logText = (entry: any, name: string) =>
-    entry.action === 'removed'
-      ? t('fees_log_removed', '{name} took back the fees from {month}', { name, month: monthText(entry.from) })
-      : entry.from
-        ? t('fees_log_set', '{name} set the fees from {month}: {fees}', { name, month: monthText(entry.from), fees: feeListText(entry.fees) })
-        : t('fees_log_set_start', '{name} set the fees from the beginning: {fees}', { name, fees: feeListText(entry.fees) });
+  const sinceText = (since: string | null) => (since ? t('fees_since', 'Since {month}', { month: monthText(since) }) : t('fees_now', 'This month'));
+  // The fees the next change sets that differ from today's
+  const nextFees = (current: Fees, next: Fees) =>
+    FEE_KEYS.filter(key => (current[key] || 0) !== (next[key] || 0))
+      .map(key => `${labels()[key]} ${euro(next[key] || 0)}`)
+      .join(', ') || feeListText(next);
+  // (The fees from the beginning are never taken back: only a change of a month is)
+  const logText = (entry: FeeLogEntry, name: string) =>
+    !entry.from
+      ? t('fees_log_set_start', '{name} set the fees from the beginning: {fees}', { name, fees: feeListText(entry.fees) })
+      : entry.action === 'removed'
+        ? t('fees_log_removed', '{name} took back the fees from {month}', { name, month: monthText(entry.from) })
+        : t('fees_log_set', '{name} set the fees from {month}: {fees}', { name, month: monthText(entry.from), fees: feeListText(entry.fees) });
   return (
     <Card id="card-rates" bodyClass="p-5">
       <FeeCardHead icon={<Icon name="coin" size={20} />} tone="success" title={t('rates_title', 'Monthly Fees')} desc={t('fees_desc', 'What a month costs, by status.')} />
@@ -79,7 +77,7 @@ function FeePlanCard() {
         {plan => (
           <>
             <div class="mb-[7px] text-[0.72rem] font-[650] tracking-[0.04em] text-text-secondary uppercase">
-              {plan().since ? t('fees_since', 'Since {month}', { month: monthText(plan().since) }) : t('fees_now', 'This month')}
+              {sinceText(plan().since)}
             </div>
             {/* On phones three tiles side by side cut their labels short: one row per status, the amount on the right */}
             <div class="grid grid-cols-3 gap-2 max-[480px]:grid-cols-1 max-[480px]:gap-1.5">
@@ -96,10 +94,12 @@ function FeePlanCard() {
             </div>
             {/* The change that is still to come next: only the fees that will differ */}
             <Show when={plan().next}>
-              <div class="mt-2.5 flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-[9px] text-[0.84rem] leading-[1.45] text-text">
-                <Icon name="calendar" size={14} strokeWidth={2.2} class="mt-[3px] shrink-0 text-warning" />
-                <span>{t('fees_next', 'From {month}: {fees}', { month: monthText(plan().next.from), fees: nextFees(plan()) })}</span>
-              </div>
+              {next => (
+                <div class="mt-2.5 flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-[9px] text-[0.84rem] leading-[1.45] text-text">
+                  <Icon name="calendar" size={14} strokeWidth={2.2} class="mt-[3px] shrink-0 text-warning" />
+                  <span>{t('fees_next', 'From {month}: {fees}', { month: monthText(next().from), fees: nextFees(plan().current, next().fees) })}</span>
+                </div>
+              )}
             </Show>
             <Show when={admin()} fallback={<FormHint id="fee-plan-readonly">{t('fee_reset_readonly', 'Only system admins can change this.')}</FormHint>}>
               <div class="mt-3.5">
@@ -134,7 +134,7 @@ function FeeResetCard() {
   const admin = () => isSuperAdminUser();
   // The newest first: the day and who set it (what the months cost is the card above's business)
   const resets = () => [...feeResets()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const logText = (entry: any, name: string) =>
+  const logText = (entry: FeeResetLogEntry, name: string) =>
     entry.action === 'set'
       ? t('fee_reset_log_set', '{name} set a fresh start for {date}', { name, date: formatDateFast(entry.date) })
       : t('fee_reset_log_removed', '{name} took back the fresh start of {date}', { name, date: formatDateFast(entry.date) });
@@ -160,7 +160,7 @@ function FeeResetCard() {
                         <strong class="font-bold text-text">{longDateText(reset().date)}</strong>
                       </div>
                       <Show when={reset().setByName}>
-                        <div class={[ROW_FACTS, 'line-clamp-2']}>{t('fee_reset_row_by', 'Set by {name}', { name: reset().setByName })}</div>
+                        {name => <div class={[ROW_FACTS, 'line-clamp-2']}>{t('fee_reset_row_by', 'Set by {name}', { name: name() })}</div>}
                       </Show>
                     </div>
                     <StateBadge state={reset().state} />

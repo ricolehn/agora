@@ -4,6 +4,7 @@ import { setSignedIn, store } from '../app/storage';
 import { Button } from '../ui/Button';
 import { Field, Input, Switch } from '../ui/form';
 import './setup.css';
+import { errorMessage } from '../app/api';
 
 const TOTAL_STEPS = 3;
 
@@ -122,7 +123,7 @@ export function Setup() {
         headers: { 'Content-Type': 'application/json', 'Accept-Language': uiLang() },
         body: JSON.stringify({ appName, smtp, logoSvg, adminUser, defaultLanguage: uiLang() })
       });
-      const data = await res.json();
+      const data = (await res.json()) as { success?: boolean; token?: string; user?: unknown; error?: string };
       if (res.ok && data.success) {
         // The owner is signed in when the app opens
         if (data.token && data.user) {
@@ -134,8 +135,8 @@ export function Setup() {
         return;
       }
       throw new Error(data.error || t('setup_err_unknown', 'An unknown error has occurred.'));
-    } catch (err: any) {
-      setError(err?.message || t('setup_err_network', 'Network error while saving.'));
+    } catch (err) {
+      setError(errorMessage(err) || t('setup_err_network', 'Network error while saving.'));
       setSaving(false);
     }
   }

@@ -1,7 +1,7 @@
 // One poll (poll-detail-modal): vote anonymously, wait for the result, or see it; the creator (and system admins)
 // can end it early or delete it.
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { closeModal } from '../../app/modals';
 import { isSuperAdminUser } from '../../app/session';
@@ -69,8 +69,8 @@ function PollBody(props: { poll: Poll }) {
       rememberPollChoice(updated.id, optionIds);
       replacePoll(updated);
       showToast(t('polls_vote_saved', 'Your vote was counted anonymously.'));
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
       setVoting(false);
       // Voted on another device, or the poll just ended: show what is true now
       void loadPolls();
@@ -86,8 +86,8 @@ function PollBody(props: { poll: Poll }) {
     try {
       replacePoll(await apiJson<Poll>(`/polls/${encodeURIComponent(props.poll.id)}/close`, 'POST'));
       scheduleNextPollEnd();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
     }
   }
 
@@ -99,8 +99,8 @@ function PollBody(props: { poll: Poll }) {
       closeModal('poll-detail-modal');
       removePoll(id);
       showToast(t('polls_deleted', 'Poll deleted'));
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
     }
   }
 

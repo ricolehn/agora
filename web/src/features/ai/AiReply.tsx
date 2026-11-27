@@ -9,6 +9,7 @@ import { Icon } from '../../ui/Icon';
 import { renderMarkdown } from '../../ui/markdown';
 import { AiSign } from './AiSign';
 import type { AiReply, StepView } from './reply';
+import { errorMessage } from '../../app/api';
 
 // Words the AI is still working on: a light in the sign's lagoon runs through them ([--shimmer] is their colour)
 const SHIMMER = 'bg-[linear-gradient(90deg,var(--shimmer)_0%,var(--shimmer)_35%,#2d625b_50%,var(--shimmer)_65%,var(--shimmer)_100%)] dark:bg-[linear-gradient(90deg,var(--shimmer)_0%,var(--shimmer)_35%,#b5ddd5_50%,var(--shimmer)_65%,var(--shimmer)_100%)] bg-[length:250%_100%] bg-clip-text text-transparent animate-[aiShimmer_1.8s_linear_infinite] motion-reduce:animate-none';
@@ -159,8 +160,8 @@ function ReportButton(props: { answer: string; prompt: string }) {
     try {
       const question = t('ai_report_reason', 'What is wrong with this reply? (optional)');
       if (await sendReport(question, { type: 'ai', content: props.answer, prompt: props.prompt })) setSent(true);
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
     }
   };
   return (

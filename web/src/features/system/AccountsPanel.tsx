@@ -20,6 +20,7 @@ import { openCreateUserModal } from './CreateUserDialog';
 import { openGroupModal } from './GroupDialog';
 import { LineIcon } from './parts';
 import { openResetPasswordModal } from './ResetPasswordDialog';
+import type { User } from '../../app/types';
 
 // --- Groups ---
 // Desktop: a list in the sidebar; below 1280px chips (a wrapping row on tablets, a scrolling row on phones)
@@ -138,7 +139,7 @@ const TD =
 const ICON_BTN =
   'flex items-center justify-center rounded-[8px] border border-border bg-transparent p-1.5 text-text-secondary transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150 ease-[ease] max-md:min-h-[34px] max-md:min-w-[34px]';
 
-function AccountRow(props: { user: any }) {
+function AccountRow(props: { user: User }) {
   const name = () => fullName(props.user) || t('status_unknown', 'Unknown');
   const owner = () => isOwnerAccount(props.user);
   const memberSince = () => {

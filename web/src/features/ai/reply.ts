@@ -24,6 +24,8 @@ import { aiChatAtEnd, aiChatScroller, aiChatToEnd, chatElements } from './scroll
 import { flushNow } from '../../app/flush';
 
 type Lookup = { id?: number; tool?: string; from?: string; to?: string; about?: string; step?: string };
+/** One event of the answer's stream (backend/routes/ai.js): a piece of the thoughts or the answer, a lookup begun or done. */
+export type StreamPart = { reasoning?: string; content?: string; lookup?: Lookup; lookupDone?: object };
 type WorkStep = { kind: 'thought' | 'note'; text: string } | { kind: 'lookup'; lookup: Lookup; done: object | null };
 
 /** The words on the line: the current ones last, the ones before still leaving upwards. */
@@ -386,8 +388,8 @@ export function createAiReply() {
     words,
     /** The steps as drawn (only while they are open, and in full once the reply is complete). */
     steps,
-    /** One event of the stream ({ reasoning } | { content } | { lookup } | { lookupDone }): drawn with the next frame. */
-    add(part: object) {
+    /** One event of the stream: drawn with the next frame. */
+    add(part: StreamPart) {
       work.add(part);
       schedule();
     },

@@ -9,6 +9,8 @@ import { hideLoading, setSignInReturn, showLoading } from '../../../app/shell';
 import { confirmAction, showToast } from '../../../app/toast';
 import { readStoredJson, store } from '../../../app/storage';
 import { linkParam, slugify } from '../../../app/util';
+import { errorMessage, errorStatus, type ErrorAnswer } from '../../../app/api';
+import type { PublicEvent } from '../types';
 
 export const GUEST_MODAL = 'guest-event-modal';
 const GUEST_KEYS_STORAGE = 'agora_guest_keys';
@@ -21,13 +23,26 @@ export interface GuestPlace {
   name: string;
   status: string;
   shareToken?: string;
-  event?: any;
+  event?: PublicEvent;
 }
+/** The places of the keys a device knows (POST /api/public/guests/lookup). */
+interface GuestLookup {
+  registrations?: GuestPlace[];
+}
+/** A guest's registration as the server confirms it, with the event's fresh numbers. */
+interface GuestRegistration {
+  key: string;
+  name: string;
+  status: string;
+  event?: PublicEvent;
+  emailed?: boolean;
+}
+
 export interface GuestView {
   /** Nobody is signed in: the page stands instead of the app. */
   anon: boolean;
   token: string;
-  event: any | null;
+  event: PublicEvent | null;
   /** The places signed up from this device. */
   mine: GuestPlace[];
   formOpen: boolean;
@@ -52,19 +67,19 @@ function storedGuestKeys(): string[] {
 const storeGuestKeys = (keys: string[]) => store(GUEST_KEYS_STORAGE, [...new Set(keys)].slice(0, 20));
 
 // The API without an account (no token); answers come in the page's language
-async function publicApi(path: string, method = 'GET', body?: unknown): Promise<any> {
+async function publicApi<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const res = await fetch(API + path, {
     method,
     headers: { 'Accept-Language': uiLang(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined
   });
-  const data = await res.json().catch(() => ({}));
+  const data = (await res.json().catch(() => ({}))) as ErrorAnswer;
   if (!res.ok) throw Object.assign(new Error(data.error || t('error_connection', 'Connection error')), { status: res.status });
-  return data;
+  return data as T;
 }
 
 // A failed fetch (offline) has no text for people
-const guestError = (err: any) => (err instanceof TypeError ? t('error_connection', 'Connection error') : err.message);
+const guestError = (err: unknown) => (err instanceof TypeError ? t('error_connection', 'Connection error') : errorMessage(err));
 
 /** A guest knows the event's title only: the address gets the same readable name, the share key finds the event. */
 export const guestShareUrl = (ev: { title?: string }, token: string) =>
@@ -78,20 +93,20 @@ async function loadGuestView(anon: boolean): Promise<GuestView> {
   const token = linkParam('share');
   const ownKey = linkParam('guest');
   const keys = [...new Set([ownKey, ...storedGuestKeys()].filter(Boolean))];
-  const found: GuestPlace[] = keys.length ? (await publicApi('/public/guests/lookup', 'POST', { keys })).registrations || [] : [];
+  const found = keys.length ? (await publicApi<GuestLookup>('/public/guests/lookup', 'POST', { keys })).registrations || [] : [];
   const own = ownKey ? found.find(reg => reg.key === ownKey) || null : null;
   storeGuestKeys(found.map(reg => reg.key));
   const view: GuestView = { anon, token: '', event: null, mine: [], formOpen: false, ownKeyGone: !!ownKey && !own };
   if (token) {
     try {
-      view.event = await publicApi(`/public/events/${encodeURIComponent(token)}`);
+      view.event = await publicApi<PublicEvent>(`/public/events/${encodeURIComponent(token)}`);
       view.token = token;
-    } catch (err: any) {
-      if (err.status !== 404) throw err;
+    } catch (err) {
+      if (errorStatus(err) !== 404) throw err;
     }
   }
   if (!view.event && own) {
-    view.event = own.event;
+    view.event = own.event ?? null;
     view.token = own.shareToken || '';
   }
   view.mine = view.token ? found.filter(reg => reg.shareToken === view.token) : own ? [own] : [];
@@ -170,7 +185,7 @@ export async function submitGuestRegistration(form: GuestFields): Promise<string
   const view = guestView();
   if (!view?.token) return '';
   try {
-    const data = await publicApi(`/public/events/${encodeURIComponent(view.token)}/register`, 'POST', form);
+    const data = await publicApi<GuestRegistration>(`/public/events/${encodeURIComponent(view.token)}/register`, 'POST', form);
     storeGuestKeys([data.key, ...storedGuestKeys()]);
     const current = guestView() || view;
     patchView({
@@ -198,8 +213,8 @@ export async function cancelGuestRegistration(key: string) {
     // places on the waiting list may be the one that moved up: their states are asked again too (the page said
     // "on the waiting list" for a guest the server had just given the place)
     const [event, found] = await Promise.all([
-      view.token ? publicApi(`/public/events/${encodeURIComponent(view.token)}`).catch(() => view.event) : view.event,
-      left.length ? publicApi('/public/guests/lookup', 'POST', { keys: left.map(entry => entry.key) }).then(data => (data.registrations || []) as GuestPlace[], () => null) : null
+      view.token ? publicApi<PublicEvent>(`/public/events/${encodeURIComponent(view.token)}`).catch(() => view.event) : view.event,
+      left.length ? publicApi<GuestLookup>('/public/guests/lookup', 'POST', { keys: left.map(entry => entry.key) }).then(data => data.registrations || [], () => null) : null
     ]);
     const mine = left.map(entry => ({ ...entry, status: found?.find(reg => reg.key === entry.key)?.status || entry.status }));
     patchView({ mine, event });

@@ -2,7 +2,7 @@
 // where, description, target groups, registration, and the save bar that sticks to the bottom.
 import type { JSX } from '@solidjs/web';
 import { For, Show, createSignal, onSettled } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage, errorStatus } from '../../app/api';
 import { groupList } from '../../app/groups';
 import { t } from '../../app/i18n';
 import { closeModal } from '../../app/modals';
@@ -17,6 +17,8 @@ import {
   EVENT_DIALOG_ID, cancelDetailEditMode, chosenGroupNames, currentDetailEvent, draft, groupChosen, loadEventsData,
   openEventDetailModal, setDraft, setDraftType, type EventDraft, type EventKind, type RecurringRule
 } from './store';
+import type { Group } from '../../app/types';
+import type { EventSaved } from './types';
 
 // --- Saving ---
 const [saving, setSaving] = createSignal(false);
@@ -67,7 +69,7 @@ async function saveDetailEditMode(focus: (field: 'title' | 'date') => void) {
   setSaving(true);
   try {
     const eventId = editing ? editing.id : null;
-    const saved = await apiJson(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload, t('alert_save_error', 'Error while saving.'));
+    const saved = await apiJson<EventSaved>(eventId ? `/events/${eventId}` : '/events', eventId ? 'PATCH' : 'POST', payload, t('alert_save_error', 'Error while saving.'));
     showToast(
       eventId
         ? t('events_updated_success', 'Updated successfully!')
@@ -77,12 +79,12 @@ async function saveDetailEditMode(focus: (field: 'title' | 'date') => void) {
       'success'
     );
     await loadEventsData();
-    const reopenId = eventId || saved.id || saved._id || saved.event?.id || saved.event?._id;
+    const reopenId = eventId || saved.event?.id;
     if (reopenId) await openEventDetailModal(reopenId);
     else closeModal(EVENT_DIALOG_ID, false, true);
-  } catch (err: any) {
+  } catch (err) {
     console.error('saveDetailEditMode error:', err);
-    showToast(err.status ? err.message : t('events_save_network_error', 'Connection error while saving'), 'error');
+    showToast(errorStatus(err) ? errorMessage(err) : t('events_save_network_error', 'Connection error while saving'), 'error');
   } finally {
     setSaving(false);
   }
@@ -92,15 +94,15 @@ async function saveDetailEditMode(focus: (field: 'title' | 'date') => void) {
 async function uploadEventCover(blob: Blob): Promise<boolean> {
   try {
     const image = new File([blob], 'event-cover-16-9.jpg', { type: 'image/jpeg' });
-    const data = await apiJson('/events/upload-image', 'POST', toFormData({ image }), t('toast_upload_failed_short', 'Upload failed'));
+    const data = await apiJson<{ url: string }>('/events/upload-image', 'POST', toFormData({ image }), t('toast_upload_failed_short', 'Upload failed'));
     setDraft(dr => {
       dr.imageUrl = data.url;
     });
     showToast(t('events_cover_applied', 'Event image applied in 16:9 format!'), 'success');
     return true;
-  } catch (err: any) {
+  } catch (err) {
     console.error('Crop upload error:', err);
-    showToast(err.status ? err.message : t('events_cover_save_error', 'Failed to save the event image'), 'error');
+    showToast(errorStatus(err) ? errorMessage(err) : t('events_cover_save_error', 'Failed to save the event image'), 'error');
     return false;
   }
 }
@@ -461,7 +463,7 @@ function DescriptionCard() {
 }
 
 function GroupsCard() {
-  const toggle = (g: any) =>
+  const toggle = (g: Group) =>
     setDraft(d => {
       d.targetGroups = groupChosen(d.targetGroups, g) ? d.targetGroups.filter(entry => entry !== (g.name || g.id) && entry !== g.id) : [...d.targetGroups, g.name || g.id];
     });
@@ -486,7 +488,7 @@ function GroupsCard() {
   );
 }
 
-function GroupChip(props: { group: any; onToggle: (g: any) => void }) {
+function GroupChip(props: { group: Group; onToggle: (g: Group) => void }) {
   const chosen = () => groupChosen(draft.targetGroups, props.group);
   return (
     <button

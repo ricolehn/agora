@@ -1,7 +1,7 @@
 // Prayer requests (Extras): a calm list; a request is shared (also anonymously) and removed when it is done. The
 // server never tells who shared an anonymous request (backend/prayers.js).
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { shortDayText, t, uiLocale } from '../../app/i18n';
 import { showToast } from '../../app/toast';
 import { flushNow } from '../../app/flush';
@@ -33,9 +33,9 @@ export async function loadPrayers(): Promise<void> {
     setPrayers(Array.isArray(data.prayers) ? data.prayers : []);
     setPrayersLoaded(true);
     setPrayersError('');
-  } catch (err: any) {
-    if (!prayersLoaded()) setPrayersError(err.message);
-    else showToast(err.message, 'error');
+  } catch (err) {
+    if (!prayersLoaded()) setPrayersError(errorMessage(err));
+    else showToast(errorMessage(err), 'error');
   }
   flushNow();
 }

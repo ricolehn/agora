@@ -1,6 +1,6 @@
 // System settings: the AI provider (service, address, key, model, effort per question) and whether the AI is on.
 import { createSignal } from 'solid-js';
-import { API, apiJson } from '../../app/api';
+import { API, apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser, setAiEnabled } from '../../app/session';
 import { showToast } from '../../app/toast';
@@ -20,6 +20,16 @@ export const AI_PROVIDER_MODELS: Record<AiProvider, string[]> = {
 };
 const isProvider = (value: unknown): value is AiProvider => typeof value === 'string' && Object.hasOwn(AI_PROVIDER_MODELS, value);
 const isEffort = (value: unknown): value is AiEffort => AI_EFFORTS.includes(value as AiEffort);
+
+/** The stored AI settings as the server shows them (the key only as "***"); one of an earlier version names no service. */
+interface AiConfigAnswer {
+  enabled?: boolean;
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  effort?: string;
+}
 
 export interface AiForm {
   enabled: boolean;
@@ -88,7 +98,7 @@ async function showAiServerSupport(supported: boolean) {
   }
   // The previous backend reports why the upgrade waits (/api/status → upgrade)
   const upgrade = await fetch(`${API}/status`)
-    .then(res => res.json())
+    .then(res => res.json() as Promise<{ upgrade?: { reason?: string } | null } | null>)
     .then(status => status?.upgrade || null)
     .catch(() => null);
   // A newer answer came in the meantime
@@ -104,7 +114,7 @@ export async function loadAiConfig({ fresh = false } = {}) {
   if (!isSuperAdminUser()) return;
   try {
     const editsBefore = aiFormEdits;
-    const data = await apiJson('/admin/ai-config');
+    const data = await apiJson<AiConfigAnswer>('/admin/ai-config');
     setAiEnabled(!!data.enabled);
     // A server of an earlier version names no service (see providersSupported)
     const supported = typeof data.provider === 'string';
@@ -143,7 +153,7 @@ export async function saveAiConfig() {
   try {
     // Another service needs its own key (an empty one would replace the stored key)
     if (payload.provider !== savedProvider && !payload.apiKey.trim()) throw new Error(t('ai_key_needed', 'Please enter the API key for the chosen provider.'));
-    const saved = await apiJson('/admin/ai-config', 'PUT', payload);
+    const saved = await apiJson<AiConfigAnswer>('/admin/ai-config', 'PUT', payload);
     // What the server stored: one of an earlier version names no service - it keeps the OpenAI-compatible one. The page
     // then shows what the server has and why, instead of "saved" for a choice that is gone on the next visit
     if ((typeof saved.provider === 'string' ? saved.provider : 'custom') !== payload.provider) {
@@ -157,8 +167,8 @@ export async function saveAiConfig() {
     savedModel = payload.model;
     setAiEnabled(payload.enabled);
     showToast(t('toast_ai_saved', 'AI settings saved'));
-  } catch (err: any) {
+  } catch (err) {
     console.error(err);
-    showToast(t('alert_ai_save_failed', 'Could not save AI settings: ') + (err.message || t('error_unknown', 'Unknown error')), 'error');
+    showToast(t('alert_ai_save_failed', 'Could not save AI settings: ') + (errorMessage(err) || t('error_unknown', 'Unknown error')), 'error');
   }
 }

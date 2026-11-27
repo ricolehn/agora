@@ -2,7 +2,7 @@
 // the event decides with a switch whether people without an account can open it: they see the event and sign up as
 // guests (full name, e-mail address, age). The link then carries the event's share key (?share=).
 import { createMemo, createSignal } from 'solid-js';
-import { apiJson } from '../../../app/api';
+import { apiJson, asFailure, errorMessage } from '../../../app/api';
 import { flushNow } from '../../../app/flush';
 import { t } from '../../../app/i18n';
 import { openModal } from '../../../app/modals';
@@ -10,15 +10,12 @@ import { showToast } from '../../../app/toast';
 import { copyText } from '../../../app/util';
 import { guestShareUrl, guestView } from '../guest/guest';
 import { appEvents, currentDetailEvent, eventSlug, type AppEvent } from '../store';
+import type { EventSaved, PublicEvent } from '../types';
 
 export const SHARE_MODAL = 'event-share-modal';
 
-interface ShareTarget {
-  ev: AppEvent;
-  url: string;
-  isPublic: boolean;
-  canEdit: boolean;
-}
+/** What the sheet shares: an event a member sees (its switch for those who edit it), or the visitors' shared one. */
+type ShareTarget = { url: string; isPublic: boolean } & ({ ev: AppEvent; canEdit: boolean } | { ev: PublicEvent; canEdit: false });
 
 /** The link of an event: the members' address, with the share key while people without an account may open it. */
 function eventShareUrl(ev: AppEvent) {
@@ -75,12 +72,12 @@ export async function toggleEventPublic(isPublic: boolean) {
   if (!target?.canEdit || switching()) return;
   setSwitching(true);
   try {
-    const data = await apiJson(`/events/${encodeURIComponent(target.ev.id)}`, 'PATCH', { isPublic }, t('events_share_switch_failed', 'The setting could not be saved.'));
+    const data = await apiJson<EventSaved>(`/events/${encodeURIComponent(target.ev.id)}`, 'PATCH', { isPublic }, t('events_share_switch_failed', 'The setting could not be saved.'));
     const nowPublic = data.event?.isPublic === true;
     const found = appEvents().find(e => e.id === target.ev.id);
     setSwitched({ eventId: target.ev.id, before: publicState(found ?? target.ev), now: { isPublic: nowPublic, publicToken: nowPublic ? data.event?.publicToken || '' : '' } });
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   } finally {
     setSwitching(false);
   }
@@ -102,7 +99,7 @@ export async function sendEventShareLink() {
   if (!target) return;
   try {
     await navigator.share({ title: target.ev.title, url: target.url });
-  } catch (err: any) {
-    if (err?.name !== 'AbortError') showToast(t('events_share_failed', 'The link could not be shared.'), 'error');
+  } catch (err) {
+    if (asFailure(err).name !== 'AbortError') showToast(t('events_share_failed', 'The link could not be shared.'), 'error');
   }
 }

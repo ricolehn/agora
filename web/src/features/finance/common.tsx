@@ -10,6 +10,7 @@ import { getTodayStr } from '../../app/util';
 import { Icon } from '../../ui/Icon';
 import type { IconName } from '../../ui/icons';
 import { droppedFeesBefore, feeResetIsNews } from '../../lib/finance.js';
+import { isMemberStatus } from '../../app/types';
 
 /** A translated text whose {name} is shown in bold ("{amount} a month", "Fresh start on {date}"). */
 export function BoldParam(props: { text: string; name: string; value: string; class?: string }) {
@@ -99,8 +100,10 @@ const feeResetIsShown = (p: Person) => !!p._feeReset && feeResetIsNews(p._feeRes
 
 /** What the fresh start (CALDERA) did to the account: credit taken along, open fees dropped, or nothing to settle. */
 export function feeResetOutcome(person: Person): string {
-  if (person._feeCarriedOver > 0) return t('fee_reset_carried', 'Credit carried over: {amount}', { amount: euro(person._feeCarriedOver) });
-  if (person._feeWrittenOff > 0) return t('fee_reset_dropped', 'Open fees dropped: {amount}', { amount: euro(person._feeWrittenOff) });
+  const carried = person._feeCarriedOver ?? 0;
+  const dropped = person._feeWrittenOff ?? 0;
+  if (carried > 0) return t('fee_reset_carried', 'Credit carried over: {amount}', { amount: euro(carried) });
+  if (dropped > 0) return t('fee_reset_dropped', 'Open fees dropped: {amount}', { amount: euro(dropped) });
   return t('fee_reset_even', 'All paid up');
 }
 
@@ -156,6 +159,9 @@ export function FeeChip(props: { class?: string; children: JSX.Element }) {
   return <span class={[FEE_CHIP, 'font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text', props.class ?? 'gap-1']}>{props.children}</span>;
 }
 
+/** The fee a month costs at [status] by the fee settings (0 for a status without one). */
+const monthlyFeeOf = (status: string) => (isMemberStatus(status) ? settings()[status] : 0);
+
 /** The chips of the card: what this month costs, the status ([status], a chip itself), a fresh start. */
 export function FeeChips(props: { person: Person; status: JSX.Element; class?: string }) {
   return (
@@ -164,7 +170,7 @@ export function FeeChips(props: { person: Person; status: JSX.Element; class?: s
         <BoldParam
           text={t('user_fee_per_month', '{amount} a month')}
           name="amount"
-          value={euro(props.person._monthlyFee ?? settings()[currentStatusOf(props.person)] ?? 0)}
+          value={euro(props.person._monthlyFee ?? monthlyFeeOf(currentStatusOf(props.person)))}
         />
       </FeeChip>
       {props.status}

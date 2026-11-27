@@ -1,7 +1,7 @@
 // What the member does with the library's entries: open them, download or delete one or several (right click, the
 // menu key or a held finger select; Ctrl / Cmd + click and Shift + click too), and add files where they may write.
 import { createSignal } from 'solid-js';
-import { API, apiJson, getToken } from '../../app/api';
+import { API, apiJson, errorMessage, getToken, type ErrorAnswer } from '../../app/api';
 import { mediaStatus } from '../../app/data';
 import { t, uiLang } from '../../app/i18n';
 import { pushHistoryLevel } from '../../app/router';
@@ -217,9 +217,9 @@ export async function uploadMediaFiles(fileList: FileList | File[] | null | unde
         if (e.lengthComputable) setUpload({ count: files.length, percent: Math.round((e.loaded / e.total) * 100) });
       };
       xhr.onload = () => {
-        let body: any = {};
+        let body: ErrorAnswer & { files?: Array<{ name: string }> } = {};
         try {
-          body = JSON.parse(xhr.responseText || '{}');
+          body = JSON.parse(xhr.responseText || '{}') as typeof body;
         } catch {
           /* not JSON */
         }
@@ -234,8 +234,8 @@ export async function uploadMediaFiles(fileList: FileList | File[] | null | unde
     const added = stored.length === 1 ? t('media_uploaded_one', '1 file added') : t('media_uploaded', '{count} files added', { count: stored.length });
     showToast(renamed ? `${added} · ${t('media_uploaded_renamed', 'Names already taken got a number.')}` : added);
     if (mediaFolder() === folder) await loadMediaFolder({ silent: true });
-  } catch (err: any) {
-    showToast(err?.message || t('media_upload_failed', 'The files could not be uploaded'), 'error');
+  } catch (err) {
+    showToast(errorMessage(err) || t('media_upload_failed', 'The files could not be uploaded'), 'error');
     // Files stored before the cloud stopped (full, folder gone) are there all the same
     if (mediaFolder() === folder) void loadMediaFolder({ silent: true });
   } finally {

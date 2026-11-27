@@ -2,7 +2,7 @@
 // order), a status change or an expense with receipts. The treasury decides on it in the finances tab.
 import { For, Show, createSignal } from 'solid-js';
 import { db, findLinkedPerson, loadData, people, ref, requests, set, setRequests, uploadAll } from '../../../../app/data';
-import { apiJson } from '../../../../app/api';
+import { apiJson, errorMessage } from '../../../../app/api';
 import { t } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';
 import { currentUser } from '../../../../app/session';
@@ -17,6 +17,7 @@ import { requestForm, startRequestForm, type RequestKind } from '../state';
 import { FeeResetNote, feeResetPaymentHint } from '../../common';
 import { AmountInput, PendingFileList, ReceiptDropzone, createPendingFiles, newId } from '../shared';
 import { StatusDayNote, StatusOptions } from './StatusDialog';
+import { isMemberStatus, type RequestData, type RequestType } from '../../../../app/types';
 
 const HEADS: Record<RequestKind, { tint: string; emoji: string; title: () => string; subtitle: () => string }> = {
   payment: {
@@ -60,7 +61,7 @@ const CHOICES: Array<{ kind: RequestKind; bg: string; color: string; emoji: stri
   }
 ];
 
-type CollectedRequest = { type: string; data: Record<string, any> };
+type CollectedRequest = { type: RequestType; data: RequestData };
 
 const fillFields = () => void showToast(t('alert_fill_fields', 'Please fill out all fields.'), 'error');
 const invalidAmount = () => void showToast(t('alert_invalid_amount', 'Invalid amount. Please enter it like 1500 or 1,500.00.'), 'error');
@@ -78,9 +79,9 @@ async function sendRequest(request: CollectedRequest, receipts: File[], setBusy:
   if (request.type === 'expense' && receipts.length > 0) {
     setBusy(t('btn_uploading', 'Uploading...'));
     try {
-      request.data.receipt = await uploadAll(receipts, personName || '', request.data.date);
-    } catch (err: any) {
-      showToast(t('alert_upload_error', 'Upload failed: ') + err.message, 'error');
+      request.data.receipt = await uploadAll(receipts, personName || '', request.data.date ?? '');
+    } catch (err) {
+      showToast(t('alert_upload_error', 'Upload failed: ') + errorMessage(err), 'error');
       return setBusy(null);
     }
   }
@@ -94,9 +95,9 @@ async function sendRequest(request: CollectedRequest, receipts: File[], setBusy:
     if (!requests().some(r => r.id === newReq.id)) setRequests([newReq, ...requests()]);
     await loadData(true);
     apiJson('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Telling the treasury failed:', e));
-  } catch (err: any) {
+  } catch (err) {
     console.error('Sending the request failed:', err);
-    showToast(t('alert_send_request_failed', 'Request could not be sent. Please try again.') + (err.message ? ` ${err.message}` : ''), 'error');
+    showToast(t('alert_send_request_failed', 'Request could not be sent. Please try again.') + (errorMessage(err) ? ` ${errorMessage(err)}` : ''), 'error');
   } finally {
     setBusy(null);
   }
@@ -172,9 +173,9 @@ function StatusRequestForm() {
   const [date, setDate] = createSignal(getTodayStr());
   const current = () => {
     const mine = people().length > 0 ? findLinkedPerson(currentUser()?.uid) : null;
-    return mine?._currentStatus || mine?.status;
+    return mine?._currentStatus || mine?.status || '';
   };
-  const status = () => picked() ?? (['vollverdiener', 'geringverdiener', 'keinverdiener', 'pausiert'].includes(current()) ? current() : 'vollverdiener');
+  const status = () => picked() ?? (isMemberStatus(current()) ? current() : 'vollverdiener');
   const collect = (): CollectedRequest | null => (status() ? { type: 'status', data: { newStatus: status(), date: date() } } : (fillFields(), null));
   return (
     <>

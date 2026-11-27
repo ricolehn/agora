@@ -1,7 +1,7 @@
 // Sharing a prayer request (prayer-edit-modal) and the options of one (prayer-options-modal): extend and "done" for
 // its owner, remove for moderators.
 import { For, Show, createMemo, createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { closeModal, openModal, setModalCloseGuard } from '../../app/modals';
 import { confirmAction, showToast } from '../../app/toast';
@@ -11,7 +11,9 @@ import { Switch, Textarea } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import { Modal, ModalPart, PART_LABEL } from '../../ui/Modal';
 import { Pill, Pills } from '../../ui/PillTabs';
-import { type Prayer, type PrayerDuration, loadPrayers, prayerDate, prayerName, prayers, removePrayer, replacePrayer, setPrayerFilter, timeAgo } from './store';
+import {
+  type Prayer, type PrayerDuration, loadPrayers, prayerDate, prayerName, prayers, removePrayer, replacePrayer, setPrayerFilter, timeAgo
+} from './store';
 import { flushNow } from '../../app/flush';
 
 // --- Share a request ---
@@ -48,8 +50,8 @@ async function submitPrayer() {
     showToast(t('prayers_shared', 'Your prayer request has been shared'));
     setPrayerFilter('all');
     await loadPrayers();
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   } finally {
     setSharing(false);
   }
@@ -151,8 +153,8 @@ function extendPrayer(id: string) {
       replacePrayer(await apiJson<Prayer>(`/prayers/${encodeURIComponent(id)}`, 'PATCH', { extend: 'month' }, t('prayers_save_failed', 'The prayer request could not be saved')));
       closeModal('prayer-options-modal');
       showToast(t('prayers_extended', 'Shown for another month'));
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
     }
   });
 }
@@ -167,8 +169,8 @@ function deletePrayer(id: string) {
       closeModal('prayer-options-modal');
       removePrayer(id);
       showToast(mine ? t('prayers_done_toast', 'Removed - thank you for sharing') : t('prayers_deleted', 'Prayer request deleted'));
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
     }
   });
 }

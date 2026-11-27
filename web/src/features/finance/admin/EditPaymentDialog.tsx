@@ -17,6 +17,8 @@ import { FeeResetNote, feeResetPaymentHint } from '../common';
 import { DownloadLink, OpenPdfLink, ReceiptFileRow, ReceiptThumb, useReceiptUrls } from './Receipts';
 import { refreshFinanceViews, type Transaction } from './state';
 import { Icon } from '../../../ui/Icon';
+import type { BookingFields } from '../../../app/types';
+import { errorMessage } from '../../../app/api';
 
 type EntryType = 'payment' | 'donation' | 'expense';
 interface EditedEntry {
@@ -24,7 +26,7 @@ interface EditedEntry {
   targetIndex: number;
   type: EntryType;
   paymentId: string | null;
-  original: any;
+  original: BookingFields;
   label: string;
 }
 
@@ -37,10 +39,10 @@ const [receipts, setReceipts] = createSignal<string[]>([]);
 const [saving, setSaving] = createSignal(false);
 let newReceiptsInput: HTMLInputElement | undefined;
 
-const matchesPaymentId = (id: unknown) => (entry: any, i: number) => String(entry.id ?? `idx-${i}`) === String(id);
+const matchesPaymentId = (id: unknown) => (entry: { id?: unknown }, i: number) => String(entry.id ?? `idx-${i}`) === String(id);
 /** The list with the entry changed; a donation or expense deleted meanwhile is an error (it used to say "updated"
  *  while nothing was saved: a list without the entry is not written). */
-function changedEntry(list: any[], id: unknown, fields: Record<string, unknown>) {
+function changedEntry<T extends { id?: unknown }>(list: T[], id: unknown, fields: Partial<T>) {
   const next = replaceById(list, id, fields);
   if (!next) throw new Error('The entry was deleted in the meantime');
   return next;
@@ -103,9 +105,9 @@ async function saveEditedPayment() {
       for (const file of newReceiptsInput?.files || []) {
         try {
           names.push(await uploadReceipt(file, who || 'Beleg', day));
-        } catch (uploadErr: any) {
+        } catch (uploadErr) {
           console.error('Error uploading new receipt in edit:', uploadErr);
-          showToast(t('alert_upload_error_for', 'Failed to upload: ') + file.name + ' - ' + uploadErr.message, 'error');
+          showToast(t('alert_upload_error_for', 'Failed to upload: ') + file.name + ' - ' + errorMessage(uploadErr), 'error');
           throw uploadErr;
         }
       }

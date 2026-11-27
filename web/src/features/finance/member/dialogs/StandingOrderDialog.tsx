@@ -11,6 +11,7 @@ import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { orderEndDate, orderTarget, setOrderEndDate } from '../state';
 import { FieldNote } from '../shared';
+import type { StandingOrder } from '../../../../app/types';
 
 export function StandingOrderDialog() {
   async function saveStandingOrderEnd() {
@@ -18,14 +19,14 @@ export function StandingOrderDialog() {
     if (!target?.personId || !target.orderId) return;
     const endDate = orderEndDate();
     if (!endDate) return showToast(t('alert_please_choose_date', 'Please choose a date.'), 'error');
-    const isThisOrder = (so: any) => String(so.id) === String(target.orderId);
+    const isThisOrder = (so: StandingOrder) => String(so.id) === String(target.orderId);
     try {
       await mutatePerson(target.personId, person => {
         // Compared as the days they are ('YYYY-MM-DD', as the auto-payments are dated): the day read as a date is its
         // UTC midnight, and the end of that day in local time was the day before west of Greenwich
         const ended = endDate < getTodayStr();
         // Drop auto-payments booked after the new end date; remove the order entirely once it has ended
-        const payments = person.payments.filter((p: any) => !(p.isAuto && String(p.id).startsWith(`auto_${target.orderId}_`) && String(p.date) > endDate));
+        const payments = person.payments.filter(p => !(p.isAuto && String(p.id).startsWith(`auto_${target.orderId}_`) && String(p.date) > endDate));
         const standingOrders = safeList(person.standingOrders)
           .map(so => (isThisOrder(so) ? { ...so, endDate } : so))
           .filter(so => !(ended && isThisOrder(so)));

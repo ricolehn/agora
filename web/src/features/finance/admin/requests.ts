@@ -2,7 +2,7 @@
 // them. The request dialog (RequestDetailDialog.tsx) and the lists of open requests show them.
 import { createSignal } from 'solid-js';
 import { flushNow } from '../../../app/flush';
-import { db, get, ref, update } from '../../../app/api';
+import { db, errorStatus, get, ref, update } from '../../../app/api';
 import { findPerson, loadData, mutateCollection, mutatePerson, requests, type FinanceRequest } from '../../../app/data';
 import { formatDateFast, t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
@@ -10,6 +10,7 @@ import { attempt, showToast } from '../../../app/toast';
 import {
   addApprovedExpense, applyApprovedRequest, withoutApprovedExpense, withoutApprovedRequest
 } from '../../../lib/finance.js';
+import type { StoredPerson } from '../../../app/data';
 
 /** The open requests, newest first. */
 export const pendingRequests = () => requests().filter(r => r.status === 'pending').sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -50,7 +51,7 @@ export function toggleRejectForm(open: boolean) {
 
 // Another treasurer (or the same one on another device) may have decided the request since this screen was loaded
 async function requestStillPending(reqId: string) {
-  if ((await get(ref(db, 'requests/' + reqId))).val()?.status === 'pending') return true;
+  if ((await get<FinanceRequest>(ref(db, 'requests/' + reqId))).val()?.status === 'pending') return true;
   await showRequestAlreadyDecided();
   return false;
 }
@@ -71,7 +72,7 @@ export async function approveRequest(reqId = openRequestId()) {
     async () => {
       if (!(await requestStillPending(reqId))) return;
       // Bookings carry the request's id (lib/finance.js): approving it again cannot book the money twice
-      let before: { status?: string; statusHistory?: any[] } | null = null;
+      let before: Pick<StoredPerson, 'status' | 'statusHistory'> | null = null;
       if (req.type === 'expense') await mutateCollection('expenses', list => addApprovedExpense(list, req));
       else {
         await mutatePerson(req.personId!, person => {
@@ -81,8 +82,8 @@ export async function approveRequest(reqId = openRequestId()) {
       }
       try {
         await update(ref(db, 'requests/' + reqId), { status: 'approved' });
-      } catch (err: any) {
-        if (err?.status !== 409) throw err;
+      } catch (err) {
+        if (errorStatus(err) !== 409) throw err;
         // Rejected by someone else between the check and now: the booking is taken back
         if (req.type === 'expense') await mutateCollection('expenses', list => withoutApprovedExpense(list, req));
         else await mutatePerson(req.personId!, person => withoutApprovedRequest(person, req, before));
@@ -107,8 +108,8 @@ export async function confirmRejectRequest(reqId = openRequestId()) {
       if (!(await requestStillPending(reqId))) return;
       try {
         await update(ref(db, 'requests/' + reqId), { status: 'rejected', rejectionReason: reason || 'Kein Grund angegeben' });
-      } catch (err: any) {
-        if (err?.status === 409) return showRequestAlreadyDecided();
+      } catch (err) {
+        if (errorStatus(err) === 409) return showRequestAlreadyDecided();
         throw err;
       }
       closeModal('request-detail-modal');

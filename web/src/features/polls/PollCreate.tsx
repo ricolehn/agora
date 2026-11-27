@@ -1,7 +1,7 @@
 // Create a poll (poll-create-modal): a page like the event editor - the question, two to ten answers, the end.
 // Nobody sees who created it.
 import { For, Show, createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { closeModal, openModal } from '../../app/modals';
 import { showToast } from '../../app/toast';
@@ -68,8 +68,8 @@ async function submitPoll() {
     closeModal('poll-create-modal');
     setPollFilter('open');
     showToast(t('polls_created', 'Poll started'));
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   } finally {
     setSaving(false);
   }

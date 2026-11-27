@@ -22,37 +22,25 @@ import { hideLoading, showLoading } from './shell';
 import { showToast } from './toast';
 import { compressImage, convertHeic, fullName, getTodayStr, parseUtcDate, safeList, toFormData } from './util';
 import { flushNow } from './flush';
+import type {
+  FeePlan, FeeReset, FeeResetLogEntry, FeeSettings, FinanceRequest, MediaStatus, Payment, Person, PersonRecord, SessionAnswer, StandingOrder,
+  StatusEntry, User
+} from './types';
 
-export type Person = {
-  id: string;
-  uid?: string;
-  name?: string;
-  status?: string;
-  memberSince?: string;
-  originalMemberSince?: string;
-  payments: any[];
-  totalPaid: number;
-  statusHistory: any[];
-  standingOrders?: any[];
-  isDeleted?: boolean;
-  data?: any;
-  [key: string]: any;
-};
-export type FinanceRequest = { id: string; type?: string; status?: string; userId?: string; personId?: string; [key: string]: any };
-export type FeeSettings = { vollverdiener: number; geringverdiener: number; keinverdiener: number; pausiert: number; reportStartDate: string | null; [key: string]: any };
+export type { FeeSettings, FinanceRequest, Person };
 
 const [people, setPeopleSignal] = createSignal<Person[]>([]);
 const [requests, setRequestsSignal] = createSignal<FinanceRequest[]>([]);
-const [users, setUsersSignal] = createSignal<any[]>([]);
+const [users, setUsersSignal] = createSignal<User[]>([]);
 const [settings, setSettingsSignal] = createSignal<FeeSettings>({ vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, pausiert: 0, reportStartDate: null });
 // The days all fee accounts were started afresh, for those who see the finances or run the instance; members get the
 // day their own account counts from with their record (_feeReset)
-const [feeResets, setFeeResets] = createSignal<any[]>([]);
-const [feeResetLog, setFeeResetLog] = createSignal<any[]>([]);
+const [feeResets, setFeeResets] = createSignal<FeeReset[]>([]);
+const [feeResetLog, setFeeResetLog] = createSignal<FeeResetLogEntry[]>([]);
 // The monthly fees over time: what a month costs now, the change still to come and all of them (GET /api/fees)
-const [feePlan, setFeePlanSignal] = createSignal<any | null>(null);
+const [feePlan, setFeePlanSignal] = createSignal<FeePlan | null>(null);
 const [inviteCode, setInviteCodeSignal] = createSignal('');
-const [mediaStatus, setMediaStatus] = createSignal<{ enabled: boolean; canManage: boolean; hasAccess: boolean; [key: string]: any }>({ enabled: false, canManage: false, hasAccess: false });
+const [mediaStatus, setMediaStatus] = createSignal<MediaStatus>({ enabled: false, canManage: false, hasAccess: false });
 // The data has been loaded once since signing in (views show their empty states only after that)
 const [dataLoaded, setDataLoaded] = createSignal(false);
 
@@ -63,16 +51,16 @@ const applied = <T,>(setter: (value: T) => unknown) => (value: T) => {
   setter(value);
   flushNow();
 };
-export const setPeople = applied<Person[]>(list => setPeopleSignal(list.map(preprocessPerson)));
+export const setPeople = applied<PersonRecord[]>(list => setPeopleSignal(list.map(preprocessPerson)));
 export const setRequests = applied<FinanceRequest[]>(setRequestsSignal);
-export const setUsers = applied<any[]>(setUsersSignal);
+export const setUsers = applied<User[]>(setUsersSignal);
 export const setSettings = applied<FeeSettings>(setSettingsSignal);
 export const setInviteCode = applied<string>(setInviteCodeSignal);
-export function applyFeePlan(data: any) {
+export function applyFeePlan(data: FeePlan | null) {
   if (data && Array.isArray(data.entries)) setFeePlanSignal(data);
   flushNow();
 }
-export function applyFeeResets(data: any) {
+export function applyFeeResets(data: { resets?: FeeReset[]; log?: FeeResetLogEntry[] } | null) {
   setFeeResets(safeList(data?.resets));
   setFeeResetLog(safeList(data?.log));
   flushNow();
@@ -83,16 +71,16 @@ export function applyFeeResets(data: any) {
 export const sumAmounts = (list: ReadonlyArray<{ amount?: unknown }>) => list.reduce((sum, entry) => sum + parseFloat(String(entry.amount || 0)), 0);
 
 /** A record as the views expect it: lists are lists, totals and the sorted status history are there. */
-export function preprocessPerson(person: any): Person {
+export function preprocessPerson(person: PersonRecord): Person {
   const memberSince = person.memberSince || getTodayStr();
-  const payments = safeList(person.payments);
+  const payments = safeList<Payment>(person.payments);
   return {
     ...person,
     memberSince,
     originalMemberSince: person.originalMemberSince || memberSince,
     payments,
     totalPaid: sumAmounts(payments),
-    statusHistory: [...safeList<any>(person.statusHistory)].sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)))
+    statusHistory: [...safeList<StatusEntry>(person.statusHistory)].sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)))
   };
 }
 
@@ -111,9 +99,9 @@ export function isOwnRequest(req: FinanceRequest | null | undefined): boolean {
  * Books all standing-order payments that fell due up to today (weekend dates move to Monday) and drops expired
  * orders. Returns the updated person or null when nothing changed.
  */
-export function checkAndExecuteStandingOrders(person: any): any | null {
+export function checkAndExecuteStandingOrders<P extends Pick<Person, 'payments' | 'standingOrders'>>(person: P): P | null {
   if (!Array.isArray(person.standingOrders) || person.standingOrders.length === 0) return null;
-  const payments = [...safeList<any>(person.payments)];
+  const payments = [...safeList<Payment>(person.payments)];
   const existingIds = new Set(payments.map(p => p.id));
   const now = new Date();
   const limit = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
@@ -126,7 +114,7 @@ export function checkAndExecuteStandingOrders(person: any): any | null {
     return next;
   };
   let modified = false;
-  const remaining: any[] = [];
+  const remaining: StandingOrder[] = [];
   for (const so of person.standingOrders) {
     const order = { ...so };
     const day = parseUtcDate(order.startDate).getUTCDate();
@@ -142,7 +130,7 @@ export function checkAndExecuteStandingOrders(person: any): any | null {
       if (execution > limit) break;
       const id = `auto_${order.id}_${isoDay(due)}`;
       if (!existingIds.has(id)) {
-        payments.push({ id, amount: parseFloat(order.amount), date: isoDay(execution), description: (order.note || 'Dauerauftrag') + ' (Auto)', isAuto: true });
+        payments.push({ id, amount: parseFloat(String(order.amount)), date: isoDay(execution), description: (order.note || 'Dauerauftrag') + ' (Auto)', isAuto: true });
         existingIds.add(id);
         booked = true;
       }
@@ -161,7 +149,7 @@ export function checkAndExecuteStandingOrders(person: any): any | null {
 }
 
 /** Puts a record the server returned in place of the shown one (or removes it when it was deleted). */
-export function replacePersonInMemory(record: any) {
+export function replacePersonInMemory(record: PersonRecord) {
   const person = preprocessPerson(record);
   const list = people();
   const idx = list.findIndex(p => String(p.id) === String(person.id));
@@ -174,11 +162,14 @@ export function replacePersonInMemory(record: any) {
   flushNow();
 }
 
+/** A fee account as stored, its lists as lists: what a change on the latest server copy works on. */
+export type StoredPerson = Omit<PersonRecord, 'payments' | 'statusHistory'> & { payments: Payment[]; statusHistory: StatusEntry[] };
+
 /** Changes a record on the latest server copy (a transaction): writing this screen's copy could drop a payment
  *  someone else booked in the meantime. Resolves to the saved record. */
-export async function mutatePerson(personId: string, mutator: (current: any) => any): Promise<any> {
-  const result = await runTransaction(ref(db, 'people/' + personId), current =>
-    current ? mutator({ ...current, payments: safeList(current.payments), statusHistory: safeList(current.statusHistory) }) : current
+export async function mutatePerson(personId: string, mutator: (current: StoredPerson) => StoredPerson): Promise<PersonRecord | null> {
+  const result = await runTransaction<PersonRecord>(ref(db, 'people/' + personId), current =>
+    current ? mutator({ ...current, payments: safeList<Payment>(current.payments), statusHistory: safeList<StatusEntry>(current.statusHistory) }) : current
   );
   const updated = result.snapshot.val();
   if (updated) replacePersonInMemory(updated);
@@ -216,7 +207,7 @@ export async function uploadReceipt(file: File, transactionName: string, transac
     body: toFormData({ name: transactionName, date: transactionDate, receipt: uploadFile })
   });
   if (!res.ok) throw new Error('Upload failed: ' + res.statusText);
-  return (await res.json()).filename;
+  return ((await res.json()) as { filename: string }).filename;
 }
 
 /** Uploads several receipts; resolves to the JSON list of their file names (as records store them). */
@@ -239,7 +230,7 @@ export async function fetchReceiptImage(filename: string): Promise<string> {
 export async function loadMediaStatus() {
   if (!currentUser()) return;
   try {
-    setMediaStatus(await apiJson('/media/status'));
+    setMediaStatus(await apiJson<MediaStatus>('/media/status'));
   } catch {
     setMediaStatus({ enabled: false, canManage: false, hasAccess: false });
   }
@@ -268,7 +259,7 @@ export function onDataLoaded(fn: (ctx: LoadContext) => void | Promise<void>) {
 
 export async function refreshCurrentUser() {
   try {
-    const data = await apiJson('/auth/me');
+    const data = await apiJson<SessionAnswer>('/auth/me');
     if (data?.user) patchCurrentUser(data.user);
   } catch (err) {
     console.warn('Could not refresh current user info:', err);
@@ -281,16 +272,16 @@ async function loadMemberData() {
   const user = currentUser()!;
   const peopleRef = ref(db, 'people');
   const byField = (field: string, value: unknown) =>
-    get(query(peopleRef, orderByChild(field), equalTo(value))).then(snap => (snap.exists() ? snap.val() : {}));
+    get<Record<string, PersonRecord>>(query(peopleRef, orderByChild(field), equalTo(value))).then(snap => snap.val() ?? {});
   // Independent requests run side by side (each round trip costs on mobile data)
   const [sData, ownPeople, rSnap] = await Promise.all([
-    apiGet('settings').catch(err => (console.warn('Could not fetch settings:', err), null)),
+    apiGet<FeeSettings>('settings').catch(err => (console.warn('Could not fetch settings:', err), null)),
     byField('uid', uid).catch(err => (console.warn('Could not load people:', err), {})),
     // The server only returns the own requests; no userId filter here (decided requests used to carry the treasurer's id)
-    get(ref(db, 'requests')).catch(err => (console.warn('Could not get requests:', err), null))
+    get<FinanceRequest[] | Record<string, FinanceRequest>>(ref(db, 'requests')).catch(err => (console.warn('Could not get requests:', err), null))
   ]);
   if (sData) setSettings(sData);
-  let peopleList: any[] = [];
+  let peopleList: PersonRecord[] = [];
   try {
     peopleList = safeList(ownPeople);
     // Members created before their account existed: link the person record with the same name once - only the
@@ -316,21 +307,21 @@ async function loadMemberData() {
 async function loadAdminData() {
   const withFinances = canViewFinances();
   const [pData, sData, rData, uData, resetData, feeData] = await Promise.all([
-    apiGet('people').catch(() => null),
-    apiGet('settings').catch(() => null),
-    withFinances ? apiGet('requests').catch(() => null) : null,
-    apiGet('users').catch(() => null),
-    apiJson('/fee-reset').catch(() => null),
-    apiJson('/fees').catch(() => null)
+    apiGet<Record<string, PersonRecord>>('people').catch(() => null),
+    apiGet<FeeSettings>('settings').catch(() => null),
+    withFinances ? apiGet<Record<string, FinanceRequest>>('requests').catch(() => null) : null,
+    apiGet<Record<string, Omit<User, 'uid'>>>('users').catch(() => null),
+    apiJson<{ resets?: FeeReset[]; log?: FeeResetLogEntry[] }>('/fee-reset').catch(() => null),
+    apiJson<FeePlan>('/fees').catch(() => null)
   ]);
-  setPeople(safeList<any>(pData).filter(p => !p.isDeleted));
+  setPeople(safeList<PersonRecord>(pData).filter(p => !p.isDeleted));
   setRequests(safeList(rData));
   if (sData) setSettings(sData);
   // A failed request keeps what is shown (like the settings)
   if (resetData) applyFeeResets(resetData);
   applyFeePlan(feeData);
   setUsers(
-    Object.entries(uData || {}).map(([uid, data]: [string, any]) => {
+    Object.entries(uData || {}).map(([uid, data]) => {
       if (!withFinances) return { ...data, uid };
       const linked = findLinkedPerson(uid);
       return {
@@ -365,7 +356,7 @@ export async function loadData(silent = false, { freshUser = false } = {}) {
     }
 
     if (canAccessAi()) {
-      apiJson('/admin/ai-status')
+      apiJson<{ enabled?: boolean }>('/admin/ai-status')
         .then(data => {
           setAiEnabled(!!data.enabled);
           flushNow();

@@ -1,14 +1,14 @@
 // The AI assistant's chat: the conversation that goes to the server, what the page shows of it, sending with the
 // answer streamed in, a new chat. The page (AiChatPage.tsx) draws it; each reply draws itself (reply.ts).
 import { createSignal } from 'solid-js';
-import { API, auth } from '../../app/api';
+import { API, auth, errorMessage, type ErrorAnswer } from '../../app/api';
 import { t } from '../../app/i18n';
 import { activeTab } from '../../app/router';
 import { scrollContainer } from '../../app/shell';
 import { fitChatInput, onChatInputKey } from '../../ui/chatInput';
 import { splitAiThinking } from '../../lib/aiReply.js';
 import type { AiSignState } from './AiSign';
-import { createAiReply, type AiReply } from './reply';
+import { createAiReply, type AiReply, type StreamPart } from './reply';
 import { aiChatAtEnd, aiChatToEnd, chatElements } from './scroll';
 import { flushNow } from '../../app/flush';
 
@@ -150,9 +150,9 @@ async function readReplyStream(res: Response, reply: AiReply, keepAlive: () => v
       finished = true;
       return;
     }
-    let parsed: any;
+    let parsed: StreamPart & { error?: string };
     try {
-      parsed = JSON.parse(data);
+      parsed = JSON.parse(data) as StreamPart & { error?: string };
     } catch {
       return;
     }
@@ -219,7 +219,7 @@ export async function sendAiMessage() {
       signal: controller.signal
     });
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
+      const errData = (await res.json().catch(() => ({}))) as ErrorAnswer;
       throw new Error(errData.detail || errData.error || `HTTP ${res.status}`);
     }
     await readReplyStream(res, reply, keepAlive);
@@ -232,12 +232,12 @@ export async function sendAiMessage() {
     flushNow();
     if (aiChatAtEnd()) aiChatToEnd();
     aiMessages.push({ role: 'assistant', content: clean });
-  } catch (err: any) {
+  } catch (err) {
     reply.stop();
     // A new chat cancelled this reply: nothing to show
     if (controller.signal.aborted && !timedOut) return;
     console.error('AI chat error:', err);
-    const reason = timedOut ? t('ai_timeout', 'The AI stopped answering. Please try again.') : err?.message || t('error_unknown', 'Unknown error');
+    const reason = timedOut ? t('ai_timeout', 'The AI stopped answering. Please try again.') : errorMessage(err) || t('error_unknown', 'Unknown error');
     reply.fail(t('ai_error', 'Error: {message}', { message: reason }));
     // Drop the failed question so it can be asked again
     if (aiMessages[aiMessages.length - 1]?.role === 'user') aiMessages.pop();

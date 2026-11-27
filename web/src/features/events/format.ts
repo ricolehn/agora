@@ -3,6 +3,7 @@ import { userInGroup } from '../../app/groups';
 import { intlFormatter, t, uiLang } from '../../app/i18n';
 import { currentUid, currentUser, isCurrentUser } from '../../app/session';
 import { isMyDuty, type AppEvent } from './store';
+import type { Duty } from './types';
 
 const WEEKDAY_SHORT_BY_LANG: Record<string, string[]> = {
   de: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
@@ -63,14 +64,14 @@ export function formatEventDateSpanCompact(startDate: string | undefined, endDat
 }
 
 /** "19:30 – 21:00" / "from 19:30" ('' without a start time). */
-export const eventTimeRange = (ev: AppEvent) =>
+export const eventTimeRange = (ev: Pick<AppEvent, 'startTime' | 'endTime'>) =>
   ev.startTime
     ? ev.endTime
       ? t('events_time_range', '{start} – {end}', { start: ev.startTime, end: ev.endTime })
       : t('events_time_from', 'from {start}', { start: ev.startTime })
     : '';
 
-export const isMultiDay = (ev: AppEvent) => Boolean(ev.endDate && ev.endDate !== ev.date);
+export const isMultiDay = (ev: Pick<AppEvent, 'date' | 'endDate'>) => Boolean(ev.endDate && ev.endDate !== ev.date);
 
 /** An event (with picture and plan) rather than a plain appointment. */
 export const isEventKind = (ev: AppEvent) => (ev.eventType ? ev.eventType === 'event' : !ev.isOfficialTermin);
@@ -95,7 +96,7 @@ export function eventStatusInfo(ev: AppEvent) {
 }
 
 /** My duty comes through one of my groups (not assigned to me by name). */
-export const dutyViaGroup = (duty: any) =>
+export const dutyViaGroup = (duty: Duty) =>
   Boolean(duty.assignedGroup && userInGroup(currentUser(), duty.assignedGroup) && !isCurrentUser(duty.assignedUser));
 
 /** A real place gets a map; online meetings and links do not (like the Android app): "Zoom-Meeting", "https://meet...". */

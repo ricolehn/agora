@@ -7,6 +7,7 @@ import { Input } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
 import { RegBanner, RegBannerAction, RegistrationHead } from '../Registration';
 import { GUEST_RETENTION_DAYS, cancelGuestRegistration, openGuestForm, submitGuestRegistration, type GuestView } from './guest';
+import type { PublicEvent } from '../types';
 
 /** The quiet text buttons of the page ("Member? Sign in", "Sign up another person"). */
 export const GUEST_LINK =
@@ -84,8 +85,8 @@ function GuestForm(props: { full: boolean; focus: boolean }) {
   );
 }
 
-export function GuestRegistration(props: { view: GuestView }) {
-  const ev = () => props.view.event;
+export function GuestRegistration(props: { view: GuestView; event: PublicEvent }) {
+  const ev = () => props.event;
   return (
     <div class="rounded-[20px] border border-border-light bg-surface px-4 py-3.5 shadow-card">
       <RegistrationHead event={ev()} />

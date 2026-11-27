@@ -7,7 +7,7 @@ import { Setup } from './Setup';
 
 // A configured instance has no setup: to the app
 fetch('/api/status')
-  .then(res => res.json())
+  .then(res => res.json() as Promise<{ setupMode?: boolean }>)
   .then(data => {
     if (!data.setupMode) window.location.href = '/';
   })

@@ -6,6 +6,7 @@ import { createSignal } from 'solid-js';
 import en from '../locales/en.json';
 import { flushNow } from './flush';
 import { readStored, store } from './storage';
+import type { MemberStatus } from './types';
 
 export const SUPPORTED_LANGUAGES = ['en', 'de'] as const;
 export type Lang = (typeof SUPPORTED_LANGUAGES)[number];
@@ -91,18 +92,29 @@ export const languageReady = loadLanguage(storedLang);
 
 // --- Formats follow the UI language ---
 const intlCache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat>();
-export function intlFormatter<T extends typeof Intl.NumberFormat | typeof Intl.DateTimeFormat>(Ctor: T, options: object): InstanceType<T> {
+export function intlFormatter(Ctor: typeof Intl.NumberFormat, options: Intl.NumberFormatOptions): Intl.NumberFormat;
+export function intlFormatter(Ctor: typeof Intl.DateTimeFormat, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat;
+export function intlFormatter(
+  Ctor: typeof Intl.NumberFormat | typeof Intl.DateTimeFormat,
+  options: Intl.NumberFormatOptions | Intl.DateTimeFormatOptions
+): Intl.NumberFormat | Intl.DateTimeFormat {
   const key = Ctor.name + uiLocale() + JSON.stringify(options);
-  if (!intlCache.has(key)) intlCache.set(key, new (Ctor as any)(uiLocale(), options));
-  return intlCache.get(key) as InstanceType<T>;
+  let formatter = intlCache.get(key);
+  if (!formatter) {
+    formatter = Ctor === Intl.NumberFormat ? new Intl.NumberFormat(uiLocale(), options) : new Intl.DateTimeFormat(uiLocale(), options as Intl.DateTimeFormatOptions);
+    intlCache.set(key, formatter);
+  }
+  return formatter;
 }
-const localeFormatter = (Ctor: typeof Intl.NumberFormat | typeof Intl.DateTimeFormat, options: object) => ({
-  format: (value: any) => intlFormatter(Ctor, options).format(value)
+// A formatter of the UI language as it is when a value is formatted (the language can change)
+const numberFormatter = (options: Intl.NumberFormatOptions) => ({ format: (value: number) => intlFormatter(Intl.NumberFormat, options).format(value) });
+const dateTimeFormatterOf = (options: Intl.DateTimeFormatOptions) => ({
+  format: (value: Date | number) => intlFormatter(Intl.DateTimeFormat, options).format(value)
 });
-export const currencyFormatter = localeFormatter(Intl.NumberFormat, { style: 'currency', currency: 'EUR' });
-export const dateFormatter = localeFormatter(Intl.DateTimeFormat, { day: '2-digit', month: '2-digit', year: 'numeric' });
-export const monthYearFormatter = localeFormatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric' });
-export const dateTimeFormatter = localeFormatter(Intl.DateTimeFormat, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+export const currencyFormatter = numberFormatter({ style: 'currency', currency: 'EUR' });
+export const dateFormatter = dateTimeFormatterOf({ day: '2-digit', month: '2-digit', year: 'numeric' });
+export const monthYearFormatter = dateTimeFormatterOf({ month: 'long', year: 'numeric' });
+export const dateTimeFormatter = dateTimeFormatterOf({ day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** An amount with the euro sign where the language puts it ("50,00 €" / "€50.00"). */
 export const euro = (amount: unknown) => {
@@ -152,7 +164,7 @@ export function translateStatusText(text: unknown): string {
   return String(text);
 }
 
-export type MemberStatus = 'vollverdiener' | 'geringverdiener' | 'keinverdiener' | 'pausiert';
+export type { MemberStatus };
 export function getStatusLabels(withEmoji = false): Record<MemberStatus, string> {
   const labels: Record<MemberStatus, string> = {
     vollverdiener: t('member_status_full', '💼 Full earner'),

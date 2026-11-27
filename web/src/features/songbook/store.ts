@@ -1,14 +1,29 @@
 // The songs of the songbook, the church's CCLI licence number and whether the account may manage songs
 // (GET /api/songs). Text and chord rules live in lib/songbook.js (tested on their own).
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { t, uiLocale } from '../../app/i18n';
 import { itemSlug } from '../../app/router';
 import { showToast } from '../../app/toast';
 import { searchText } from '../../lib/songbook.js';
 import { flushNow } from '../../app/flush';
 
-export type Song = { id: string; title: string; key?: string; content?: string; artist?: string; [key: string]: any };
+/** A song of the songbook (backend/songbook.js): the lyrics in ChordPro with its key, capo and tempo. */
+export interface Song {
+  id: string;
+  title: string;
+  artist?: string;
+  /** The key it is written in ("G", "F#m", "Bb"; '' when none was given). */
+  key?: string;
+  capo?: number | null;
+  tempo?: number | null;
+  /** The CCLI song number (digits). */
+  ccli?: string;
+  copyright?: string;
+  content?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
 
 const [songs, setSongs] = createSignal<Song[]>([]);
 const [canManageSongs, setCanManageSongs] = createSignal(false);
@@ -54,13 +69,13 @@ export async function fetchSongs(): Promise<boolean> {
     setSongbookLoaded(true);
     setSongbookError('');
     flushNow();
-  } catch (err: any) {
+  } catch (err) {
     if (!songbookLoaded()) {
-      setSongbookError(err.message);
+      setSongbookError(errorMessage(err));
       flushNow();
       return false;
     }
-    showToast(err.message, 'error');
+    showToast(errorMessage(err), 'error');
   }
   return true;
 }

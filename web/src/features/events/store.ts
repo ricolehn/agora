@@ -2,7 +2,7 @@
 // page (owner: the events port). Loaded with the data, on the events tab and on a live update. Also the state of the
 // event dialog (which event, viewing or editing, the editor's draft) and the actions on events.
 import { createSignal, createStore, snapshot } from 'solid-js';
-import { api, apiJson } from '../../app/api';
+import { api, apiJson, asFailure, errorStatus } from '../../app/api';
 import { groupList, loadSystemGroups, userInGroup } from '../../app/groups';
 import { t } from '../../app/i18n';
 import { closeModal, isModalOpen, openModal } from '../../app/modals';
@@ -12,24 +12,13 @@ import { canManageEvents, currentUid, currentUser } from '../../app/session';
 import { confirmAction, showToast, type ToastType } from '../../app/toast';
 import { getTodayStr, once, toDateStr } from '../../app/util';
 import { flushNow } from '../../app/flush';
+import type { Group } from '../../app/types';
+import type { AppEvent, Duty, DutyRequest } from './types';
 
-export type AppEvent = {
-  id: string;
-  title: string;
-  date: string;
-  endDate?: string;
-  startTime?: string;
-  endTime?: string;
-  eventType?: string;
-  duties?: any[];
-  canAccessDutyPlan?: boolean;
-  myRegistration?: { status?: string } | null;
-  publicToken?: string;
-  [key: string]: any;
-};
+export type { AppEvent };
 
 const [appEvents, setAppEvents] = createSignal<AppEvent[]>([]);
-const [myDutyRequests, setMyDutyRequests] = createSignal<any[]>([]);
+const [myDutyRequests, setMyDutyRequests] = createSignal<DutyRequest[]>([]);
 // Until the first answer: a spinner; after a failed first load an error with "Try again" (an empty list said
 // "nothing coming up"); a later failed refresh keeps what is shown
 const [eventsLoaded, setEventsLoaded] = createSignal(false);
@@ -53,13 +42,13 @@ export async function loadEventsData(): Promise<void> {
     ]);
     await whenPicturesReady();
     if (eventsRes.ok) {
-      setAppEvents(await eventsRes.json());
+      setAppEvents((await eventsRes.json()) as AppEvent[]);
       setEventsLoaded(true);
       setEventsLoadError('');
     } else if (!eventsLoaded()) {
       setEventsLoadError(t('events_load_failed', 'Events could not be loaded'));
     }
-    setMyDutyRequests(requestsRes?.ok ? await requestsRes.json() : []);
+    setMyDutyRequests(requestsRes?.ok ? ((await requestsRes.json()) as DutyRequest[]) : []);
     flushNow();
     for (const fn of afterLoad) fn();
   } catch (err) {
@@ -75,20 +64,17 @@ export function isEventPast(ev: AppEvent, todayStr = getTodayStr()): boolean {
 }
 
 /** A duty is "mine" when it is assigned/confirmed to me or assigned to one of my groups. */
-export const isMyDuty = (d: any) =>
+export const isMyDuty = (d: Duty) =>
   ((d.assignedUser === currentUid() || d.assignedUser === currentUser()?.id) && (d.status === 'confirmed' || d.status === 'assigned')) ||
   (d.status === 'assigned' && d.assignedGroup && userInGroup(currentUser(), d.assignedGroup));
-export const hasDutyAssignee = (d: any) => Boolean(d.assignedUser || d.requestedUser || d.assignedGroup || d.assignedGroupName);
+export const hasDutyAssignee = (d: Duty) => Boolean(d.assignedUser || d.requestedUser || d.assignedGroup || d.assignedGroupName);
 
 export const eventDay = (ev: AppEvent) => ev.date;
 /** The event's part of its address (/events/<slug>). */
 export const eventSlug = (ev: AppEvent) => itemSlug(ev, appEvents(), eventDay);
 
 /** The cover picture's address ('' without one). */
-export const eventImage = (ev: AppEvent | null | undefined) => {
-  const raw = ev ? ev.imageUrl || ev.image || ev.coverUrl || ev.photo || '' : '';
-  return typeof raw === 'string' ? raw.trim() : '';
-};
+export const eventImage = (ev: Pick<AppEvent, 'imageUrl'> | null | undefined) => (ev?.imageUrl || '').trim();
 
 // --- The events tab: appointments ("termine") or events; the start page's "All" opens the appointments ---
 export type EventsSubTab = 'termine' | 'events';
@@ -199,9 +185,9 @@ const [draft, setDraft] = createStore<EventDraft>(draftFor(null, 'event'));
 let draftAtStart: EventDraft = draftFor(null, 'event');
 export { draft, setDraft };
 
-const groupKey = (g: any) => g.name || g.id;
+const groupKey = (g: Pick<Group, 'id' | 'name'>) => g.name || g.id;
 /** Whether the group [g] is chosen in [selected] (by name or id). */
-export const groupChosen = (selected: string[], g: any) => selected.includes(groupKey(g)) || selected.includes(g.id);
+export const groupChosen = (selected: string[], g: Pick<Group, 'id' | 'name'>) => selected.includes(groupKey(g)) || selected.includes(g.id);
 /** The chosen groups as the server takes them: the names of the groups that exist. */
 export const chosenGroupNames = (selected: string[]) => groupList().filter(g => groupChosen(selected, g)).map(groupKey);
 
@@ -249,29 +235,29 @@ export function openNewEventDetailModal(type: 'event' | 'termin' = 'event'): voi
 export const detailCloseGuard = () => !detailEditing() || !draftChanged() || confirmAction(t('songbook_discard', 'Discard your changes?'));
 
 // --- Actions on events: the server call, its toast, a fresh load of the events (the open dialog follows it) ---
-interface EventActionOptions {
-  success: string | ((data: any) => string);
-  successType?: ToastType | ((data: any) => ToastType);
+interface EventActionOptions<T> {
+  success: string | ((data: T) => string);
+  successType?: ToastType | ((data: T) => ToastType);
   error: string;
   /** The server's own error text when it sends one (default). */
   useServerError?: boolean;
   networkError?: string;
 }
 
-async function runEventAction(path: string, method: string, body: unknown, options: EventActionOptions) {
+async function runEventAction<T>(path: string, method: string, body: unknown, options: EventActionOptions<T>) {
   const { success, successType = 'success', error, useServerError = true, networkError = t('error_connection', 'Connection error') } = options;
   try {
-    const data = await apiJson(path, method, body);
+    const data = await apiJson<T>(path, method, body);
     showToast(typeof success === 'function' ? success(data) : success, typeof successType === 'function' ? successType(data) : successType);
     await loadEventsData();
-  } catch (err: any) {
-    showToast(err.status ? (useServerError && err.data?.error) || error : networkError, 'error');
+  } catch (err) {
+    showToast(errorStatus(err) ? (useServerError && asFailure(err).data?.error) || error : networkError, 'error');
   }
 }
 
 /** An event API call with its toast and a reload of the events. The same call twice (a double tap) runs once. */
-export function eventAction(path: string, method: string, body: unknown, options: EventActionOptions) {
-  return once(`${method} ${path}`, runEventAction.bind(null, path, method, body, options));
+export function eventAction<T = unknown>(path: string, method: string, body: unknown, options: EventActionOptions<T>) {
+  return once(`${method} ${path}`, (runEventAction<T>).bind(null, path, method, body, options));
 }
 
 export const respondToDutyRequest = (dutyId: string, action: 'accept' | 'decline') =>
@@ -285,7 +271,7 @@ export const respondToDutyRequest = (dutyId: string, action: 'accept' | 'decline
 export async function toggleEventRegistration(eventId: string, currentStatus: string) {
   if (!currentUser()) return;
   const cancel = currentStatus === 'registered' || currentStatus === 'waitlist';
-  await eventAction(`/events/${eventId}/register`, 'POST', { action: cancel ? 'cancel' : 'register' }, {
+  await eventAction<{ isWaitlist?: boolean }>(`/events/${eventId}/register`, 'POST', { action: cancel ? 'cancel' : 'register' }, {
     success: data => (cancel ? t('events_unregistered_success', 'Unregistered') : data.isWaitlist ? t('events_waitlist_success', 'Added to the waiting list') : t('events_registered_success', 'Registered successfully!')),
     successType: data => (cancel ? 'info' : data.isWaitlist ? 'warning' : 'success'),
     error: t('error_action_failed', 'Action failed')

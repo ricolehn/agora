@@ -13,7 +13,7 @@ export function readStored(key: string): string | null {
 /** What is stored under [key] as JSON; [fallback] when there is nothing, no storage or no JSON. */
 export function readStoredJson<T>(key: string, fallback: T): T {
   try {
-    return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback;
+    return (JSON.parse(localStorage.getItem(key) || 'null') as T | null) ?? fallback;
   } catch {
     return fallback;
   }

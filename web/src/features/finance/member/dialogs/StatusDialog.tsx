@@ -9,6 +9,7 @@ import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
 import { applyStatusChangeToHistory } from '../../../../lib/finance.js';
 import { setStatusChoice, setStatusDate, statusChoice, statusDate, statusPersonId } from '../state';
+import { asFailure } from '../../../../app/api';
 
 /** The four statuses with their symbols, in the order of the fees. */
 export function StatusOptions() {
@@ -48,10 +49,11 @@ export function StatusDialog() {
       if (!updated) return showToast(t('alert_person_not_found', 'Person not found.'), 'error');
       closeModal('change-status-modal');
       showToast(t('toast_status_changed', 'Status changed'));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Changing the status failed:', err);
       // A day before the membership began: the reason in the reader's language
-      showToast(t('alert_status_change_failed', 'Status change failed: ') + (err.key ? t(err.key, err.message) : err.message), 'error');
+      const { key, message } = asFailure(err);
+      showToast(t('alert_status_change_failed', 'Status change failed: ') + (key ? t(key, message) : message), 'error');
     }
   }
 

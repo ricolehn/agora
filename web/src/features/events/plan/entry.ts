@@ -2,7 +2,7 @@
 // dialog) and when (during the event, or a place in the order of service). Everyone chosen is asked when saving; an
 // existing entry also shows its people with "remove".
 import { createMemo, createSignal } from 'solid-js';
-import { apiJson } from '../../../app/api';
+import { apiJson, errorMessage } from '../../../app/api';
 import { flushNow } from '../../../app/flush';
 import { groupList } from '../../../app/groups';
 import { t } from '../../../app/i18n';
@@ -14,6 +14,8 @@ import { appEvents, hasDutyAssignee, loadEventsData, type AppEvent } from '../st
 import {
   PLAN_ENTRY_MODAL, addMinutes, itemTask, programItemTitle, programItems, programTimes, sameName, setProgramItems, type Duty, type ProgramItem
 } from './program';
+import type { Candidate, ProgramAnswer } from '../types';
+import type { Group } from '../../../app/types';
 
 export const PLAN_DURATIONS = [2, 5, 10, 15, 30];
 
@@ -129,8 +131,8 @@ export function keepPlanTask() {
 }
 
 // --- Who: people and groups in one list; people get a request, groups are set ---
-const [candidates, setCandidates] = createSignal<any[] | null>(null);
-const [candidateGroups, setCandidateGroups] = createSignal<any[]>([]);
+const [candidates, setCandidates] = createSignal<Candidate[] | null>(null);
+const [candidateGroups, setCandidateGroups] = createSignal<Pick<Group, 'id' | 'name'>[]>([]);
 const [candidatesLoading, setCandidatesLoading] = createSignal(false);
 export { candidatesLoading };
 let candidatesRequest: Promise<void> | null = null;
@@ -140,7 +142,8 @@ function loadEventCandidates(): Promise<void> {
   candidatesRequest ??= (async () => {
     setCandidatesLoading(true);
     try {
-      const data = await apiJson('/events/candidates');
+      // (Earlier servers answered with the list of people alone)
+      const data = await apiJson<Candidate[] | { candidates?: Candidate[]; groups?: Pick<Group, 'id' | 'name'>[] }>('/events/candidates');
       setCandidates(Array.isArray(data) ? data : data.candidates || []);
       setCandidateGroups(Array.isArray(data) ? [] : data.groups || []);
     } catch (err) {
@@ -178,7 +181,7 @@ export const whoOptions = createMemo((): WhoOption[] => {
   const chosen = new Set(current.assignees.map(a => assigneeKey(a.data)));
   const people = (candidates() || []).map(c => {
     const label: string = c.name || c.email || t('events_member_fallback', 'Member');
-    return { key: `u:${c.id}`, data: { targetUserId: c.id, sendEmail: true }, label, search: [label, term ? c.email : ''], sub: t('plan_who_person', 'Gets a request'), group: false };
+    return { key: `u:${c.id}`, data: { targetUserId: c.id, sendEmail: true }, label, search: [label, term ? c.email || '' : ''], sub: t('plan_who_person', 'Gets a request'), group: false };
   });
   const groups = (candidateGroups().length ? candidateGroups() : groupList()).map(g => {
     const label: string = g.name || g.id;
@@ -217,8 +220,8 @@ export async function removePlanPerson(dutyId: string) {
     if ((ev.duties || []).filter((d: Duty) => sameName(d.roleName, duty.roleName)).length === 1) await apiJson(`/events/${ev.id}/duties`, 'POST', { roleName: duty.roleName });
     // Fresh data in the list behind the dialog; the dialog stays open
     await loadEventsData();
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   }
 }
 
@@ -288,7 +291,7 @@ async function askPlanPeople(ev: AppEvent, roleName: string, assignees: Assignee
 }
 
 async function saveProgram(ev: AppEvent, items: ProgramItem[]) {
-  const data = await apiJson(`/events/${encodeURIComponent(ev.id)}/program`, 'PUT', { items }, t('program_save_failed', 'The order of service could not be saved'));
+  const data = await apiJson<ProgramAnswer<ProgramItem>>(`/events/${encodeURIComponent(ev.id)}/program`, 'PUT', { items }, t('program_save_failed', 'The order of service could not be saved'));
   setProgramItems(ev.id, data.items || items);
 }
 
@@ -339,8 +342,8 @@ export async function savePlanEntry(): Promise<boolean> {
     closeModal(PLAN_ENTRY_MODAL, false, true);
     showToast(current.assignees.some(a => a.data.targetUserId) ? t('duty_request_sent', 'Duty request sent!') : t('plan_saved', 'Saved'));
     await loadEventsData();
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   } finally {
     setSaving(false);
   }
@@ -363,7 +366,7 @@ export async function deletePlanEntry() {
     closeModal(PLAN_ENTRY_MODAL, false, true);
     showToast(t('plan_deleted', 'Entry deleted'), 'info');
     await loadEventsData();
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   }
 }

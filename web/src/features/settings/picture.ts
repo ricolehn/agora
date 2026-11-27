@@ -1,5 +1,5 @@
 // The own profile picture: cropped to a square (256x256 JPEG) and uploaded.
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { forgetProfilePic, loadCurrentProfilePicture, setPictureVersion } from '../../app/pictures';
 import { currentUid } from '../../app/session';
@@ -20,9 +20,9 @@ async function uploadProfilePicture(blob: Blob): Promise<boolean> {
     }
     void loadCurrentProfilePicture();
     return true;
-  } catch (e: any) {
+  } catch (e) {
     console.error('Profile upload error:', e);
-    showToast(t('toast_upload_failed', 'Upload failed: ') + e.message, 'error');
+    showToast(t('toast_upload_failed', 'Upload failed: ') + errorMessage(e), 'error');
     return false;
   }
 }

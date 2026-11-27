@@ -13,6 +13,7 @@ import { Field, Input } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
 import { refreshFinanceViews } from '../../admin/state';
 import { AmountInput, PendingFileList, ReceiptDropzone, createPendingFiles, createRequired } from '../shared';
+import { errorMessage } from '../../../../app/api';
 
 export function ExpenseDialog() {
   const [amount, setAmount] = createSignal('');
@@ -37,9 +38,9 @@ export function ExpenseDialog() {
         setBusyText(t('btn_uploading', 'Uploading...'));
         try {
           receipt = await uploadAll(files, who, day);
-        } catch (err: any) {
+        } catch (err) {
           console.error(err);
-          return showToast(t('alert_receipt_upload_error', 'Failed to upload receipt: ') + err.message, 'error');
+          return showToast(t('alert_receipt_upload_error', 'Failed to upload receipt: ') + errorMessage(err), 'error');
         }
       }
       await mutateCollection('expenses', list => [...list, { amount: value, issuer: who, description: what, date: day, id: Date.now(), receipt }]);

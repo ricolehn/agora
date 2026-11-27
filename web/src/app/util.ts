@@ -3,9 +3,12 @@
 export const inList = (list: unknown, item: unknown): boolean => Array.isArray(list) && list.includes(item);
 
 /** A list from an array, an object of entries (older data) or nothing. */
-export function safeList<T = any>(val: unknown): T[] {
+export function safeList<T>(val: readonly T[] | Readonly<Record<string, T>> | null | undefined): T[];
+/** The same for data whose shape the caller states ([T]; unknown without). */
+export function safeList<T = unknown>(val: unknown): T[];
+export function safeList(val: unknown): unknown[] {
   if (!val) return [];
-  return Array.isArray(val) ? (val as T[]) : (Object.values(val as object) as T[]);
+  return Array.isArray(val) ? val : Object.values(val as object);
 }
 
 export const fullName = (u: { firstName?: string; lastName?: string } | null | undefined): string =>
@@ -76,11 +79,13 @@ export function parseUtcDate(str: unknown): Date {
 
 /** Receipt file names: a JSON list, a list, or comma separated (older records). */
 export function parseReceipts(receiptField: unknown): string[] {
-  if (Array.isArray(receiptField)) return receiptField.filter(Boolean);
+  const names = (list: unknown[]) => list.filter((name): name is string => typeof name === 'string' && name !== '');
+  if (Array.isArray(receiptField)) return names(receiptField);
   const trimmed = String(receiptField || '').trim();
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
     try {
-      return JSON.parse(trimmed).filter(Boolean);
+      const list = JSON.parse(trimmed);
+      if (Array.isArray(list)) return names(list);
     } catch {
       /* fall through to CSV */
     }

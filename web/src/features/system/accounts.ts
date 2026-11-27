@@ -2,13 +2,14 @@
 // permissions. The groups themselves are shared state (app/groups.ts); after a change they and the accounts are loaded
 // again.
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { findLinkedPerson, loadData, people, refreshCurrentUser, replacePersonInMemory, setUsers, users } from '../../app/data';
 import { findGroup, loadSystemGroups } from '../../app/groups';
 import { t } from '../../app/i18n';
 import { currentUser, isSuperAdminUser } from '../../app/session';
 import { attempt, confirmAction, showToast } from '../../app/toast';
 import { flushNow } from '../../app/flush';
+import type { User } from '../../app/types';
 
 // --- Filter and search of the accounts table ---
 const [groupFilter, setGroupFilter] = createSignal<string | null>(null);
@@ -20,7 +21,7 @@ export function filterByGroup(groupId: string | null) {
   flushNow();
 }
 
-const rawName = (u: any) => `${u.firstName || ''} ${u.lastName || ''}`;
+const rawName = (u: User) => `${u.firstName || ''} ${u.lastName || ''}`;
 /** The group the table is filtered by (null: all accounts, or a group that is gone). */
 export const activeGroup = () => {
   const id = groupFilter();
@@ -43,7 +44,7 @@ export function shownAccounts() {
 // --- Loading again after a change ---
 async function reloadUsersData() {
   try {
-    setUsers(await apiJson('/admin/users'));
+    setUsers(await apiJson<User[]>('/admin/users'));
   } catch (err) {
     console.warn('Failed to reload users:', err);
   }
@@ -134,9 +135,9 @@ export async function deleteUserAccount(uid: string) {
 }
 
 /** Whether [u] is the owner of the instance (no admin switch, no deleting). */
-export const isOwnerAccount = (u: any) => u?.owner === true || u?.superAdmin === true;
+export const isOwnerAccount = (u: User | null | undefined) => u?.owner === true || u?.superAdmin === true;
 /** Whether the account [u] may be deleted from the table: not the owner, not the own one. */
-export const canDeleteAccount = (u: any) => !isOwnerAccount(u) && u?.uid !== currentUser()?.uid;
+export const canDeleteAccount = (u: User) => !isOwnerAccount(u) && u.uid !== currentUser()?.uid;
 
 // --- Groups ---
 // The name typed into the quick "new group" field above the list
@@ -151,7 +152,7 @@ export async function submitQuickAddGroup() {
     setNewGroupName('');
     showToast(t('toast_group_created', 'Group created successfully'), 'success');
     await refreshGroupsAndUsers(false);
-  } catch (err: any) {
-    showToast(err.message || t('admin_group_create_failed', 'Failed to create the group'), 'error');
+  } catch (err) {
+    showToast(errorMessage(err) || t('admin_group_create_failed', 'Failed to create the group'), 'error');
   }
 }

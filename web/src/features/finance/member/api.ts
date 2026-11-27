@@ -7,6 +7,7 @@ import { getTodayStr, safeList } from '../../../app/util';
 import {
   setOrderEndDate, setOrderTarget, setPaymentPersonId, setStatusChoice, setStatusDate, setStatusPersonId, startRequestForm
 } from './state';
+import type { StandingOrder } from '../../../app/types';
 
 /** Book a payment for a member (add-payment-modal). */
 export function openPaymentModal(personId: string): void {
@@ -30,7 +31,7 @@ export function openEndStandingOrderModal(personId: string, orderId: string): vo
   if (!canManageFinances()) return;
   setOrderTarget({ personId, orderId });
   const person = findPerson(personId);
-  if (person) setOrderEndDate(safeList<any>(person.standingOrders).find(so => String(so.id) === String(orderId))?.endDate || getTodayStr());
+  if (person) setOrderEndDate(safeList<StandingOrder>(person.standingOrders).find(so => String(so.id) === String(orderId))?.endDate || getTodayStr());
   openModal('end-standing-order-modal');
 }
 

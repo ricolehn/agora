@@ -2,7 +2,8 @@
 // signed-in account here; this module loads the profile and the data, or shows the sign-in.
 import { createSignal } from 'solid-js';
 import {
-  apiJson, auth, createUserWithEmailAndPassword, db, get, onAuthStateChanged, ref, signInWithEmailAndPassword, signOut, updatePassword
+  apiJson, auth, createUserWithEmailAndPassword, db, errorMessage, errorStatus, get, onAuthStateChanged, ref, signInWithEmailAndPassword,
+  signOut, updatePassword
 } from './api';
 import { clearData, loadData } from './data';
 import { onLanguageChange, t, uiLang } from './i18n';
@@ -14,6 +15,7 @@ import { expectsSession, hideLoading, setLoadingMessage, showLoading } from './s
 import { setSignedIn } from './storage';
 import { alertMessage, confirmAction, showToast } from './toast';
 import { flushNow } from './flush';
+import type { SessionAnswer } from './types';
 
 // --- The sign-in screen ---
 export type AuthView = 'none' | 'login' | 'register';
@@ -46,8 +48,8 @@ export function onBeforeSignOut(fn: () => Promise<unknown> | unknown) {
 }
 
 async function fetchUserProfile(uid: string, retries = 2): Promise<User | null> {
-  const snap = await get(ref(db, 'users/' + uid));
-  if (snap.exists()) return { ...snap.val(), uid };
+  const stored = (await get<Omit<User, 'uid'>>(ref(db, 'users/' + uid))).val();
+  if (stored) return { ...stored, uid };
   if (retries <= 0) return null;
   await new Promise(res => setTimeout(res, 400));
   return fetchUserProfile(uid, retries - 1);
@@ -57,7 +59,7 @@ async function fetchUserProfile(uid: string, retries = 2): Promise<User | null> 
 // profile and the data are loaded again
 async function bootstrapSuperAdmin(user: { uid: string }) {
   try {
-    const result = await apiJson('/admin/bootstrap-super-admin', 'POST');
+    const result = await apiJson<{ isOwner?: boolean; isSuperAdmin?: boolean }>('/admin/bootstrap-super-admin', 'POST');
     if (!(result.isSuperAdmin || result.isOwner)) return;
     const current = currentUser();
     if (current?.owner && current?.superAdmin && current?.admin) return;
@@ -133,7 +135,7 @@ export function startAuth() {
       const complete = 'isApprovedMentor' in account;
       const profile = complete
         ? null
-        : (await apiJson('/auth/me').then(data => data?.user || null).catch(() => null)) || (await fetchUserProfile(user.uid, 2));
+        : (await apiJson<SessionAnswer>('/auth/me').then(data => data?.user || null).catch(() => null)) || (await fetchUserProfile(user.uid, 2));
       if (!complete && !profile) setLoadingMessage(t('auth_profile_not_found', 'Profile not found, please contact an admin.'));
       setCurrentUser({ ...(profile || { role: 'user', email: user.email, uid: user.uid }), ...account } as User);
       setIsAuthenticated(true);
@@ -181,9 +183,9 @@ export async function attemptLogin(email: string, password: string) {
     await signInWithEmailAndPassword(auth, email, password);
     setAuthView('none');
     showLoading(t('auth_loading_profile', 'Loading profile...'));
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
-    setAuthError(t('auth_login_failed', 'Login failed: ') + error.message);
+    setAuthError(t('auth_login_failed', 'Login failed: ') + errorMessage(error));
   }
 }
 
@@ -219,10 +221,10 @@ export async function attemptRegister(r: Registration) {
       lastName: r.lastName,
       name: `${r.firstName} ${r.lastName}`.trim()
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     hideLoading();
-    setAuthError(error.status === 403 ? t('auth_invalid_code', 'Invalid registration code.') : t('auth_register_failed', 'Registration failed: ') + error.message);
+    setAuthError(errorStatus(error) === 403 ? t('auth_invalid_code', 'Invalid registration code.') : t('auth_register_failed', 'Registration failed: ') + errorMessage(error));
   }
 }
 
@@ -261,9 +263,9 @@ export async function changePassword(oldPassword: string, newPassword: string): 
     await updatePassword(auth.currentUser, oldPassword, newPassword);
     showToast(t('toast_password_changed', 'Password changed – please sign in again.'));
     return true;
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
-    showToast(t('alert_password_change_failed', 'Error changing password: ') + error.message, 'error');
+    showToast(t('alert_password_change_failed', 'Error changing password: ') + errorMessage(error), 'error');
     return false;
   }
 }
@@ -280,8 +282,8 @@ export async function deleteOwnAccount(password: string): Promise<boolean> {
     alertMessage(t('delete_account_done', 'Your account has been deleted.'));
     await logout();
     return true;
-  } catch (err: any) {
-    showToast(err.message || t('delete_account_failed', 'The account could not be deleted.'), 'error');
+  } catch (err) {
+    showToast(errorMessage(err) || t('delete_account_failed', 'The account could not be deleted.'), 'error');
     return false;
   }
 }

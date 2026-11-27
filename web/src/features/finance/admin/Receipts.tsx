@@ -139,7 +139,7 @@ export function useReceiptUrls(filenames: () => string[]): () => ReceiptUrls {
   const key = createMemo(() => JSON.stringify(filenames()));
   const [loaded, setLoaded] = createSignal<(ReceiptUrls & { key: string }) | null>(null);
   createEffect(key, json => {
-    const names: string[] = JSON.parse(json);
+    const names = JSON.parse(json) as string[];
     const urls: string[] = [];
     let current = true;
     if (names.length) {

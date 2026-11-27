@@ -2,7 +2,7 @@
 // State and logic of the area (the previous app.js, function by function); the components read these signals and
 // call the actions. The chat pane replaces the list on phones and then has a history entry of its own.
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, asFailure, errorMessage, errorStatus } from '../../app/api';
 import { flushNow } from '../../app/flush';
 import { programmaticBack } from '../../app/history';
 import { shortDayText, t, timeText } from '../../app/i18n';
@@ -224,14 +224,14 @@ export async function loadMentoringData() {
   if (!canUseMentoring()) return;
   const isManager = canManageMentoring();
   try {
-    setMyMentorProfile((await apiJson('/mentoring/my-profile')).mentor || null);
+    setMyMentorProfile((await apiJson<{ mentor?: MentorProfile | null }>('/mentoring/my-profile')).mentor || null);
     flushNow();
   } catch (err) {
     console.warn('Failed to load my mentor profile:', err);
   }
   if (isManager) {
     try {
-      const list = await apiJson('/mentoring/mentors?status=pending');
+      const list = await apiJson<Mentor[]>('/mentoring/mentors?status=pending');
       setPendingApplications(Array.isArray(list) ? list.length : 0);
     } catch (err) {
       console.warn('Failed to load pending mentors count:', err);
@@ -243,12 +243,12 @@ export async function loadMentoringData() {
 // --- Mentors ---
 export async function loadMentorsList() {
   try {
-    const list = await apiJson('/mentoring/mentors?status=approved');
+    const list = await apiJson<Mentor[]>('/mentoring/mentors?status=approved');
     setMentors(Array.isArray(list) ? list : []);
     setMentorsState('loaded');
-  } catch (err: any) {
+  } catch (err) {
     console.warn('Failed to load mentors:', err);
-    setMentorsState(err.status ? 'failed' : 'offline');
+    setMentorsState(errorStatus(err) ? 'failed' : 'offline');
   }
 }
 
@@ -298,7 +298,7 @@ async function submitMentorContactNow() {
   if (!message) return showToast(t('mentor_contact_error_no_msg', 'Please enter a first message for the mentor.'), 'error');
   try {
     const body = { mentor: mentorId, mentorId, message, initialMessage: message };
-    const data = await apiJson('/mentoring/threads', 'POST', body, t('mentoring_req_error', 'Failed to send the request.'));
+    const data = await apiJson<{ threadId?: string; thread?: Thread }>('/mentoring/threads', 'POST', body, t('mentoring_req_error', 'Failed to send the request.'));
     closeModal('mentor-contact-modal');
     showToast(t('mentoring_toast_req_sent', 'Confidential request sent successfully!'), 'success');
     const threadId = data.threadId || data.thread?.id;
@@ -308,15 +308,16 @@ async function submitMentorContactNow() {
     } else {
       void loadMentoringThreads(true);
     }
-  } catch (err: any) {
+  } catch (err) {
     // There is a conversation with this mentor already: it opens
-    const existing = err.data?.threadId;
-    if (existing) {
+    const answer = asFailure(err).data;
+    const existing = answer?.threadId;
+    if (typeof existing === 'string' && existing) {
       closeModal('mentor-contact-modal');
-      showToast(err.data.error || t('mentoring_toast_existing_opened', 'Opened the existing conversation.'), 'info');
+      showToast(answer?.error || t('mentoring_toast_existing_opened', 'Opened the existing conversation.'), 'info');
       return void openChatDirect(existing);
     }
-    showToast(err.message || t('mentoring_req_error', 'Failed to send the request.'), 'error');
+    showToast(errorMessage(err) || t('mentoring_req_error', 'Failed to send the request.'), 'error');
   }
 }
 
@@ -324,7 +325,7 @@ async function submitMentorContactNow() {
 export async function loadMentoringThreads(shouldSelect = false, selectThreadId: string | null = null, autoSelect = true) {
   const generation = chatGeneration;
   try {
-    const data = await apiJson('/mentoring/threads');
+    const data = await apiJson<Thread[]>('/mentoring/threads');
     await whenPicturesReady();
     setOpenedThreads(new Set<string>());
     setThreadsLoaded(true);
@@ -361,7 +362,7 @@ export async function openMentoringThread(threadId: string) {
   let thread = findThread(threadId);
   if (!thread) {
     try {
-      const data = await apiJson('/mentoring/threads');
+      const data = await apiJson<Thread[]>('/mentoring/threads');
       applyThreads(Array.isArray(data) ? data : []);
       thread = findThread(threadId);
     } catch (err) {
@@ -439,8 +440,9 @@ function showPaneMessages(threadId: string, list: ChatMessage[] | 'denied'): boo
 
 async function loadMentoringMessages(threadId: string, isPoll = false) {
   try {
-    let messages = await apiJson(`/mentoring/threads/${threadId}/messages`);
-    if (Array.isArray(messages?.messages)) messages = messages.messages;
+    // (A list, or the list in an envelope)
+    const answer = await apiJson<ChatMessage[] | { messages?: ChatMessage[] }>(`/mentoring/threads/${threadId}/messages`);
+    const messages = Array.isArray(answer) ? answer : answer?.messages;
     if (!Array.isArray(messages)) return;
     if (threadId === activeThreadId()) activeMessages = messages;
     // Mark the thread as read locally so badges and the home card update instantly
@@ -451,9 +453,9 @@ async function loadMentoringMessages(threadId: string, isPoll = false) {
     const wasAtBottom = !!el && el.scrollHeight - el.scrollTop <= el.clientHeight + 120;
     if (!showPaneMessages(threadId, messages)) return;
     if (el && messages.length && (!isPoll || wasAtBottom)) el.scrollTop = el.scrollHeight;
-  } catch (err: any) {
+  } catch (err) {
     // The conversation is not open to this account: the pane says so instead of showing nothing
-    if (err.status === 403) showPaneMessages(threadId, 'denied');
+    if (errorStatus(err) === 403) showPaneMessages(threadId, 'denied');
     else console.warn('Failed to load messages:', err);
   }
 }
@@ -481,12 +483,12 @@ export async function sendMentoringMessage() {
     const open = activeThreadId();
     if (open) await loadMentoringMessages(open);
     void loadMentoringThreads(false);
-  } catch (err: any) {
+  } catch (err) {
     // Like the Android app: the text is not lost - it goes back into the field to try again. Only into the field of
     // that conversation: another chat opened meanwhile must not get it (one tap would send it to the wrong person)
     setSending(list => list.filter(entry => entry !== pending));
     if (!draft().trim() && activeThreadId() === threadId) setDraft(text);
-    showToast(err.message || t('mentoring_send_failed', 'The message could not be sent.'), 'error');
+    showToast(errorMessage(err) || t('mentoring_send_failed', 'The message could not be sent.'), 'error');
   }
 }
 
@@ -504,8 +506,8 @@ async function withActiveThread<A extends unknown[]>(action: (thread: Thread, ..
   setMenuOpen(false);
   try {
     await action(thread, ...args);
-  } catch (err: any) {
-    showToast(err.message || t('mentoring_status_error', 'Failed to update.'), 'error');
+  } catch (err) {
+    showToast(errorMessage(err) || t('mentoring_status_error', 'Failed to update.'), 'error');
   }
 }
 
@@ -566,7 +568,7 @@ async function submitMentorApplicationNow() {
   if (!bio) return showToast(t('mentor_app_error_no_bio', 'Please enter a short personal introduction.'), 'error');
   const isUpdate = !!myMentorProfile();
   try {
-    const data = await apiJson(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees: maxMentees }, t('mentor_app_error_generic', 'The application failed.'));
+    const data = await apiJson<{ mentor?: MentorProfile }>(isUpdate ? '/mentoring/my-profile' : '/mentoring/apply', isUpdate ? 'PUT' : 'POST', { bio, max_mentees: maxMentees }, t('mentor_app_error_generic', 'The application failed.'));
     setMyMentorProfile(data.mentor || myMentorProfile());
     closeModal('mentor-application-modal');
     showToast(
@@ -574,8 +576,8 @@ async function submitMentorApplicationNow() {
       'success'
     );
     void loadMentoringData();
-  } catch (err: any) {
-    showToast(err.message || t('mentor_app_error_generic', 'The application failed.'), 'error');
+  } catch (err) {
+    showToast(errorMessage(err) || t('mentor_app_error_generic', 'The application failed.'), 'error');
   }
 }
 
@@ -588,7 +590,7 @@ export async function loadMentoringReviewList() {
   const status = reviewFilter();
   setReview({ state: 'loading' });
   try {
-    const list = await apiJson(`/mentoring/mentors?status=${encodeURIComponent(status)}`);
+    const list = await apiJson<Mentor[]>(`/mentoring/mentors?status=${encodeURIComponent(status)}`);
     if (!isNewest()) return;
     setReview(Array.isArray(list) && list.length ? { state: 'list', list } : { state: 'empty', status });
   } catch (err) {
@@ -613,8 +615,8 @@ async function setMentorStatusNow(mentorId: string, status: 'approved' | 'reject
     showToast(status === 'approved' ? t('mentoring_toast_approved', 'Application approved successfully!') : t('mentoring_toast_rejected', 'Application rejected successfully!'), 'success');
     void loadMentoringReviewList();
     void loadMentoringData();
-  } catch (err: any) {
-    showToast(err.message || t('mentoring_status_error', 'Failed to update.'), 'error');
+  } catch (err) {
+    showToast(errorMessage(err) || t('mentoring_status_error', 'Failed to update.'), 'error');
   }
 }
 

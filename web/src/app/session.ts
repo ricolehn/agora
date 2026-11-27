@@ -3,23 +3,9 @@
 import { createSignal } from 'solid-js';
 import { inList } from './util';
 import { flushNow } from './flush';
+import type { PermissionFlag, PermissionId, User } from './types';
 
-export type User = {
-  uid: string;
-  id?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  name?: string;
-  role?: string;
-  admin?: boolean;
-  owner?: boolean;
-  superAdmin?: boolean;
-  permissions?: string[];
-  language?: string;
-  timeZone?: string;
-  [key: string]: any;
-};
+export type { User };
 
 const [currentUser, setCurrentUserSignal] = createSignal<User | null>(null);
 const [isAuthenticated, setAuthenticated] = createSignal(false);
@@ -45,7 +31,7 @@ export function setIsAuthenticated(value: boolean) {
   flushNow();
 }
 
-const hasPermission = (flag: string, permission: string) => {
+const hasPermission = (flag: PermissionFlag, permission: PermissionId) => {
   const user = currentUser();
   return !!(user && (user[flag] || inList(user.permissions, permission)));
 };
@@ -78,7 +64,7 @@ export const isCurrentUser = (id: unknown) => {
 
 export type AvatarRing = 'manager' | 'mentor' | 'standard';
 /** The coloured ring around a person's picture: mentoring managers, approved mentors, everyone else. */
-export function avatarRing(user: any): AvatarRing {
+export function avatarRing(user: User | null | undefined): AvatarRing {
   if (user?.canManageMentoring || inList(user?.permissions, 'manage_mentoring')) return 'manager';
   if (user?.isApprovedMentor || user?.mentorStatus === 'approved') return 'mentor';
   return 'standard';

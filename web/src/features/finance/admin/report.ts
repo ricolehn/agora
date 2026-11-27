@@ -8,7 +8,7 @@ import { formatDateFast, t } from '../../../app/i18n';
 import { openModal } from '../../../app/modals';
 import { showToast } from '../../../app/toast';
 import { getTodayStr } from '../../../app/util';
-import type { Transaction } from './state';
+import type { Transaction, TransactionPage } from './state';
 
 export type ReportType = 'annual' | 'custom' | 'person' | 'manual';
 export type ReportTier = 'compact' | 'standard' | 'detailed';
@@ -70,7 +70,7 @@ export async function openExportReport() {
   try {
     let all: Transaction[] = [];
     for (let page = 1, totalPages = 1; page <= totalPages; page++) {
-      const data = await apiJson(`/transactions?page=${page}&perPage=500`);
+      const data = await apiJson<TransactionPage>(`/transactions?page=${page}&perPage=500`);
       all = all.concat(data.items || []);
       totalPages = data.totalPages || 1;
     }
@@ -162,7 +162,7 @@ export async function downloadReportPdf(element: HTMLElement | undefined, appNam
   if (!element) return;
   setGenerating(true);
   flushNow();
-  let html2pdf: any = null;
+  let html2pdf: typeof import('html2pdf.js').default | null = null;
   try {
     ({ default: html2pdf } = await import('html2pdf.js'));
   } catch (err) {

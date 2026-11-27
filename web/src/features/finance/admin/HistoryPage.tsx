@@ -33,7 +33,7 @@ function uidForName(name: unknown): string | null {
   const person = people().find(p => p.uid && String(p.name || '').trim().toLowerCase() === wanted);
   if (person) return person.uid!;
   const account = users().find(u => String(fullName(u) || '').trim().toLowerCase() === wanted);
-  return account ? account.uid || account.id : null;
+  return account ? account.uid || account.id || null : null;
 }
 const txAvatarUid = (tx: Transaction) => (tx.type === 'pay' ? tx.personUid : tx.type === 'exp' ? uidForName(tx.who) : null) || null;
 

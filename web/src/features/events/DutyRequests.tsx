@@ -6,8 +6,12 @@ import { Button } from '../../ui/Button';
 import { formatEventDate } from './format';
 import { openEventDetailModal, respondToDutyRequest } from './store';
 import { onActivateKey } from '../../ui/keys';
+import type { DutyRequest } from './types';
 
-function DutyRequestCard(props: { request: any; onHome?: boolean }) {
+const atTime = (time: string | undefined) => (time ? ` ${t('duty_requests_at_time', 'at {time}', { time })}` : '');
+const inSection = (section: string | undefined) => (section ? `${t('duty_requests_section', 'Area: {section}', { section })} • ` : '');
+
+function DutyRequestCard(props: { request: DutyRequest; onHome?: boolean }) {
   const req = () => props.request;
   const open = () => void openEventDetailModal(req().eventId);
   const respond = (e: MouseEvent, action: 'accept' | 'decline') => {
@@ -31,13 +35,13 @@ function DutyRequestCard(props: { request: any; onHome?: boolean }) {
         <div class="text-[0.78rem] text-text-secondary">
           <span>
             {formatEventDate(req().eventDate)}
-            {req().eventStartTime ? ` ${t('duty_requests_at_time', 'at {time}', { time: req().eventStartTime })}` : ''}
+            {atTime(req().eventStartTime)}
           </span>
         </div>
         <div class="mt-0.5 text-[0.84rem] text-text">
           🛠️ <strong class="font-bold">{req().roleName}</strong>{' '}
           <span class="text-[0.8rem] text-text-secondary">
-            ({req().section ? `${t('duty_requests_section', 'Area: {section}', { section: req().section })} • ` : ''}
+            ({inSection(req().section)}
             {t('duty_requests_requested_by', 'Requested by {name}', { name: req().requestedByName || t('duty_requests_team', 'Team') })})
           </span>
         </div>
@@ -55,7 +59,7 @@ function DutyRequestCard(props: { request: any; onHome?: boolean }) {
 }
 
 /** The banner with my open duty requests (the caller shows it only when there are any). */
-export function DutyRequestsBanner(props: { requests: any[]; onHome?: boolean }) {
+export function DutyRequestsBanner(props: { requests: DutyRequest[]; onHome?: boolean }) {
   return (
     <div class="rounded-[14px] border border-[rgba(99,102,241,0.25)] bg-[linear-gradient(135deg,rgba(99,102,241,0.08)_0%,rgba(245,158,11,0.08)_100%)] px-4 py-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
       <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">

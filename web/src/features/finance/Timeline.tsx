@@ -3,7 +3,6 @@
 import { For, Show, createMemo } from 'solid-js';
 import type { Person } from '../../app/data';
 import { euro, formatDateFast, getStatusLabels, t, type MemberStatus } from '../../app/i18n';
-import { safeList } from '../../app/util';
 import { Icon } from '../../ui/Icon';
 import { feeResetOutcome } from './common';
 
@@ -16,11 +15,11 @@ interface TimelineEvent {
 }
 
 function timelineEvents(person: Person): TimelineEvent[] {
-  const history = safeList<any>(person.statusHistory);
+  const history = person.statusHistory;
   const events: TimelineEvent[] = history.map(h => ({ type: 'status', dateStr: h.startDate, status: h.status }));
   const currentStart = history.length > 0 ? history[history.length - 1].endDate : person.originalMemberSince || person.memberSince;
   if (currentStart) events.push({ type: 'status', dateStr: currentStart, status: person.status });
-  for (const p of safeList<any>(person.payments)) events.push({ type: 'payment', dateStr: p.date, amount: p.amount, description: p.description });
+  for (const p of person.payments) events.push({ type: 'payment', dateStr: p.date, amount: p.amount, description: p.description });
   if (events.length === 0) return events;
   // The fee account was started afresh (CALDERA): its day is a marked point on the line, with what happened then
   if (person._feeReset) events.push({ type: 'reset', dateStr: person._feeReset });

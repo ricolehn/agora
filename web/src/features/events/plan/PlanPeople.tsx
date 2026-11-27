@@ -13,7 +13,7 @@ const asked = (d: Duty) => d.status === 'requested' || d.status === 'declined';
 
 /** Who stands for a duty: the group, "You", or the person asked / assigned. */
 function dutyPerson(d: Duty) {
-  const group: string | false = d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup);
+  const group = d.status === 'assigned' && (d.assignedGroupName || d.assignedGroup || '');
   const uid: string | undefined = asked(d) ? d.requestedUser : d.assignedUser;
   const name: string = group
     ? group

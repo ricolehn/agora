@@ -14,7 +14,7 @@ let picturesReady: Promise<void> = Promise.resolve();
 export const whenPicturesReady = () => picturesReady;
 
 export function loadPictureVersions(): Promise<void> {
-  picturesReady = apiJson('/profile/pictures')
+  picturesReady = apiJson<Record<string, string | number>>('/profile/pictures')
     .then(data => void setPictureVersions(data || null))
     .catch(() => void setPictureVersions(null));
   return picturesReady;

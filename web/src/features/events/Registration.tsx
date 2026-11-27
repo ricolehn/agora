@@ -11,9 +11,10 @@ import { Button } from '../../ui/Button';
 import { ProgressBar } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
 import { eventAction, isEventPast, toggleEventRegistration, type AppEvent } from './store';
+import type { Attendee, AttendeeList, EventFacts } from './types';
 
 /** "1 of 2 places taken · 1 free · 3 more needed (min. 4)" (members and guests count alike). */
-export function capacityText(ev: AppEvent) {
+export function capacityText(ev: EventFacts) {
   const max = ev.maxParticipants || 0;
   const count = ev.registeredCount || 0;
   const min = ev.minParticipants || 0;
@@ -32,7 +33,7 @@ export function capacityText(ev: AppEvent) {
 }
 
 /** The bar of places taken (only with a maximum). */
-export function CapacityBar(props: { event: AppEvent }) {
+export function CapacityBar(props: { event: EventFacts }) {
   const max = () => props.event.maxParticipants || 0;
   const count = () => props.event.registeredCount || 0;
   const full = () => max() > 0 && count() >= max();
@@ -85,18 +86,14 @@ export function RegBannerAction(props: { onClick: () => void; children: JSX.Elem
 }
 
 // --- Participants (loaded for the open event; every refresh of the event loads them again) ---
-interface Attendees {
-  eventId: string;
-  registered: any[];
-  waitlist: any[];
-}
+type Attendees = Pick<AttendeeList, 'eventId' | 'registered' | 'waitlist'>;
 const [attendees, setAttendees] = createSignal<Attendees | null>(null);
 const attendeesLoad = newestWins();
 
 async function loadEventAttendees(eventId: string) {
   const isNewest = attendeesLoad();
   try {
-    const data = await apiJson(`/events/${eventId}/attendees`);
+    const data = await apiJson<Partial<AttendeeList>>(`/events/${eventId}/attendees`);
     if (!isNewest()) return;
     setAttendees({ eventId, registered: data.registered || [], waitlist: data.waitlist || [] });
   } catch (err) {
@@ -114,7 +111,9 @@ async function removeEventAttendee(eventId: string, userId: string) {
   });
 }
 
-function AttendeeRow(props: { event: AppEvent; attendee: any; waiting: boolean }) {
+const ageText = (age: number | undefined) => (age !== undefined && Number.isFinite(age) ? ` · ${t('events_attendee_age', 'Age {age}', { age })}` : '');
+
+function AttendeeRow(props: { event: AppEvent; attendee: Attendee; waiting: boolean }) {
   const att = () => props.attendee;
   return (
     <div class="flex items-center gap-2.5 px-0.5 py-1.5">
@@ -140,7 +139,7 @@ function AttendeeRow(props: { event: AppEvent; attendee: any; waiting: boolean }
           <Show when={att().email}>
             <span class="truncate text-[0.76rem] font-medium text-text-secondary">
               <a href={`mailto:${att().email}`} class="text-inherit underline">{att().email}</a>
-              {Number.isFinite(att().age) ? ` · ${t('events_attendee_age', 'Age {age}', { age: att().age })}` : ''}
+              {ageText(att().age)}
             </span>
           </Show>
         </span>
@@ -271,7 +270,7 @@ function RegistrationAction(props: { event: AppEvent }) {
 }
 
 /** The card head: symbol, "Registration", the places (also the guests' page uses it). */
-export function RegistrationHead(props: { event: AppEvent }) {
+export function RegistrationHead(props: { event: EventFacts }) {
   return (
     <>
       <div class="flex min-w-0 items-center gap-3">

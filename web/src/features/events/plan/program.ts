@@ -10,7 +10,9 @@ import { newestWins } from '../../../app/util';
 import { keySteps } from '../../../lib/songbook';
 import { loadSongs, openSong, songbookLoaded, songs } from '../../songbook/api';
 import { appEvents, type AppEvent } from '../store';
+import type { Duty, ProgramAnswer } from '../types';
 
+/** An item of the order of service (backend/program.js): a title or a song (in a key of its own), who, how long. */
 export type ProgramItem = {
   id: string;
   title?: string;
@@ -19,9 +21,8 @@ export type ProgramItem = {
   songKey?: string;
   minutes?: number | null;
   note?: string;
-  [key: string]: any;
 };
-export type Duty = { id: string; roleName?: string; status?: string; [key: string]: any };
+export type { Duty };
 
 export const PLAN_ENTRY_MODAL = 'plan-entry-modal';
 
@@ -40,7 +41,7 @@ const programLoad = newestWins();
 export async function loadProgram(eventId: string): Promise<void> {
   const isNewest = programLoad();
   try {
-    const data = await apiJson(`/events/${encodeURIComponent(eventId)}/program`);
+    const data = await apiJson<ProgramAnswer<ProgramItem>>(`/events/${encodeURIComponent(eventId)}/program`);
     if (!isNewest()) return;
     const items: ProgramItem[] = Array.isArray(data.items) ? data.items : [];
     if (items.some(item => item.songId) && !songbookLoaded()) await loadSongs();

@@ -275,7 +275,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
         <div class="flex flex-col gap-1.5 text-[0.84rem] text-text-secondary">
           <Show when={multiDay()}>{metaRow('calendar', formatEventDateSpanShort(ev().date, ev().endDate!), true)}</Show>
           <Show when={!multiDay() && eventTimeRange(ev())}>{metaRow('clock', eventTimeRange(ev()))}</Show>
-          <Show when={ev().location}>{metaRow('location', ev().location)}</Show>
+          <Show when={ev().location}>{metaRow('location', ev().location ?? '')}</Show>
         </div>
         <div class="mt-auto flex items-center justify-between gap-2 pt-1 text-[0.8rem]">
           <div>

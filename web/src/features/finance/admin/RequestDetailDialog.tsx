@@ -71,9 +71,11 @@ function RequestBody(props: { req: FinanceRequest }) {
           </DetailRow>
         </Show>
         <Show when={props.req.timestamp}>
-          <DetailRow icon="clock" label={t('request_detail_received', 'Received')}>
-            {dateTimeFormatter.format(new Date(props.req.timestamp))}
-          </DetailRow>
+          {timestamp => (
+            <DetailRow icon="clock" label={t('request_detail_received', 'Received')}>
+              {dateTimeFormatter.format(new Date(timestamp()))}
+            </DetailRow>
+          )}
         </Show>
         <Show when={props.req.status !== 'pending' || !canApproveRequests()}>
           <DetailRow icon="check" label={t('request_detail_status', 'Status')}>

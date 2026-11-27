@@ -1,7 +1,7 @@
 // System settings: the connection to Nextcloud that holds the media library (address, account, app password, base
 // folder), its test and whether Media is on.
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { loadMediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser } from '../../app/session';
@@ -34,11 +34,20 @@ const mediaConfigPayload = () => ({
   root: mediaForm.root.trim()
 });
 
+/** The Nextcloud connection as the server shows it (the password only as "***"). */
+interface MediaConfigAnswer {
+  enabled?: boolean;
+  url?: string;
+  user?: string;
+  password?: string;
+  root?: string;
+}
+
 export async function loadMediaConfig() {
   if (!isSuperAdminUser()) return;
   setMediaTestResult(null);
   try {
-    const data = await apiJson('/admin/media-config');
+    const data = await apiJson<MediaConfigAnswer>('/admin/media-config');
     setMediaForm(form => {
       form.enabled = data.enabled === true;
       form.url = data.url || '';
@@ -55,10 +64,10 @@ export async function loadMediaConfig() {
 export async function testMediaConfig() {
   setMediaTesting(true);
   try {
-    const data = await apiJson('/admin/media-config/test', 'POST', mediaConfigPayload());
+    const data = await apiJson<{ folders: string[]; folderCount: number }>('/admin/media-config/test', 'POST', mediaConfigPayload());
     setMediaTestResult({ ok: true, folders: data.folders, folderCount: data.folderCount });
-  } catch (err: any) {
-    setMediaTestResult({ ok: false, message: err.message });
+  } catch (err) {
+    setMediaTestResult({ ok: false, message: errorMessage(err) });
   } finally {
     setMediaTesting(false);
   }

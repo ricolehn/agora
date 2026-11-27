@@ -7,29 +7,31 @@ import { apiJson } from '../../../app/api';
 import { activeTab, syncUrl } from '../../../app/router';
 import { canViewFinances } from '../../../app/session';
 import { debounce, newestWins } from '../../../app/util';
+import type { BookingFields } from '../../../app/types';
 
 export type FinanceSubpage = 'history' | 'members';
 
-/** A booking of the history as the server lists it (payment, donation or expense). */
-export interface Transaction {
+/** A booking of the history as the server lists it (backend/transactions.js): a payment, a donation or an expense. */
+export interface Transaction extends BookingFields {
   id: string;
-  type: string;
-  amount: number | string;
-  date?: string;
+  type: 'pay' | 'don' | 'exp';
+  /** Who paid, gave or was paid. */
   who?: string;
-  name?: string;
-  description?: string;
-  note?: string;
-  issuer?: string;
-  receipt?: unknown;
-  tags?: string | string[];
   personId?: string;
   personUid?: string | null;
   personName?: string;
   paymentId?: string;
+  /** Where a payment is in the member's list (old payments have no id). */
   paymentIndex?: number;
-  payment?: any;
-  [key: string]: any;
+  /** The booking as it is stored. */
+  payment?: BookingFields;
+}
+
+/** A page of the history (GET /api/transactions). */
+export interface TransactionPage {
+  items?: Transaction[];
+  totalItems?: number;
+  totalPages?: number;
 }
 
 /** How a booking counts: expenses go out (red), payments and donations come in (green). */
@@ -89,7 +91,7 @@ const statsLoad = newestWins();
 export async function loadStats() {
   const isNewest = statsLoad();
   try {
-    const total = Number((await apiJson('/stats')).totalBalance) || 0;
+    const total = Number((await apiJson<{ totalBalance?: number }>('/stats')).totalBalance) || 0;
     if (isNewest()) setBalance(total);
   } catch (err) {
     console.error('Could not load the statistics:', err);
@@ -140,7 +142,7 @@ export async function loadHistory(reset = true, { quiet = false } = {}) {
     setHistoryView('skeleton');
   }
   try {
-    const data = await apiJson(`/transactions?page=${page}&perPage=${perPage}${query ? `&search=${encodeURIComponent(query)}` : ''}`);
+    const data = await apiJson<TransactionPage>(`/transactions?page=${page}&perPage=${perPage}${query ? `&search=${encodeURIComponent(query)}` : ''}`);
     if (!isNewest()) return;
     const items: Transaction[] = Array.isArray(data.items) ? data.items : [];
     setTransactions(reset || quiet ? items : [...(transactions() || []), ...items]);

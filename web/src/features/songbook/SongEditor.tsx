@@ -1,7 +1,7 @@
 // The song editor (song-edit-modal), a page like "New poll": title, writers and key; lyrics with chords and a live
 // preview; the CCLI song number and copyright. Leaving with changes asks first.
 import { Show, createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { closeModal, closeMultipleModals, isModalOpen, openModal, setModalCloseGuard } from '../../app/modals';
 import { confirmAction, showToast } from '../../app/toast';
@@ -71,8 +71,8 @@ async function saveSong() {
     putSong(saved);
     closeModal('song-edit-modal', false, true);
     showToast(t('songbook_saved', 'Song saved'));
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   } finally {
     setSaving(false);
   }
@@ -88,8 +88,8 @@ async function deleteSong() {
     else closeModal('song-edit-modal', false, true);
     dropSong(id);
     showToast(t('songbook_deleted', 'Song deleted'));
-  } catch (err: any) {
-    showToast(err.message, 'error');
+  } catch (err) {
+    showToast(errorMessage(err), 'error');
   }
 }
 

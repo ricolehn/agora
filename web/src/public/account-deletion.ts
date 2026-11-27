@@ -19,19 +19,19 @@ form.addEventListener('submit', async event => {
   const password = (document.getElementById('password') as HTMLInputElement).value;
   try {
     const login = await fetch('/api/auth/login', { method: 'POST', headers, body: JSON.stringify({ email, password }) });
-    const auth = await login.json().catch(() => ({}));
+    const auth = (await login.json().catch(() => ({}))) as { token?: string };
     if (!login.ok || !auth.token) throw new Error('The e-mail address or password is wrong.');
     const res = await fetch('/api/auth/delete-account', {
       method: 'POST',
       headers: { ...headers, Authorization: 'Bearer ' + auth.token },
       body: JSON.stringify({ password })
     });
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) throw new Error(data.error || 'The account could not be deleted.');
     form.reset();
     show('Your account has been deleted.', true);
-  } catch (err: any) {
-    show(err.message, false);
+  } catch (err) {
+    show(err instanceof Error ? err.message : String(err), false);
   }
   submit.disabled = false;
 });

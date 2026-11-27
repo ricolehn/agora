@@ -15,6 +15,7 @@ import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
 import { typedDayMatches } from '../../../../lib/finance.js';
 import { ActionPair, Facts, ImpactTile, type ImpactSide } from './common';
+import type { FeeReset, FeeResetLogEntry } from '../../../../app/types';
 
 type ResetImpact = { date: string; firstMonth: string; inEffect?: boolean; behind: ImpactSide; ahead: ImpactSide };
 
@@ -80,7 +81,7 @@ async function confirmFeeReset() {
     attempt(
       async () => {
         // The day goes twice: the server takes nothing that was not confirmed (backend/routes/finance.js)
-        const data = await apiJson(current.remove ? '/admin/fee-reset/remove' : '/admin/fee-reset', 'POST', { date: current.date, confirmDate: current.date, password: secret }, failed);
+        const data = await apiJson<{ resets?: FeeReset[]; log?: FeeResetLogEntry[] }>(current.remove ? '/admin/fee-reset/remove' : '/admin/fee-reset', 'POST', { date: current.date, confirmDate: current.date, password: secret }, failed);
         applyFeeResets(data);
         closeModal('fee-reset-modal');
         setResetDay('');

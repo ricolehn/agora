@@ -1,7 +1,7 @@
 // System settings: the instance's configuration (name, public address, default language, CCLI licence, SMTP) and
 // its logo.
 import { snapshot } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, asFailure } from '../../app/api';
 import { bumpLogoVersion, config, setAppName } from '../../app/config';
 import { t } from '../../app/i18n';
 import { isSuperAdminUser } from '../../app/session';
@@ -40,11 +40,20 @@ export function forgetSystemConfig() {
   loadedAppName = null;
 }
 
+/** The instance's configuration as the server shows it (GET /api/admin/system-config; the SMTP password only as "***"). */
+interface SystemConfigAnswer {
+  appName?: string;
+  publicUrl?: string;
+  defaultLanguage?: string;
+  ccliLicense?: string;
+  smtp?: { host?: string; port?: number | string; user?: string; pass?: string; secure?: boolean };
+}
+
 export async function loadAdvancedSystemConfig() {
   if (!isSuperAdminUser()) return;
   await attempt(
     async () => {
-      const data = await apiJson('/admin/system-config');
+      const data = await apiJson<SystemConfigAnswer>('/admin/system-config');
       loadedAppName = data.appName || null;
       setConfigForm(form => {
         form.appName = data.appName || '';
@@ -114,8 +123,9 @@ export async function uploadChurchLogo(fileInput: HTMLInputElement) {
     bumpLogoVersion();
     fileInput.value = '';
     showToast(t('toast_logo_updated', 'Logo updated'));
-  } catch (err: any) {
-    const errMsg = err.message || err.code || t('error_unknown', 'Unknown error');
+  } catch (err) {
+    const { message, code } = asFailure(err);
+    const errMsg = message || code || t('error_unknown', 'Unknown error');
     console.error('Logo upload failed:', errMsg, err);
     showToast(t('toast_logo_update_failed', 'Logo could not be updated'), 'error');
   }

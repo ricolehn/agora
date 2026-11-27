@@ -16,6 +16,7 @@ import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
 import { parseAmount } from '../../../../lib/finance.js';
 import { ActionPair, FEE_KEYS, Facts, ImpactTile, addMonths, type FeeKey, type Fees } from './common';
+import type { FeePlan } from '../../../../app/types';
 
 type FeeDraft = {
   /** New fees from a month (not an entry being edited). */
@@ -51,7 +52,7 @@ const [confirmBusy, setConfirmBusy] = createSignal(false);
 
 const chosenMonth = () => `${year()}-${month()}`;
 // The fees that count in [ym] as the card knows them (the entries come earliest first)
-const feesOfPlanMonth = (ym: string): Fees => safeList<any>(feePlan()?.entries).filter(entry => !entry.from || entry.from <= ym).pop()?.fees || {};
+const feesOfPlanMonth = (ym: string): Fees => (feePlan()?.entries ?? []).filter(entry => !entry.from || entry.from <= ym).pop()?.fees || {};
 // An amount as it is typed: "45.5" / "45,5"
 const feeInputText = (amount: unknown) => String(Number(amount) || 0).replace('.', uiLang() === 'en' ? '.' : ',');
 
@@ -63,12 +64,13 @@ export function openFeeChange(from?: string | null) {
   const plan = feePlan();
   if (!isSuperAdminUser() || !plan) return;
   const adding = from === undefined;
-  const entry = adding ? null : safeList<any>(plan.entries).find(e => (e.from || null) === (from || null));
+  const entry = adding ? null : (plan.entries.find(e => (e.from || null) === (from || null)) ?? null);
   if (!adding && !entry) return;
   // New fees count from next month unless the admin says otherwise: nobody is behind for a month that has begun
-  const startMonth: string | null = adding ? addMonths(plan.month, 1) : entry.from;
-  setDraft({ adding, base: !adding && !entry.from, replaces: entry?.from || undefined, touched: new Set() });
-  const fees: Fees = entry ? entry.fees : feesOfPlanMonth(startMonth!);
+  const nextMonth = addMonths(plan.month, 1);
+  const startMonth = entry ? entry.from : nextMonth;
+  setDraft({ adding, base: !!entry && !entry.from, replaces: entry?.from || undefined, touched: new Set() });
+  const fees: Fees = entry ? entry.fees : feesOfPlanMonth(nextMonth);
   setAmounts({ vollverdiener: feeInputText(fees.vollverdiener), geringverdiener: feeInputText(fees.geringverdiener), keinverdiener: feeInputText(fees.keinverdiener) });
   // Fifteen years back, ten ahead (as far as the server takes a month) - and the year of the entry, wherever it lies
   const thisYear = Number(plan.month.slice(0, 4));
@@ -78,7 +80,7 @@ export function openFeeChange(from?: string | null) {
   setMonth((startMonth || plan.month).slice(5, 7));
   setYear((startMonth || plan.month).slice(0, 4));
   setMode(adding ? 'add' : 'edit');
-  setShownFrom(adding ? undefined : entry.from || null);
+  setShownFrom(entry ? entry.from || null : undefined);
   setImpact(null);
   setStep('form');
   openModal('fee-change-modal');
@@ -142,10 +144,10 @@ async function confirmFeeChange() {
   await once('fee-change-confirm', () =>
     attempt(
       async () => {
-        const data = await apiJson(current.remove ? '/admin/fees/remove' : '/admin/fees', 'POST', { ...current.body, version: current.version }, failed).catch(async err => {
+        const data = await apiJson<FeePlan>(current.remove ? '/admin/fees/remove' : '/admin/fees', 'POST', { ...current.body, version: current.version }, failed).catch(async err => {
           // Someone else changed the fees since the numbers were shown: show what is there now, nothing was saved
           if (err.status === 409) {
-            applyFeePlan(await apiJson('/fees').catch(() => null));
+            applyFeePlan(await apiJson<FeePlan>('/fees').catch(() => null));
             backToFeeChange();
           }
           throw err;
@@ -183,8 +185,8 @@ function monthHint(): { text: string; warning: boolean } {
   const plan = feePlan();
   if (!current || current.remove || !plan) return { text: '', warning: false };
   const ym = chosenMonth();
-  const first = safeList<any>(plan.entries).find(entry => entry.from)?.from;
-  const taken = !current.base && ym !== current.replaces && safeList<any>(plan.entries).some(entry => entry.from === ym);
+  const first = plan.entries.find(entry => entry.from)?.from;
+  const taken = !current.base && ym !== current.replaces && plan.entries.some(entry => entry.from === ym);
   const text = current.base
     ? first
       ? t('fees_hint_start_until', 'Counts for every month before {month}.', { month: monthText(first) })

@@ -1,7 +1,7 @@
 // Anonymous polls: the list, what this device voted, the timed end of running polls, the labels and the result
 // shares. The server never links a person to an answer; what you chose is remembered on this device only.
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage } from '../../app/api';
 import { formatDateFast, t, timeText } from '../../app/i18n';
 import { closeModal, isModalOpen } from '../../app/modals';
 import { activeTab } from '../../app/router';
@@ -87,9 +87,9 @@ export async function loadPolls(): Promise<void> {
     setPolls(Array.isArray(list) ? list : []);
     setPollsLoaded(true);
     setPollsError('');
-  } catch (err: any) {
-    if (pollsLoaded()) showToast(err.message, 'error');
-    else setPollsError(err.message);
+  } catch (err) {
+    if (pollsLoaded()) showToast(errorMessage(err), 'error');
+    else setPollsError(errorMessage(err));
   }
   flushNow();
   scheduleNextPollEnd();

@@ -61,7 +61,7 @@ export function connectSSE() {
   sseConnection.addEventListener('data_update', e => {
     let scope = 'all';
     try {
-      scope = JSON.parse((e as MessageEvent).data || '{}').scope || 'all';
+      scope = (JSON.parse((e as MessageEvent).data || '{}') as { scope?: string } | null)?.scope || 'all';
     } catch {
       /* older servers send an empty payload: reload everything */
     }

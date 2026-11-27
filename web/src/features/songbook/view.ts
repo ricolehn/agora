@@ -10,6 +10,7 @@ import { copyText } from '../../app/util';
 import { findBySlug } from '../../app/router';
 import { fetchSongs, songSlug, songs } from './store';
 import { flushNow } from '../../app/flush';
+import { asFailure } from '../../app/api';
 
 const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
 const SONG_PREFS_KEY = 'agora-song-view';
@@ -214,8 +215,8 @@ export async function shareSong() {
     }
     if (!(await copyText(url))) throw new Error('copy');
     showToast(t('songbook_link_copied', 'Link copied'));
-  } catch (err: any) {
-    if (err?.name !== 'AbortError') showToast(t('songbook_link_failed', 'The link could not be shared.'), 'error');
+  } catch (err) {
+    if (asFailure(err).name !== 'AbortError') showToast(t('songbook_link_failed', 'The link could not be shared.'), 'error');
   }
 }
 

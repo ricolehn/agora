@@ -1,6 +1,7 @@
 // Toasts and simple dialogs. Callers pass already translated texts (t()). The toast itself is drawn by the shell
 // (shell/Overlays.tsx) from the signal below.
 import { createSignal } from 'solid-js';
+import { asFailure, type Failure } from './api';
 import { t } from './i18n';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -46,7 +47,7 @@ export function alertMessage(text: string) {
  */
 export async function attempt(
   action: () => Promise<unknown> | unknown,
-  failure: string | ((err: any) => string),
+  failure: string | ((err: Failure) => string),
   { toast: toastType = 'error', setBusy }: { toast?: ToastType; setBusy?: (busy: boolean) => void } = {}
 ): Promise<boolean> {
   setBusy?.(true);
@@ -55,7 +56,7 @@ export async function attempt(
     return true;
   } catch (err) {
     console.error(err);
-    const message = typeof failure === 'function' ? failure(err) : failure;
+    const message = typeof failure === 'function' ? failure(asFailure(err)) : failure;
     showToast(message || t('error_unknown', 'Unknown error'), toastType);
     return false;
   } finally {

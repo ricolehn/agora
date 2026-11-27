@@ -10,6 +10,7 @@ import { formatEventDateSpanCompact, eventTimeRange, isEventKind, isMapPlace, is
 import { renderMarkdown } from '../../ui/markdown';
 import { RegistrationCard } from './Registration';
 import { currentDetailEvent, deleteCurrentEvent, enterDetailEditMode, eventImage, type AppEvent } from './store';
+import type { EventFacts } from './types';
 
 /** The cover picture, full width at the top of the page (it fades into the page on phones). */
 export function CoverHero(props: { src: string; onError?: () => void; children?: JSX.Element }) {
@@ -42,7 +43,7 @@ export function SphereBand() {
 }
 
 /** "Major event & highlight" at the top right, over the picture or the sphere band. */
-export function TopBadges(props: { event: AppEvent; onImage: boolean }) {
+export function TopBadges(props: { event: EventFacts; onImage: boolean }) {
   return (
     <div class="pointer-events-none absolute left-4 right-4 top-[calc(12px+env(safe-area-inset-top,0px))] z-10 flex items-center justify-start gap-3 pl-11 before:-mr-3 before:h-[42px] before:w-0 before:shrink-0 before:content-[''] md:top-7 md:pl-[66px]">
       <div class="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -137,7 +138,7 @@ function fitOneLine(el: HTMLElement, min: number) {
   el.style.fontSize = `${Math.max(min, Math.floor(((base * width) / el.scrollWidth) * 2) / 2)}px`;
 }
 
-export function InfoCells(props: { event: AppEvent }) {
+export function InfoCells(props: { event: EventFacts }) {
   const multi = () => isMultiDay(props.event);
   const location = () => (typeof props.event.location === 'string' ? props.event.location.trim() : '');
   const date = () => formatEventDateSpanCompact(props.event.date, props.event.endDate);

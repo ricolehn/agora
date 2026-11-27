@@ -3,7 +3,7 @@
 // pages on screen. As in the Android app: a folder that opens rises from below, going back it comes down from above
 // and the folder above shows where it was left.
 import { createSignal } from 'solid-js';
-import { apiJson } from '../../app/api';
+import { apiJson, errorMessage, errorStatus } from '../../app/api';
 import { loadMediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
 import { activeTab, leaveHistoryLevels, switchTab, syncUrl } from '../../app/router';
@@ -223,10 +223,10 @@ export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
       syncUrl();
       return;
     }
-  } catch (err: any) {
+  } catch (err) {
     if (!isNewest()) return;
     // A folder that is gone (or no longer visible): one level up
-    if (err?.status === 404 && path) {
+    if (errorStatus(err) === 404 && path) {
       cache.delete(path);
       showToast(t('media_folder_gone', 'This folder is not available.'), 'error');
       setFolder(parentPath(path));
@@ -237,7 +237,7 @@ export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
       cache.delete(path);
       setListing(null);
       setLoadedPath(null);
-      setError(err?.status === 503 || err?.status === 404 ? { unavailable: true } : { message: String(err?.message || '') });
+      setError(errorStatus(err) === 503 || errorStatus(err) === 404 ? { unavailable: true } : { message: String(errorMessage(err) || '') });
       flushNow();
     }
   }

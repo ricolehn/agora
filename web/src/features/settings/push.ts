@@ -58,7 +58,7 @@ export async function ensurePushNotificationSubscription(interactive = false) {
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
-      const { publicKey } = await apiJson('/push/vapid-public-key');
+      const { publicKey } = await apiJson<{ publicKey: string }>('/push/vapid-public-key');
       subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
     }
     await apiJson('/push/subscribe', 'POST', { subscription: subscription.toJSON(), userAgent: navigator.userAgent, installed: true }).catch(e =>

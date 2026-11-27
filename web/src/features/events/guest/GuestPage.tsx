@@ -90,7 +90,7 @@ function GuestEvent(props: { view: GuestView }) {
             <InfoCells event={event()} />
             <Show when={(event().description || '').trim()}>{text => <Description text={text()} />}</Show>
             <Show when={event().requiresRegistration}>
-              <GuestRegistration view={props.view} />
+              <GuestRegistration view={props.view} event={event()} />
             </Show>
           </>
         )}
