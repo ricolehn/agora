@@ -6,7 +6,7 @@ import { t } from '../../app/i18n';
 import { onModalClosed, openModal } from '../../app/modals';
 import { Modal } from '../../ui/Modal';
 import { Icon } from '../../ui/Icon';
-import { fileUrl, previewUrl, viewerSize } from '../../lib/media.js';
+import { fileUrl, previewUrl, viewerSize } from '../../lib/media';
 import { fileMeta } from './files';
 import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerTop } from './viewerChrome';
 import type { MediaFile } from './types';

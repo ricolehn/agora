@@ -1,14 +1,14 @@
-// The library's small pictures as in the Android app (lib/motifs.js): a motif (a folder, a picture, notes, a
+// The library's small pictures as in the Android app (lib/motifs.ts): a motif (a folder, a picture, notes, a
 // screen, a document) in a field softly painted in its colours - lighter up left, a breath of a neighbouring hue down
 // right, two still soft forms - deep and quiet in the dark theme.
 import type { JSX } from '@solidjs/web';
-import { fieldForms, motifSvg } from '../../lib/motifs.js';
+import { fieldForms, motifSvg } from '../../lib/motifs';
 
 /** A motif as an <svg> of its own; [accent] colours a document's folded corner and lines. Decorative. */
 export function MotifSvg(props: { motif: string; accent?: string; class?: JSX.ClassValue }) {
   // The drawing's inside (its gradients carry ids of their own, so several on one page never share them)
   const inner = () => motifSvg(props.motif, { accent: props.accent }).replace(/^<svg[^>]*>|<\/svg>$/g, '');
-  // eslint-disable-next-line solid/no-innerhtml -- the app's own drawing code (lib/motifs.js), no names or data in it
+  // eslint-disable-next-line solid/no-innerhtml -- the app's own drawing code (lib/motifs.ts), no names or data in it
   return <svg class={props.class} viewBox="0 0 100 100" aria-hidden="true" innerHTML={inner()} />;
 }
 

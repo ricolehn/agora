@@ -6,7 +6,7 @@ import { t } from '../../app/i18n';
 import { closeModal, closeMultipleModals, isModalOpen, openModal, setModalCloseGuard } from '../../app/modals';
 import { confirmAction, showToast } from '../../app/toast';
 import { debounce } from '../../app/util';
-import { parseSong } from '../../lib/songbook.js';
+import { parseSong } from '../../lib/songbook';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
 import { DeleteButton, EDITOR_FIELD, EDITOR_INPUT, EditorCard, EditorField, EditorPage, TITLE_INPUT } from '../../ui/pages';

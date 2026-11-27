@@ -1,7 +1,7 @@
-// The assistant's sign (lib/aiSign.js, as in the Android app): two soft forms in lagoon and sand whose outlines slowly
+// The assistant's sign (lib/aiSign.ts, as in the Android app): two soft forms in lagoon and sand whose outlines slowly
 // change - livelier while the AI works, at rest once a reply is complete. Used by the chat and by its tile in Extras.
 import { createEffect, createMemo } from 'solid-js';
-import { aiSignMarkup, setAiSignState, wakeAiSigns } from '../../lib/aiSign.js';
+import { aiSignMarkup, setAiSignState, wakeAiSigns } from '../../lib/aiSign';
 
 export type AiSignState = 'calm' | 'thinking' | 'resting';
 
@@ -24,7 +24,7 @@ export interface AiSignProps {
 
 export function AiSign(props: AiSignProps) {
   let holder!: HTMLSpanElement;
-  // Drawn once (each sign has gradients of its own); lib/aiSign.js moves it while it is on screen
+  // Drawn once (each sign has gradients of its own); lib/aiSign.ts moves it while it is on screen
   const markup = createMemo(() => aiSignMarkup({ size: props.size, seed: props.seed, still: props.still, time: props.time, glow: props.glow }));
   createEffect(
     () => props.state ?? 'calm',
@@ -33,6 +33,6 @@ export function AiSign(props: AiSignProps) {
       setAiSignState(holder.firstElementChild, state);
     }
   );
-  // eslint-disable-next-line solid/no-innerhtml -- trusted markup of lib/aiSign.js (numbers and fixed classes only)
+  // eslint-disable-next-line solid/no-innerhtml -- trusted markup of lib/aiSign.ts (numbers and fixed classes only)
   return <span ref={holder} class={props.class} aria-hidden="true" innerHTML={markup()} />;
 }

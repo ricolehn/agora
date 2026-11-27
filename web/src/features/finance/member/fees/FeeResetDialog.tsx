@@ -13,7 +13,7 @@ import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
-import { typedDayMatches } from '../../../../lib/finance.js';
+import { typedDayMatches } from '../../../../lib/finance';
 import { ActionPair, Facts, ImpactTile, type ImpactSide } from './common';
 import type { FeeReset, FeeResetLogEntry } from '../../../../app/types';
 

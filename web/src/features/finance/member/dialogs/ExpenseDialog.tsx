@@ -10,7 +10,7 @@ import { getTodayStr } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input } from '../../../../ui/form';
-import { parseAmount } from '../../../../lib/finance.js';
+import { parseAmount } from '../../../../lib/finance';
 import { refreshFinanceViews } from '../../admin/state';
 import { AmountInput, PendingFileList, ReceiptDropzone, createPendingFiles, createRequired } from '../shared';
 import { errorMessage } from '../../../../app/api';

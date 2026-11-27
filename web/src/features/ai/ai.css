@@ -1,4 +1,4 @@
-/* The AI chat: its keyframes and the markup it draws without JSX - the assistant's sign (lib/aiSign.js) and the
+/* The AI chat: its keyframes and the markup it draws without JSX - the assistant's sign (lib/aiSign.ts) and the
    replies' Markdown. Everything else is Tailwind on the components. */
 
 @keyframes aiChatFadeIn { from { opacity: 0; } }

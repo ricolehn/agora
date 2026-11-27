@@ -12,7 +12,7 @@ import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/feedback';
 import { Field, Input, Label } from '../../../ui/form';
 import { MODAL_TINTS, Modal, ModalBody, ModalHeader, ModalSection } from '../../../ui/Modal';
-import { findPaymentIndex, parseAmount } from '../../../lib/finance.js';
+import { findPaymentIndex, parseAmount } from '../../../lib/finance';
 import { FeeResetNote, feeResetPaymentHint } from '../common';
 import { DownloadLink, OpenPdfLink, ReceiptFileRow, ReceiptThumb, useReceiptUrls } from './Receipts';
 import { refreshFinanceViews, type Transaction } from './state';

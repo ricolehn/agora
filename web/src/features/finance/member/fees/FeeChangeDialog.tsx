@@ -14,7 +14,7 @@ import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
-import { parseAmount } from '../../../../lib/finance.js';
+import { parseAmount } from '../../../../lib/finance';
 import { ActionPair, FEE_KEYS, Facts, ImpactTile, addMonths, type FeeKey, type Fees } from './common';
 import type { FeePlan } from '../../../../app/types';
 

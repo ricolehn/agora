@@ -4,7 +4,7 @@ import { For, Match, Show, Switch, createMemo, createSignal } from 'solid-js';
 import { t, uiLocale } from '../../app/i18n';
 import { SearchInput } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
-import { normalizeSearch } from '../../lib/songbook.js';
+import { normalizeSearch } from '../../lib/songbook';
 import { AppHead, ListEmpty, ListLoading } from '../../ui/pages';
 import { type Song, canManageSongs, songbookError, songbookLicense, songbookLoaded, songs, songSearchText } from './store';
 import { loadSongs, openSong } from './view';
@@ -14,7 +14,7 @@ const songMeta = (song: Song) => [song.artist, song.key ? t('songbook_key_short'
 
 export function SongbookPage() {
   const [search, setSearch] = createSignal('');
-  const query = createMemo(() => normalizeSearch(search().trim()) as string);
+  const query = createMemo(() => normalizeSearch(search().trim()));
   const shown = () => (query() ? songs().filter(s => songSearchText(s).includes(query())) : songs());
   // Alphabetical list in one card, a letter above each new initial (only without a search)
   const rows = createMemo(() => {

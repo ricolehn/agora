@@ -1,4 +1,4 @@
-// One assistant reply while it streams in (lib/aiReply.js keeps its steps). A small line on top says what the AI is
+// One assistant reply while it streams in (lib/aiReply.ts keeps its steps). A small line on top says what the AI is
 // doing right now - "Thinking", the title of its newest thought, or the lookup it runs, in its own words - with the
 // seconds; then the answer comes. Afterwards the line says "Thought" and opens on a tap: the thoughts, the notes it
 // wrote on the way and the lookups with what they found, in order.
@@ -16,17 +16,13 @@ import { createSignal, createStore } from 'solid-js';
 import { euro, t } from '../../app/i18n';
 import { newestWins } from '../../app/util';
 import {
-  createReplyWork, createTitlePacer, liveLabel, lookupFound, lookupTitle, lookupWhat, readingTime, splitAiThinking
-} from '../../lib/aiReply.js';
+  createReplyWork, createTitlePacer, liveLabel, lookupFound, lookupTitle, lookupWhat, readingTime, splitAiThinking, type StreamPart, type WorkStep
+} from '../../lib/aiReply';
 import type { IconName } from '../../ui/Icon';
 import type { AiSignState } from './AiSign';
 import { aiChatAtEnd, aiChatScroller, aiChatToEnd, chatElements } from './scroll';
 import { flushNow } from '../../app/flush';
 
-type Lookup = { id?: number; tool?: string; from?: string; to?: string; about?: string; step?: string };
-/** One event of the answer's stream (backend/routes/ai.js): a piece of the thoughts or the answer, a lookup begun or done. */
-export type StreamPart = { reasoning?: string; content?: string; lookup?: Lookup; lookupDone?: object };
-type WorkStep = { kind: 'thought' | 'note'; text: string } | { kind: 'lookup'; lookup: Lookup; done: object | null };
 
 /** The words on the line: the current ones last, the ones before still leaving upwards. */
 export interface LineWords {
@@ -87,7 +83,7 @@ const LOOKUP_ICONS: Record<string, IconName> = {
 };
 
 // How the line moves: the app's easing (--ease), how long "Thinking" stays at least before the first real title takes
-// its place (later titles stay as long as they take to read, readingTime in lib/aiReply.js), and how long text has to
+// its place (later titles stay as long as they take to read, readingTime in lib/aiReply.ts), and how long text has to
 // be coming in before the line says "Thought" - text the AI writes right before a lookup is only a note on the way,
 // and the line should not say "Thought" for half a second in between
 const AI_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
@@ -96,14 +92,6 @@ const AI_ANSWER_GRACE_MS = 700;
 // A thought that is still growing is laid out anew this often at most (ms): fluent to read, and a long one does not
 // keep a phone busy with every word
 const AI_STEP_TEXT_MS = 90;
-
-// The title pacer of lib/aiReply.js (plain JS): what it is given and what it tells
-interface TitlePacer {
-  readonly title: string | null;
-  readonly tag: boolean | undefined;
-  want(title: string, options?: { tag?: boolean; hold?: number; delay?: number }): void;
-  stop(): void;
-}
 
 const calm = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 const moves = (el: Element | undefined): el is HTMLElement => !!el && typeof el.animate === 'function' && !calm() && el.getClientRects().length > 0;
@@ -134,7 +122,7 @@ export function createAiReply() {
   let shownSteps: StepView[] = [];
 
   const work = createReplyWork();
-  const workSteps = () => work.steps as WorkStep[];
+  const workSteps = () => work.steps;
   const started = Date.now();
   const thinkingTitle = t('ai_thinking', 'Thinking');
   let complete = false;
@@ -175,7 +163,9 @@ export function createAiReply() {
   };
   const refold = () => foldLine(!state.live && state.empty);
 
-  const showTitle = (text: string, live: boolean) => {
+  // (Every title is wanted with its tag: the AI still works, or it is done)
+  const showTitle = (text: string, tag: boolean | undefined) => {
+    const live = tag === true;
     lineTitle = text;
     put({ live });
     signState(live);
@@ -200,7 +190,7 @@ export function createAiReply() {
     entering.animate([{ opacity: 0, transform: 'translateY(60%)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, delay: 70, easing: AI_EASE, fill: 'backwards' });
     if (Math.abs(to - from) > 0.5) label.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 300, easing: AI_EASE });
   };
-  const pacer = createTitlePacer(showTitle) as TitlePacer;
+  const pacer = createTitlePacer<boolean>(showTitle);
   pacer.want(thinkingTitle, { tag: true });
   signState(true);
 

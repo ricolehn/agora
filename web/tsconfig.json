@@ -9,13 +9,13 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "allowJs": true,
-    "checkJs": false,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": false,
+    "verbatimModuleSyntax": true,
     "types": ["vite/client"]
   },
   "include": ["src"]

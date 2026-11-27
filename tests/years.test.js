@@ -25,7 +25,7 @@ const feeSchedule = require('../backend/feeSchedule');
 const feeState = require('../backend/feeState');
 const { checkAndExecuteStandingOrders } = require('../backend/standingOrders');
 
-const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
+const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.ts')).href);
 const { cents, monthOf, addMonths, addDays } = books;
 
 const SEEDS = !process.env.YEARS_SEEDS ? [1, 6] : process.env.YEARS_SEEDS.split(',').flatMap((part) => {

@@ -1,6 +1,6 @@
 // Extras, as in the Android app: one permanent navigation entry for further apps of the community. The AI chat leads
 // across the full width with the assistant's sign (for those with the right); the others follow as rows, each with a
-// small 3D motif in a field softly painted in its colours (lib/motifs.js). Tiles rise in one after another; nothing in
+// small 3D motif in a field softly painted in its colours (lib/motifs.ts). Tiles rise in one after another; nothing in
 // a row moves.
 import { For, createMemo } from 'solid-js';
 import { FEATURES } from '../../app/config';
@@ -8,16 +8,13 @@ import { mediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
 import { activeTab, pushHistoryLevel, switchTab } from '../../app/router';
 import { aiEnabled, canAccessAi } from '../../app/session';
-import { MOTIF_SEEDS, motifSvg, paintedField } from '../../lib/motifs.js';
+import { MOTIF_SEEDS, motifSvg, paintedField, type Motif } from '../../lib/motifs';
 import { Icon } from '../../ui/Icon';
 import { AiSign } from '../ai/AiSign';
 import { openMediaFolder } from '../media/api';
 
-interface HubApp {
+interface HubAppBase {
   key: string;
-  /** The AI chat: across the full width, with its sign and "Start chat". */
-  featured?: boolean;
-  motif?: keyof typeof MOTIF_SEEDS;
   /** The light tone of the app and its deep one (its arrow in light mode, the field in the dark theme). */
   colors: [light: string, deep: string];
   /** A breath of a neighbouring hue in the field. */
@@ -27,6 +24,11 @@ interface HubApp {
   visible?: () => boolean;
   open: () => void;
 }
+/** The AI chat: across the full width, with its sign and "Start chat". */
+type FeaturedApp = HubAppBase & { featured: true };
+/** Another app: its motif in a painted field. */
+type MotifApp = HubAppBase & { featured?: false; motif: Motif };
+type HubApp = FeaturedApp | MotifApp;
 
 const HUB_APPS: HubApp[] = [
   {
@@ -80,7 +82,7 @@ function AppTexts(props: { app: HubApp }) {
 
 /** The AI chat: a breath of sand from the upper right corner that fades out past the middle of the tile, the
  *  assistant's sign - and once more, still and faint, in the corner - and "Start chat" (only the arrow on phones). */
-function FeaturedTile(props: { app: HubApp; index: number }) {
+function FeaturedTile(props: { app: FeaturedApp; index: number }) {
   return (
     <button
       type="button"
@@ -107,11 +109,11 @@ function FeaturedTile(props: { app: HubApp; index: number }) {
 }
 
 /** Another app: its motif in a painted field, its name and what it offers, an arrow in its colour. */
-function AppTile(props: { app: HubApp; index: number }) {
+function AppTile(props: { app: MotifApp; index: number }) {
   const field = () =>
     paintedField(
       { light: props.app.colors[0], deep: props.app.colors[1], hint: props.app.hint },
-      MOTIF_SEEDS[props.app.motif!] || 0,
+      MOTIF_SEEDS[props.app.motif] || 0,
       motifSvg(props.app.motif),
       'hub-app-field size-[76px] rounded-[15.2px]'
     );
@@ -122,7 +124,7 @@ function AppTile(props: { app: HubApp; index: number }) {
       style={{ '--app-light': props.app.colors[0], '--app-color': props.app.colors[1], '--i': String(props.index) }}
       onClick={() => openHubApp(props.app)}
     >
-      {/* eslint-disable-next-line solid/no-innerhtml -- trusted markup of lib/motifs.js (fixed shapes, the app's own colours) */}
+      {/* eslint-disable-next-line solid/no-innerhtml -- trusted markup of lib/motifs.ts (fixed shapes, the app's own colours) */}
       <span class="contents" innerHTML={field()} />
       <span class={[TEXTS, 'pr-2 pl-3.5']}>
         <AppTexts app={props.app} />

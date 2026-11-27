@@ -12,7 +12,9 @@ import { Input } from '../../ui/form';
 import { Icon, type IconName } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import { Pill, Pills } from '../../ui/PillTabs';
-import { addableTargets, removableRow, rightsPayload, rightsRows } from '../../lib/media.js';
+import {
+  addableTargets, removableRow, rightsPayload, rightsRows, type FolderRules, type RightsChoice, type RightsLevel, type RightsRow
+} from '../../lib/media';
 import { loadMediaFolder, mediaFolder, openMediaFolder } from './library';
 import { SheetFooter } from './SheetFooter';
 import { flushNow } from '../../app/flush';
@@ -20,17 +22,8 @@ import { flushNow } from '../../app/flush';
 const RIGHTS_ID = 'media-rights-modal';
 const RULES_ID = 'media-rules-modal';
 
-type Level = '' | 'read' | 'write' | 'hide';
-interface Choice {
-  id: string;
-  name: string;
-  kind: 'all' | 'group' | 'person';
-}
-interface RightsRow extends Choice {
-  /** The folder's own level ('' = follows what comes from above). */
-  level: Level;
-  inherited: { level: Exclude<Level, ''>; from: string } | null;
-}
+type Level = RightsLevel;
+type Choice = RightsChoice;
 interface Rule {
   path: string;
   groups: Record<string, Exclude<Level, ''>>;
@@ -57,8 +50,8 @@ export async function openMediaRights(path = mediaFolder()) {
   if (!mediaStatus().canManage) return;
   await attempt(
     async () => {
-      const data = await apiJson<{ choices: Choice[]; folder: unknown }>(`/media/rules?path=${encodeURIComponent(path)}`);
-      setRights({ path, choices: data.choices, rows: rightsRows(data.choices, data.folder) as RightsRow[] });
+      const data = await apiJson<{ choices: Choice[]; folder: FolderRules }>(`/media/rules?path=${encodeURIComponent(path)}`);
+      setRights({ path, choices: data.choices, rows: rightsRows(data.choices, data.folder) });
       setAdding(false);
       flushNow();
       openModal(RIGHTS_ID);
@@ -204,7 +197,7 @@ function AddPanel() {
   onSettled(() => input?.focus());
   const found = () => {
     const current = rights();
-    return current ? (addableTargets(current.choices, current.rows, query()) as Choice[]) : [];
+    return current ? addableTargets(current.choices, current.rows, query()) : [];
   };
   return (
     <div id="media-rights-add-panel" class="flex flex-col gap-2">

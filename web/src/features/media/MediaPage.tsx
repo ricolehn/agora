@@ -11,8 +11,8 @@ import { activeTab } from '../../app/router';
 import { Button } from '../../ui/Button';
 import { ProgressBar, Spinner } from '../../ui/feedback';
 import { Icon, type IconName } from '../../ui/Icon';
-import { MEDIA_FIELD, breadcrumb, fileLook, formatSize, pathSteps, previewUrl, shownName, typeLabel } from '../../lib/media.js';
-import { seedOf } from '../../lib/motifs.js';
+import { MEDIA_FIELD, breadcrumb, fileLook, formatSize, pathSteps, previewUrl, shownName, typeLabel, type PathStep } from '../../lib/media';
+import { seedOf } from '../../lib/motifs';
 import {
   deleteMediaEntries, downloadMediaEntries, mediaSelectBusy, mediaSelectionDeletable, mediaUpload, openMediaEntry, openMediaMenu,
   openMediaPathMenu, openMediaSortMenu, setMediaFileInput, uploadMediaFiles
@@ -261,12 +261,6 @@ function SelectBar() {
 // three folders down the base folder shows only its sign; deeper than three the middle folds into "…" (its folders
 // in a menu). The row keeps its end in sight; what does not fit fades at the edges, a pill that comes with a new path
 // fades in ---
-interface PathStep {
-  target: string;
-  name: string;
-  root: boolean;
-  folded: Array<{ target: string; name: string }>;
-}
 
 const PILL =
   'inline-flex min-h-8 max-w-[228px] items-center gap-1.5 whitespace-nowrap rounded-full border py-[5px] text-[0.875rem] leading-[1.25] ' +
@@ -279,7 +273,7 @@ const PILL_OPEN =
 function MediaPath() {
   let nav!: HTMLElement;
   const [edges, setEdges] = createSignal({ start: false, end: false });
-  const steps = createMemo(() => pathSteps(mediaFolder(), t('media_title', 'Media')) as PathStep[]);
+  const steps = createMemo(() => pathSteps(mediaFolder(), t('media_title', 'Media')));
   const syncEdges = () => setEdges({ start: nav.scrollLeft > 1, end: nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 1 });
   // A pill that comes with a new path fades in (not the first ones)
   let drawn = false;
@@ -709,7 +703,7 @@ function FileTile(props: { file: MediaFile }) {
   const size = mediaTileSize();
   // The thumbnail fades in when it arrives; without one (no preview for this file) the motif of its kind stays
   const [thumb, setThumb] = createSignal<'' | 'loaded' | 'failed'>('');
-  const look = () => fileLook(props.file) as { colors: { light: string; deep: string; hint: string }; motif: string };
+  const look = () => fileLook(props.file);
   const preview = () => !!props.file.hasPreview && thumb() !== 'failed';
   const type = () => typeLabel(props.file.name);
   const selected = () => isMediaSelected(props.file.name);

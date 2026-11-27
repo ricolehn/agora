@@ -1,12 +1,12 @@
 // The backend API. Plain objects go out as JSON, FormData as it is; the session token comes from the compat layer
-// (pocketbase-compat.js: the Firebase-like data and auth calls the app has always used against /api/db and /api/auth).
+// (pocketbase-compat.ts: the Firebase-like data and auth calls the app has always used against /api/db and /api/auth).
 import {
   initializeApp, getDatabase, getAuth, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, apiGet,
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updatePassword
-} from './pocketbase-compat.js';
+} from './pocketbase-compat';
 import { API, config } from './config';
 import { t, uiLang } from './i18n';
-import { createIsPreviousServer } from '../lib/collections.js';
+import { createIsPreviousServer } from '../lib/collections';
 
 export const db = getDatabase(initializeApp(config));
 export const auth = getAuth();
@@ -50,7 +50,7 @@ export interface ErrorAnswer {
 
 /**
  * What a failure carries besides its message: a refused request its HTTP status and the server's answer (offline:
- * no connection at all); the app's own checks a translation key (lib/finance.js) or a code.
+ * no connection at all); the app's own checks a translation key (lib/finance.ts) or a code.
  */
 export interface Failure extends Error {
   status?: number;
@@ -90,5 +90,5 @@ export async function fetchWithTimeout(resource: string, options: RequestInit = 
 }
 
 // While the database upgrade waits, the previous version of the server serves the instance: its /api/status names
-// no API versions, only the upgrade (lib/collections.js)
+// no API versions, only the upgrade (lib/collections.ts)
 export const isPreviousServer = createIsPreviousServer({ fetch: (...args) => fetch(...args), api: API });

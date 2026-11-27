@@ -1,4 +1,4 @@
-/* Extras: the tiles' entrance and the painted fields of lib/motifs.js. Everything else is Tailwind on the components. */
+/* Extras: the tiles' entrance and the painted fields of lib/motifs.ts. Everything else is Tailwind on the components. */
 
 @keyframes hubTileIn {
     from { opacity: 0; transform: translateY(10px) scale(0.985); }

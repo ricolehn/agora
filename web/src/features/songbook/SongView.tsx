@@ -4,7 +4,7 @@ import type { JSX } from '@solidjs/web';
 import { For, Show, createMemo } from 'solid-js';
 import { t, uiLocale } from '../../app/i18n';
 import { isModalOpen } from '../../app/modals';
-import { transposedKey } from '../../lib/songbook.js';
+import { transposedKey } from '../../lib/songbook';
 import { Button } from '../../ui/Button';
 import { Switch } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
@@ -69,7 +69,7 @@ export function SongViewModal() {
 
 function SongPage(props: { song: Song }) {
   // The (transposed) key, else the shift in semitones
-  const key = () => transposedKey(props.song.key, props.song.content, songSteps()) as string;
+  const key = () => transposedKey(props.song.key, props.song.content, songSteps());
   const shift = () => `${songSteps() > 0 ? '+' : ''}${songSteps()}`;
   // The facts a musician needs at a glance; a transposed key shows there too, so the change stays visible while the
   // controls are closed

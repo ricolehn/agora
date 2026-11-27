@@ -251,7 +251,7 @@ describe('API v2', { skip: !hasPocketBase && 'set POCKETBASE_BIN to run the HTTP
   });
 
   test('a status change from a day on rewrites the history as the web app does; before the membership it is refused', async () => {
-    const { applyStatusChangeToHistory } = await import(pathToFileURL(path.join(REPO_ROOT, 'web', 'src', 'lib', 'finance.js')).href);
+    const { applyStatusChangeToHistory } = await import(pathToFileURL(path.join(REPO_ROOT, 'web', 'src', 'lib', 'finance.ts')).href);
     const uid = await account('status', 'Stella');
     const member = await memberOf(uid);
     const before = await ok(call('treasurer', 'GET', `/api/db?path=people/${uid}`));

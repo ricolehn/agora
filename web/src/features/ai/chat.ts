@@ -6,9 +6,10 @@ import { t } from '../../app/i18n';
 import { activeTab } from '../../app/router';
 import { scrollContainer } from '../../app/shell';
 import { fitChatInput, onChatInputKey } from '../../ui/chatInput';
-import { splitAiThinking } from '../../lib/aiReply.js';
+import { splitAiThinking } from '../../lib/aiReply';
 import type { AiSignState } from './AiSign';
-import { createAiReply, type AiReply, type StreamPart } from './reply';
+import type { StreamPart } from '../../lib/aiReply';
+import { createAiReply, type AiReply } from './reply';
 import { aiChatAtEnd, aiChatToEnd, chatElements } from './scroll';
 import { flushNow } from '../../app/flush';
 

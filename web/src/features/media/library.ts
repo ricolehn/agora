@@ -11,7 +11,7 @@ import { scrollContainer } from '../../app/shell';
 import { readStored, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
 import { newestWins } from '../../app/util';
-import { folderDepth, folderFromRoute, parentPath, sortEntries } from '../../lib/media.js';
+import { folderDepth, folderFromRoute, parentPath, sortEntries } from '../../lib/media';
 import { motionAllowed } from './files';
 import type { MediaAccess, MediaEntry, MediaFile, MediaFolder, MediaListing, MediaSort } from './types';
 import { flushNow } from '../../app/flush';
@@ -172,8 +172,8 @@ function renderMedia() {
   const current = listing();
   // One calm circle (only after a moment, so fast folders do not flash) instead of tiles that may never come
   if (!current) return showMediaPage({ kind: 'loading' }, visible);
-  const folders = sortEntries(current.folders, sort() === 'newest' ? 'newest' : 'name') as MediaFolder[];
-  const files = sortEntries(current.files, sort()) as MediaFile[];
+  const folders = sortEntries(current.folders, sort() === 'newest' ? 'newest' : 'name');
+  const files = sortEntries(current.files, sort());
   setShown({ folders, files });
   // Deleted or gone on another device: no longer selected
   const present = new Set([...folders, ...files].map(entry => entry.name));

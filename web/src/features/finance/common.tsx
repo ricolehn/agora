@@ -9,7 +9,7 @@ import { euro, formatDateFast, getStatusLabels, monthYearFormatter, t, type Memb
 import { getTodayStr } from '../../app/util';
 import { Icon } from '../../ui/Icon';
 import type { IconName } from '../../ui/icons';
-import { droppedFeesBefore, feeResetIsNews } from '../../lib/finance.js';
+import { droppedFeesBefore, feeResetIsNews } from '../../lib/finance';
 import { isMemberStatus } from '../../app/types';
 
 /** A translated text whose {name} is shown in bold ("{amount} a month", "Fresh start on {date}"). */
@@ -95,7 +95,7 @@ export const paidUntilText = (paidUntil: Date | string | number | null | undefin
 export const standingOrderCovers = (meta: { isActiveStandingOrder?: boolean; isOverdue?: boolean }) =>
   !!meta.isActiveStandingOrder && !meta.isOverdue;
 
-/** The chip about a fresh start is a notice: it shows from its day on for about two months (lib/finance.js). */
+/** The chip about a fresh start is a notice: it shows from its day on for about two months (lib/finance.ts). */
 const feeResetIsShown = (p: Person) => !!p._feeReset && feeResetIsNews(p._feeReset, getTodayStr());
 
 /** What the fresh start (CALDERA) did to the account: credit taken along, open fees dropped, or nothing to settle. */
@@ -109,7 +109,7 @@ export function feeResetOutcome(person: Person): string {
 
 /**
  * A payment dated before the fresh start belongs to the time before it: where open fees were dropped then, it first
- * makes up for those (lib/finance.js). Said where the day is chosen, so "booked, but still behind" is no riddle.
+ * makes up for those (lib/finance.ts). Said where the day is chosen, so "booked, but still behind" is no riddle.
  */
 export function feeResetPaymentHint(person: Person | null | undefined, day: string | undefined): string {
   const dropped = person ? droppedFeesBefore(person, day) : 0;

@@ -7,7 +7,7 @@ import { t, uiLang } from '../../app/i18n';
 import { pushHistoryLevel } from '../../app/router';
 import { attempt, confirmAction, showToast } from '../../app/toast';
 import { once } from '../../app/util';
-import { opensAsPdf, opensInPlayer, opensInViewer, pathSteps } from '../../lib/media.js';
+import { opensAsPdf, opensInPlayer, opensInViewer, pathSteps } from '../../lib/media';
 import { downloadUrl, saveMediaLink } from './files';
 import {
   canDeleteMediaEntry, isMediaSelected, loadMediaFolder, mediaEntry, mediaFolder, mediaListing, mediaSelected, mediaShown,

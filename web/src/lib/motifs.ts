@@ -5,18 +5,20 @@
 //
 // A painted field holds them: a soft fall of a light colour, lighter up left, a breath of a neighbouring hue down
 // right - deep and quiet in the dark theme (style.css, .painted-field) - with two still soft forms in the language of
-// the AI's sign (aiSign.js). Pure functions that return markup (tested in tests/frontend.test.js).
-import { fixed, softFormPath } from './aiSign.js';
+// the AI's sign (aiSign.ts). Pure functions that return markup (tested in tests/frontend.test.js).
+import { fixed, softFormPath } from './aiSign.ts';
 
 /** Where the still forms of an app's field lie (the app's Motif seeds; the poll is the web's own). */
 export const MOTIF_SEEDS = { picture: 0.7, notes: 2.6, heart: 5.1, folder: 1.6, document: 3.8, film: 4.4, poll: 0.3 };
+export type Motif = keyof typeof MOTIF_SEEDS;
 
 // --- Colours: mixed in Oklab like the app's (Compose's lerp), so a document's lines have the same tone ---
 
-const toLinear = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const toGamma = c => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const toGamma = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
 
-function oklab(hex) {
+type Lab = [number, number, number];
+function oklab(hex: string): Lab {
     const [r, g, b] = [1, 3, 5].map(at => toLinear(parseInt(hex.slice(at, at + 2), 16) / 255));
     const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
     const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
@@ -28,7 +30,7 @@ function oklab(hex) {
     ];
 }
 
-function fromOklab([lightness, a, b]) {
+function fromOklab([lightness, a, b]: Lab): string {
     const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
     const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
     const s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3;
@@ -41,25 +43,28 @@ function fromOklab([lightness, a, b]) {
 }
 
 /** [from] moved [t] of the way to [to] (both #rrggbb). */
-export function mixColor(from, to, t) {
+export function mixColor(from: string, to: string, t: number): string {
     const a = oklab(from);
     const b = oklab(to);
-    return fromOklab(a.map((value, i) => value + (b[i] - value) * t));
+    return fromOklab(a.map((value, i) => value + (b[i] - value) * t) as Lab);
 }
 
 // --- Drawing helpers (all in the box of 100 × 100) ---
 
-const stopsOf = stops => stops.map(([offset, color, opacity = 1]) => `<stop offset="${offset}" stop-color="${color}"${opacity === 1 ? '' : ` stop-opacity="${opacity}"`}/>`).join('');
-const linear = (id, [x1, y1], [x2, y2], stops) =>
+/** A gradient's stops: where, which colour, how opaque (1 when left out). */
+type Stop = [offset: number, color: string, opacity?: number];
+type Point = [number, number];
+const stopsOf = (stops: Stop[]) => stops.map(([offset, color, opacity = 1]) => `<stop offset="${offset}" stop-color="${color}"${opacity === 1 ? '' : ` stop-opacity="${opacity}"`}/>`).join('');
+const linear = (id: string, [x1, y1]: Point, [x2, y2]: Point, stops: Stop[]) =>
     `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${fixed(x1)}" y1="${fixed(y1)}" x2="${fixed(x2)}" y2="${fixed(y2)}">${stopsOf(stops)}</linearGradient>`;
-const vertical = (id, top, bottom, stops) => linear(id, [0, top], [0, bottom], stops);
-const radial = (id, [cx, cy], r, stops) => `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${fixed(cx)}" cy="${fixed(cy)}" r="${fixed(r)}">${stopsOf(stops)}</radialGradient>`;
+const vertical = (id: string, top: number, bottom: number, stops: Stop[]) => linear(id, [0, top], [0, bottom], stops);
+const radial = (id: string, [cx, cy]: Point, r: number, stops: Stop[]) => `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${fixed(cx)}" cy="${fixed(cy)}" r="${fixed(r)}">${stopsOf(stops)}</radialGradient>`;
 /** A colour that fades from [from] to [to] (its opacity). */
-const fade = (color, from, to = 0) => [[0, color, from], [1, color, to]];
-const roundRect = (x, y, width, height, r, attrs) => `<rect x="${fixed(x)}" y="${fixed(y)}" width="${fixed(width)}" height="${fixed(height)}" rx="${fixed(r)}" ${attrs}/>`;
+const fade = (color: string, from: number, to = 0): Stop[] => [[0, color, from], [1, color, to]];
+const roundRect = (x: number, y: number, width: number, height: number, r: number, attrs: string) => `<rect x="${fixed(x)}" y="${fixed(y)}" width="${fixed(width)}" height="${fixed(height)}" rx="${fixed(r)}" ${attrs}/>`;
 
 /** A closed outline through [points] whose corners are rounded with [radius] (never more than half an edge). */
-export function roundedPolygon(points, radius) {
+export function roundedPolygon(points: Point[], radius: number): string {
     const count = points.length;
     let d = '';
     points.forEach((corner, i) => {
@@ -77,17 +82,17 @@ export function roundedPolygon(points, radius) {
 }
 
 /** A soft light on a rounded surface: a small oval of white that fades out (turned by [angle]). */
-const gloss = (id, [cx, cy], rx, ry, angle, alpha) => ({
+const gloss = (id: string, [cx, cy]: Point, rx: number, ry: number, angle: number, alpha: number) => ({
     defs: radial(id, [cx, cy], rx, fade('#ffffff', alpha)),
     shape: `<ellipse cx="${fixed(cx)}" cy="${fixed(cy)}" rx="${fixed(rx)}" ry="${fixed(ry)}"${angle ? ` transform="rotate(${angle} ${fixed(cx)} ${fixed(cy)})"` : ''} fill="url(#${id})"/>`
 });
 
 // The motifs. Each gets its own prefix for its gradients ([id]), so several on one page never share them.
-const MOTIFS = {
+const MOTIFS: Record<Motif, (id: string, accent: string) => string> = {
     /** A picture: a light frame, a little turned, around a warm sky with its sun and two hills. */
     picture: id => {
         const light = gloss(`${id}g`, [24, 24], 10, 3, 0, 0.45);
-        const frame = attrs => roundRect(10, 17, 80, 64, 13, attrs);
+        const frame = (attrs: string) => roundRect(10, 17, 80, 64, 13, attrs);
         return `<defs>${linear(`${id}a`, [10, 15], [90, 85], [[0, '#ffffff'], [1, '#f3e7dc']])}`
             + vertical(`${id}b`, 55, 82, fade('#b98a66', 0, 0.25))
             + vertical(`${id}c`, 17, 81, [[0, '#ffe3c4'], [1, '#f8b385']])
@@ -105,7 +110,7 @@ const MOTIFS = {
     notes: id => {
         const rx = 16.5;
         const ry = 12;
-        const heads = [[28, 78], [72, 70]].map(([x, y], i) => ({ x, y, light: gloss(`${id}g${i}`, [x - rx * 0.35, y - ry * 0.42], rx * 0.45, ry * 0.3, 0, 0.32) }));
+        const heads = ([[28, 78], [72, 70]] as Point[]).map(([x, y], i) => ({ x, y, light: gloss(`${id}g${i}`, [x - rx * 0.35, y - ry * 0.42], rx * 0.45, ry * 0.3, 0, 0.32) }));
         const body = `fill="url(#${id}a)"`;
         return `<defs>${linear(`${id}a`, [48, 8], [48, 95], [[0, '#92d5f8'], [0.5, '#4fa2d8'], [1, '#2b6da6']])}`
             + heads.map((head, i) => vertical(`${id}r${i}`, head.y, head.y + ry, fade('#1b4c78', 0, 0.28)) + head.light.defs).join('')
@@ -146,12 +151,12 @@ const MOTIFS = {
             + `<path d="${sheet}" fill="url(#${id}a)"/><path d="${sheet}" fill="url(#${id}b)"/>`
             + `<path d="${sheet}" fill="none" stroke="#000000" stroke-opacity="0.07" stroke-width="1.2"/>`
             + roundRect(30, 33, 20, 5.5, 2.5, `fill="${accent}" fill-opacity="0.85"`)
-            + [[32, 46], [36, 58], [22, 70]].map(([width, y]) => roundRect(30, y, width, 5, 2.5, `fill="${line}"`)).join('')
+            + ([[32, 46], [36, 58], [22, 70]] as Point[]).map(([width, y]) => roundRect(30, y, width, 5, 2.5, `fill="${line}"`)).join('')
             + `<path d="${roundedPolygon([[60, 10], [80, 30], [60, 30]], 2.5)}" fill="url(#${id}c)"/>`;
     },
     /** A screen in lilac with a rounded play sign in the middle, a light along its top. */
     film: id => {
-        const screen = attrs => roundRect(10, 20, 80, 60, 13, attrs);
+        const screen = (attrs: string) => roundRect(10, 20, 80, 60, 13, attrs);
         return `<defs>${linear(`${id}a`, [10, 20], [90, 80], [[0, '#a79cf0'], [0.5, '#6a5bd0'], [1, '#4f42b0']])}`
             + `${vertical(`${id}b`, 20, 42, fade('#ffffff', 0.3))}</defs>`
             + `${screen(`fill="url(#${id}a)"`)}${screen(`fill="url(#${id}b)"`)}`
@@ -159,7 +164,7 @@ const MOTIFS = {
     },
     /** Three bars of a count in mint and green, darker towards the ground, a light along each top (the web's polls). */
     poll: id => {
-        const bars = [[14, 46], [40, 18], [66, 33]];
+        const bars: Point[] = [[14, 46], [40, 18], [66, 33]];
         return `<defs>${vertical(`${id}a`, 14, 86, [[0, '#9be6c6'], [0.5, '#4db58e'], [1, '#2e8a68']])}`
             + vertical(`${id}b`, 62, 84, fade('#1e6b50', 0, 0.22))
             + `${bars.map(([, top], i) => vertical(`${id}s${i}`, top, top + 14, fade('#ffffff', 0.4))).join('')}</defs>`
@@ -170,13 +175,13 @@ const MOTIFS = {
 let motifCount = 0;
 
 /** A motif ([motif] one of MOTIF_SEEDS) as an SVG; [accent] colours a document's folded corner and lines. Decorative. */
-export function motifSvg(motif, { accent = '#8a837a', className = 'motif' } = {}) {
-    const draw = MOTIFS[motif] || MOTIFS.document;
+export function motifSvg(motif: string, { accent = '#8a837a', className = 'motif' } = {}): string {
+    const draw = Object.hasOwn(MOTIFS, motif) ? MOTIFS[motif as Motif] : MOTIFS.document;
     return `<svg class="${className}" viewBox="0 0 100 100" aria-hidden="true" focusable="false">${draw(`motif${++motifCount}-`, accent)}</svg>`;
 }
 
 /** Where the still forms of a field lie: every name its own, as in the app ((hashCode and 0xFFFF) / 6553.5). */
-export function seedOf(name) {
+export function seedOf(name: unknown): number {
     const text = String(name ?? '');
     let hash = 0;
     for (let i = 0; i < text.length; i++) hash = (Math.imul(31, hash) + text.charCodeAt(i)) | 0;
@@ -184,7 +189,7 @@ export function seedOf(name) {
 }
 
 /** The two still soft forms of a field, placed by [seed]: one in its upper right corner, one below its lower left. */
-export function fieldForms(seed) {
+export function fieldForms(seed: number): { upper: string; lower: string } {
     const r = 62;
     return {
         upper: softFormPath(100 - r * 0.3, r * 0.1, r, 9 + seed, 0.11, 2.2 + seed),
@@ -196,7 +201,7 @@ export function fieldForms(seed) {
  * A field painted in [colors] ({ light, deep, hint }: the light tone, the deep one of the dark theme and a breath of a
  * neighbouring hue) around [content]; [className] gives it its size and corners.
  */
-export function paintedField(colors, seed, content = '', className = '') {
+export function paintedField(colors: { light: string; deep: string; hint?: string }, seed: number, content = '', className = ''): string {
     const forms = fieldForms(seed);
     return `<span class="painted-field${className ? ` ${className}` : ''}" style="--field-light: ${colors.light}; --field-deep: ${colors.deep}; --field-hint: ${colors.hint || colors.light}">`
         + '<svg class="painted-field-forms" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">'

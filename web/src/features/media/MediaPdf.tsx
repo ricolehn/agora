@@ -8,7 +8,7 @@ import { t, uiLocale } from '../../app/i18n';
 import { onModalClosed, openModal } from '../../app/modals';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
-import { fileUrl, formatSize } from '../../lib/media.js';
+import { fileUrl, formatSize } from '../../lib/media';
 import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
 import type { MediaFile } from './types';
 import { flushNow } from '../../app/flush';

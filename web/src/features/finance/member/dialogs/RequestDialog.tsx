@@ -12,7 +12,7 @@ import { Button } from '../../../../ui/Button';
 import { Icon } from '../../../../ui/Icon';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select, SwitchRow } from '../../../../ui/form';
-import { parseAmount } from '../../../../lib/finance.js';
+import { parseAmount } from '../../../../lib/finance';
 import { requestForm, startRequestForm, type RequestKind } from '../state';
 import { FeeResetNote, feeResetPaymentHint } from '../../common';
 import { AmountInput, PendingFileList, ReceiptDropzone, createPendingFiles, newId } from '../shared';

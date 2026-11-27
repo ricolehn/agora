@@ -271,7 +271,7 @@ describe('fresh start of the fee accounts', () => {
   const feeReset = require('../backend/feeReset');
   const feeSchedule = require('../backend/feeSchedule');
   const { freezeTime, assertHas } = require('./helpers');
-  const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
+  const webApp = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.ts')).href);
 
   // These tests give the calculation one fee for all time and the fees each fresh start kept: the data of an
   // instance from before the fees had a history (backend/feeSchedule.js), which it must go on reading as it did
@@ -784,7 +784,7 @@ describe('the monthly fees over time', () => {
   });
 
   test('fees and payments with cents: who paid every month exactly is paid up to this month', async (t) => {
-    const { calculatePaidUntil } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
+    const { calculatePaidUntil } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'web', 'src', 'lib', 'finance.ts')).href);
     // added up as they are, amounts like 49.99 drift by a fraction of a cent: "paid until" used to show the month
     // before for one in five of these members
     for (const fee of [49.99, 33.33, 9.99, 19.9, 15.55, 66.67, 8.33, 0.1, 12.5, 50]) {
@@ -807,7 +807,7 @@ describe('the monthly fees over time', () => {
   });
 
   test('who joined on a 1st owes from that month on, wherever the server stands', async (t) => {
-    const { calculatePaidUntil } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
+    const { calculatePaidUntil } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'web', 'src', 'lib', 'finance.ts')).href);
     // read as a date, "2025-03-01" is midnight in Greenwich: still February west of it, where the member was charged
     // one month too many (and a fresh start dropped it as open fees)
     const sinceTheFirst = (payments) => member(payments, { memberSince: '2025-03-01', originalMemberSince: '2025-03-01', statusHistory: [{ status: 'vollverdiener', startDate: '2025-03-01' }] });
@@ -1163,12 +1163,12 @@ describe('the monthly fees over time', () => {
   });
 });
 
-describe('web app bookings (web/src/lib/finance.js)', () => {
+describe('web app bookings (web/src/lib/finance.ts)', () => {
   const path = require('path');
   const { pathToFileURL } = require('url');
   const { preprocessPersonServerSide } = require('../backend/derivedData');
   const { freezeTime } = require('./helpers');
-  const load = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
+  const load = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.ts')).href);
 
   const FEES = { vollverdiener: 50, geringverdiener: 25, keinverdiener: 10, pausiert: 0 };
   // A member as the server creates one (newPersonRecord, new account): the first status entry has no end
@@ -1278,12 +1278,12 @@ describe('web app bookings (web/src/lib/finance.js)', () => {
 });
 
 // API v2 books on the server what the web app books in the browser: the server's copy of the rules
-// (backend/bookings.js) must give the very same records as the web app's (web/src/lib/finance.js), case by case
+// (backend/bookings.js) must give the very same records as the web app's (web/src/lib/finance.ts), case by case
 describe('the server books as the web app does (backend/bookings.js)', () => {
   const path = require('path');
   const { pathToFileURL } = require('url');
   const server = require('../backend/bookings');
-  const load = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.js')).href);
+  const load = () => import(pathToFileURL(path.join(__dirname, '..', 'web', 'src', 'lib', 'finance.ts')).href);
   const outcome = (fn) => {
     try {
       return { value: fn() };

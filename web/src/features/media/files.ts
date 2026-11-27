@@ -1,7 +1,7 @@
 // The library's files: their addresses, the texts under them and how they reach the device.
 import { API } from '../../app/api';
 import { formatDateFast, uiLocale } from '../../app/i18n';
-import { fileUrl, formatSize, thumbSize } from '../../lib/media.js';
+import { fileUrl, formatSize, thumbSize } from '../../lib/media';
 import type { MediaFile, MediaFolder } from './types';
 
 /** Thumbnails as sharp as the tile (about a third of the screen on phones, three side by side), from the server's fixed sizes. */

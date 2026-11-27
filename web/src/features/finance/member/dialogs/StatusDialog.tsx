@@ -1,5 +1,5 @@
 // A member's status from a day on (change-status-modal), opened from the member's card. A day in the past corrects
-// the fees from then on, a day to come changes them from then (applyStatusChangeToHistory, lib/finance.js).
+// the fees from then on, a day to come changes them from then (applyStatusChangeToHistory, lib/finance.ts).
 import { mutatePerson } from '../../../../app/data';
 import { t, tHtml } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';
@@ -7,7 +7,7 @@ import { showToast } from '../../../../app/toast';
 import { Button } from '../../../../ui/Button';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, Select } from '../../../../ui/form';
-import { applyStatusChangeToHistory } from '../../../../lib/finance.js';
+import { applyStatusChangeToHistory } from '../../../../lib/finance';
 import { setStatusChoice, setStatusDate, statusChoice, statusDate, statusPersonId } from '../state';
 import { asFailure } from '../../../../app/api';
 

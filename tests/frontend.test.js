@@ -1,6 +1,7 @@
 // Static checks of the web app (web/, no browser): texts, the page shell, the service worker and referenced files;
-// and the pure modules the app shares with these tests (web/src/lib). The app's TypeScript, its Solid rules and its
-// build are checked by `npm run check`, `npm run lint` and `npm run build` in web/ (CI runs them).
+// and the pure modules the app shares with these tests (web/src/lib: TypeScript that Node runs as it is - erasable
+// syntax only, relative imports with their .ts ending, both checked by web/tsconfig.json). The app's TypeScript, its
+// Solid rules and its build are checked by `npm run check`, `npm run lint` and `npm run build` in web/ (CI runs them).
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -13,12 +14,12 @@ const WEB = path.join(REPO_ROOT, 'web');
 const read = (file) => fs.readFileSync(path.join(WEB, file), 'utf8');
 const lib = (name) => import(pathToFileURL(path.join(WEB, 'src', 'lib', name)).href);
 
-/** Every source file of the app (TypeScript and JavaScript under web/src). */
+/** Every source file of the app (the TypeScript under web/src). */
 function sourceFiles(dir = path.join(WEB, 'src')) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) return sourceFiles(full);
-    return /\.(tsx?|jsx?)$/.test(entry.name) && !entry.name.endsWith('.d.ts') ? [full] : [];
+    return /\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts') ? [full] : [];
   });
 }
 /** The app's stylesheets (Tailwind entry and the few feature stylesheets). */
@@ -121,8 +122,8 @@ describe('web app', () => {
   });
 });
 
-describe('songbook (web/src/lib/songbook.js)', () => {
-  const load = () => lib('songbook.js');
+describe('songbook (web/src/lib/songbook.ts)', () => {
+  const load = () => lib('songbook.ts');
 
   test('semitones between two keys, like the song page counts them', async () => {
     const { keySteps } = await load();
@@ -189,8 +190,8 @@ describe('songbook (web/src/lib/songbook.js)', () => {
   });
 });
 
-describe('AI reply steps (web/src/lib/aiReply.js)', () => {
-  const load = () => lib('aiReply.js');
+describe('AI reply steps (web/src/lib/aiReply.ts)', () => {
+  const load = () => lib('aiReply.ts');
 
   test('the live title: the newest heading of the thoughts, else the newest sentence, without filler words', async () => {
     const { liveTitle } = await load();
@@ -406,8 +407,8 @@ const pathPoints = (d) => [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(
 /** Every url(#…) of an SVG's markup points to an id of the same markup. */
 const ownReferences = (markup) => [...markup.matchAll(/url\(#([^)]+)\)/g)].every((m) => markup.includes(`id="${m[1]}"`));
 
-describe('the assistant\'s sign (web/src/lib/aiSign.js), as in the Android app', () => {
-  const load = () => lib('aiSign.js');
+describe('the assistant\'s sign (web/src/lib/aiSign.ts), as in the Android app', () => {
+  const load = () => lib('aiSign.ts');
 
   test('a soft form at rest is a true circle; moving, its points keep their directions and only move in and out', async () => {
     const { softFormPath } = await load();
@@ -505,8 +506,8 @@ describe('the assistant\'s sign (web/src/lib/aiSign.js), as in the Android app',
   });
 });
 
-describe('motifs and painted fields (web/src/lib/motifs.js), as in the Android app', () => {
-  const load = () => lib('motifs.js');
+describe('motifs and painted fields (web/src/lib/motifs.ts), as in the Android app', () => {
+  const load = () => lib('motifs.ts');
 
   test('each motif draws with its own gradients only, however many are on the page', async () => {
     const { motifSvg, MOTIF_SEEDS } = await load();
@@ -557,11 +558,11 @@ describe('motifs and painted fields (web/src/lib/motifs.js), as in the Android a
   });
 });
 
-describe('donations and expenses (web/src/lib/collections.js)', () => {
+describe('donations and expenses (web/src/lib/collections.ts)', () => {
   // The web app's way of changing a list (mutateCollection) against a stand-in server: the current one, or the
   // previous version, which serves while the upgrade waits and takes transactions of people only
   async function againstServer({ previous, refused = previous }) {
-    const { createMutateCollection, createIsPreviousServer } = await lib('collections.js');
+    const { createMutateCollection, createIsPreviousServer } = await lib('collections.ts');
     const server = { list: [{ id: 1, amount: 10, name: 'Anna' }] };
     const parts = {
       db: {},

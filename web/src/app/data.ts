@@ -11,7 +11,7 @@ import {
 } from './api';
 import { t } from './i18n';
 import { setReloadAll } from './live';
-import { createMutateCollection } from '../lib/collections.js';
+import { createMutateCollection } from '../lib/collections';
 import { loadPictureVersions } from './pictures';
 import { activeTab, applyInitialRoute, isRouteReady, switchTab, takePendingAiRoute } from './router';
 import {
@@ -176,7 +176,7 @@ export async function mutatePerson(personId: string, mutator: (current: StoredPe
   return updated;
 }
 
-/** Donations & expenses are stored as whole lists: see lib/collections.js (also while the previous server version
+/** Donations & expenses are stored as whole lists: see lib/collections.ts (also while the previous server version
  *  serves the instance during a waiting database upgrade). */
 export const mutateCollection = createMutateCollection({ db, ref, runTransaction, apiGet, set, isPreviousServer });
 

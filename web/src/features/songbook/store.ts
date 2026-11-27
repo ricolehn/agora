@@ -1,11 +1,11 @@
 // The songs of the songbook, the church's CCLI licence number and whether the account may manage songs
-// (GET /api/songs). Text and chord rules live in lib/songbook.js (tested on their own).
+// (GET /api/songs). Text and chord rules live in lib/songbook.ts (tested on their own).
 import { createSignal } from 'solid-js';
 import { apiJson, errorMessage } from '../../app/api';
 import { t, uiLocale } from '../../app/i18n';
 import { itemSlug } from '../../app/router';
 import { showToast } from '../../app/toast';
-import { searchText } from '../../lib/songbook.js';
+import { searchText } from '../../lib/songbook';
 import { flushNow } from '../../app/flush';
 
 /** A song of the songbook (backend/songbook.js): the lyrics in ChordPro with its key, capo and tempo. */
@@ -41,7 +41,7 @@ const searchCache = new WeakMap<Song, string>();
 export function songSearchText(song: Song): string {
   let text = searchCache.get(song);
   if (text === undefined) {
-    text = searchText(song) as string;
+    text = searchText(song);
     searchCache.set(song, text);
   }
   return text;

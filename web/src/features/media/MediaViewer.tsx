@@ -11,7 +11,7 @@ import { Modal } from '../../ui/Modal';
 import { Icon } from '../../ui/Icon';
 import {
   LARGEST_PREVIEW_SIZE, browserShowsOriginal, clampView, fileUrl, neighbourIndex, opensInViewer, pinchView, previewUrl, zoomAt
-} from '../../lib/media.js';
+} from '../../lib/media';
 import { fileMeta, mediaTileSize } from './files';
 import { mediaShown } from './library';
 import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';

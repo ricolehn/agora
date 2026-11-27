@@ -5,9 +5,39 @@
 // Only real chords are transposed: "[Bridge]" or "[N.C.]" stay as they are. German songbooks write H for B and B
 // for Bb; a song that uses H keeps that notation.
 
+/** A chord's parts: "F#m7/C#" is F, #, m7 over C#. */
+export interface Chord {
+    root: string;
+    accidental: string;
+    quality: string;
+    bass: { root: string; accidental: string } | null;
+}
+/** How a song writes its notes: with flats or sharps, in German notation (H for B) or not. */
+export interface Spelling {
+    flats: boolean;
+    german: boolean;
+}
+/** A piece of a line: the chord above it (null: none) and the text under it. */
+export interface SongSegment {
+    chord: string | null;
+    text: string;
+}
+export type SectionLabel = 'chorus' | 'verse' | 'bridge' | 'tab';
+/** A line of a song as it is shown. */
+export type SongLine =
+    | { type: 'gap' }
+    | { type: 'section'; text: string; label?: SectionLabel }
+    | { type: 'note'; text: string }
+    | { type: 'text'; text: string }
+    | { type: 'chords'; words: SongSegment[][] };
+interface SongKey {
+    index: number;
+    minor: boolean;
+}
+
 const SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const FLATS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-const NATURAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11, H: 11 };
+const NATURAL: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11, H: 11 };
 // Major keys written with flats (index of the tonic): F, Bb, Eb, Ab, Db; Gb/F# follows the original spelling
 const FLAT_MAJOR_KEYS = new Set([5, 10, 3, 8, 1]);
 
@@ -16,7 +46,7 @@ const FLAT_MAJOR_KEYS = new Set([5, 10, 3, 8, 1]);
 const CHORD = /^([A-H])(#|b)?((?:maj|min|dim|aug|sus|add|alt|no|m|M|Δ|°|ø|\+|-|[0-9]|[#b](?=[0-9])|\(|\)|,|\.)*)(?:\/([A-H])(#|b)?)?$/;
 
 /** The parts of a chord like "F#m7/C#", or null if [text] is not a chord. */
-function parseChord(text) {
+function parseChord(text: unknown): Chord | null {
     const value = String(text || '').trim();
     if (!value || value.length > 24) return null;
     const match = CHORD.exec(value);
@@ -25,12 +55,12 @@ function parseChord(text) {
 }
 
 /** Pitch class 0-11 of a note; in German notation B is Bb and H is B. */
-function noteIndex(root, accidental, german) {
+function noteIndex(root: string, accidental: string, german: boolean): number {
     const base = german && root === 'B' ? 10 : NATURAL[root];
     return (base + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0) + 12) % 12;
 }
 
-function noteName(index, flats, german) {
+function noteName(index: number, flats: boolean, german: boolean): string {
     const name = (flats ? FLATS : SHARPS)[((index % 12) + 12) % 12];
     if (!german) return name;
     // German: Bb is written B, B is written H
@@ -40,7 +70,7 @@ function noteName(index, flats, german) {
 }
 
 /** Whether a song is written in German notation (it uses H). */
-function isGerman(chords) {
+function isGerman(chords: string[]): boolean {
     return chords.some((chord) => /^H/.test(chord) || /\/H/.test(chord));
 }
 
@@ -48,14 +78,14 @@ function isGerman(chords) {
  * The key of a song: its "key" field, else the first chord (minor if it is one). Returns
  * { index, minor } or null.
  */
-function songKey(declared, chords, german) {
+function songKey(declared: string, chords: string[], german: boolean): SongKey | null {
     const source = parseChord(declared) || chords.map(parseChord).find(Boolean);
     if (!source) return null;
     return { index: noteIndex(source.root, source.accidental, german), minor: /^m(?!aj)/.test(source.quality) };
 }
 
 /** Flats or sharps in the target key (minor keys follow their relative major). */
-function prefersFlats(key, steps, originalFlats) {
+function prefersFlats(key: SongKey | null, steps: number, originalFlats: boolean): boolean {
     if (!key) return originalFlats;
     const tonic = (key.index + steps + 120) % 12;
     const major = key.minor ? (tonic + 3) % 12 : tonic;
@@ -64,7 +94,7 @@ function prefersFlats(key, steps, originalFlats) {
 }
 
 /** One chord moved by [steps] semitones (unchanged for non-chords and steps 0). */
-function transposeChord(text, steps, { flats = false, german = false } = {}) {
+function transposeChord(text: string, steps: number, { flats = false, german = false }: Partial<Spelling> = {}): string {
     if (!steps) return text;
     const chord = parseChord(text);
     if (!chord) return text;
@@ -74,15 +104,15 @@ function transposeChord(text, steps, { flats = false, german = false } = {}) {
 }
 
 /** Spelling rules for one song at [steps]: { flats, german }. */
-function spellingFor(content, declaredKey, steps) {
+function spellingFor(content: string | null | undefined, declaredKey: string | null | undefined, steps: number): Spelling {
     const chords = [...String(content || '').matchAll(/\[([^\]]+)\]/g)].map((m) => m[1]).filter((c) => parseChord(c));
     const german = isGerman(chords) || /^H/.test(String(declaredKey || ''));
     const originalFlats = chords.some((c) => /^[A-G]b/.test(c)) || /^[A-G]b/.test(String(declaredKey || ''));
-    return { german, flats: prefersFlats(songKey(declaredKey, chords, german), steps, originalFlats) };
+    return { german, flats: prefersFlats(songKey(declaredKey || '', chords, german), steps, originalFlats) };
 }
 
 /** The key label shown above the song, transposed like its chords. */
-function transposedKey(declaredKey, content, steps) {
+function transposedKey(declaredKey: string | null | undefined, content: string | null | undefined, steps: number): string {
     if (!declaredKey) return '';
     return transposeChord(declaredKey, steps, spellingFor(content, declaredKey, steps));
 }
@@ -91,7 +121,7 @@ function transposedKey(declaredKey, content, steps) {
  * A ChordPro directive "{name: value}" without regular expressions (a crafted line must not hang the browser).
  * Returns { name, value } or null.
  */
-function directive(line) {
+function directive(line: string): { name: string; value: string } | null {
     if (!line.startsWith('{') || !line.endsWith('}')) return null;
     const inner = line.slice(1, -1);
     const colon = inner.indexOf(':');
@@ -100,7 +130,7 @@ function directive(line) {
     return { name, value: colon < 0 ? '' : inner.slice(colon + 1).trim() };
 }
 
-const SECTION_DIRECTIVES = {
+const SECTION_DIRECTIVES: Record<string, SectionLabel> = {
     start_of_chorus: 'chorus', soc: 'chorus',
     start_of_verse: 'verse', sov: 'verse',
     start_of_bridge: 'bridge', sob: 'bridge',
@@ -112,9 +142,9 @@ const SECTION_DIRECTIVES = {
  * 'chords' lines carry words: [[{ chord, text }]] - one inner list per word, so a line can wrap between words
  * while every chord stays above its syllable.
  */
-function parseSong(content, { steps = 0, declaredKey = '', chords = true } = {}) {
+function parseSong(content: string | null | undefined, { steps = 0, declaredKey = '', chords = true } = {}): SongLine[] {
     const spelling = spellingFor(content, declaredKey, steps);
-    const lines = [];
+    const lines: SongLine[] = [];
     for (const raw of String(content || '').split('\n')) {
         // trimEnd, not a regex: a line of thousands of spaces must not take quadratic time
         const line = raw.trimEnd();
@@ -132,7 +162,7 @@ function parseSong(content, { steps = 0, declaredKey = '', chords = true } = {})
         if (command) {
             if (command.name === 'c' || command.name === 'comment' || command.name === 'ci' || command.name === 'comment_italic') {
                 lines.push({ type: 'section', text: command.value });
-            } else if (SECTION_DIRECTIVES[command.name]) {
+            } else if (Object.hasOwn(SECTION_DIRECTIVES, command.name)) {
                 lines.push({ type: 'section', text: command.value, label: SECTION_DIRECTIVES[command.name] });
             }
             // Everything else ({title}, {key}, {capo}, {end_of_chorus}, …) is not shown
@@ -163,9 +193,9 @@ function parseSong(content, { steps = 0, declaredKey = '', chords = true } = {})
 }
 
 /** "[G]Amazing [D]grace" → [[{chord:'G',text:'Amazing '}], [{chord:'D',text:'grace'}]]. */
-function splitWords(line, steps, spelling) {
-    const segments = [];
-    let pending = null;
+function splitWords(line: string, steps: number, spelling: Spelling): SongSegment[][] {
+    const segments: SongSegment[] = [];
+    let pending: string | null = null;
     for (const part of line.split(/(\[[^\]]+\])/)) {
         if (!part) continue;
         const chord = /^\[([^\]]+)\]$/.exec(part);
@@ -179,8 +209,8 @@ function splitWords(line, steps, spelling) {
     }
     if (pending !== null) segments.push({ chord: pending, text: '' });
     // Break segments after spaces; a word that continues across a chord ("Ama[G]zing") stays one word
-    const words = [];
-    let word = [];
+    const words: SongSegment[][] = [];
+    let word: SongSegment[] = [];
     for (const segment of segments) {
         if (segment.text === '') {
             word.push({ chord: segment.chord, text: '' });
@@ -198,14 +228,15 @@ function splitWords(line, steps, spelling) {
     return words;
 }
 
-const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+const ENTITIES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (c) => ENTITIES[c]);
 
 /** HTML of a song (all text escaped); [labels] names the ChordPro sections: { chorus, verse, bridge, tab }. */
-function renderSongHtml(content, { steps = 0, declaredKey = '', chords = true, labels = {} } = {}) {
+function renderSongHtml(content: string | null | undefined, { steps = 0, declaredKey = '', chords = true, labels = {} as Partial<Record<SectionLabel, string>> } = {}): string {
     return parseSong(content, { steps, declaredKey, chords }).map((line) => {
         switch (line.type) {
             case 'gap': return '<div class="song-gap"></div>';
-            case 'section': return `<div class="song-section">${escape(line.text || labels[line.label] || '')}</div>`;
+            case 'section': return `<div class="song-section">${escape(line.text || (line.label && labels[line.label]) || '')}</div>`;
             case 'note': return `<div class="song-note">${escape(line.text)}</div>`;
             case 'text': return `<div class="song-line"><span class="song-lyric">${escape(line.text)}</span></div>`;
             // A line of chords alone ("[G] [D] [Em]") has no lyric row
@@ -217,15 +248,15 @@ function renderSongHtml(content, { steps = 0, declaredKey = '', chords = true, l
 }
 
 /** Text to search in: title, writers, CCLI number and the lyrics without chords; lower case, no accents. */
-function searchText(song) {
+function searchText(song: { title?: string; artist?: string; ccli?: string; copyright?: string; content?: string } | null | undefined): string {
     const lyrics = String(song?.content || '').replace(/\[[^\]]*\]/g, '').replace(/^\s*[#>{].*$/gm, ' ');
     return normalizeSearch([song?.title, song?.artist, song?.ccli, song?.copyright, lyrics].filter(Boolean).join(' '));
 }
 
-const normalizeSearch = (text) => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').toLowerCase();
+const normalizeSearch = (text: unknown) => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').toLowerCase();
 
 /** Semitones from one key to another (-6..5, like the song page), e.g. G → A = 2; null if one is not a key. */
-function keySteps(from, to) {
+function keySteps(from: string | null | undefined, to: string | null | undefined): number | null {
     const a = parseChord(from);
     const b = parseChord(to);
     if (!a || !b) return null;

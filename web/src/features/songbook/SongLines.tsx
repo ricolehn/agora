@@ -1,15 +1,24 @@
 // A song as it is read and played: sections, notes for the musicians, and lines with each chord above its syllable.
-// The lines come from lib/songbook.js (parseSong); a line wraps between words, a chord never leaves its syllable.
+// The lines come from lib/songbook.ts (parseSong); a line wraps between words, a chord never leaves its syllable.
 import { For, Match, Show, Switch, createMemo } from 'solid-js';
-import { parseSong } from '../../lib/songbook.js';
+import { parseSong, type SongLine, type SongSegment } from '../../lib/songbook';
 import { songSectionLabels } from './store';
 
-type Segment = { chord: string | null; text: string };
-type Line = { type: 'gap' | 'section' | 'note' | 'text' | 'chords'; text?: string; label?: 'chorus' | 'verse' | 'bridge' | 'tab'; words?: Segment[][] };
+/** The line when it is of [type] (a Match takes it narrowed), else undefined. */
+const lineOf =
+  <T extends SongLine['type']>(type: T) =>
+  (line: SongLine) =>
+    line.type === type ? (line as Extract<SongLine, { type: T }>) : undefined;
+const sectionOf = lineOf('section');
+const noteOf = lineOf('note');
+const textOf = lineOf('text');
+const chordsOf = lineOf('chords');
+// A section's own name, else the name of its kind ({start_of_chorus} and the like)
+const sectionTitle = (line: Extract<SongLine, { type: 'section' }>) => line.text || (line.label ? songSectionLabels()[line.label] : '');
 
 export function SongLines(props: { content: string; steps?: number; declaredKey?: string; chords?: boolean }) {
   const lines = createMemo(
-    () => parseSong(props.content, { steps: props.steps ?? 0, declaredKey: props.declaredKey ?? '', chords: props.chords ?? true }) as Line[]
+    () => parseSong(props.content, { steps: props.steps ?? 0, declaredKey: props.declaredKey ?? '', chords: props.chords ?? true })
   );
   return (
     <For each={lines()} keyed={false}>
@@ -18,27 +27,29 @@ export function SongLines(props: { content: string; steps?: number; declaredKey?
           <Match when={line().type === 'gap'}>
             <div class="h-[0.9em]" />
           </Match>
-          <Match when={line().type === 'section'}>
-            <div data-song-section class="mt-[18px] mb-1.5 text-[0.78em] font-extrabold tracking-[0.08em] text-primary uppercase first:mt-0">
-              {line().text || (line().label ? songSectionLabels()[line().label!] : '')}
-            </div>
+          <Match when={sectionOf(line())}>
+            {section => (
+              <div data-song-section class="mt-[18px] mb-1.5 text-[0.78em] font-extrabold tracking-[0.08em] text-primary uppercase first:mt-0">
+                {sectionTitle(section())}
+              </div>
+            )}
           </Match>
-          <Match when={line().type === 'note'}>
-            <div class="my-1 text-text-secondary italic">{line().text}</div>
+          <Match when={noteOf(line())}>{note => <div class="my-1 text-text-secondary italic">{note().text}</div>}</Match>
+          <Match when={textOf(line())}>
+            {text => (
+              <div data-song-line class="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                <span class="whitespace-pre">{text().text}</span>
+              </div>
+            )}
           </Match>
-          <Match when={line().type === 'text'}>
-            <div data-song-line class="whitespace-pre-wrap [overflow-wrap:anywhere]">
-              <span class="whitespace-pre">{line().text}</span>
-            </div>
-          </Match>
-          <Match when={line().words}>{words => <ChordLine words={words()} />}</Match>
+          <Match when={chordsOf(line())}>{chords => <ChordLine words={chords().words} />}</Match>
         </Switch>
       )}
     </For>
   );
 }
 
-function ChordLine(props: { words: Segment[][] }) {
+function ChordLine(props: { words: SongSegment[][] }) {
   // A line of chords alone ("[G] [D] [Em]") has no lyric row
   const chordsOnly = () => props.words.every(word => word.every(seg => !seg.text.trim()));
   return (

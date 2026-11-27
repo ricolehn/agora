@@ -9,7 +9,7 @@ import { closeModal, openModal } from '../../../app/modals';
 import { attempt, showToast } from '../../../app/toast';
 import {
   addApprovedExpense, applyApprovedRequest, withoutApprovedExpense, withoutApprovedRequest
-} from '../../../lib/finance.js';
+} from '../../../lib/finance';
 import type { StoredPerson } from '../../../app/data';
 
 /** The open requests, newest first. */
@@ -71,7 +71,7 @@ export async function approveRequest(reqId = openRequestId()) {
   await attempt(
     async () => {
       if (!(await requestStillPending(reqId))) return;
-      // Bookings carry the request's id (lib/finance.js): approving it again cannot book the money twice
+      // Bookings carry the request's id (lib/finance.ts): approving it again cannot book the money twice
       let before: Pick<StoredPerson, 'status' | 'statusHistory'> | null = null;
       if (req.type === 'expense') await mutateCollection('expenses', list => addApprovedExpense(list, req));
       else {

@@ -1,5 +1,5 @@
-// The AI assistant: its chat page (Extras → AI Support, /ai). Its pure parts are lib/aiReply.js (the steps of a reply
-// and the pacing of its titles) and lib/aiSign.js (the assistant's sign).
+// The AI assistant: its chat page (Extras → AI Support, /ai). Its pure parts are lib/aiReply.ts (the steps of a reply
+// and the pacing of its titles) and lib/aiSign.ts (the assistant's sign).
 import './ai.css';
 import { registerTab } from '../../app/registry';
 import { onTabEnter } from '../../app/router';

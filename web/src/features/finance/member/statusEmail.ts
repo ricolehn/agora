@@ -6,7 +6,7 @@ import { findPerson, settings, users } from '../../../app/data';
 import { escapeHtml, euro, getStatusLabels, monthYearFormatter, t, type MemberStatus } from '../../../app/i18n';
 import { canManageFinances } from '../../../app/session';
 import { attempt, showToast } from '../../../app/toast';
-import { calculatePaidUntil } from '../../../lib/finance.js';
+import { calculatePaidUntil } from '../../../lib/finance';
 import { statusMetaOf } from '../common';
 
 export async function sendStatusEmail(personId: string): Promise<void> {
@@ -20,7 +20,7 @@ export async function sendStatusEmail(personId: string): Promise<void> {
   const meta = statusMetaOf(person);
   const status = person._currentStatus || person.status;
   const readableStatus = getStatusLabels(false)[status as MemberStatus] || status;
-  // The server normally sends _paidUntil; without it the same rule is worked out here (lib/finance.js)
+  // The server normally sends _paidUntil; without it the same rule is worked out here (lib/finance.ts)
   const paidUntil: Date | null = person._paidUntil ? new Date(person._paidUntil) : calculatePaidUntil(person, settings());
   const paidUntilLabel = paidUntil ? monthYearFormatter.format(paidUntil) : t('never_paid', 'Never');
   const today = new Date();

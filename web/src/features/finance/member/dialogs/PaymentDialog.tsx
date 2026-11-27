@@ -9,7 +9,7 @@ import { getTodayStr, safeList } from '../../../../app/util';
 import { Button } from '../../../../ui/Button';
 import { MODAL_TINTS, Modal, ModalSection } from '../../../../ui/Modal';
 import { Field, Input, SwitchRow } from '../../../../ui/form';
-import { parseAmount } from '../../../../lib/finance.js';
+import { parseAmount } from '../../../../lib/finance';
 import { paymentPersonId } from '../state';
 import { FeeResetNote, feeResetPaymentHint } from '../../common';
 import { AmountInput, createRequired, newId } from '../shared';

@@ -242,7 +242,7 @@ export interface Expense {
   tags?: string | string[];
 }
 
-/** The lists stored whole, by name (lib/collections.js changes them). */
+/** The lists stored whole, by name (lib/collections.ts changes them). */
 export interface Collections {
   donations: Donation;
   expenses: Expense;
