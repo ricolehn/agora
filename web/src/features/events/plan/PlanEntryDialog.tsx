@@ -5,6 +5,7 @@ import { t } from '../../../app/i18n';
 import { closeModal } from '../../../app/modals';
 import { Avatar } from '../../../ui/Avatar';
 import { Button } from '../../../ui/Button';
+import { SearchInput } from '../../../ui/feedback';
 import { Input } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
 import { Modal, ModalPart, PART_LABEL } from '../../../ui/Modal';
@@ -173,22 +174,15 @@ function WhoSection(props: { ruled: boolean }) {
       </Show>
       <Show when={pickerOpen()}>
         <div class="flex flex-col gap-1.5">
-          <div class="group relative">
-            <span class="pointer-events-none absolute top-1/2 left-3 z-[2] flex -translate-y-1/2 items-center justify-center text-text-secondary transition-colors duration-200 group-focus-within:text-primary">
-              <Icon name="magnifierSharp" size={16} strokeWidth={2.5} />
-            </span>
-            <Input
-              // Opened by "+ Ask …": the cursor goes to the search
-              ref={el => queueMicrotask(() => el.focus())}
-              id="plan-who-search"
-              class={[PLAN_INPUT, '!pl-[38px]']}
-              autocomplete="off"
-              placeholder={t('plan_who_search', 'Search a person or group')}
-              aria-label={t('plan_who_search', 'Search a person or group')}
-              value={whoSearch()}
-              onInput={e => setWhoSearch(e.currentTarget.value)}
-            />
-          </div>
+          <SearchInput
+            // Opened by "+ Ask …": the cursor goes to the search
+            ref={el => queueMicrotask(() => el.focus())}
+            id="plan-who-search"
+            class="mb-0"
+            placeholder={t('plan_who_search', 'Search a person or group')}
+            value={whoSearch()}
+            onInput={setWhoSearch}
+          />
           <div id="plan-who-list" class="flex max-h-[220px] flex-col overflow-y-auto">
             <Show when={!candidatesLoading()} fallback={<div class="p-3 text-center text-[0.82rem] text-text-secondary">{t('loading_short', 'Loading...')}</div>}>
               {/* Keyed by person or group: choosing one keeps the list (and the keyboard's place in it) */}

@@ -61,34 +61,59 @@ export function EmptyState(props: { icon?: JSX.Element; iconClass?: string; titl
   );
 }
 
-/** A search field (.search-bar-wrapper with .search-input): a rounded field with the magnifier, 12px below it. */
+/**
+ * The app's search field (.search-bar-wrapper with .search-input): a rounded field with the magnifier, which turns
+ * teal while the field has the focus; with text in it, an ✕ empties it and puts the cursor back. [ref]: the field
+ * (to put the cursor in it). 12px below it, unless `class` says otherwise.
+ */
 export function SearchInput(props: {
   value: string;
   onInput: (value: string) => void;
   placeholder?: string;
   class?: string;
-  inputClass?: string;
   id?: string;
   'aria-label'?: string;
+  ref?: (el: HTMLInputElement) => void;
 }) {
+  let field: HTMLInputElement | undefined;
   return (
     <div class={['group relative weak:mb-3', props.class]}>
       <span class="pointer-events-none absolute top-1/2 left-3.5 z-[2] flex -translate-y-1/2 items-center justify-center text-text-secondary transition-colors duration-200 group-focus-within:text-primary">
         <Icon name="magnifier" size={18} strokeWidth={2.5} />
       </span>
       <input
+        ref={el => {
+          field = el;
+          props.ref?.(el);
+        }}
         id={props.id}
         type="text"
+        autocomplete="off"
         value={props.value}
         placeholder={props.placeholder}
         aria-label={props['aria-label'] ?? props.placeholder}
         class={[
-          'w-full rounded-full border border-hairline bg-surface-alt py-2.5 pr-4 pl-[42px] text-[0.92rem] text-text shadow-card outline-none',
+          'w-full rounded-full border border-hairline bg-surface-alt py-2.5 pl-[42px] text-[0.92rem] text-text shadow-card outline-none',
           '[transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)] focus:shadow-[inset_0_0_0_1px_var(--primary)]',
-          props.inputClass
+          // Room for the ✕
+          props.value ? 'pr-10' : 'pr-4'
         ]}
         onInput={e => props.onInput(e.currentTarget.value)}
       />
+      <Show when={props.value}>
+        <button
+          type="button"
+          class="absolute top-1/2 right-2 z-[3] flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-text-secondary hover:bg-border-light hover:text-text focus-visible:outline-2 focus-visible:outline-primary"
+          title={t('search_clear', 'Clear search')}
+          aria-label={t('search_clear', 'Clear search')}
+          onClick={() => {
+            props.onInput('');
+            field?.focus();
+          }}
+        >
+          <Icon name="x" size={15} strokeWidth={2.4} />
+        </button>
+      </Show>
     </div>
   );
 }

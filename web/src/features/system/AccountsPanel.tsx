@@ -8,6 +8,7 @@ import { avatarRing } from '../../app/session';
 import { fullName } from '../../app/util';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
+import { SearchInput } from '../../ui/feedback';
 import { Input, Switch } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import {
@@ -253,16 +254,12 @@ export function AccountsPanel() {
 
       <div class="w-full min-w-0 max-w-full overflow-hidden">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3 max-md:w-full max-md:max-w-full max-md:flex-col max-md:items-stretch max-md:gap-2.5">
-          {/* #accounts-search: a round field on the soft fill that keeps its look while focused (only the symbol turns teal) */}
-          <Input
+          <SearchInput
             id="accounts-search"
-            type="text"
-            icon={<Icon name="magnifier" size={18} />}
-            wrapperClass="min-w-[200px] max-w-[360px] flex-1 max-md:w-full max-md:max-w-full"
-            class="!rounded-full !border-border-light !bg-surface-alt !shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]"
-            placeholder={t('accounts_search_placeholder', 'Search users...')}
+            class="mb-0 min-w-[200px] max-w-[360px] flex-1 max-md:w-full max-md:max-w-full"
             value={accountSearch()}
-            onInput={e => setAccountSearch(e.currentTarget.value)}
+            onInput={setAccountSearch}
+            placeholder={t('accounts_search_placeholder', 'Search users...')}
           />
           <Button size="small" class="!gap-1.5 max-md:min-h-[42px] max-md:w-full" onClick={openCreateUserModal}>
             <LineIcon size={16}>

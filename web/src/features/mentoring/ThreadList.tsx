@@ -3,7 +3,7 @@ import { For, Show, createMemo } from 'solid-js';
 import { t } from '../../app/i18n';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
-import { CountBadge } from '../../ui/feedback';
+import { CountBadge, SearchInput } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
 import { onActivateKey } from '../../ui/keys';
 import {
@@ -14,23 +14,12 @@ import {
 export function ThreadSidebar() {
   return (
     <div class={['flex flex-col overflow-hidden bg-transparent', inChat() ? 'max-md:hidden' : 'max-md:w-full']}>
-      <div
-        class={[
-          'mb-3 flex items-center rounded-full border border-border-light bg-surface-alt px-4 py-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]',
-          'transition-[border-color,box-shadow] duration-150 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(var(--brand-rgb),0.12)]'
-        ]}
-      >
-        <input
-          type="text"
-          id="mentoring-threads-search-input"
-          autocomplete="off"
-          placeholder={t('mentoring_search_placeholder', 'Filter contacts...')}
-          value={threadSearch()}
-          onInput={e => setThreadSearch(e.currentTarget.value)}
-          class="w-full border-none bg-transparent py-0.5 text-[0.86rem] text-text outline-none placeholder:text-text-secondary placeholder:opacity-75"
-        />
-        <Icon name="magnifier" size={18} strokeWidth={2.2} class="ml-1.5 shrink-0 text-text-secondary" />
-      </div>
+      <SearchInput
+        id="mentoring-threads-search-input"
+        value={threadSearch()}
+        onInput={setThreadSearch}
+        placeholder={t('mentoring_search_placeholder', 'Filter contacts...')}
+      />
       <div id="mentoring-threads-list" class="flex flex-1 flex-col gap-2.5 overflow-y-auto px-0.5 pt-0.5 pb-2">
         <Show when={threadsLoaded() && threads().length === 0} fallback={<For each={threads()} keyed={thread => thread.id}>{thread => <ThreadItem thread={thread()} />}</For>}>
           <EmptyThreads />

@@ -9,6 +9,7 @@ import { scrollContainer } from '../../app/shell';
 import { getTodayStr, groupBy, toDateStr } from '../../app/util';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
+import { SearchInput } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
 import { PillTabs } from '../../ui/PillTabs';
 import { DutyRequestsBanner } from './DutyRequests';
@@ -258,35 +259,6 @@ function EventsList() {
   );
 }
 
-function SearchField() {
-  return (
-    <div class="relative flex w-full max-w-full flex-1 items-center">
-      <span class="pointer-events-none absolute left-3.5 top-1/2 z-[2] flex size-[18px] -translate-y-1/2 items-center justify-center text-text-secondary">
-        <Icon name="magnifier" size={18} strokeWidth={2.5} />
-      </span>
-      <input
-        type="text"
-        value={searchText()}
-        placeholder={t('events_search_placeholder', 'Search appointments & events...')}
-        id="events-search-input"
-        class="w-full rounded-full border border-hairline bg-surface-alt py-[9px] pl-10 pr-[34px] text-[0.88rem] text-text shadow-card outline-none transition-[border-color,box-shadow,background-color] duration-200 ease-app focus:shadow-[inset_0_0_0_1px_var(--primary)]"
-        onInput={e => setSearchText(e.currentTarget.value)}
-      />
-      <Show when={query()}>
-        <button
-          type="button"
-          class="absolute right-3 top-1/2 z-[3] -translate-y-1/2 cursor-pointer border-0 bg-transparent px-1 py-0.5 text-[0.85rem] text-text-secondary"
-          title={t('events_search_clear', 'Clear search')}
-          aria-label={t('events_search_clear', 'Clear search')}
-          onClick={() => setSearchText('')}
-        >
-          ✕
-        </button>
-      </Show>
-    </div>
-  );
-}
-
 export function EventsPage() {
   return (
     <div class="mx-auto flex w-full flex-col gap-3.5">
@@ -308,7 +280,13 @@ export function EventsPage() {
         />
       </div>
       <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2.5">
-        <SearchField />
+        <SearchInput
+          id="events-search-input"
+          class="mb-0 w-full max-w-full flex-1"
+          value={searchText()}
+          onInput={setSearchText}
+          placeholder={t('events_search_placeholder', 'Search appointments & events...')}
+        />
       </div>
       <Show when={myDutyRequests().length}>
         <div class="mb-4">
