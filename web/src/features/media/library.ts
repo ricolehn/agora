@@ -6,7 +6,7 @@ import { createSignal } from 'solid-js';
 import { apiJson, errorMessage, errorStatus } from '../../app/api';
 import { loadMediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
-import { activeTab, leaveHistoryLevels, switchTab, syncUrl } from '../../app/router';
+import { activeTab, leaveHistoryLevels, switchTab } from '../../app/router';
 import { scrollContainer } from '../../app/shell';
 import { readStored, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
@@ -219,10 +219,7 @@ export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
     setLoadedPath(path);
     setError(null);
     flushNow();
-    if (shownJson !== null && JSON.stringify(result) === shownJson) {
-      syncUrl();
-      return;
-    }
+    if (shownJson !== null && JSON.stringify(result) === shownJson) return;
   } catch (err) {
     if (!isNewest()) return;
     // A folder that is gone (or no longer visible): one level up
@@ -243,7 +240,6 @@ export async function loadMediaFolder({ silent = false } = {}): Promise<void> {
   }
   // A folder already on the page changes in place
   renderMedia();
-  syncUrl();
 }
 
 /** The tab opens: the status (is there still access?) and the open folder are asked for again. */
@@ -269,7 +265,10 @@ export function openMediaFolder(path = '', { back = false }: { back?: boolean } 
   restoreScroll = back ? path : null;
   setFolder(path);
   flushNow();
-  if (activeTab() !== 'media') return switchTab('media');
+  if (activeTab() !== 'media') {
+    switchTab('media');
+    return;
+  }
   void loadMediaFolder();
 }
 

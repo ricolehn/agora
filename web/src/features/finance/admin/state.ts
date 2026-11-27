@@ -4,7 +4,7 @@
 import { createSignal } from 'solid-js';
 import { flushNow } from '../../../app/flush';
 import { apiJson } from '../../../app/api';
-import { activeTab, syncUrl } from '../../../app/router';
+import { activeTab } from '../../../app/router';
 import { canViewFinances } from '../../../app/session';
 import { debounce, newestWins } from '../../../app/util';
 import type { BookingFields } from '../../../app/types';
@@ -68,8 +68,8 @@ export function setPeopleSearch(text: string) {
 /** Loads what the shown sub-page needs: the fee list is drawn from memory (its cards start closed), the overview
  *  fetches the history and the balance. A history already on screen stays while it is fetched again (back on the tab
  *  it shows at once, as the balance does); placeholders only when there is none yet or the last load failed. */
-export function loadSubpage() {
-  if (subpage() === 'members') setOpenPersonId(null);
+export function loadSubpage(page: FinanceSubpage) {
+  if (page === 'members') setOpenPersonId(null);
   else {
     void loadHistory(true, { quiet: historyView() === 'list' && transactions() !== null });
     void loadStats();
@@ -78,8 +78,7 @@ export function loadSubpage() {
 
 export function switchFinanceSubpage(page: FinanceSubpage) {
   setSubpage(page);
-  loadSubpage();
-  syncUrl();
+  loadSubpage(page);
 }
 
 // --- Cash balance ---

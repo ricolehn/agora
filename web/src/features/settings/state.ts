@@ -5,7 +5,7 @@
 import { createSignal } from 'solid-js';
 import { t } from '../../app/i18n';
 import { settingsPages } from '../../app/registry';
-import { leaveHistoryLevels, pushHistoryLevel, syncUrl } from '../../app/router';
+import { leaveHistoryLevels, pushHistoryLevel } from '../../app/router';
 import { canViewFinances, currentUser, isSuperAdminUser } from '../../app/session';
 import { scrollPageToTop } from '../../app/shell';
 import { fullName } from '../../app/util';
@@ -84,7 +84,6 @@ export function openSettingsPage(key: SettingsPageKey, { fromRoute = false } = {
   if (!fromRoute && !openPage()) pushHistoryLevel('page');
   setOpenPage(key);
   flushNow();
-  syncUrl();
   scrollPageToTop();
   // The row that had the focus is gone now: keyboard and screen reader users continue at the page title
   document.getElementById(PAGE_TITLE_ID)?.focus({ preventScroll: true });
@@ -96,7 +95,6 @@ export function closeSettingsPage(fromHistory = false) {
   const left = openPage();
   setOpenPage(null);
   flushNow();
-  syncUrl();
   scrollPageToTop();
   document.getElementById(MENU_ID)?.querySelector<HTMLElement>(`[data-key="${left}"]`)?.focus({ preventScroll: true });
 }

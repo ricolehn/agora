@@ -2,7 +2,6 @@
 // The open page is part of the address (/system/config); the accounts are the default and have no part of their own.
 import { createSignal } from 'solid-js';
 import { loadSystemGroups } from '../../app/groups';
-import { syncUrl } from '../../app/router';
 import { loadAiConfig } from './ai';
 import { loadMediaConfig } from './media';
 import { isSystemConfigLoaded, loadAdvancedSystemConfig } from './systemConfig';
@@ -27,5 +26,4 @@ export function switchSysSettingsTab(tab: SysTab) {
   setSysTab(tab);
   flushNow();
   SYS_TAB_LOADERS[tab]();
-  syncUrl();
 }

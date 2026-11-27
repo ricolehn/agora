@@ -1,23 +1,33 @@
 // The stack of open dialogs, with the browser history: an open dialog has a history entry, so the back gesture
 // closes it (nested dialogs share one entry). Only the dialog on top can be reached by keyboard and screen readers.
 // The dialog frame (ui/Modal.tsx) reads this state; features open and close dialogs by id.
-import { createSignal } from 'solid-js';
+//
+// The stack is kept twice: a plain list, always current, for the opening and closing itself (two dialogs opened in
+// one go both stay), and a signal the pages are drawn from - Solid applies it with its next update, and what needs
+// the page drawn first (the focus going back) runs from there.
+import { createEffect, createRoot, createSignal } from 'solid-js';
 import { programmaticBack } from './history';
-import { flushNow } from './flush';
 
+let stack: string[] = [];
 const [modalStack, setModalStack] = createSignal<string[]>([]);
 export { modalStack };
+const setStack = (next: string[]) => {
+  stack = next;
+  setModalStack(next);
+};
 
 /** Whether the dialog [id] is open (reactive). */
 export const isModalOpen = (id: string) => modalStack().includes(id);
 /** Whether [id] is the dialog on top (reactive). */
 export const isTopModal = (id: string) => {
-  const stack = modalStack();
-  return stack[stack.length - 1] === id;
+  const open = modalStack();
+  return open[open.length - 1] === id;
 };
 export const anyModalOpen = () => modalStack().length > 0;
 /** The layer of an open dialog (later ones above earlier ones). */
 export const modalLayer = (id: string) => 2000 + (modalStack().indexOf(id) + 1) * 10;
+/** The dialog on top right now, for the back gesture and Escape (not reactive: handlers act on what is open). */
+export const topModal = (): string | undefined => stack[stack.length - 1];
 
 // Where the focus was when a dialog opened: it goes back there when the dialog closes
 const returnFocus = new Map<string, Element | null>();
@@ -25,16 +35,6 @@ const returnFocus = new Map<string, Element | null>();
 const closeGuards = new Map<string, () => boolean>();
 // Run once when the dialog closes the next time (a dialog opened for one purpose cleans up after itself)
 const closeCallbacks = new Map<string, Array<() => void>>();
-// The router keeps the page address in step with the open dialogs
-const changeListeners = new Set<() => void>();
-
-export function onModalChange(fn: () => void) {
-  changeListeners.add(fn);
-  return () => changeListeners.delete(fn);
-}
-const notify = () => {
-  for (const fn of changeListeners) fn();
-};
 
 /** [guard] returns false to keep the dialog open (it asks the person itself); null removes it. */
 export function setModalCloseGuard(id: string, guard: (() => boolean) | null) {
@@ -50,14 +50,10 @@ export function onModalClosed(id: string, fn: () => void) {
 }
 
 export function openModal(id: string) {
-  const stack = modalStack();
-  if (!stack.includes(id)) {
-    returnFocus.set(id, document.activeElement);
-    setModalStack([...stack, id]);
-    flushNow();
-    history[history.state?.isModal ? 'replaceState' : 'pushState']({ isModal: true, modalId: id }, '');
-  }
-  notify();
+  if (stack.includes(id)) return;
+  returnFocus.set(id, document.activeElement);
+  setStack([...stack, id]);
+  history[history.state?.isModal ? 'replaceState' : 'pushState']({ isModal: true, modalId: id }, '');
 }
 
 function restoreFocus(el: Element | null | undefined) {
@@ -69,6 +65,16 @@ function restoreFocus(el: Element | null | undefined) {
     }
   }
 }
+
+// The element the focus goes back to once the closed dialog is gone from the page (the effect below)
+let focusAfterClose: Element | null | undefined;
+createRoot(() =>
+  createEffect(modalStack, () => {
+    const target = focusAfterClose;
+    focusAfterClose = undefined;
+    restoreFocus(target);
+  })
+);
 
 function runCloseCallbacks(id: string) {
   const list = closeCallbacks.get(id);
@@ -87,26 +93,21 @@ function runCloseCallbacks(id: string) {
  * the dialog open, the entry is added again). force: closes without asking the guard.
  */
 export function closeModal(id: string, fromPopstate = false, force = false) {
-  const stack = modalStack();
-  const index = stack.indexOf(id);
-  if (index < 0) return;
+  if (!stack.includes(id)) return;
   const guard = closeGuards.get(id);
   if (!force && guard && !guard()) {
     if (fromPopstate) history.pushState({ isModal: true, modalId: id }, '');
     return;
   }
-  setModalStack(stack.filter(entry => entry !== id));
-  flushNow();
+  setStack(stack.filter(entry => entry !== id));
   if (!fromPopstate && history.state?.isModal) programmaticBack();
-  restoreFocus(returnFocus.get(id));
+  focusAfterClose = returnFocus.get(id);
   returnFocus.delete(id);
   runCloseCallbacks(id);
-  notify();
 }
 
 /** Closes several dialogs at once (they share one history entry: one step back at most). */
 export function closeMultipleModals(ids: string[]) {
-  const stack = modalStack();
   const closing = ids.filter(id => stack.includes(id));
   if (!closing.length) return;
   let finalFocus: Element | null | undefined = null;
@@ -115,19 +116,11 @@ export function closeMultipleModals(ids: string[]) {
     if (focus && !closing.some(other => document.getElementById(other)?.contains(focus))) finalFocus = focus;
     returnFocus.delete(id);
   }
-  setModalStack(stack.filter(id => !closing.includes(id)));
-  flushNow();
-  restoreFocus(finalFocus);
+  setStack(stack.filter(id => !closing.includes(id)));
+  focusAfterClose = finalFocus;
   if (history.state?.isModal) programmaticBack();
   for (const id of closing) runCloseCallbacks(id);
-  notify();
 }
-
-/** The dialog on top, for the back gesture (closed with fromPopstate). */
-export const topModal = () => {
-  const stack = modalStack();
-  return stack[stack.length - 1];
-};
 
 // Escape closes only the dialog on top
 document.addEventListener('keydown', event => {

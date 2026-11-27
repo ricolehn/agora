@@ -7,16 +7,15 @@
 //
 // Features plug in through the hooks below: what happens when their tab opens, their part of the address, how a
 // deeper address opens (an event, a song, a chat), and what "back" means inside them.
-import { createSignal } from 'solid-js';
+import { createEffect, createRoot, createSignal } from 'solid-js';
 import { FEATURES } from './config';
 import { consumeProgrammaticBack, programmaticBack } from './history';
-import { closeModal, onModalChange, topModal } from './modals';
+import { closeModal, topModal } from './modals';
 import {
   aiEnabled, canAccessAi, canUseMentoring, canViewFinances, isAuthenticated, isSuperAdminUser
 } from './session';
 import { HOME_TAB, HUB_TABS, NAV_ORDER, TAB_PATHS, type TabId } from './tabs';
 import { getTodayStr, slugify } from './util';
-import { flushNow } from './flush';
 
 export { HOME_TAB, HUB_TABS, type TabId };
 
@@ -82,10 +81,14 @@ const TAB_GUARDS: Partial<Record<TabId, () => boolean>> = {
   mentoring: () => canUseMentoring()
 };
 
-/** The finance sub-page the old ids name ('overview', 'payment-history' → history, 'people-view' → members). */
-const [financeSubpageRequest, setFinanceSubpageRequest] = createSignal<{ page: 'members' | 'history'; seq: number } | null>(null);
-export { financeSubpageRequest };
-let financeRequestSeq = 0;
+/** The finance sub-page an old id named ('overview', 'payment-history' → history, 'people-view' → members): the
+ *  finances tab takes it when it opens. */
+let financeSubpageRequest: 'members' | 'history' | null = null;
+export function takeFinanceSubpageRequest() {
+  const page = financeSubpageRequest;
+  financeSubpageRequest = null;
+  return page;
+}
 
 // --- History levels ---
 let tabHistoryPushed = false;
@@ -138,16 +141,16 @@ function syncTabHistory(tabName: TabId, previousTab: TabId) {
 }
 
 /**
- * Opens a tab. source 'history': called from a back navigation (no new history entry).
+ * Opens a tab and returns the tab it opened. source 'history': called from a back navigation (no new history entry).
  * Old ids are understood ('overview', 'people-view', 'user-settings', ...); a tab without the right falls back
  * (the AI chat to Extras, everything else to the start page).
  */
-export function switchTab(requested: TabId | string, source?: 'history' | 'nav') {
+export function switchTab(requested: TabId | string, source?: 'history' | 'nav'): TabId {
   let tabName = requested as string;
   // A switched-off app (old link, remembered tab) opens the hub instead
   if (tabName === 'polls' && !FEATURES.polls) tabName = 'hub';
-  if (tabName === 'overview' || tabName === 'payment-history') setFinanceSubpageRequest({ page: 'history', seq: ++financeRequestSeq });
-  else if (tabName === 'people-view') setFinanceSubpageRequest({ page: 'members', seq: ++financeRequestSeq });
+  if (tabName === 'overview' || tabName === 'payment-history') financeSubpageRequest = 'history';
+  else if (tabName === 'people-view') financeSubpageRequest = 'members';
   let tab = (TAB_ALIASES[tabName] || tabName) as TabId;
   // Members get their own finance page for the treasurers' tab; treasurers can open their own fee account too (the
   // payment line on the start page), as before - only the address /finances always names the treasurers' tab
@@ -162,11 +165,10 @@ export function switchTab(requested: TabId | string, source?: 'history' | 'nav')
   const targetIndex = NAV_ORDER.indexOf(HUB_TABS.includes(tab) ? 'hub' : tab);
   setTabSlide(currentIndex > -1 && targetIndex > -1 && targetIndex < currentIndex ? 'left' : 'right');
   setActiveTabSignal(tab);
-  flushNow();
   revealHeaderHook?.();
   if (source !== 'history' && isAuthenticated()) syncTabHistory(tab, previousTab);
   for (const fn of enterHooks.get(tab) || []) fn();
-  syncUrl();
+  return tab;
 }
 
 // The shell shows the header again when the page changes
@@ -240,21 +242,28 @@ export function routePath(): string {
 
 // Until the first route after signing in is applied, the address still holds where the person wanted to go
 let routeReady = false;
+const [addressFollows, setAddressFollows] = createSignal(false);
 export const isRouteReady = () => routeReady;
 export function resetRouting() {
   routeReady = false;
+  setAddressFollows(false);
   tabHistoryPushed = false;
   historyLevels.length = 0;
 }
 
-export function syncUrl() {
-  if (!isAuthenticated() || !routeReady) return;
-  const path = routePath();
-  if (window.location.pathname !== path || window.location.hash) history.replaceState(history.state, '', path + window.location.search);
-}
-// Opening and closing dialogs changes the address (an open event, a song); a plain callback, not a reactive scope
-// eslint-disable-next-line solid/reactivity
-onModalChange(syncUrl);
+// The address of the current history entry follows what is on screen (the tab, its part, an open event or song) -
+// also on the entry a back gesture went to (historyMoves)
+const [historyMoves, setHistoryMoves] = createSignal(0);
+createRoot(() =>
+  createEffect(
+    () => (isAuthenticated() && addressFollows() ? { path: routePath(), moves: historyMoves() } : null),
+    current => {
+      if (current && (window.location.pathname !== current.path || window.location.hash)) {
+        history.replaceState(history.state, '', current.path + window.location.search);
+      }
+    }
+  )
+);
 
 const decodePart = (part: string) => {
   try {
@@ -282,9 +291,7 @@ export async function applyRoute(path: string): Promise<void> {
   pendingAiRoute = tab === 'ai-chat' && canAccessAi() && !aiEnabled();
   const handler = routeHandlers.get(tab);
   handler?.before?.(parts);
-  switchTab(tab);
-  if (activeTab() === tab && parts.length) await handler?.after?.(parts);
-  syncUrl();
+  if (switchTab(tab) === tab && parts.length) await handler?.after?.(parts);
 }
 
 /** Once after signing in: the page the address names (or an old #link), on top of the start page. */
@@ -298,6 +305,7 @@ export function applyInitialRoute(): Promise<void> {
     history.replaceState(null, '', '/' + window.location.search);
   }
   routeReady = true;
+  setAddressFollows(true);
   return applyRoute(target);
 }
 
@@ -350,5 +358,5 @@ window.addEventListener('popstate', () => {
   // A #link inside the running app (a notification, an old bookmark) also fires popstate: it is a destination
   if (followLegacyHash()) return;
   handleHistoryBack();
-  syncUrl();
+  setHistoryMoves(moves => moves + 1);
 });

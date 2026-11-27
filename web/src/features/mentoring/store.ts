@@ -10,7 +10,7 @@ import { closeModal, openModal } from '../../app/modals';
 import { setNavBadge } from '../../app/nav';
 import { whenPicturesReady } from '../../app/pictures';
 import { sendReport } from '../../app/reports';
-import { HOME_TAB, activeTab, forgetTabHistory, switchTab, syncUrl } from '../../app/router';
+import { HOME_TAB, activeTab, forgetTabHistory, switchTab } from '../../app/router';
 import { canManageMentoring, canUseMentoring, currentUid, isCurrentUser } from '../../app/session';
 import { confirmAction, showToast } from '../../app/toast';
 import { isMobile, newestWins, once } from '../../app/util';
@@ -217,7 +217,6 @@ export function switchMentoringSubTab(sub: SubTab) {
   setSubTab(sub);
   flushNow();
   SUBTAB_LOADERS[sub]();
-  syncUrl();
 }
 
 export async function loadMentoringData() {
@@ -357,7 +356,6 @@ export async function openMentoringThread(threadId: string) {
   }
   setOpenedThreads(prev => new Set(prev).add(threadId));
   flushNow();
-  syncUrl();
 
   let thread = findThread(threadId);
   if (!thread) {
@@ -410,7 +408,6 @@ export function closeMentoringChatMobile(fromHistory = false, userBack = !fromHi
   const steps = (!fromHistory && chatHistoryPushed ? 1 : 0) + (returnHome ? 1 : 0);
   chatHistoryPushed = false;
   if (steps > 0) programmaticBack(steps);
-  syncUrl();
   if (returnHome) {
     // Both entries are gone: the router's "not home" entry too (as the old code reset it)
     forgetTabHistory();
