@@ -70,8 +70,8 @@ function MemberHero(props: { person: Person }) {
           <strong class="text-[1.15rem] font-[750] tracking-[-0.02em] tabular-nums">{euro(props.person._overdueAmount || 0)}</strong>
         </div>
       </Show>
-      {/* The status as set (as in the previous app), the fee as of today */}
-      <FeeChips person={props.person} status={<FeeChip>{statusLabel(props.person.status || '')}</FeeChip>} />
+      {/* Status and fee as of today (a change dated ahead shows in the history) */}
+      <FeeChips person={props.person} status={<FeeChip>{statusLabel(currentStatusOf(props.person))}</FeeChip>} />
     </div>
   );
 }
