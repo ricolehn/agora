@@ -1,6 +1,6 @@
 // The AI assistant's chat: the conversation that goes to the server, what the page shows of it, sending with the
 // answer streamed in, a new chat. The page (AiChatPage.tsx) draws it; each reply draws itself (reply.ts).
-import { createSignal } from 'solid-js';
+import { createSignal, onFlush } from 'solid-js';
 import { API, auth, errorMessage, type ErrorAnswer } from '../../app/api';
 import { t } from '../../app/i18n';
 import { activeTab } from '../../app/router';
@@ -11,7 +11,6 @@ import type { AiSignState } from './AiSign';
 import type { StreamPart } from '../../lib/aiReply';
 import { createAiReply, type AiReply } from './reply';
 import { aiChatAtEnd, aiChatToEnd, chatElements } from './scroll';
-import { flushNow } from '../../app/flush';
 
 export type ChatEntry =
   | { role: 'user'; text: string; afterWelcome: boolean }
@@ -109,9 +108,9 @@ function dismissWelcome(): boolean {
 
 function appendEntry(entry: { role: 'user'; text: string } | { role: 'assistant'; reply: AiReply; seed: number }) {
   const afterWelcome = dismissWelcome();
-  setEntries([...entries(), { ...entry, afterWelcome }]);
-  flushNow();
-  aiChatToEnd();
+  setEntries(list => [...list, { ...entry, afterWelcome }]);
+  // To the end once the new entry is there
+  onFlush(aiChatToEnd);
 }
 
 // Normalizes text for AI providers: NFC, no control characters or lone surrogates, LF line endings
@@ -230,8 +229,8 @@ export async function sendAiMessage() {
     if (!clean) throw new Error(reply.reasoning ? t('ai_only_thought', 'The AI thought about it but sent no answer. Please try again.') : t('ai_no_answer', 'No answer came back. Please try again.'));
     // "Report reply" under a finished answer: sends it with the question to the admins (Google Play AI content policy)
     reply.allowReport({ answer: clean, prompt: [...aiMessages].reverse().find(m => m.role === 'user')?.content || '' });
-    flushNow();
-    if (aiChatAtEnd()) aiChatToEnd();
+    // Still at the end once the report link is there
+    onFlush(() => aiChatAtEnd() && aiChatToEnd());
     aiMessages.push({ role: 'assistant', content: clean });
   } catch (err) {
     reply.stop();

@@ -10,9 +10,9 @@
 //
 // The logic reads its own state at once (`state`, `shownWords`, `shownSteps`); the view (AiReply.tsx) draws the store
 // `view` and the lists `words` and `steps` (fresh arrays of unchanged items: the lists keep what did not change), and
-// hands in its elements, which the motion measures and animates. All of it runs from frames, timers, handlers and the stream -
-// flushNow() puts a change on the page before it is measured.
-import { createSignal, createStore } from 'solid-js';
+// hands in its elements, which the motion measures and animates. All of it runs from frames, timers, handlers and the stream;
+// what measures a change waits until it is on the page (onFlush).
+import { createSignal, createStore, onFlush } from 'solid-js';
 import { euro, t } from '../../app/i18n';
 import { newestWins } from '../../app/util';
 import {
@@ -21,7 +21,6 @@ import {
 import type { IconName } from '../../ui/Icon';
 import type { AiSignState } from './AiSign';
 import { aiChatAtEnd, aiChatScroller, aiChatToEnd, chatElements } from './scroll';
-import { flushNow } from '../../app/flush';
 
 
 /** The words on the line: the current ones last, the ones before still leaving upwards. */
@@ -182,13 +181,16 @@ export function createAiReply() {
     // The old words leave upwards, the new ones come from below, and the line's width glides from one to the other
     const from = label.getBoundingClientRect().width;
     putWords([{ ...current, leaving: true }, next]);
-    flushNow();
-    const [leaving, entering] = Array.from(label.children);
-    const to = label.getBoundingClientRect().width;
     const drop = () => putWords(shownWords.filter(shown => shown.key !== current.key));
-    leaving.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-60%)' }], { duration: 170, easing: 'ease-in', fill: 'forwards' }).finished.then(drop, drop);
-    entering.animate([{ opacity: 0, transform: 'translateY(60%)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, delay: 70, easing: AI_EASE, fill: 'backwards' });
-    if (Math.abs(to - from) > 0.5) label.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 300, easing: AI_EASE });
+    // Measured and moved once both are on the page (a newer title meanwhile: no move, the old words just go)
+    onFlush(() => {
+      const [leaving, entering] = Array.from(label.children);
+      if (shownWords.at(-1)?.key !== next.key || !leaving || !entering) return drop();
+      const to = label.getBoundingClientRect().width;
+      leaving.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-60%)' }], { duration: 170, easing: 'ease-in', fill: 'forwards' }).finished.then(drop, drop);
+      entering.animate([{ opacity: 0, transform: 'translateY(60%)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, delay: 70, easing: AI_EASE, fill: 'backwards' });
+      if (Math.abs(to - from) > 0.5) label.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 300, easing: AI_EASE });
+    });
   };
   const pacer = createTitlePacer<boolean>(showTitle);
   pacer.want(thinkingTitle, { tag: true });
@@ -206,10 +208,11 @@ export function createAiReply() {
     const first = !state.seconds;
     put({ seconds: t('ai_thinking_seconds', '{n} s', { n: seconds() }) });
     if (!first) return;
-    // The seconds do not pop into the line after the first one: they glide in
-    flushNow();
-    const time = els.time;
-    if (moves(time)) time.animate([{ width: '0px', marginLeft: '-6px', opacity: 0 }, { width: `${time.getBoundingClientRect().width}px`, marginLeft: '0px', opacity: 1 }], { duration: 260, easing: AI_EASE });
+    // The seconds do not pop into the line after the first one: they glide in, once they are on the page
+    onFlush(() => {
+      const time = els.time;
+      if (moves(time)) time.animate([{ width: '0px', marginLeft: '-6px', opacity: 0 }, { width: `${time.getBoundingClientRect().width}px`, marginLeft: '0px', opacity: 1 }], { duration: 260, easing: AI_EASE });
+    });
   };
   const tick = setInterval(() => {
     if (!answeringSince) showSeconds();
@@ -261,9 +264,11 @@ export function createAiReply() {
       return shownSteps[index];
     });
     setSteps(shownSteps);
-    flushNow();
-    if (follow && state.live) list.scrollTop = list.scrollHeight;
-    fitSteps();
+    // Once the steps are on the page: still at the newest one, and the window fitted to them
+    onFlush(() => {
+      if (follow && state.live) list.scrollTop = list.scrollHeight;
+      fitSteps();
+    });
     if (textWaits) schedule();
   };
 
@@ -278,24 +283,26 @@ export function createAiReply() {
     sliding?.cancel();
     change();
     // What the change put in the view (its last fitSteps: "Show more" shown) is on the page before the panel is
-    // measured - else the slide ends short of it and the panel jumps to its height at the end
-    flushNow();
-    const height = to === null ? panel.getBoundingClientRect().height : to;
-    const finish = () => {
-      sliding = null;
-      if (pinned) aiChatToEnd();
-      after?.(pinned);
-    };
-    if (!moves(els.summary)) return finish();
-    const animation = panel.animate([{ height: `${from}px`, opacity: from ? 1 : 0 }, { height: `${height}px`, opacity: height ? 1 : 0 }], { duration: height > from ? 280 : 220, easing: AI_EASE });
-    sliding = animation;
-    animation.onfinish = finish;
-    const keepAtEnd = () => {
-      if (sliding !== animation || !pinned) return;
-      aiChatToEnd();
+    // measured - else the slide ends short of it and the panel jumps to its height at the end. The change's own steps
+    // after drawing came first (onFlush runs them in turn)
+    onFlush(() => {
+      const height = to === null ? panel.getBoundingClientRect().height : to;
+      const finish = () => {
+        sliding = null;
+        if (pinned) aiChatToEnd();
+        after?.(pinned);
+      };
+      if (!moves(els.summary)) return finish();
+      const animation = panel.animate([{ height: `${from}px`, opacity: from ? 1 : 0 }, { height: `${height}px`, opacity: height ? 1 : 0 }], { duration: height > from ? 280 : 220, easing: AI_EASE });
+      sliding = animation;
+      animation.onfinish = finish;
+      const keepAtEnd = () => {
+        if (sliding !== animation || !pinned) return;
+        aiChatToEnd();
+        requestAnimationFrame(keepAtEnd);
+      };
       requestAnimationFrame(keepAtEnd);
-    };
-    requestAnimationFrame(keepAtEnd);
+    });
   };
   // Steps that opened below the edge of the screen (the input lies over it) come up far enough to be seen
   const reveal = (pinned: boolean) => {
@@ -315,15 +322,14 @@ export function createAiReply() {
         put({ open: true });
         drawSteps(true);
         // While the AI works the newest step is the one to see, afterwards the steps start at their beginning
-        const list = els.steps!;
-        list.scrollTop = state.live ? list.scrollHeight : 0;
-        fitSteps();
+        onFlush(() => {
+          const list = els.steps;
+          if (list) list.scrollTop = state.live ? list.scrollHeight : 0;
+          fitSteps();
+        });
       }, reveal);
     } else {
-      slide(0, () => {}, () => {
-        put({ open: false, closing: false, expanded: false });
-        flushNow();
-      });
+      slide(0, () => {}, () => put({ open: false, closing: false, expanded: false }));
     }
   };
 
@@ -333,11 +339,13 @@ export function createAiReply() {
     if (!moves(els.answer)) return put({ answer: '' });
     const isNewest = ghostRound();
     put({ leavingAnswer: text, answer: '' });
-    flushNow();
-    const ghost = els.ghost;
     const gone = () => isNewest() && put({ leavingAnswer: '' });
-    if (!moves(ghost)) return gone();
-    ghost.animate([{ height: `${ghost.getBoundingClientRect().height}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 220, easing: AI_EASE }).finished.then(gone, gone);
+    // It folds away once it stands where the answer was
+    onFlush(() => {
+      const ghost = els.ghost;
+      if (!moves(ghost)) return gone();
+      ghost.animate([{ height: `${ghost.getBoundingClientRect().height}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 220, easing: AI_EASE }).finished.then(gone, gone);
+    });
     return undefined;
   };
 
@@ -368,7 +376,6 @@ export function createAiReply() {
       else put({ answer });
       shownAnswer = answer;
     }
-    flushNow();
   }
 
   return {
@@ -438,15 +445,16 @@ export function createAiReply() {
       if (!list || !details) return;
       const change = () => {
         put({ expanded: expand });
-        flushNow();
-        if (!expand) list.scrollTop = 0;
-        fitSteps();
+        onFlush(() => {
+          if (!expand) list.scrollTop = 0;
+          fitSteps();
+        });
       };
       // "Show less" far down in long steps, their beginning scrolled away: back to the line, without a slide
       if (!expand && details.getBoundingClientRect().top < (aiChatScroller()?.getBoundingClientRect().top ?? 0) + 72) {
         sliding?.cancel();
         change();
-        details.scrollIntoView({ block: 'start', behavior: 'instant' });
+        onFlush(() => details.scrollIntoView({ block: 'start', behavior: 'instant' }));
       } else {
         slide(null, change);
       }
