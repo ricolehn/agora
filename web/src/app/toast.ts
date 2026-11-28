@@ -1,6 +1,6 @@
 // Toasts and simple dialogs. Callers pass already translated texts (t()). The toast itself is drawn by the shell
 // (shell/Overlays.tsx) from the signal below.
-import { createSignal } from 'solid-js';
+import { createSignal, onFlush } from 'solid-js';
 import { asFailure, type Failure } from './api';
 import { t } from './i18n';
 
@@ -19,11 +19,13 @@ export { toast };
 let toastTimeout: ReturnType<typeof setTimeout> | undefined;
 let seq = 0;
 
-/** Shows a short message at the top right for 3 seconds. Neutral news ('info') gets no warning sign. */
+/** Shows a short message at the top right for 3 seconds. Neutral news ('info') gets no warning sign. The toast lands
+ *  on its own (onFlush): a change that waits for the server, started in the same go, does not hold it back. */
 export function showToast(message: string, type: ToastType | string = 'success') {
   if (!message) return;
   seq += 1;
-  setToast({ message, type: (['success', 'error', 'info', 'warning'].includes(type) ? type : 'error') as ToastType, visible: true, seq });
+  const shown: ToastState = { message, type: (['success', 'error', 'info', 'warning'].includes(type) ? type : 'error') as ToastType, visible: true, seq };
+  onFlush(() => setToast(shown));
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3000);
 }

@@ -4,8 +4,10 @@
 //
 // The stack is kept twice: a plain list, always current, for the opening and closing itself (two dialogs opened in
 // one go both stay), and a signal the pages are drawn from - Solid applies it with its next update, and what needs
-// the page drawn first (the focus going back) runs from there.
-import { createEffect, createRoot, createSignal } from 'solid-js';
+// the page drawn first (the focus going back) runs from there. A change of the stack lands on its own (onFlush): a
+// change that waits for the server - an action started in the same go - never holds a dialog open or closed (inside
+// an action it lands with the action, as any of its writes).
+import { createEffect, createRoot, createSignal, onFlush } from 'solid-js';
 import { programmaticBack } from './history';
 
 let stack: string[] = [];
@@ -13,7 +15,7 @@ const [modalStack, setModalStack] = createSignal<string[]>([]);
 export { modalStack };
 const setStack = (next: string[]) => {
   stack = next;
-  setModalStack(next);
+  onFlush(() => setModalStack(next));
 };
 
 /** Whether the dialog [id] is open (reactive). */

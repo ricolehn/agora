@@ -122,6 +122,7 @@ describe('prayer requests (browser)', { skip: skipReason || false }, () => {
     await list(max.page).getByRole('button', { name: /Patience with my neighbours/ }).click();
     await max.page.getByRole('button', { name: 'Done - remove' }).click();
     await until(async () => (await shown(max.page, 'Patience with my neighbours')) === 0, 'the request to leave at once');
+    await until(async () => !(await max.page.locator('#prayer-options-modal').isVisible()), 'the dialog to close at once');
     await until(() => answer !== null, 'the removal to be asked');
     answer();
     await max.toast('Not deleted');

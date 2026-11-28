@@ -1,14 +1,15 @@
 // The polls tab: running, finished and own polls as cards; a card opens the poll.
-import { For, Match, Show, Switch } from 'solid-js';
+import { For, Match, Show, Switch, createEffect, createMemo } from 'solid-js';
 import { t } from '../../app/i18n';
 import { openModal } from '../../app/modals';
+import { activeTab } from '../../app/router';
 import { ProgressBar } from '../../ui/feedback';
 import { Icon } from '../../ui/Icon';
 import {
-  type Poll, type PollFilter, loadPolls, pollEndDate, pollFilter, pollLeader, polls, pollsError, pollsLoaded, pollTimeLabel,
-  pollVotes, setOpenPoll, setPollFilter
+  type Poll, type PollFilter, nextPollEnd, pollEndDate, pollFilter, pollLeader, polls, pollTimeLabel, pollVotes, refreshPolls, setOpenPoll,
+  setPollFilter
 } from './store';
-import { AppHead, FilterPills, ListEmpty, ListLoading } from '../../ui/pages';
+import { AppHead, FilterPills, ListEmpty, Loaded } from '../../ui/pages';
 
 export function openPollDetail(id: string) {
   setOpenPoll(id);
@@ -32,7 +33,31 @@ const FILTERS: Array<{ value: PollFilter; label: () => string }> = [
 ];
 
 export function PollsPage() {
-  const shown = () => polls().filter(p => (pollFilter() === 'mine' ? p.isMine : pollFilter() === 'closed' ? p.closed : !p.closed));
+  return (
+    <>
+      <AppHead title={t('polls_title', 'Anonymous polls')} />
+      <PollsNote class="max-w-[760px]" text={t('polls_note', 'Votes are only counted – nobody sees who chose what.')} />
+      <FilterPills value={pollFilter()} options={FILTERS} onChange={setPollFilter} />
+      <div id="polls-list">
+        <Loaded data={polls} icon="poll" tone="amber">
+          {list => <PollList polls={list()} />}
+        </Loaded>
+      </div>
+    </>
+  );
+}
+
+/** The polls of the chosen filter. */
+function PollList(props: { polls: Poll[] }) {
+  const shown = () => props.polls.filter(p => (pollFilter() === 'mine' ? p.isMine : pollFilter() === 'closed' ? p.closed : !p.closed));
+  // When the next running poll ends, the polls are loaded again (while shown): it turns into "Finished" with its
+  // result without a manual refresh
+  const nextEnd = createMemo(() => nextPollEnd(props.polls));
+  createEffect(nextEnd, next => {
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => activeTab() === 'polls' && void refreshPolls(), Math.min(Math.max(next - Date.now() + 1500, 1000), 2147483000));
+    return () => clearTimeout(timer);
+  });
   const emptyTitle = () =>
     pollFilter() === 'mine'
       ? t('polls_empty_mine', 'You have not created a poll yet')
@@ -40,29 +65,14 @@ export function PollsPage() {
         ? t('polls_empty_closed', 'No finished polls yet')
         : t('polls_empty_open', 'No poll is running right now');
   return (
-    <>
-      <AppHead title={t('polls_title', 'Anonymous polls')} />
-      <PollsNote class="max-w-[760px]" text={t('polls_note', 'Votes are only counted – nobody sees who chose what.')} />
-      <FilterPills value={pollFilter()} options={FILTERS} onChange={setPollFilter} />
-      <div id="polls-list">
-        <Switch>
-          <Match when={!pollsLoaded() && pollsError()}>
-            <ListEmpty icon="poll" tone="amber" title={pollsError()} onRetry={() => void loadPolls()} />
-          </Match>
-          <Match when={!pollsLoaded()}>
-            <ListLoading />
-          </Match>
-          <Match when={!shown().length}>
-            <ListEmpty icon="poll" tone="amber" title={emptyTitle()} hint={t('polls_empty_hint', 'Start your own poll with the plus at the bottom right.')} />
-          </Match>
-          <Match when={true}>
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3.5">
-              <For each={shown()} keyed={p => p.id}>{poll => <PollCard poll={poll()} />}</For>
-            </div>
-          </Match>
-        </Switch>
+    <Show
+      when={shown().length}
+      fallback={<ListEmpty icon="poll" tone="amber" title={emptyTitle()} hint={t('polls_empty_hint', 'Start your own poll with the plus at the bottom right.')} />}
+    >
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3.5">
+        <For each={shown()} keyed={p => p.id}>{poll => <PollCard poll={poll()} />}</For>
       </div>
-    </>
+    </Show>
   );
 }
 

@@ -1,5 +1,6 @@
 // Anonymous polls in the browser: starting one, voting (a choice is needed; the own choice stays on the device),
-// the result once a poll with three votes ends, the secret result of one with fewer, deleting, a refused start.
+// the result once a poll with three votes ends, the secret result of one with fewer, deleting (also one the server
+// refuses, and one deleted elsewhere while it is open), a refused start.
 const { describe, test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { skipReason, startApp, until } = require('./harness');
@@ -93,6 +94,41 @@ describe('polls (browser)', { skip: skipReason || false }, () => {
     await max.page.locator('#poll-detail-modal').getByRole('button', { name: 'Delete' }).click();
     await max.toast('Poll deleted');
     await until(async () => (await card(max.page, 'Tea or coffee?').count()) === 0, 'the poll to go');
+  });
+
+  test('a poll deleted elsewhere while it is open here: the dialog closes with a note', async () => {
+    const { http } = app;
+    const poll = await http.ok(http.call('mia', 'POST', '/api/polls', { title: 'Picnic on Sunday?', options: ['Yes', 'No'], multiple: false, endsAt: Date.now() + 3 * 86400000 }));
+    const max = await app.signIn('max');
+    await max.go('/polls');
+    await card(max.page, 'Picnic on Sunday?').click();
+    await max.page.locator('#poll-detail-modal label', { hasText: 'Yes' }).waitFor();
+    await http.ok(http.call('mia', 'DELETE', `/api/polls/${poll.id}`));
+    await max.toast('This poll was deleted.');
+    await until(async () => !(await max.page.locator('#poll-detail-modal').isVisible()), 'the dialog to close');
+    assert.equal(await card(max.page, 'Picnic on Sunday?').count(), 0);
+  });
+
+  test('a deletion the server refuses: the poll leaves at once and comes back with the reason', async () => {
+    const { http } = app;
+    await http.ok(http.call('max', 'POST', '/api/polls', { title: 'Choir on Friday?', options: ['Yes', 'No'], multiple: false, endsAt: Date.now() + 3 * 86400000 }));
+    const max = await app.signIn('max');
+    await max.go('/polls');
+    max.expectProblems(/^500 DELETE \/api\/polls\//);
+    let answer = null;
+    await max.page.route('**/api/polls/*', async route => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      await new Promise(resolve => (answer = resolve));
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Not deleted' }) });
+    });
+    await card(max.page, 'Choir on Friday?').click();
+    await max.page.locator('#poll-detail-modal').getByRole('button', { name: 'Delete' }).click();
+    await until(async () => (await card(max.page, 'Choir on Friday?').count()) === 0, 'the poll to leave at once');
+    await until(async () => !(await max.page.locator('#poll-detail-modal').isVisible()), 'the dialog to close at once');
+    await until(() => answer !== null, 'the deletion to be asked');
+    answer();
+    await max.toast('Not deleted');
+    await card(max.page, 'Choir on Friday?').waitFor();
   });
 
   test('a start the server refuses shows its reason, and the dialog stays', async () => {

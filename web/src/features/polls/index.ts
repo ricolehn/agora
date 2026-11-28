@@ -8,15 +8,16 @@ import { currentUser } from '../../app/session';
 import { PollCreateModal, openCreatePoll } from './PollCreate';
 import { PollDetailModal } from './PollDetail';
 import { PollsPage } from './PollsPage';
-import { loadPolls } from './store';
+import { refreshPolls } from './store';
 
 if (FEATURES.polls) {
   registerTab('polls', PollsPage);
   registerRoot(PollDetailModal);
   registerRoot(PollCreateModal);
-  onTabEnter('polls', () => void loadPolls());
+  // Every visit brings the latest polls (the first one loads them: the page reads them)
+  onTabEnter('polls', () => void refreshPolls());
   // The "+" opens the create page directly (one action, no menu)
   registerFab('polls', { visible: () => !!currentUser(), action: openCreatePoll });
   // A live update reloads the polls only while they are shown
-  registerRemoteLoader('polls', () => (activeTab() === 'polls' ? loadPolls() : null));
+  registerRemoteLoader('polls', () => (activeTab() === 'polls' ? refreshPolls() : null));
 }

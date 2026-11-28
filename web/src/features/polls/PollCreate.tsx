@@ -1,7 +1,7 @@
 // Create a poll (poll-create-modal): a page like the event editor - the question, two to ten answers, the end.
 // Nobody sees who created it.
 import { For, Show, createSignal } from 'solid-js';
-import { apiJson, errorMessage } from '../../app/api';
+import { errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { closeModal, openModal } from '../../app/modals';
 import { showToast } from '../../app/toast';
@@ -9,9 +9,8 @@ import { pad2, toDateStr } from '../../app/util';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
 import { PollsNote } from './PollsPage';
-import { type Poll, addPoll, setPollFilter } from './store';
+import { createPoll, creating, setPollFilter } from './store';
 import { EDITOR_INPUT, EditorCard, EditorField, EditorPage, TEXT_AREA, TITLE_INPUT } from '../../ui/pages';
-import { flushNow } from '../../app/flush';
 
 const DURATIONS: Array<{ days: number; label: () => string }> = [
   { days: 1, label: () => t('polls_1d', '1 day') },
@@ -28,7 +27,6 @@ const [endDate, setEndDate] = createSignal('');
 const [endTime, setEndTime] = createSignal('');
 // The duration chip the end was set with (a date or time typed by hand no longer matches one)
 const [durationDays, setDurationDays] = createSignal<number | null>(null);
-const [saving, setSaving] = createSignal(false);
 const [dateLimits, setDateLimits] = createSignal({ min: '', max: '' });
 
 function setPollDuration(days: number) {
@@ -47,11 +45,10 @@ export function openCreatePoll() {
   setPollDuration(7);
   // The end lies between today and one year ahead (the server checks the exact limits)
   setDateLimits({ min: toDateStr(new Date()), max: toDateStr(new Date(Date.now() + 365 * 86400000)) });
-  flushNow();
   openModal('poll-create-modal');
 }
 
-async function submitPoll() {
+function submitPoll() {
   const date = endDate();
   const time = endTime() || '23:59';
   const endsAt = date ? new Date(`${date}T${time}`).getTime() : NaN;
@@ -62,17 +59,15 @@ async function submitPoll() {
     multiple: multiple(),
     endsAt
   };
-  setSaving(true);
-  try {
-    addPoll(await apiJson<Poll>('/polls', 'POST', payload));
-    closeModal('poll-create-modal');
-    setPollFilter('open');
-    showToast(t('polls_created', 'Poll started'));
-  } catch (err) {
-    showToast(errorMessage(err), 'error');
-  } finally {
-    setSaving(false);
-  }
+  // A poll the server refuses keeps the page open with what was typed
+  createPoll(payload).then(
+    () => {
+      closeModal('poll-create-modal');
+      setPollFilter('open');
+      showToast(t('polls_created', 'Poll started'));
+    },
+    err => showToast(errorMessage(err), 'error')
+  );
 }
 
 // Symbols of the parts (as drawn in the previous version)
@@ -92,7 +87,7 @@ export function PollCreateModal() {
           <Button variant="secondary" class="m-0 min-h-12" onClick={() => closeModal('poll-create-modal')}>
             {t('btn_cancel', 'Cancel')}
           </Button>
-          <Button id="poll-submit" class="m-0 min-h-12" disabled={saving()} onClick={() => void submitPoll()}>
+          <Button id="poll-submit" class="m-0 min-h-12" disabled={creating()} onClick={submitPoll}>
             {t('polls_publish', 'Start poll')}
           </Button>
         </>

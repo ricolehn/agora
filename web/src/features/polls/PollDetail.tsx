@@ -1,23 +1,41 @@
 // One poll (poll-detail-modal): vote anonymously, wait for the result, or see it; the creator (and system admins)
 // can end it early or delete it.
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js';
-import { apiJson, errorMessage } from '../../app/api';
+import { errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
-import { closeModal } from '../../app/modals';
+import { closeModal, isModalOpen } from '../../app/modals';
 import { isSuperAdminUser } from '../../app/session';
 import { confirmAction, showToast } from '../../app/toast';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Modal';
 import {
-  type Poll, loadPolls, myPollChoice, openPollId, pollEndDate, pollEndTime, pollShares, polls, pollTimeLabel, pollVotes,
-  rememberPollChoice, removePoll, replacePoll, scheduleNextPollEnd
+  type Poll, deletePoll, endPoll, myPollChoice, openPollId, pollEndDate, pollEndTime, pollOnServer, pollShares, polls, pollTimeLabel, pollVotes,
+  refreshPolls, votePoll, voting
 } from './store';
 import { DeleteButton } from '../../ui/pages';
 
 export function PollDetailModal() {
+  // The poll of the open dialog: the list is read only while it is open (closed, the app does not load it for the
+  // dialog)
+  const openId = () => (isModalOpen('poll-detail-modal') ? openPollId() : null);
   // A poll that was just deleted stays on screen while the dialog fades out
-  const poll = createMemo<Poll | null>(prev => polls().find(p => p.id === openPollId()) ?? prev ?? null);
+  const poll = createMemo<Poll | null>(prev => {
+    const id = openId();
+    return (id && polls().find(p => p.id === id)) || prev || null;
+  });
+  // Deleted by its creator or an admin while it was open here: a load brought the server's list without it
+  createEffect(
+    () => {
+      const id = openId();
+      return id && !pollOnServer(id) ? t('polls_gone', 'This poll was deleted.') : '';
+    },
+    gone => {
+      if (!gone) return;
+      closeModal('poll-detail-modal');
+      showToast(gone);
+    }
+  );
   return (
     <Modal
       id="poll-detail-modal"
@@ -48,60 +66,43 @@ function MyChoiceNote(props: { poll: Poll }) {
 
 function PollBody(props: { poll: Poll }) {
   // The ticks survive a refresh of the poll while someone is choosing; another poll starts empty
-  const [ticked, setTicked] = createSignal<string[]>([]);
-  const [voting, setVoting] = createSignal(false);
   const pollId = createMemo(() => props.poll.id);
-  createEffect(pollId, () => {
-    setTicked([]);
-    setVoting(false);
-  });
+  const [ticked, setTicked] = createSignal<string[]>(() => (pollId(), []));
   const manage = () => props.poll.isMine || isSuperAdminUser();
 
   const tick = (id: string, on: boolean) =>
     setTicked(list => (props.poll.multiple ? (on ? [...list.filter(x => x !== id), id] : list.filter(x => x !== id)) : on ? [id] : list));
 
-  async function vote() {
+  function vote() {
     const optionIds = props.poll.options.map(o => o.id).filter(id => ticked().includes(id));
     if (!optionIds.length) return showToast(t('polls_choose', 'Please choose an answer.'), 'error');
-    setVoting(true);
-    try {
-      const updated = await apiJson<Poll>(`/polls/${encodeURIComponent(props.poll.id)}/vote`, 'POST', { optionIds });
-      rememberPollChoice(updated.id, optionIds);
-      replacePoll(updated);
-      showToast(t('polls_vote_saved', 'Your vote was counted anonymously.'));
-    } catch (err) {
-      showToast(errorMessage(err), 'error');
-      setVoting(false);
-      // Voted on another device, or the poll just ended: show what is true now
-      void loadPolls();
-    }
+    votePoll(props.poll.id, optionIds).then(
+      () => showToast(t('polls_vote_saved', 'Your vote was counted anonymously.')),
+      err => {
+        showToast(errorMessage(err), 'error');
+        // Voted on another device, or the poll just ended: show what is true now
+        void refreshPolls();
+      }
+    );
   }
 
-  async function endNow() {
+  function endNow() {
     const tooFew = props.poll.participants < 3;
     const text = tooFew
       ? t('polls_end_confirm_few', 'End the poll now? With fewer than three votes the result stays secret for good.')
       : t('polls_end_confirm', 'End the poll now? Nobody can vote afterwards.');
     if (!confirmAction(text)) return;
-    try {
-      replacePoll(await apiJson<Poll>(`/polls/${encodeURIComponent(props.poll.id)}/close`, 'POST'));
-      scheduleNextPollEnd();
-    } catch (err) {
-      showToast(errorMessage(err), 'error');
-    }
+    endPoll(props.poll.id).catch(err => showToast(errorMessage(err), 'error'));
   }
 
-  async function remove() {
+  /** The dialog closes and the poll leaves the list at once; when the server refuses, it comes back with the reason. */
+  function remove() {
     if (!confirmAction(t('polls_delete_confirm', 'Delete the poll for good?'))) return;
-    const id = props.poll.id;
-    try {
-      await apiJson(`/polls/${encodeURIComponent(id)}`, 'DELETE');
-      closeModal('poll-detail-modal');
-      removePoll(id);
-      showToast(t('polls_deleted', 'Poll deleted'));
-    } catch (err) {
-      showToast(errorMessage(err), 'error');
-    }
+    closeModal('poll-detail-modal');
+    deletePoll(props.poll.id).then(
+      () => showToast(t('polls_deleted', 'Poll deleted')),
+      err => showToast(errorMessage(err), 'error')
+    );
   }
 
   return (
@@ -151,7 +152,7 @@ function PollBody(props: { poll: Poll }) {
             <Icon name="shield" class="text-[#10b981]" />
             {t('polls_anon_note', 'Your choice is only counted – nobody in the app can see what you chose.')}
           </p>
-          <Button id="poll-vote-btn" block disabled={voting()} onClick={() => void vote()}>
+          <Button id="poll-vote-btn" block disabled={voting()} onClick={vote}>
             {t('polls_vote_btn', 'Vote anonymously')}
           </Button>
         </Match>
@@ -180,11 +181,11 @@ function PollBody(props: { poll: Poll }) {
       <Show when={manage()}>
         <div class="mt-[18px] flex justify-end gap-2 border-t border-border-light pt-3.5">
           <Show when={!props.poll.closed}>
-            <Button variant="secondary" size="small" onClick={() => void endNow()}>
+            <Button variant="secondary" size="small" onClick={endNow}>
               {t('polls_end_now', 'End now')}
             </Button>
           </Show>
-          <DeleteButton size="small" onClick={() => void remove()}>
+          <DeleteButton size="small" onClick={remove}>
             {t('polls_delete', 'Delete')}
           </DeleteButton>
         </div>

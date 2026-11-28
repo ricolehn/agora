@@ -1,14 +1,11 @@
 // Anonymous polls: the list, what this device voted, the timed end of running polls, the labels and the result
 // shares. The server never links a person to an answer; what you chose is remembered on this device only.
-import { createSignal } from 'solid-js';
-import { apiJson, errorMessage } from '../../app/api';
+import { action, createOptimistic, createRoot, createSignal, refresh } from 'solid-js';
+import { apiJson } from '../../app/api';
 import { formatDateFast, t, timeText } from '../../app/i18n';
-import { closeModal, isModalOpen } from '../../app/modals';
-import { activeTab } from '../../app/router';
+import { serverData } from '../../app/serverData';
 import { readStoredJson, store } from '../../app/storage';
-import { showToast } from '../../app/toast';
 import { toDateStr } from '../../app/util';
-import { flushNow } from '../../app/flush';
 
 export type PollOption = { id: string; text: string };
 export type Poll = {
@@ -28,35 +25,57 @@ export type Poll = {
 };
 export type PollFilter = 'open' | 'closed' | 'mine';
 
-const [polls, setPolls] = createSignal<Poll[]>([]);
-const [pollsLoaded, setPollsLoaded] = createSignal(false);
-// A first load that failed: its message with "Try again" (a later failed refresh keeps the list and says so)
-const [pollsError, setPollsError] = createSignal('');
-const [pollFilter, setPollFilterSignal] = createSignal<PollFilter>('open');
-const [openPollId, setOpenPollId] = createSignal<string | null>(null);
-export { polls, pollsLoaded, pollsError, pollFilter, openPollId };
+// The polls as the server has them: loaded when the tab first shows them, again on every visit, live update, change
+// and when a running poll ends (app/serverData.ts)
+const serverPolls = serverData(() =>
+  apiJson<Poll[]>('/polls', 'GET', undefined, t('polls_load_failed', 'Polls could not be loaded')).then(list => (Array.isArray(list) ? list : []))
+);
+/** Loads the polls again (the list keeps showing the last ones meanwhile). */
+export const refreshPolls = () => refresh(serverPolls);
+/** Whether the server's list (not what the page shows: a deletion on its way) still has the poll [id]. */
+export const pollOnServer = (id: string) => serverPolls().some(p => p.id === id);
 
-export function setPollFilter(filter: PollFilter) {
-  setPollFilterSignal(filter);
-}
+// What the page shows: the server's polls, a deletion already applied while the server is asked
+const [polls, setShownPolls] = createRoot(() => createOptimistic<Poll[]>(() => serverPolls(), { lazy: true }));
+export { polls };
 
-/** Puts a poll the server returned in place of the shown one. */
-export function replacePoll(updated: Poll) {
-  setPolls(list => list.map(p => (p.id === updated.id ? updated : p)));
-  flushNow();
-}
-export function addPoll(created: Poll) {
-  setPolls(list => [created, ...list]);
-  flushNow();
-}
-export function removePoll(id: string) {
-  setPolls(list => list.filter(p => p.id !== id));
-  flushNow();
-}
-export function setOpenPoll(id: string | null) {
-  setOpenPollId(id);
-  flushNow();
-}
+const [pollFilter, setPollFilter] = createSignal<PollFilter>('open');
+// The poll of the detail dialog
+const [openPollId, setOpenPoll] = createSignal<string | null>(null);
+export { pollFilter, setPollFilter, openPollId, setOpenPoll };
+
+// True while a vote / a new poll is on its way (their buttons wait); back to false by itself when it ends
+const [voting, setVoting] = createOptimistic(false);
+const [creating, setCreating] = createOptimistic(false);
+export { voting, creating };
+
+/** Votes; the poll shows as voted when this resolves. */
+export const votePoll = action(function* (id: string, optionIds: string[]) {
+  setVoting(true);
+  yield apiJson(`/polls/${encodeURIComponent(id)}/vote`, 'POST', { optionIds });
+  rememberPollChoice(id, optionIds);
+  yield refreshPolls();
+});
+
+/** Starts a poll; it is in the list when this resolves. */
+export const createPoll = action(function* (poll: { title: string; description: string; options: string[]; multiple: boolean; endsAt: number }) {
+  setCreating(true);
+  yield apiJson('/polls', 'POST', poll);
+  yield refreshPolls();
+});
+
+/** Ends a running poll now. */
+export const endPoll = action(function* (id: string) {
+  yield apiJson(`/polls/${encodeURIComponent(id)}/close`, 'POST');
+  yield refreshPolls();
+});
+
+/** Deletes a poll: gone from the list at once, back when the server refuses. */
+export const deletePoll = action(function* (id: string) {
+  setShownPolls(list => list.filter(p => p.id !== id));
+  yield apiJson(`/polls/${encodeURIComponent(id)}`, 'DELETE');
+  yield refreshPolls();
+});
 
 // --- What you chose: on this device only (the server keeps no link between you and your answer) ---
 const POLL_CHOICES_KEY = 'agora-poll-choices';
@@ -69,7 +88,7 @@ window.addEventListener('storage', event => {
 
 export const myPollChoice = (id: string): string[] | null => choices()[id] || null;
 
-export function rememberPollChoice(id: string, optionIds: string[]) {
+function rememberPollChoice(id: string, optionIds: string[]) {
   const all = { ...readChoices(), [id]: optionIds };
   // Only polls that still exist
   const known = new Set(polls().map(p => p.id));
@@ -78,38 +97,8 @@ export function rememberPollChoice(id: string, optionIds: string[]) {
   store(POLL_CHOICES_KEY, all);
 }
 
-// --- Loading ---
-let pollEndTimer: ReturnType<typeof setTimeout> | undefined;
-
-export async function loadPolls(): Promise<void> {
-  try {
-    const list = await apiJson<Poll[]>('/polls', 'GET', undefined, t('polls_load_failed', 'Polls could not be loaded'));
-    setPolls(Array.isArray(list) ? list : []);
-    setPollsLoaded(true);
-    setPollsError('');
-  } catch (err) {
-    if (pollsLoaded()) showToast(errorMessage(err), 'error');
-    else setPollsError(errorMessage(err));
-  }
-  flushNow();
-  scheduleNextPollEnd();
-  const id = openPollId();
-  // Deleted by its creator or an admin while it was open here
-  if (id && isModalOpen('poll-detail-modal') && !polls().some(p => p.id === id)) {
-    closeModal('poll-detail-modal');
-    showToast(t('polls_gone', 'This poll was deleted.'));
-  }
-}
-
-/** Reloads when the next running poll ends, so it turns into "Finished" with its result without a manual refresh. */
-export function scheduleNextPollEnd() {
-  clearTimeout(pollEndTimer);
-  const next = Math.min(...polls().filter(p => !p.closed).map(p => p.endsAt));
-  if (!Number.isFinite(next)) return;
-  pollEndTimer = setTimeout(() => {
-    if (activeTab() === 'polls') void loadPolls();
-  }, Math.min(Math.max(next - Date.now() + 1500, 1000), 2147483000));
-}
+/** When the next running poll of [list] ends (Infinity: none runs). */
+export const nextPollEnd = (list: Poll[]) => Math.min(...list.filter(p => !p.closed).map(p => p.endsAt));
 
 // --- Labels ---
 export const pollEndTime = (poll: Poll) => timeText(new Date(poll.endsAt));
