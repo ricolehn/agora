@@ -9,7 +9,7 @@ import { fullName } from '../../app/util';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
 import { SearchInput } from '../../ui/feedback';
-import { Input, Switch } from '../../ui/form';
+import { Input, Select, Switch } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import {
   accountSearch, activeGroup, canDeleteAccount, deleteUserAccount, filterByGroup, groupFilter, isOwnerAccount, newGroupName,
@@ -197,14 +197,14 @@ function AccountRow(props: { user: User }) {
         />
       </td>
       <td class={TD}>
-        <select
-          class="cursor-pointer rounded-[8px] border border-border bg-surface px-2.5 py-1.5 text-[0.85rem] font-semibold text-text"
+        <Select
+          class="w-auto cursor-pointer rounded-[8px] border-border bg-surface px-2.5 py-1.5 text-[0.85rem] font-semibold"
           value={props.user.pays !== false ? 'yes' : 'no'}
           onChange={e => void toggleUserPays(props.user.uid, e.currentTarget.value === 'yes')}
         >
           <option value="yes">{t('option_yes', 'Yes')}</option>
           <option value="no">{t('option_no', 'No')}</option>
-        </select>
+        </Select>
       </td>
       <td class={TD}>
         {/* A block in the cell: centred in the row like the old switch (its checkbox gave it a text baseline) */}

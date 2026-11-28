@@ -9,6 +9,7 @@ import { closeModal } from '../../app/modals';
 import { canManageEvents } from '../../app/session';
 import { showToast } from '../../app/toast';
 import { toFormData } from '../../app/util';
+import { Switch } from '../../ui/form';
 import { Icon } from '../../ui/Icon';
 import { openImageCrop } from '../../ui/crop';
 import { Pill, Pills } from '../../ui/PillTabs';
@@ -511,8 +512,8 @@ function GroupChip(props: { group: Group; onToggle: (g: Group) => void }) {
 function RegistrationEditCard() {
   return (
     <div class={[CARD, 'max-w-full overflow-hidden', { '!border-[rgba(var(--brand-rgb),0.55)]': draft.requiresRegistration }]}>
-      <label class="flex cursor-pointer items-center justify-between gap-3" for="detail-edit-requires-reg">
-        <span class="flex min-w-0 flex-1 items-center gap-2.5">
+      <div class="flex items-center justify-between gap-3">
+        <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5" for="detail-edit-requires-reg">
           <span class="flex size-[34px] shrink-0 items-center justify-center rounded-[11px] bg-brand/12 text-primary">
             <Icon name="users" size={16} />
           </span>
@@ -522,19 +523,9 @@ function RegistrationEditCard() {
               {t('events_reg_required_desc', 'Members must register for this appointment in advance')}
             </span>
           </span>
-        </span>
-        <span class="relative inline-block h-6 w-11 shrink-0">
-          <input
-            id="detail-edit-requires-reg"
-            type="checkbox"
-            class="peer absolute size-0 opacity-0"
-            checked={draft.requiresRegistration}
-            onChange={e => set('requiresRegistration', e.currentTarget.checked)}
-          />
-          <span class="absolute inset-0 rounded-[24px] bg-border transition-[background] duration-200 peer-checked:bg-gradient-primary peer-focus-visible:shadow-ring" />
-          <span class="pointer-events-none absolute left-[3px] top-[3px] size-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.25)] transition-transform duration-200 peer-checked:translate-x-5" />
-        </span>
-      </label>
+        </label>
+        <Switch id="detail-edit-requires-reg" size="sm" checked={draft.requiresRegistration} onChange={on => set('requiresRegistration', on)} />
+      </div>
       <Show when={draft.requiresRegistration}>
         <div class="mt-3.5 w-full border-t border-border-light pt-3.5">
           <div class="grid w-full grid-cols-1 gap-3 min-[521px]:grid-cols-2">
