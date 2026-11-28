@@ -5,26 +5,24 @@
 // loadData() loads everything after signing in and on a live update of 'all'. Features add their own loads through
 // onDataLoadStart (in parallel, e.g. events, conversations) and onDataLoaded (after the finance data).
 import { createSignal, onFlush } from 'solid-js';
-import {
-  apiGet, apiJson, child, db, equalTo, get, orderByChild, query, ref, runTransaction, set, update, isPreviousServer, auth,
-  fetchWithTimeout, API
-} from './api';
+import { apiGet, apiJson, child, db, equalTo, get, orderByChild, query, ref, runTransaction, set, update, isPreviousServer } from './api';
 import { t } from './i18n';
 import { setReloadAll } from './live';
 import { createMutateCollection } from '../lib/collections';
 import { loadPictureVersions } from './pictures';
 import { activeTab, applyInitialRoute, isRouteReady, switchTab, takePendingAiRoute } from './router';
 import {
-  canAccessAi, canManageFinances, canManageRegistrationCode, canViewFinances, currentUid, currentUser, isAuthenticated,
-  isOwnerUser, isSuperAdminUser, patchCurrentUser, setAiEnabled
+  canAccessAi, canManageFinances, canManageRegistrationCode, canViewFinances, currentUid, currentUser, isAuthenticated, isOwnerUser,
+  isSuperAdminUser, patchCurrentUser, setAiEnabled
 } from './session';
 import { hideLoading, showLoading } from './shell';
 import { showToast } from './toast';
-import { compressImage, convertHeic, fullName, getTodayStr, parseUtcDate, safeList, toFormData } from './util';
+import { fullName, getTodayStr, safeList } from './util';
 import type {
-  FeePlan, FeeReset, FeeResetLogEntry, FeeSettings, FinanceRequest, MediaStatus, Payment, Person, PersonRecord, SessionAnswer, StandingOrder,
-  StatusEntry, User
+  FeePlan, FeeReset, FeeResetLogEntry, FeeSettings, FinanceRequest, MediaStatus, Payment, Person, PersonRecord, SessionAnswer, StatusEntry,
+  User
 } from './types';
+import { checkAndExecuteStandingOrders } from './standingOrders';
 
 export type { FeeSettings, FinanceRequest, Person };
 
@@ -92,59 +90,6 @@ export function isOwnRequest(req: FinanceRequest | null | undefined, list: reado
   return list.some(p => p.uid === uid && String(p.id) === String(req.personId));
 }
 
-/**
- * Books all standing-order payments that fell due up to today (weekend dates move to Monday) and drops expired
- * orders. Returns the updated person or null when nothing changed.
- */
-export function checkAndExecuteStandingOrders<P extends Pick<Person, 'payments' | 'standingOrders'>>(person: P): P | null {
-  if (!Array.isArray(person.standingOrders) || person.standingOrders.length === 0) return null;
-  const payments = [...safeList<Payment>(person.payments)];
-  const existingIds = new Set(payments.map(p => p.id));
-  const now = new Date();
-  const limit = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
-  const isoDay = (d: Date) => d.toISOString().split('T')[0];
-  const nextMonth = (date: Date, day: number) => {
-    const next = new Date(date);
-    next.setUTCDate(1);
-    next.setUTCMonth(next.getUTCMonth() + 1);
-    next.setUTCDate(Math.min(day, new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate()));
-    return next;
-  };
-  let modified = false;
-  const remaining: StandingOrder[] = [];
-  for (const so of person.standingOrders) {
-    const order = { ...so };
-    const day = parseUtcDate(order.startDate).getUTCDate();
-    let lastAuto: Date | null = order.lastAutoPayment ? parseUtcDate(order.lastAutoPayment) : null;
-    const endDate = order.endDate ? parseUtcDate(order.endDate) : null;
-    endDate?.setUTCHours(23, 59, 59, 999);
-    let due = lastAuto ? nextMonth(lastAuto, day) : parseUtcDate(order.startDate);
-    let booked = false;
-    for (let safety = 0; safety < 1200 && !(endDate && due > endDate); safety++) {
-      const execution = new Date(due);
-      const weekday = execution.getUTCDay();
-      if (weekday === 6 || weekday === 0) execution.setUTCDate(execution.getUTCDate() + (weekday === 6 ? 2 : 1));
-      if (execution > limit) break;
-      const id = `auto_${order.id}_${isoDay(due)}`;
-      if (!existingIds.has(id)) {
-        payments.push({ id, amount: parseFloat(String(order.amount)), date: isoDay(execution), description: (order.note || 'Dauerauftrag') + ' (Auto)', isAuto: true });
-        existingIds.add(id);
-        booked = true;
-      }
-      lastAuto = new Date(due);
-      due = nextMonth(due, day);
-    }
-    if (booked && lastAuto) order.lastAutoPayment = isoDay(lastAuto);
-    if (endDate && endDate < limit) {
-      modified = true;
-    } else {
-      remaining.push(order);
-      modified ||= booked;
-    }
-  }
-  return modified ? { ...person, payments, standingOrders: remaining } : null;
-}
-
 /** Puts a record the server returned in place of the shown one (or removes it when it was deleted). */
 export function replacePersonInMemory(record: PersonRecord) {
   const person = preprocessPerson(record);
@@ -179,45 +124,6 @@ export function replaceById<T extends { id?: unknown }>(list: T[], id: unknown, 
   const idx = list.findIndex(entry => String(entry.id) === String(id));
   if (idx < 0) return null;
   return list.map((entry, i) => (i === idx ? { ...entry, ...fields } : entry));
-}
-
-// --- Receipts ---
-/** Uploads a receipt (HEIC converted, large images recompressed) and resolves to the stored file name. */
-export async function uploadReceipt(file: File, transactionName: string, transactionDate: string): Promise<string> {
-  if (!auth.currentUser) throw new Error('Not authenticated');
-  const token = await auth.currentUser.getIdToken();
-  let uploadFile = (await convertHeic(file, 0.8)) as File;
-  const compressible = uploadFile.type.startsWith('image/') && uploadFile.type !== 'image/gif' && uploadFile.type !== 'image/svg+xml';
-  if (compressible && uploadFile.size >= 500 * 1024) {
-    try {
-      uploadFile = await compressImage(uploadFile, uploadFile.size > 2 * 1024 * 1024 ? 0.65 : 0.75);
-    } catch (e) {
-      console.error('Compression failed:', e);
-    }
-  }
-  const res = await fetchWithTimeout(`${API}/upload`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: toFormData({ name: transactionName, date: transactionDate, receipt: uploadFile })
-  });
-  if (!res.ok) throw new Error('Upload failed: ' + res.statusText);
-  return ((await res.json()) as { filename: string }).filename;
-}
-
-/** Uploads several receipts; resolves to the JSON list of their file names (as records store them). */
-export async function uploadAll(files: File[], name: string, date: string): Promise<string> {
-  const filenames: string[] = [];
-  for (const file of files) filenames.push(await uploadReceipt(file, name, date));
-  return JSON.stringify(filenames);
-}
-
-/** A receipt as an object URL (HEIC shown as JPEG). The caller revokes it when it is no longer shown. */
-export async function fetchReceiptImage(filename: string): Promise<string> {
-  if (!auth.currentUser) throw new Error('Not authenticated');
-  const token = await auth.currentUser.getIdToken();
-  const res = await fetchWithTimeout(`${API}/receipts/${encodeURIComponent(filename)}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error('Fetch failed: ' + res.statusText);
-  return URL.createObjectURL((await convertHeic(await res.blob(), 0.8, filename)) as Blob);
 }
 
 // --- Media status (the Extras hub shows the library only with access) ---

@@ -1,7 +1,8 @@
 // A member's own request (user-request-modal): the choice of the kind, then the form of a payment (or a standing
 // order), a status change or an expense with receipts. The treasury decides on it in the finances tab.
 import { For, Show, createSignal } from 'solid-js';
-import { db, findLinkedPerson, loadData, people, ref, set, setRequests, uploadAll } from '../../../../app/data';
+import { db, findLinkedPerson, loadData, people, ref, set, setRequests } from '../../../../app/data';
+import { uploadAll } from '../../../../app/receipts';
 import { apiJson, errorMessage } from '../../../../app/api';
 import { t } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';

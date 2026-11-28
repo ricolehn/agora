@@ -2,7 +2,8 @@
 // uploaded first (pictures converted and made smaller, app/data.ts), then the expense is added to the list on the
 // latest server copy (mutateCollection).
 import { createSignal } from 'solid-js';
-import { mutateCollection, uploadAll } from '../../../../app/data';
+import { mutateCollection } from '../../../../app/data';
+import { uploadAll } from '../../../../app/receipts';
 import { t } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';
 import { showToast } from '../../../../app/toast';

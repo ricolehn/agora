@@ -1,7 +1,8 @@
 // Changing or deleting a booked entry (edit-payment-modal, confirm-delete-modal): a member's payment on the latest
 // copy of the member's record, a donation or an expense (with its receipts) in the stored list.
 import { For, Match, Show, Switch, createSignal } from 'solid-js';
-import { findPerson, mutateCollection, mutatePerson, replaceById, sumAmounts, uploadReceipt } from '../../../app/data';
+import { findPerson, mutateCollection, mutatePerson, replaceById, sumAmounts } from '../../../app/data';
+import { uploadReceipt } from '../../../app/receipts';
 import { t } from '../../../app/i18n';
 import { closeModal, closeMultipleModals, openModal } from '../../../app/modals';
 import { canManageFinances } from '../../../app/session';
