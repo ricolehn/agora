@@ -2,8 +2,8 @@
 // Extras, the filter pills, the empty / loading / error states of a list, and the editor pages that open over the app
 // (a new poll, a song).
 import type { JSX } from '@solidjs/web';
-import { Errored, For, Loading, Show } from 'solid-js';
-import { errorMessage } from '../app/api';
+import { Errored, For, Loading, Show, createEffect } from 'solid-js';
+import { asFailure } from '../app/api';
 import { t } from '../app/i18n';
 import { switchTab } from '../app/router';
 import { Button } from './Button';
@@ -116,13 +116,44 @@ export function ListLoading() {
   );
 }
 
+/** A refused request or no connection: the server's reason is a text for people (an error of the app itself is not). */
+export const isServerFailure = (err: unknown) => {
+  const failure = asFailure(err);
+  return !!(failure.status || failure.offline);
+};
+/** The text a failure shows: the server's reason, else a general one. */
+export const failureText = (err: unknown) => (isServerFailure(err) ? asFailure(err).message : t('error_part_failed', 'This part of the app could not be shown.'));
+
+/** What failed on a page (a load, or a part that could not be drawn): its text and "Try again". An error of the app
+ *  itself also goes to the console. */
+export function Failed(props: { error: unknown; icon?: IconName; tone?: EmptyTone; onRetry: () => void }) {
+  createEffect(
+    () => props.error,
+    err => {
+      if (!isServerFailure(err)) console.error(err);
+    }
+  );
+  return <ListEmpty icon={props.icon ?? 'alert'} tone={props.tone ?? 'amber'} title={failureText(props.error)} onRetry={props.onRetry} />;
+}
+
 /**
  * The part of a page that shows server data (app/serverData.ts): the loading indicator until the first answer (and
- * while "Try again" asks again), a failed first load with its reason and "Try again", else [children] with the data.
+ * while "Try again" asks again), a failed first load - or data the page could not draw - with "Try again" (which also
+ * loads the data again: [refresh]), else [children] with the data.
  */
-export function Loaded<T>(props: { data: () => T | undefined; icon: IconName; tone: EmptyTone; children: (data: () => NonNullable<T>) => JSX.Element }) {
+export function Loaded<T>(props: {
+  data: () => T | undefined;
+  refresh: () => unknown;
+  icon: IconName;
+  tone: EmptyTone;
+  children: (data: () => NonNullable<T>) => JSX.Element;
+}) {
+  const again = (retry: () => void) => () => {
+    void props.refresh();
+    retry();
+  };
   return (
-    <Errored fallback={(err, retry) => <ListEmpty icon={props.icon} tone={props.tone} title={errorMessage(err())} onRetry={retry} />}>
+    <Errored fallback={(err, retry) => <Failed error={err()} icon={props.icon} tone={props.tone} onRetry={again(retry)} />}>
       <Loading fallback={<ListLoading />}>
         {/* "Try again" asks again without an answer to show meanwhile */}
         <Show when={props.data()} fallback={<ListLoading />}>

@@ -1,6 +1,6 @@
 // The app's frame: the scrolling page with the header and the tabs, the bottom navigation on phones, the floating
 // action button and the profile menu.
-import { For, Show, createMemo } from 'solid-js';
+import { Errored, For, Show, createMemo } from 'solid-js';
 import { Dynamic } from '@solidjs/web';
 import { tabs } from '../app/registry';
 import { activeTab, tabSlide } from '../app/router';
@@ -10,11 +10,13 @@ import { BottomNav } from './BottomNav';
 import { FloatingAction } from './Fab';
 import { Header } from './Header';
 import { ProfileMenu } from './ProfileMenu';
+import { Failed } from '../ui/pages';
 
 /**
  * A tab's page (.tab-content): mounted the first time the tab opens, then kept (its state survives switching tabs).
  * It slides in from the side its tab lies on (classes slide-in-left / slide-in-right while shown); the AI chat does
- * not move as a whole (its fixed input bar would jump), its parts animate themselves.
+ * not move as a whole (its fixed input bar would jump), its parts animate themselves. A page that fails while it is
+ * drawn says so with "Try again" - the rest of the app goes on (an error no boundary catches stops all of Solid).
  */
 function TabPanel(props: { id: TabId }) {
   const active = () => activeTab() === props.id;
@@ -36,7 +38,9 @@ function TabPanel(props: { id: TabId }) {
             : 'hidden'
         ]}
       >
-        <Dynamic component={tabs.get(props.id)!.component} />
+        <Errored fallback={(err, retry) => <Failed error={err()} onRetry={retry} />}>
+          <Dynamic component={tabs.get(props.id)!.component} />
+        </Errored>
       </section>
     </Show>
   );

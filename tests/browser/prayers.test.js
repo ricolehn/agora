@@ -1,6 +1,6 @@
 // Prayer requests in the browser: sharing (with the name or anonymously), what the others see at once, the filter,
 // extending and removing one's own, a moderator removing another's, a share and a removal the server refuses, a first
-// load that fails and a later one that fails.
+// load that fails and a later one that fails, an answer the page cannot draw.
 const { describe, test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { skipReason, startApp, until } = require('./harness');
@@ -148,5 +148,26 @@ describe('prayer requests (browser)', { skip: skipReason || false }, () => {
     await max.page.getByRole('button', { name: /Prayer requests/ }).click();
     await max.toast('The list is resting');
     assert.equal(await shown(max.page, 'Patience with my neighbours'), 1);
+  });
+
+  test('an answer the page cannot draw stops only that page: it says so, the app goes on, "Try again" loads again', async () => {
+    const max = await app.signIn('max');
+    max.expectProblems(/^console error: TypeError/);
+    let broken = true;
+    await max.page.route('**/api/prayers', route =>
+      route.request().method() === 'GET' && broken ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ prayers: [null] }) }) : route.fallback()
+    );
+    await max.go('/prayers');
+    await list(max.page).getByText('This part of the app could not be shown.').waitFor();
+    // The rest of the app still follows: another tab opens with its page
+    await max.page.locator('#desktop-nav').getByRole('button', { name: 'Events' }).click();
+    await until(() => max.page.url().endsWith('/events'), 'the events page');
+    await max.page.locator('#events').waitFor();
+    await max.page.locator('#desktop-nav').getByRole('button', { name: 'Extras' }).click();
+    await max.page.getByRole('button', { name: /Prayer requests/ }).click();
+    await list(max.page).getByText('This part of the app could not be shown.').waitFor();
+    broken = false;
+    await list(max.page).getByRole('button', { name: 'Try again' }).click();
+    await list(max.page).getByText('Patience with my neighbours').waitFor();
   });
 });

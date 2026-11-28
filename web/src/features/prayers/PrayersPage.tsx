@@ -6,7 +6,7 @@ import { Avatar } from '../../ui/Avatar';
 import { Icon } from '../../ui/Icon';
 import { AppHead, FilterPills, ListEmpty, Loaded } from '../../ui/pages';
 import { openPrayerOptions } from './PrayerDialogs';
-import { type Prayer, type PrayerFilter, prayerDate, prayerFilter, prayerName, prayers, setPrayerFilter, timeAgo } from './store';
+import { type Prayer, type PrayerFilter, prayerDate, prayerFilter, prayerName, prayers, refreshPrayers, setPrayerFilter, timeAgo } from './store';
 import { onActivateKey } from '../../ui/keys';
 
 const FILTERS: Array<{ value: PrayerFilter; label: () => string }> = [
@@ -25,7 +25,7 @@ export function PrayersPage() {
       </p>
       <FilterPills value={prayerFilter()} options={FILTERS} onChange={setPrayerFilter} />
       <div id="prayers-list">
-        <Loaded data={prayers} icon="heart" tone="rose">
+        <Loaded data={prayers} refresh={refreshPrayers} icon="heart" tone="rose">
           {list => <PrayerList prayers={list().filter(p => (prayerFilter() === 'mine' ? p.isMine : !p.expired))} />}
         </Loaded>
       </div>

@@ -1,11 +1,11 @@
-import { For, Show } from 'solid-js';
+import { Errored, For, Show } from 'solid-js';
 import { Dynamic } from '@solidjs/web';
 import { authView } from './app/auth';
 import { anyModalOpen } from './app/modals';
 import { rootComponents } from './app/registry';
 import { isAuthenticated } from './app/session';
 import { Login } from './shell/Login';
-import { LoadingOverlay, Toast } from './shell/Overlays';
+import { DialogFailed, LoadingOverlay, Toast } from './shell/Overlays';
 import { Shell } from './shell/Shell';
 
 export function App() {
@@ -21,7 +21,14 @@ export function App() {
       <Show when={authView() !== 'none'}>
         <Login />
       </Show>
-      <For each={rootComponents}>{component => <Dynamic component={component} />}</For>
+      {/* A dialog that fails while it is drawn says so; the rest of the app goes on */}
+      <For each={rootComponents}>
+        {component => (
+          <Errored fallback={(err, retry) => <DialogFailed error={err()} onRetry={retry} />}>
+            <Dynamic component={component} />
+          </Errored>
+        )}
+      </For>
       <LoadingOverlay />
       <Toast />
     </>

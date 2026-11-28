@@ -1,10 +1,13 @@
-// The loading screen and the toast.
-import { Show } from 'solid-js';
+// The loading screen, the toast, and what shows when a dialog fails.
+import { Show, createEffect } from 'solid-js';
 import { appName } from '../app/config';
 import { t } from '../app/i18n';
+import { closeMultipleModals, modalStack } from '../app/modals';
 import { loading } from '../app/shell';
 import { toast, toastSign, type ToastType } from '../app/toast';
+import { Button } from '../ui/Button';
 import { Spinner } from '../ui/feedback';
+import { failureText, isServerFailure } from '../ui/pages';
 
 /** The page while the profile and the data load: the spinner, what is happening, the app's name at the bottom. */
 export function LoadingOverlay() {
@@ -52,6 +55,40 @@ export function Toast() {
     >
       {/* Nothing before the first toast (the old app made the element with it); the text stays while it fades */}
       {toast().message ? `${toastSign(toast().type)} ${toast().message}` : ''}
+    </div>
+  );
+}
+
+/**
+ * A dialog that failed while it was drawn: a small panel over the page with "Try again"; "Close" also closes the open
+ * dialogs (the page behind stays blocked while one is open). An error of the app itself also goes to the console.
+ */
+export function DialogFailed(props: { error: unknown; onRetry: () => void }) {
+  createEffect(
+    () => props.error,
+    err => {
+      if (!isServerFailure(err)) console.error(err);
+    }
+  );
+  const close = () => {
+    closeMultipleModals(modalStack());
+    props.onRetry();
+  };
+  return (
+    <div
+      role="alertdialog"
+      aria-labelledby="dialog-failed-text"
+      class="fixed inset-x-4 bottom-6 z-[10000] mx-auto flex max-w-[420px] flex-col gap-3 rounded-[20px] border border-border-light bg-surface p-4 shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
+    >
+      <p id="dialog-failed-text" class="m-0 font-semibold text-text">
+        {failureText(props.error)}
+      </p>
+      <div class="flex justify-end gap-2">
+        <Button variant="secondary" onClick={close}>
+          {t('btn_close', 'Close')}
+        </Button>
+        <Button onClick={() => props.onRetry()}>{t('btn_retry', 'Try again')}</Button>
+      </div>
     </div>
   );
 }

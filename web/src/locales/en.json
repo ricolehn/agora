@@ -235,6 +235,7 @@
   "toast_deleted": "Deleted successfully",
   "toast_updated": "Updated successfully",
   "toast_error": "An error occurred",
+  "error_part_failed": "This part of the app could not be shown.",
   "manage_receipts": "Manage Receipts",
   "add_receipts": "Add receipts",
   "download_btn": "Download",

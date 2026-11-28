@@ -39,7 +39,7 @@ export function PollsPage() {
       <PollsNote class="max-w-[760px]" text={t('polls_note', 'Votes are only counted – nobody sees who chose what.')} />
       <FilterPills value={pollFilter()} options={FILTERS} onChange={setPollFilter} />
       <div id="polls-list">
-        <Loaded data={polls} icon="poll" tone="amber">
+        <Loaded data={polls} refresh={refreshPolls} icon="poll" tone="amber">
           {list => <PollList polls={list()} />}
         </Loaded>
       </div>

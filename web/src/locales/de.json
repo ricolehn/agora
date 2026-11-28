@@ -235,6 +235,7 @@
   "toast_deleted": "Erfolgreich gelöscht",
   "toast_updated": "Erfolgreich aktualisiert",
   "toast_error": "Ein Fehler ist aufgetreten",
+  "error_part_failed": "Dieser Teil der App konnte nicht angezeigt werden.",
   "manage_receipts": "Belege verwalten",
   "add_receipts": "Belege hinzufügen",
   "download_btn": "Herunterladen",
