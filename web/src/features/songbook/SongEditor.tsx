@@ -1,7 +1,7 @@
 // The song editor (song-edit-modal), a page like "New poll": title, writers and key; lyrics with chords and a live
 // preview; the CCLI song number and copyright. Leaving with changes asks first.
 import { Show, createSignal } from 'solid-js';
-import { apiJson, errorMessage } from '../../app/api';
+import { errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
 import { closeModal, closeMultipleModals, isModalOpen, openModal, setModalCloseGuard } from '../../app/modals';
 import { confirmAction, showToast } from '../../app/toast';
@@ -11,9 +11,8 @@ import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
 import { DeleteButton, EDITOR_FIELD, EDITOR_INPUT, EditorCard, EditorField, EditorPage, TITLE_INPUT } from '../../ui/pages';
 import { SongLines } from './SongLines';
-import { type Song, dropSong, putSong, songbookLicense, songs } from './store';
+import { type Song, deleteSong, saveSong, savingSong, songbookLicense, songs } from './store';
 import { openSongId } from './view';
-import { flushNow } from '../../app/flush';
 
 const [editSongId, setEditSongId] = createSignal<string | null>(null);
 const [title, setTitle] = createSignal('');
@@ -22,17 +21,19 @@ const [songKey, setSongKey] = createSignal('');
 const [ccli, setCcli] = createSignal('');
 const [copyright, setCopyright] = createSignal('');
 const [content, setContent] = createSignal('');
-const [saving, setSaving] = createSignal(false);
 // What the preview shows: the text and key a moment after typing stops
 const [preview, setPreview] = createSignal({ content: '', key: '' });
 const updatePreview = debounce((text: string, key: string) => setPreview({ content: text, key }), 150);
 
-// The fields as they are on the page; leaving the editor with changes asks first (back button, Cancel, Escape, back
+// The fields of a song as one text: leaving the editor with changes asks first (back button, Cancel, Escape, back
 // gesture)
-const SONG_FIELDS = ['song-edit-name', 'song-edit-artist', 'song-edit-key', 'song-edit-ccli', 'song-edit-copyright', 'song-edit-content'];
-const fieldsState = () => JSON.stringify(SONG_FIELDS.map(id => (document.getElementById(id) as HTMLInputElement | null)?.value || ''));
+const fieldsState = (song: Partial<Song> | null) =>
+  JSON.stringify([song?.title || '', song?.artist || '', song?.key || '', song?.ccli || '', song?.copyright || '', song?.content || '']);
+const typed = () => fieldsState({ title: title(), artist: artist(), key: songKey(), ccli: ccli(), copyright: copyright(), content: content() });
 let snapshot = '';
-setModalCloseGuard('song-edit-modal', () => fieldsState() === snapshot || confirmAction(t('songbook_discard', 'Discard your changes?')));
+// The guard is asked when the editor is about to close (a plain callback, not a reactive scope)
+// eslint-disable-next-line solid/reactivity
+setModalCloseGuard('song-edit-modal', () => typed() === snapshot || confirmAction(t('songbook_discard', 'Discard your changes?')));
 
 /** A new song (the "+" of the songbook) or [song] to edit. */
 export function openSongEditor(song: Song | null = null) {
@@ -44,12 +45,11 @@ export function openSongEditor(song: Song | null = null) {
   setCopyright(song?.copyright || '');
   setContent(song?.content || '');
   setPreview({ content: song?.content || '', key: song?.key || '' });
-  flushNow();
+  snapshot = fieldsState(song);
   openModal('song-edit-modal');
-  snapshot = fieldsState();
 }
 
-async function saveSong() {
+function submitSong() {
   const edited = songs().find(s => s.id === editSongId());
   const payload = {
     title: title(),
@@ -62,35 +62,28 @@ async function saveSong() {
     copyright: copyright(),
     content: content()
   };
-  const id = editSongId();
-  setSaving(true);
-  try {
-    const saved = id
-      ? await apiJson<Song>(`/songs/${encodeURIComponent(id)}`, 'PUT', payload)
-      : await apiJson<Song>('/songs', 'POST', payload);
-    putSong(saved);
-    closeModal('song-edit-modal', false, true);
-    showToast(t('songbook_saved', 'Song saved'));
-  } catch (err) {
-    showToast(errorMessage(err), 'error');
-  } finally {
-    setSaving(false);
-  }
+  // A song the server refuses keeps the editor open with what was typed
+  saveSong(editSongId(), payload).then(
+    () => {
+      closeModal('song-edit-modal', false, true);
+      showToast(t('songbook_saved', 'Song saved'));
+    },
+    err => showToast(errorMessage(err), 'error')
+  );
 }
 
-async function deleteSong() {
+/** The editor (and the song's page it was opened from) closes and the song leaves the songbook at once; when the
+ *  server refuses, it comes back with the reason. */
+function removeSong() {
   const id = editSongId();
   if (!id || !confirmAction(t('songbook_delete_confirm', 'Delete the song for good?'))) return;
-  try {
-    await apiJson(`/songs/${encodeURIComponent(id)}`, 'DELETE');
-    // Opened from its page: both close together (one step back in the history, not two)
-    if (openSongId() === id && isModalOpen('song-view-modal')) closeMultipleModals(['song-edit-modal', 'song-view-modal']);
-    else closeModal('song-edit-modal', false, true);
-    dropSong(id);
-    showToast(t('songbook_deleted', 'Song deleted'));
-  } catch (err) {
-    showToast(errorMessage(err), 'error');
-  }
+  // Opened from its page: both close together (one step back in the history, not two)
+  if (openSongId() === id && isModalOpen('song-view-modal')) closeMultipleModals(['song-edit-modal', 'song-view-modal']);
+  else closeModal('song-edit-modal', false, true);
+  deleteSong(id).then(
+    () => showToast(t('songbook_deleted', 'Song deleted')),
+    err => showToast(errorMessage(err), 'error')
+  );
 }
 
 const HELP = 'm-0 text-[0.82rem] leading-[1.5] text-text-secondary';
@@ -106,14 +99,14 @@ export function SongEditorModal() {
       savebar={
         <>
           <Show when={editing()}>
-            <DeleteButton id="song-delete-btn" class="m-0 min-h-12" onClick={() => void deleteSong()}>
+            <DeleteButton id="song-delete-btn" class="m-0 min-h-12" onClick={removeSong}>
               {t('polls_delete', 'Delete')}
             </DeleteButton>
           </Show>
           <Button variant="secondary" class="m-0 min-h-12" onClick={() => closeModal('song-edit-modal')}>
             {t('btn_cancel', 'Cancel')}
           </Button>
-          <Button id="song-save-btn" class="m-0 min-h-12" disabled={saving()} onClick={() => void saveSong()}>
+          <Button id="song-save-btn" class="m-0 min-h-12" disabled={savingSong()} onClick={submitSong}>
             {t('btn_save', 'Save')}
           </Button>
         </>

@@ -8,7 +8,7 @@ import { t } from '../../../app/i18n';
 import { isModalOpen } from '../../../app/modals';
 import { newestWins } from '../../../app/util';
 import { keySteps } from '../../../lib/songbook';
-import { loadSongs, openSong, songbookLoaded, songs } from '../../songbook/api';
+import { openSong, songbookReady, songs } from '../../songbook/api';
 import { appEvents, type AppEvent } from '../store';
 import type { Duty, ProgramAnswer } from '../types';
 
@@ -44,7 +44,7 @@ export async function loadProgram(eventId: string): Promise<void> {
     const data = await apiJson<ProgramAnswer<ProgramItem>>(`/events/${encodeURIComponent(eventId)}/program`);
     if (!isNewest()) return;
     const items: ProgramItem[] = Array.isArray(data.items) ? data.items : [];
-    if (items.some(item => item.songId) && !songbookLoaded()) await loadSongs();
+    if (items.some(item => item.songId)) await songbookReady();
     if (!isNewest()) return;
     setProgramItems(eventId, items);
   } catch {

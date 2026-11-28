@@ -1,15 +1,14 @@
 // The song page (song-view-modal) for playing: transpose, chords on/off, text size, auto-scroll, the screen stays on.
 // Chords on/off, text size and scroll speed stay as the reader left them (instrument, eyesight, playing pace); the
 // key starts as written every time a song opens.
-import { createSignal } from 'solid-js';
+import { createEffect, createRoot, createSignal, onFlush } from 'solid-js';
 import { t } from '../../app/i18n';
 import { closeModal, isModalOpen, isTopModal, onModalClosed, openModal } from '../../app/modals';
 import { readStoredJson, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
 import { copyText } from '../../app/util';
 import { findBySlug } from '../../app/router';
-import { fetchSongs, songSlug, songs } from './store';
-import { flushNow } from '../../app/flush';
+import { refreshSongbook, songbookReady, songOnServer, songSlug, songs } from './store';
 import { asFailure } from '../../app/api';
 
 const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
@@ -33,10 +32,26 @@ const [songPanelOpen, setSongPanelOpen] = createSignal(false);
 const [songControlsShown, setSongControlsShown] = createSignal(true);
 export { openSongId, songSteps, songChords, songSize, songSpeed, songScrolling, songPanelOpen, songControlsShown };
 
-const savePrefs = () => store(SONG_PREFS_KEY, { chords: songChords(), size: songSize(), speed: songSpeed() });
-
 /** The open song (while the page shows). */
 export const shownSong = () => (isModalOpen(VIEW_ID) && songs().find(s => s.id === openSongId())) || null;
+
+createRoot(() => {
+  // What the reader set stays for the next song (chords, text size, scroll speed)
+  createEffect(
+    () => ({ chords: songChords(), size: songSize(), speed: songSpeed() }),
+    prefs => store(SONG_PREFS_KEY, prefs)
+  );
+  // The open song was deleted elsewhere: its page closes (a load brought the server's songbook without it)
+  createEffect(
+    () => {
+      const id = isModalOpen(VIEW_ID) ? openSongId() : null;
+      return !!id && !songOnServer(id);
+    },
+    gone => {
+      if (gone) closeSong();
+    }
+  );
+});
 
 // The scrolling text of the open page (set by the page while it is shown) and where it was last read
 let body: HTMLElement | null = null;
@@ -54,11 +69,8 @@ export function openSong(id: string, { steps = 0 }: { steps?: number } = {}) {
   lastY = 0;
   toggleSongPanel(false);
   setSongControlsShown(true);
-  flushNow();
-  const wasOpen = isModalOpen(VIEW_ID);
-  openModal(VIEW_ID);
-  // Whenever the page closes (back button, Escape, back gesture)
-  if (!wasOpen) onModalClosed(VIEW_ID, leaveSong);
+  // Whenever the page closes (back button, Escape, back gesture); another song on the open page goes on from there
+  if (openModal(VIEW_ID)) onModalClosed(VIEW_ID, leaveSong);
   body?.scrollTo({ top: 0 });
   void keepScreenOn(true);
 }
@@ -74,29 +86,15 @@ export function closeSong() {
   closeModal(VIEW_ID);
 }
 
-// Opened through its address (/songbook/<name>, old links #songbook/<id>): that song shows once the songs are there
-let pendingSongSlug: string | null = null;
-export function setPendingSongSlug(slug: string) {
-  pendingSongSlug = slug;
-}
-
-function followLoadedSongs() {
-  const id = openSongId();
-  // The open song was deleted elsewhere
-  if (id && isModalOpen(VIEW_ID) && !songs().some(s => s.id === id)) closeSong();
-  if (pendingSongSlug) {
-    const linked = findBySlug(songs(), pendingSongSlug);
-    pendingSongSlug = null;
-    if (linked) openSong(linked.id);
-    else showToast(t('songbook_link_missing', 'This song is no longer in the songbook.'), 'error');
-  }
-}
-
-/** Loads the songs; the open song follows, a song opened through its address shows. */
-export function loadSongs(): Promise<void> {
-  return fetchSongs().then(shown => {
-    if (shown) followLoadedSongs();
-  });
+/** Opened through its address (/songbook/<name>, old links #songbook/<id>): that song shows once the songs are loaded
+ *  (a failed load shows on the songbook's page). */
+export async function openSongBySlug(slug: string) {
+  // The latest songs; the first time, the placeholder is there at once: then the first answer
+  const book = (await refreshSongbook()) || (await songbookReady());
+  if (book.error) return;
+  const linked = findBySlug(book.songs, slug);
+  if (linked) openSong(linked.id);
+  else showToast(t('songbook_link_missing', 'This song is no longer in the songbook.'), 'error');
 }
 
 // --- The controls stay out of the way: a small "Adjust" button opens them; it hides while reading on (scrolling
@@ -105,13 +103,10 @@ export function toggleSongPanel(open = !songPanelOpen()) {
   const panel = document.getElementById('song-panel');
   const hadFocus = !!panel?.contains(document.activeElement);
   setSongPanelOpen(open);
-  flushNow();
-  if (open) {
-    setSongControlsShown(true);
-    panel?.querySelector<HTMLElement>('[data-panel-close]')?.focus({ preventScroll: true });
-  } else if (hadFocus) {
-    document.getElementById('song-panel-btn')?.focus({ preventScroll: true });
-  }
+  if (open) setSongControlsShown(true);
+  // The focus moves once the panel shows or hides (a hidden one takes none)
+  if (open) onFlush(() => panel?.querySelector<HTMLElement>('[data-panel-close]')?.focus({ preventScroll: true }));
+  else if (hadFocus) onFlush(() => document.getElementById('song-panel-btn')?.focus({ preventScroll: true }));
 }
 
 export function songBodyTap() {
@@ -151,13 +146,9 @@ export function resetSongKey() {
 }
 export function setSongChordsShown(on: boolean) {
   setSongChords(on);
-  flushNow();
-  savePrefs();
 }
 export function sizeSong(delta: number) {
   setSongSize(size => Math.max(-2, Math.min(5, size + delta)));
-  flushNow();
-  savePrefs();
 }
 
 // --- Auto-scroll for playing: a steady glide; scrolling by hand moves the position, the glide continues from there ---
@@ -180,7 +171,6 @@ function songScrollStep(time: number) {
 export function toggleSongScroll() {
   if (songScrolling()) return stopSongScroll();
   setSongScrolling(true);
-  flushNow();
   lastTime = 0;
   position = null;
   // The song needs the whole screen while it scrolls; the pause button stays next to "Adjust"
@@ -191,15 +181,12 @@ export function toggleSongScroll() {
 
 function stopSongScroll() {
   setSongScrolling(false);
-  flushNow();
   if (frame) cancelAnimationFrame(frame);
   frame = null;
 }
 
 export function cycleSongSpeed() {
   setSongSpeed(speed => SONG_SPEEDS[(SONG_SPEEDS.indexOf(speed) + 1) % SONG_SPEEDS.length]);
-  flushNow();
-  savePrefs();
 }
 
 // --- Sharing and printing ---

@@ -9,7 +9,7 @@ import { t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
 import { confirmAction, showToast } from '../../../app/toast';
 import { normalizeSearch } from '../../../lib/songbook';
-import { loadSongs, songbookLoaded, songs } from '../../songbook/api';
+import { songbookReady, songs } from '../../songbook/api';
 import { appEvents, hasDutyAssignee, loadEventsData, type AppEvent } from '../store';
 import {
   PLAN_ENTRY_MODAL, addMinutes, itemTask, programItemTitle, programItems, programTimes, sameName, setProgramItems, type Duty, type ProgramItem
@@ -85,7 +85,8 @@ export function openPlanEntry(ev: AppEvent, request: { mode: 'new' } | { mode: '
   setWhoSearch('');
   setPickerOpen(false);
   flushNow();
-  if (!songbookLoaded()) void loadSongs();
+  // The songs to choose from while typing
+  void songbookReady();
   void loadEventCandidates();
   openModal(PLAN_ENTRY_MODAL);
 }

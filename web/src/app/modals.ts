@@ -51,11 +51,13 @@ export function onModalClosed(id: string, fn: () => void) {
   closeCallbacks.set(id, list);
 }
 
-export function openModal(id: string) {
-  if (stack.includes(id)) return;
+/** Opens the dialog [id]; false when it was open already. */
+export function openModal(id: string): boolean {
+  if (stack.includes(id)) return false;
   returnFocus.set(id, document.activeElement);
   setStack([...stack, id]);
   history[history.state?.isModal ? 'replaceState' : 'pushState']({ isModal: true, modalId: id }, '');
+  return true;
 }
 
 function restoreFocus(el: Element | null | undefined) {

@@ -59,7 +59,11 @@ const pageOpen = () => isModalOpen('song-view-modal');
 
 export function SongViewModal() {
   // A song that was just deleted stays on screen while the page fades out
-  const song = createMemo<Song | null>(prev => songs().find(s => s.id === openSongId()) ?? prev ?? null);
+  const song = createMemo<Song | null>(prev => {
+    // Read only once a song is open (the songbook is not loaded for the closed page)
+    const id = openSongId();
+    return (id && songs().find(s => s.id === id)) || prev || null;
+  });
   return (
     <Modal id="song-view-modal" page maxWidth="860px" labelledBy="song-view-title">
       <Show when={song()}>{current => <SongPage song={current()} />}</Show>
