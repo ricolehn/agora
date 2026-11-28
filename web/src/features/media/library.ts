@@ -58,6 +58,9 @@ function setLoaded(value: MediaListing | null, path: string | null, failure: Med
   setError(failure);
 }
 
+/** Entries are selected (the header turns into what to do with them). */
+export const mediaSelecting = () => selected().size > 0;
+
 /** Upload and new folder: where the member may write, once the folder is there and nothing is selected. */
 export const mediaCanAdd = () => listing()?.access === 'write' && loadedPath() === folder() && selected().size === 0;
 
@@ -76,6 +79,9 @@ export type MediaPageView =
   | { kind: 'error'; error: MediaLoadError }
   | { kind: 'empty'; access: MediaAccess }
   | { kind: 'entries'; access: MediaAccess; folders: MediaFolder[]; files: MediaFile[] };
+
+/** The view of a page of one kind. */
+export type MediaViewOf<K extends MediaPageView['kind']> = Extract<MediaPageView, { kind: K }>;
 
 export interface MediaPageState {
   id: number;
