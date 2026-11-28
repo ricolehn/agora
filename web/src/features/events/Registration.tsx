@@ -1,11 +1,10 @@
 // The registration card of the event page: places taken (and the minimum), my status or the register button, and
 // the participants (removable by those who may edit the event; guests without an account are marked).
 import type { JSX } from '@solidjs/web';
-import { For, Show, createEffect, createSignal } from 'solid-js';
+import { For, Show, createDeferred } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { t } from '../../app/i18n';
 import { confirmAction } from '../../app/toast';
-import { newestWins } from '../../app/util';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
 import { ProgressBar } from '../../ui/feedback';
@@ -85,21 +84,8 @@ export function RegBannerAction(props: { onClick: () => void; children: JSX.Elem
   );
 }
 
-// --- Participants (loaded for the open event; every refresh of the event loads them again) ---
+// --- Participants ---
 type Attendees = Pick<AttendeeList, 'eventId' | 'registered' | 'waitlist'>;
-const [attendees, setAttendees] = createSignal<Attendees | null>(null);
-const attendeesLoad = newestWins();
-
-async function loadEventAttendees(eventId: string) {
-  const isNewest = attendeesLoad();
-  try {
-    const data = await apiJson<Partial<AttendeeList>>(`/events/${eventId}/attendees`);
-    if (!isNewest()) return;
-    setAttendees({ eventId, registered: data.registered || [], waitlist: data.waitlist || [] });
-  } catch (err) {
-    console.warn('Failed to load event attendees:', err);
-  }
-}
 
 async function removeEventAttendee(eventId: string, userId: string) {
   if (!confirmAction(t('events_attendee_remove_confirm', 'Do you really want to remove this participant from the list?'))) return;
@@ -159,8 +145,8 @@ function AttendeeRow(props: { event: AppEvent; attendee: Attendee; waiting: bool
   );
 }
 
-function AttendeesList(props: { event: AppEvent }) {
-  const list = () => (attendees()?.eventId === props.event.id ? attendees() : null);
+function AttendeesList(props: { event: AppEvent; attendees: Attendees | null }) {
+  const list = () => (props.attendees?.eventId === props.event.id ? props.attendees : null);
   const registered = () => list()?.registered || [];
   const waitlist = () => list()?.waitlist || [];
   const stack = () => registered().slice(0, 5);
@@ -288,16 +274,27 @@ export function RegistrationHead(props: { event: EventFacts }) {
 }
 
 export function RegistrationCard(props: { event: AppEvent }) {
-  // Every state of the event (a registration, a live update) loads the participants again
-  createEffect(
-    () => props.event,
-    ev => void loadEventAttendees(ev.id)
+  // The participants of the event, asked again with every state of it (a registration, a live update): an older
+  // answer never replaces a newer one, and nothing waits for them (none until the first answer; a failed load keeps
+  // the last ones)
+  const attendees = createDeferred<Attendees | null>(
+    async previous => {
+      const eventId = props.event.id;
+      try {
+        const data = await apiJson<Partial<AttendeeList>>(`/events/${eventId}/attendees`);
+        return { eventId, registered: data.registered || [], waitlist: data.waitlist || [] };
+      } catch (err) {
+        console.warn('Failed to load event attendees:', err);
+        return previous ?? null;
+      }
+    },
+    { loadingValue: null }
   );
   return (
     <div class="rounded-[20px] border border-border-light bg-surface px-4 py-3.5 shadow-card">
       <RegistrationHead event={props.event} />
       <RegistrationAction event={props.event} />
-      <AttendeesList event={props.event} />
+      <AttendeesList event={props.event} attendees={attendees()} />
     </div>
   );
 }

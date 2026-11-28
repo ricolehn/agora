@@ -1,9 +1,10 @@
 import type { JSX } from '@solidjs/web';
-import { createContext, For, Show, untrack, useContext } from 'solid-js';
+import { createContext, createMemo, For, Show, useContext } from 'solid-js';
 import { CountBadge } from './feedback';
 
 type PillsKind = 'tabs' | 'radio';
-const PillsKindContext = createContext<PillsKind>('tabs');
+// The row's kind as an accessor: a provider takes its value once, the pills follow the row through it
+const PillsKindContext = createContext<() => PillsKind>(() => 'tabs');
 
 // Right and down go to the next pill, left and up to the one before (round the row)
 const ARROW_STEPS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
@@ -21,6 +22,7 @@ export function Pills(props: {
   'aria-labelledby'?: string;
   children: JSX.Element;
 }) {
+  const kind = createMemo(() => props.kind);
   const onKeyDown = (e: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
     const step = ARROW_STEPS[e.key];
     const pills = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"], [role="radio"]')];
@@ -32,11 +34,10 @@ export function Pills(props: {
     next.focus();
   };
   return (
-    // A row is tabs or radio buttons for good: its pills take the kind once
-    <PillsKindContext value={untrack(() => props.kind)}>
+    <PillsKindContext value={kind}>
       <div
         id={props.id}
-        role={props.kind === 'tabs' ? 'tablist' : 'radiogroup'}
+        role={kind() === 'tabs' ? 'tablist' : 'radiogroup'}
         aria-label={props['aria-label']}
         aria-labelledby={props['aria-labelledby']}
         class={props.class}
@@ -54,10 +55,10 @@ export function Pill(props: { chosen: boolean; onSelect: () => void; class?: JSX
   return (
     <button
       type="button"
-      role={kind === 'tabs' ? 'tab' : 'radio'}
+      role={kind() === 'tabs' ? 'tab' : 'radio'}
       id={props.id}
-      aria-selected={kind === 'tabs' ? (props.chosen ? 'true' : 'false') : undefined}
-      aria-checked={kind === 'radio' ? (props.chosen ? 'true' : 'false') : undefined}
+      aria-selected={kind() === 'tabs' ? (props.chosen ? 'true' : 'false') : undefined}
+      aria-checked={kind() === 'radio' ? (props.chosen ? 'true' : 'false') : undefined}
       tabindex={props.chosen ? 0 : -1}
       class={props.class}
       onClick={() => props.onSelect()}
