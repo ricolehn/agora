@@ -170,6 +170,11 @@ function draftFor(ev: AppEvent | null, type: EventKind): EventDraft {
 const [draft, setDraft] = createStore<EventDraft>(draftFor(null, 'event'));
 let draftAtStart: EventDraft = draftFor(null, 'event');
 export { draft, setDraft };
+/** One field of the editor's draft. */
+export const setDraftField = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) =>
+  setDraft(d => {
+    d[key] = value;
+  });
 
 const groupKey = (g: Pick<Group, 'id' | 'name'>) => g.name || g.id;
 /** Whether the group [g] is chosen in [selected] (by name or id). */
