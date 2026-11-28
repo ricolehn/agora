@@ -1,8 +1,7 @@
 // The events tab: appointments ("Termine": a list by day, a month calendar beside it on desktop) or events (cover
 // cards, highlights first, past ones on request); search, my open duty requests, loading / error / empty states.
 import type { JSX } from '@solidjs/web';
-import { For, Show, createMemo, createSignal } from 'solid-js';
-import { flushNow } from '../../app/flush';
+import { For, Show, createMemo, createSignal, onFlush } from 'solid-js';
 import { monthYearFormatter, t } from '../../app/i18n';
 import { canManageEvents, currentUser, isCurrentUser } from '../../app/session';
 import { scrollContainer } from '../../app/shell';
@@ -181,9 +180,9 @@ function TermineList(props: { items: ListItem[] }) {
     const header = document.querySelector<HTMLElement>('.header');
     const offset = distance < 0 ? (header?.offsetHeight || 0) + 20 : 20;
     scroller.scrollTo({ top: scroller.scrollTop + distance - offset, behavior: 'smooth' });
+    // The highlight goes, and comes back on the next frame once it is gone from the page (its animation starts anew)
     setJumpDay(null);
-    flushNow();
-    requestAnimationFrame(() => setJumpDay(first.dataset.day || null));
+    onFlush(() => requestAnimationFrame(() => setJumpDay(first.dataset.day || null)));
   };
   return (
     <div class="min-[1024px]:grid min-[1024px]:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)] min-[1024px]:items-start min-[1024px]:gap-7">

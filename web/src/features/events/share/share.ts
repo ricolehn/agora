@@ -3,7 +3,6 @@
 // guests (full name, e-mail address, age). The link then carries the event's share key (?share=).
 import { createMemo, createSignal } from 'solid-js';
 import { apiJson, asFailure, errorMessage } from '../../../app/api';
-import { flushNow } from '../../../app/flush';
 import { t } from '../../../app/i18n';
 import { openModal } from '../../../app/modals';
 import { showToast } from '../../../app/toast';
@@ -48,22 +47,19 @@ export const shareTarget = createMemo((): ShareTarget | null => {
   return { ev, url: eventShareUrl(ev), isPublic: ev.isPublic === true, canEdit: ev.canEdit === true };
 }, { lazy: true });
 
-function openShareSheet() {
-  flushNow();
-  if (shareTarget()) openModal(SHARE_MODAL);
-}
-
 /** Opens the sheet for an event a member sees. */
 export function openEventShare(eventId: string) {
   const open = currentDetailEvent();
-  setSource({ eventId, fallback: open?.id === eventId ? open : null });
-  openShareSheet();
+  const fallback = open?.id === eventId ? open : null;
+  setSource({ eventId, fallback });
+  if (fallback || appEvents().some(e => e.id === eventId)) openModal(SHARE_MODAL);
 }
 
 /** Opens the sheet for the shared event on the visitors' page. */
 export function openGuestShare() {
+  const view = guestView();
   setSource('guest');
-  openShareSheet();
+  if (view?.event && view.token) openModal(SHARE_MODAL);
 }
 
 // The switch (only for those who may edit the event; the server checks it again). Off and on again keeps the link.

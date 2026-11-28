@@ -3,7 +3,6 @@
 // through the duty roster, so requests, answers, reminders and the apps keep working. Songs open in the band's key.
 import { createSignal } from 'solid-js';
 import { apiJson } from '../../../app/api';
-import { flushNow } from '../../../app/flush';
 import { t } from '../../../app/i18n';
 import { isModalOpen } from '../../../app/modals';
 import { newestWins } from '../../../app/util';
@@ -33,7 +32,6 @@ export const programItems = (eventId: string | undefined) => (eventId && program
 
 export function setProgramItems(eventId: string, items: ProgramItem[]) {
   setProgram({ eventId, items });
-  flushNow();
 }
 
 const programLoad = newestWins();

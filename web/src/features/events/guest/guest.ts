@@ -2,9 +2,8 @@
 import { createSignal } from 'solid-js';
 import { setAuthView, showAuthForm } from '../../../app/auth';
 import { API, appName } from '../../../app/config';
-import { flushNow } from '../../../app/flush';
 import { languageReady, t, uiLang } from '../../../app/i18n';
-import { isModalOpen, openModal, topModal } from '../../../app/modals';
+import { openModal, topModal } from '../../../app/modals';
 import { hideLoading, setSignInReturn, showLoading } from '../../../app/shell';
 import { confirmAction, showToast } from '../../../app/toast';
 import { readStoredJson, store } from '../../../app/storage';
@@ -53,10 +52,7 @@ export interface GuestView {
 const [guestView, setGuestView] = createSignal<GuestView | null>(null);
 export { guestView };
 
-const patchView = (fields: Partial<GuestView>) => {
-  setGuestView(view => view && { ...view, ...fields });
-  flushNow();
-};
+const patchView = (fields: Partial<GuestView>) => setGuestView(view => view && { ...view, ...fields });
 
 function storedGuestKeys(): string[] {
   const keys = readStoredJson<unknown>(GUEST_KEYS_STORAGE, []);
@@ -131,7 +127,6 @@ export async function openGuestEvent(anon: boolean): Promise<void> {
   if (!anon) history.replaceState(history.state, '', window.location.pathname);
   setGuestView(view);
   if (anon) hideLoading();
-  flushNow();
   if (view.event) {
     document.title = `${view.event.title} · ${appName()}`;
     // Once the share link is known the address shows it, not the guest's own key: copied from the address bar it
@@ -141,7 +136,7 @@ export async function openGuestEvent(anon: boolean): Promise<void> {
     document.title = appName();
   }
   if (anon) holdGuestPage();
-  else if (!isModalOpen(GUEST_MODAL)) openModal(GUEST_MODAL);
+  else openModal(GUEST_MODAL);
 }
 
 // Signed out there is no app behind the shared event: the back gesture keeps the visitor on the page (as before, when
@@ -164,7 +159,6 @@ export function backOnGuestPage(): boolean {
 export function leaveGuestView() {
   if (!guestView()) return;
   setGuestView(null);
-  flushNow();
   document.title = appName();
 }
 

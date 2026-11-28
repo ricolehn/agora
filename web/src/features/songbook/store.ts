@@ -4,7 +4,7 @@ import { action, createOptimistic, createRoot, refresh, until } from 'solid-js';
 import { apiJson, errorMessage } from '../../app/api';
 import { t, uiLocale } from '../../app/i18n';
 import { itemSlug } from '../../app/router';
-import { createServerData } from '../../app/serverData';
+import { createServerData, reload } from '../../app/serverData';
 import { searchText } from '../../lib/songbook';
 
 /** A song of the songbook (backend/songbook.js): the lyrics in ChordPro with its key, capo and tempo. */
@@ -46,9 +46,8 @@ const serverSongbook = createServerData<Songbook | null>(
     ),
   { loadingValue: null, failed: err => ({ songs: [], canManage: false, license: '', error: errorMessage(err) }) }
 );
-/** Loads the songs again (the list keeps showing the last ones meanwhile); resolves to the songbook then - while the
- *  first load is on its way, to the placeholder at once (songbookReady waits for that one). */
-export const refreshSongbook = () => refresh(serverSongbook);
+/** Loads the songs again (the list keeps showing the last ones meanwhile); resolves to the songbook then. */
+export const refreshSongbook = () => reload(serverSongbook);
 /** The first answer (the songs, or the failed load), loading it when nothing asked for it yet. */
 export const songbookReady = () => until(() => serverSongbook());
 /** Whether the server's songbook (not what the page shows: a deletion on its way) still has the song [id]. */
@@ -70,14 +69,15 @@ export { savingSong };
 export const saveSong = action(function* (id: string | null, song: Record<string, unknown>) {
   setSavingSong(true);
   yield id ? apiJson(`/songs/${encodeURIComponent(id)}`, 'PUT', song) : apiJson('/songs', 'POST', song);
-  yield refreshSongbook();
+  // refresh() itself: an action that yields a helper awaiting a refresh can wait for itself (Solid's action notes)
+  yield refresh(serverSongbook);
 });
 
 /** Deletes a song: gone from the songbook at once, back when the server refuses. */
 export const deleteSong = action(function* (id: string) {
   setShownSongbook(book => book && { ...book, songs: book.songs.filter(s => s.id !== id) });
   yield apiJson(`/songs/${encodeURIComponent(id)}`, 'DELETE');
-  yield refreshSongbook();
+  yield refresh(serverSongbook);
 });
 
 // The text a search looks in (title, writers, CCLI number, lyrics without chords), once per song

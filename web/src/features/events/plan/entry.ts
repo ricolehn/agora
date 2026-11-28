@@ -3,7 +3,6 @@
 // existing entry also shows its people with "remove".
 import { createMemo, createSignal } from 'solid-js';
 import { apiJson, errorMessage } from '../../../app/api';
-import { flushNow } from '../../../app/flush';
 import { groupList } from '../../../app/groups';
 import { t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
@@ -84,7 +83,6 @@ export function openPlanEntry(ev: AppEvent, request: { mode: 'new' } | { mode: '
   setNote(item?.note || '');
   setWhoSearch('');
   setPickerOpen(false);
-  flushNow();
   // The songs to choose from while typing
   void songbookReady();
   void loadEventCandidates();

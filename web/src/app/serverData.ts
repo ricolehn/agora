@@ -10,7 +10,7 @@
 // Changes that show at once go through an optimistic layer over the data (createOptimistic) inside an action: the
 // action asks the server and refreshes the data before it ends, so the change never flickers back; when the server
 // refuses, the layer falls away and the data shows as it is.
-import { createDeferred, createRoot, untrack } from 'solid-js';
+import { type SourceAccessor, createDeferred, createRoot, refresh, until, untrack } from 'solid-js';
 import { errorMessage } from './api';
 import { showToast } from './toast';
 
@@ -44,6 +44,14 @@ export function createServerData<T>(load: () => Promise<T>, placeholder?: Placeh
       placeholder ? { lazy: true, loadingValue: placeholder.loadingValue } : { lazy: true }
     )
   );
+}
+
+/**
+ * Asks again for [data] (made with a placeholder) and resolves to the answer. While its first load is on its way the
+ * placeholder shows and counts as settled - refresh() answers with it at once -: then the first real answer.
+ */
+export async function reload<T>(data: SourceAccessor<T | null>): Promise<T> {
+  return (await refresh(data)) ?? (await until(() => data()));
 }
 
 /**

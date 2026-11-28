@@ -8,7 +8,7 @@ import { readStoredJson, store } from '../../app/storage';
 import { showToast } from '../../app/toast';
 import { copyText } from '../../app/util';
 import { findBySlug } from '../../app/router';
-import { refreshSongbook, songbookReady, songOnServer, songSlug, songs } from './store';
+import { refreshSongbook, songOnServer, songSlug, songs } from './store';
 import { asFailure } from '../../app/api';
 
 const SONG_SPEEDS = [1, 1.5, 2, 3, 0.5];
@@ -89,8 +89,7 @@ export function closeSong() {
 /** Opened through its address (/songbook/<name>, old links #songbook/<id>): that song shows once the songs are loaded
  *  (a failed load shows on the songbook's page). */
 export async function openSongBySlug(slug: string) {
-  // The latest songs; the first time, the placeholder is there at once: then the first answer
-  const book = (await refreshSongbook()) || (await songbookReady());
+  const book = await refreshSongbook();
   if (book.error) return;
   const linked = findBySlug(book.songs, slug);
   if (linked) openSong(linked.id);

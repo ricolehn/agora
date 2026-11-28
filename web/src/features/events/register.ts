@@ -15,8 +15,8 @@ import { EventsPage } from './EventsPage';
 import { hasGuestLink, openGuestEvent } from './guest/api';
 import { refreshProgram } from './plan/api';
 import {
-  EVENT_DIALOG_ID, appEvents, currentDetailEvent, detailCloseGuard, eventDay, eventSlug, loadEventsData, onEventsLoaded,
-  openEventDetailModal, openNewEventDetailModal, refreshDetailEvent
+  EVENT_DIALOG_ID, appEvents, currentDetailEvent, detailCloseGuard, eventDay, eventSlug, loadEventsData, openEventDetailModal,
+  openNewEventDetailModal, type AppEvent
 } from './store';
 
 registerTab('events', EventsPage);
@@ -29,20 +29,14 @@ registerRemoteLoader('events', () => {
   void loadEventsData();
   void refreshProgram();
 });
-// The open event page shows the latest state after every load
-onEventsLoaded(refreshDetailEvent);
 setModalCloseGuard(EVENT_DIALOG_ID, detailCloseGuard);
 
 /** /events/<slug> (also with ?share=<key>): the member's own event, else the page guests see, else a note. */
 async function openEventFromRoute(slug: string) {
   // A shared link also names the event by its share key: the title, and with it the address, may have changed
   const shareToken = linkParam('share');
-  const find = () => (shareToken && appEvents().find(ev => ev.publicToken === shareToken)) || findBySlug(appEvents(), slug, eventDay);
-  let ev = find();
-  if (!ev) {
-    await loadEventsData();
-    ev = find();
-  }
+  const find = (events: AppEvent[]) => (shareToken && events.find(ev => ev.publicToken === shareToken)) || findBySlug(events, slug, eventDay);
+  const ev = find(appEvents()) || find(await loadEventsData());
   if (ev) {
     // A member gets their own page; the link's keys leave the address
     if (hasGuestLink()) history.replaceState(history.state, '', window.location.pathname);

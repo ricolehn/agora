@@ -1,6 +1,6 @@
 // Appointments and events in the browser: creating both kinds, the search, registering up to the capacity and the
 // waiting list, the participants, editing, the duty plan (a request and its answer), the public link with a guest's
-// registration, deleting, and a save the server refuses.
+// registration, deleting, a save the server refuses, and events that failed to load.
 const { describe, test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { skipReason, startApp, until } = require('./harness');
@@ -175,5 +175,25 @@ describe('events (browser)', { skip: skipReason || false }, () => {
     await max.page.getByRole('button', { name: 'Publish' }).last().click();
     await max.toast('Not right now');
     assert.equal(await max.page.locator('#detail-edit-title').inputValue(), 'Refused');
+  });
+
+  test('events that failed to load say so on the start page and the events tab; "Try again" brings them', async () => {
+    const max = await app.signIn('max');
+    max.expectProblems(/^500 GET \/api\/events$/);
+    let refuse = true;
+    await max.page.route('**/api/events', route =>
+      refuse && route.request().method() === 'GET'
+        ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'The calendar is resting' }) })
+        : route.fallback()
+    );
+    await max.go('/');
+    const home = max.page.locator('#home-upcoming');
+    await home.getByText('The calendar is resting').waitFor();
+    await max.page.locator('#desktop-nav').getByRole('button', { name: 'Events' }).click();
+    await max.page.locator('#events').getByText('The calendar is resting').waitFor();
+    refuse = false;
+    await max.page.locator('#events').getByRole('button', { name: 'Try again' }).click();
+    await max.page.getByRole('tab', { name: 'Events' }).click();
+    await max.page.locator('main').getByText('Summer party in the garden').filter({ visible: true }).first().waitFor();
   });
 });

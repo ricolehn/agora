@@ -1,61 +1,57 @@
 // The events and the own duty requests, shared by the events tab, the event dialog, the plan, sharing and the start
 // page (owner: the events port). Loaded with the data, on the events tab and on a live update. Also the state of the
 // event dialog (which event, viewing or editing, the editor's draft) and the actions on events.
-import { createSignal, createStore, snapshot } from 'solid-js';
-import { api, apiJson, asFailure, errorStatus } from '../../app/api';
+import { createMemo, createRoot, createSignal, createStore, snapshot } from 'solid-js';
+import { api, apiJson, asFailure, errorMessage, errorStatus } from '../../app/api';
 import { groupList, loadSystemGroups, userInGroup } from '../../app/groups';
 import { t } from '../../app/i18n';
-import { closeModal, isModalOpen, openModal } from '../../app/modals';
+import { closeModal, openModal } from '../../app/modals';
 import { whenPicturesReady } from '../../app/pictures';
 import { itemSlug } from '../../app/router';
+import { createServerData, reload } from '../../app/serverData';
 import { canManageEvents, currentUid, currentUser } from '../../app/session';
 import { confirmAction, showToast, type ToastType } from '../../app/toast';
 import { getTodayStr, once, toDateStr } from '../../app/util';
-import { flushNow } from '../../app/flush';
 import type { Group } from '../../app/types';
 import type { AppEvent, Duty, DutyRequest } from './types';
 
 export type { AppEvent };
 
-const [appEvents, setAppEvents] = createSignal<AppEvent[]>([]);
-const [myDutyRequests, setMyDutyRequests] = createSignal<DutyRequest[]>([]);
-// Until the first answer: a spinner; after a failed first load an error with "Try again" (an empty list said
-// "nothing coming up"); a later failed refresh keeps what is shown
-const [eventsLoaded, setEventsLoaded] = createSignal(false);
-const [eventsLoadError, setEventsLoadError] = createSignal('');
-export { appEvents, myDutyRequests, eventsLoaded, eventsLoadError };
-
-const afterLoad: Array<() => void> = [];
-/** Runs after every load of the events (the open event dialog and the plan refresh themselves). */
-export function onEventsLoaded(fn: () => void) {
-  afterLoad.push(fn);
+/** The events and the own duty requests; error: the first load failed (its reason; "Try again" asks again). */
+interface EventsData {
+  events: AppEvent[];
+  requests: DutyRequest[];
+  error?: string;
 }
 
-export async function loadEventsData(): Promise<void> {
-  if (!currentUser()) return;
-  try {
+// The events as the server has them: loaded with the app's data (the start page shows them), again on the events tab,
+// a live update and after every change (app/serverData.ts). Many parts read them on the way: until the first answer
+// there are none (a spinner where they would show), and a failed first load is a value with its reason
+const serverEvents = createServerData<EventsData | null>(
+  async () => {
     // Groups rarely change: a live update of the events reuses them for a few minutes
-    const [eventsRes, requestsRes] = await Promise.all([
-      api('/events'),
+    const [events, requestsRes] = await Promise.all([
+      apiJson<AppEvent[]>('/events', 'GET', undefined, t('events_load_failed', 'Events could not be loaded')),
       api('/events/my-requests').catch(() => null),
       loadSystemGroups(5 * 60 * 1000)
     ]);
+    const requests = requestsRes?.ok ? ((await requestsRes.json()) as DutyRequest[]) : [];
+    // The pictures' versions first: the lists never ask for every picture
     await whenPicturesReady();
-    if (eventsRes.ok) {
-      setAppEvents((await eventsRes.json()) as AppEvent[]);
-      setEventsLoaded(true);
-      setEventsLoadError('');
-    } else if (!eventsLoaded()) {
-      setEventsLoadError(t('events_load_failed', 'Events could not be loaded'));
-    }
-    setMyDutyRequests(requestsRes?.ok ? ((await requestsRes.json()) as DutyRequest[]) : []);
-    flushNow();
-    for (const fn of afterLoad) fn();
-  } catch (err) {
-    console.warn('Failed to load events:', err);
-    if (!eventsLoaded()) setEventsLoadError(t('error_connection', 'Connection error'));
-    flushNow();
-  }
+    return { events: Array.isArray(events) ? events : [], requests };
+  },
+  { loadingValue: null, failed: err => ({ events: [], requests: [], error: errorMessage(err) }) }
+);
+export const appEvents = () => serverEvents()?.events ?? [];
+export const myDutyRequests = () => serverEvents()?.requests ?? [];
+/** A first load succeeded (until then a spinner, or the failed load with "Try again"). */
+export const eventsLoaded = () => !!serverEvents() && !serverEvents()!.error;
+export const eventsLoadError = () => serverEvents()?.error ?? '';
+
+/** Loads the events again (what is shown stays until they are there); resolves to them. */
+export async function loadEventsData(): Promise<AppEvent[]> {
+  if (!currentUser()) return [];
+  return (await reload(serverEvents)).events;
 }
 
 export function isEventPast(ev: AppEvent, todayStr = getTodayStr()): boolean {
@@ -82,49 +78,39 @@ const [eventsSubTab, setEventsSubTab] = createSignal<EventsSubTab>('termine');
 export { eventsSubTab };
 export function switchEventsSubTab(tab: EventsSubTab | string) {
   setEventsSubTab(tab === 'events' ? 'events' : 'termine');
-  flushNow();
 }
 
 // --- The event dialog (one page for viewing, editing and creating; owner: the events port) ---
 export const EVENT_DIALOG_ID = 'event-detail-modal';
-const [currentDetailEvent, setCurrentDetailEvent] = createSignal<AppEvent | null>(null);
+// The event the dialog opened on (null: a new one)
+const [openedEvent, setOpenedEvent] = createSignal<AppEvent | null>(null);
+/** The event of the dialog in its latest state: it follows every load of the events (an action, a live update); one
+ *  that is gone from them stays as it was. */
+export const currentDetailEvent = createRoot(() =>
+  createMemo(() => {
+    const ev = openedEvent();
+    return ev && (appEvents().find(e => e.id === ev.id) ?? ev);
+  })
+);
 // Editing the event (or creating one: no current event) instead of viewing it
 const [detailEditing, setDetailEditing] = createSignal(false);
 // Changes with every event (or new one) the dialog opens on: the page starts at the top again
 const [detailShown, setDetailShown] = createSignal(0);
-export { currentDetailEvent, setCurrentDetailEvent, detailEditing, detailShown };
-
-const isDetailOpen = () => isModalOpen(EVENT_DIALOG_ID);
+export { detailEditing, detailShown };
 
 function showDetail(ev: AppEvent | null, editing: boolean) {
-  setCurrentDetailEvent(ev);
+  setOpenedEvent(ev);
   setDetailEditing(editing);
   setDetailShown(n => n + 1);
-  flushNow();
   openModal(EVENT_DIALOG_ID);
 }
 
 /** Opens the event dialog (loads the events first when the event is not known yet). */
 export async function openEventDetailModal(eventId: string): Promise<void> {
-  let ev = appEvents().find(e => e.id === eventId);
-  if (!ev) {
-    await loadEventsData();
-    ev = appEvents().find(e => e.id === eventId);
-  }
+  const ev = appEvents().find(e => e.id === eventId) || (await loadEventsData()).find(e => e.id === eventId);
   // Deleted (or not visible) in the meantime - a notification or an old link: say so instead of doing nothing
   if (!ev) return showToast(t('events_link_missing', 'This event no longer exists.'), 'error');
   showDetail(ev, false);
-}
-
-/** The open event shows its latest state (after a load of the events: an action, a live update). */
-export function refreshDetailEvent() {
-  const ev = currentDetailEvent();
-  if (!ev || !isDetailOpen()) return;
-  const fresh = appEvents().find(e => e.id === ev.id);
-  if (fresh && fresh !== ev) {
-    setCurrentDetailEvent(fresh);
-    flushNow();
-  }
 }
 
 // --- The editor: what is typed and chosen, compared with how it opened to notice changes ---
@@ -215,13 +201,11 @@ export function enterDetailEditMode() {
   if (!ev) return;
   startDraft(ev, kindOf(ev));
   setDetailEditing(true);
-  flushNow();
 }
 
 /** Back to the event; a new one is not created (the dialog closes). */
 export function cancelDetailEditMode() {
   setDetailEditing(false);
-  flushNow();
   if (!currentDetailEvent()) closeModal(EVENT_DIALOG_ID);
 }
 
