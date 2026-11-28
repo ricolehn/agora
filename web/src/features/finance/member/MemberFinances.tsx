@@ -222,7 +222,7 @@ function MyRequestRow(props: { req: FinanceRequest }) {
 
 function MyRequests(props: { class?: string }) {
   const [showAll, setShowAll] = createSignal(false);
-  const mine = createMemo(() => (currentUser() ? requests().filter(isOwnRequest).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)) : []));
+  const mine = createMemo(() => (currentUser() ? requests().filter(req => isOwnRequest(req)).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)) : []));
   const shown = () => (showAll() ? mine() : mine().slice(0, MY_REQUESTS_SHOWN));
   return (
     <div id="user-requests-list" class={['mb-[22px]', props.class]}>

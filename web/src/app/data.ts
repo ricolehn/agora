@@ -4,7 +4,7 @@
 //
 // loadData() loads everything after signing in and on a live update of 'all'. Features add their own loads through
 // onDataLoadStart (in parallel, e.g. events, conversations) and onDataLoaded (after the finance data).
-import { createSignal } from 'solid-js';
+import { createSignal, onFlush } from 'solid-js';
 import {
   apiGet, apiJson, child, db, equalTo, get, orderByChild, query, ref, runTransaction, set, update, isPreviousServer, auth,
   fetchWithTimeout, API
@@ -21,7 +21,6 @@ import {
 import { hideLoading, showLoading } from './shell';
 import { showToast } from './toast';
 import { compressImage, convertHeic, fullName, getTodayStr, parseUtcDate, safeList, toFormData } from './util';
-import { flushNow } from './flush';
 import type {
   FeePlan, FeeReset, FeeResetLogEntry, FeeSettings, FinanceRequest, MediaStatus, Payment, Person, PersonRecord, SessionAnswer, StandingOrder,
   StatusEntry, User
@@ -46,24 +45,20 @@ const [dataLoaded, setDataLoaded] = createSignal(false);
 
 export { people, requests, users, settings, feeResets, feeResetLog, feePlan, inviteCode, mediaStatus, dataLoaded };
 
-/** Writers apply at once (flush): imperative code may read the new value right after. */
-const applied = <T,>(setter: (value: T) => unknown) => (value: T) => {
-  setter(value);
-  flushNow();
-};
-export const setPeople = applied<PersonRecord[]>(list => setPeopleSignal(list.map(preprocessPerson)));
-export const setRequests = applied<FinanceRequest[]>(setRequestsSignal);
-export const setUsers = applied<User[]>(setUsersSignal);
-export const setSettings = applied<FeeSettings>(setSettingsSignal);
-export const setInviteCode = applied<string>(setInviteCodeSignal);
+// Like every signal write, a change shows with Solid's next update (the same microtask): code that goes on with the
+// new data uses what it wrote, not a read right after. A change of a list goes through the list it changes (setUsers(list
+// => ...)): two changes in one go both stay.
+export const setPeople = (list: PersonRecord[]) => setPeopleSignal(list.map(preprocessPerson));
+export const setRequests = setRequestsSignal;
+export const setUsers = setUsersSignal;
+export const setSettings = setSettingsSignal;
+export const setInviteCode = setInviteCodeSignal;
 export function applyFeePlan(data: FeePlan | null) {
   if (data && Array.isArray(data.entries)) setFeePlanSignal(data);
-  flushNow();
 }
 export function applyFeeResets(data: { resets?: FeeReset[]; log?: FeeResetLogEntry[] } | null) {
   setFeeResets(safeList(data?.resets));
   setFeeResetLog(safeList(data?.log));
-  flushNow();
 }
 
 // --- People ---
@@ -84,15 +79,17 @@ export function preprocessPerson(person: PersonRecord): Person {
   };
 }
 
-export const findLinkedPerson = (uid: string | undefined) => people().find(p => p.uid === uid || (p.data && p.data.uid === uid));
+/** The finance record of the account [uid] (in [list]: the one a load is about to show). */
+export const findLinkedPerson = (uid: string | undefined, list: Person[] = people()) => list.find(p => p.uid === uid || (p.data && p.data.uid === uid));
 export const findPerson = (id: unknown) => people().find(p => String(p.id) === String(id));
 
-/** The own request: by author, or by the own person record (decisions used to overwrite userId with the treasurer's id). */
-export function isOwnRequest(req: FinanceRequest | null | undefined): boolean {
+/** The own request: by author, or by the own person record (decisions used to overwrite userId with the treasurer's
+ *  id) - of the records in [list] (the ones a load is about to show). */
+export function isOwnRequest(req: FinanceRequest | null | undefined, list: readonly Pick<Person, 'id' | 'uid'>[] = people()): boolean {
   const uid = currentUid();
   if (!currentUser() || !req) return false;
   if (req.userId === uid) return true;
-  return people().some(p => p.uid === uid && String(p.id) === String(req.personId));
+  return list.some(p => p.uid === uid && String(p.id) === String(req.personId));
 }
 
 /**
@@ -151,15 +148,12 @@ export function checkAndExecuteStandingOrders<P extends Pick<Person, 'payments' 
 /** Puts a record the server returned in place of the shown one (or removes it when it was deleted). */
 export function replacePersonInMemory(record: PersonRecord) {
   const person = preprocessPerson(record);
-  const list = people();
-  const idx = list.findIndex(p => String(p.id) === String(person.id));
-  let next: Person[];
-  if (idx >= 0 && person.isDeleted) next = list.filter((_, i) => i !== idx);
-  else if (idx >= 0) next = list.map((p, i) => (i === idx ? person : p));
-  else if (!person.isDeleted) next = [...list, person];
-  else return;
-  setPeopleSignal(next);
-  flushNow();
+  setPeopleSignal(list => {
+    const idx = list.findIndex(p => String(p.id) === String(person.id));
+    if (idx >= 0 && person.isDeleted) return list.filter((_, i) => i !== idx);
+    if (idx >= 0) return list.map((p, i) => (i === idx ? person : p));
+    return person.isDeleted ? list : [...list, person];
+  });
 }
 
 /** A fee account as stored, its lists as lists: what a change on the latest server copy works on. */
@@ -229,14 +223,10 @@ export async function fetchReceiptImage(filename: string): Promise<string> {
 // --- Media status (the Extras hub shows the library only with access) ---
 export async function loadMediaStatus() {
   if (!currentUser()) return;
-  try {
-    setMediaStatus(await apiJson<MediaStatus>('/media/status'));
-  } catch {
-    setMediaStatus({ enabled: false, canManage: false, hasAccess: false });
-  }
-  flushNow();
+  const status = await apiJson<MediaStatus>('/media/status').catch((): MediaStatus => ({ enabled: false, canManage: false, hasAccess: false }));
+  setMediaStatus(status);
   // No (more) access to the base folder: the library is closed, back to Extras
-  if (!mediaStatus().hasAccess && activeTab() === 'media') switchTab('hub');
+  if (!status.hasAccess && activeTab() === 'media') switchTab('hub');
 }
 
 // --- Loading ---
@@ -299,8 +289,9 @@ async function loadMemberData() {
   } catch (err) {
     console.warn('Could not load people:', err);
   }
-  setPeople(peopleList.filter(p => !p.isDeleted));
-  setRequests((rSnap?.exists() ? safeList<FinanceRequest>(rSnap.val()) : []).filter(isOwnRequest));
+  const shown = peopleList.filter(p => !p.isDeleted);
+  setPeople(shown);
+  setRequests((rSnap?.exists() ? safeList<FinanceRequest>(rSnap.val()) : []).filter(req => isOwnRequest(req, shown)));
   applyFeeResets(null);
 }
 
@@ -314,7 +305,10 @@ async function loadAdminData() {
     apiJson<{ resets?: FeeReset[]; log?: FeeResetLogEntry[] }>('/fee-reset').catch(() => null),
     apiJson<FeePlan>('/fees').catch(() => null)
   ]);
-  setPeople(safeList<PersonRecord>(pData).filter(p => !p.isDeleted));
+  const shown = safeList<PersonRecord>(pData)
+    .filter(p => !p.isDeleted)
+    .map(preprocessPerson);
+  setPeopleSignal(shown);
   setRequests(safeList(rData));
   if (sData) setSettings(sData);
   // A failed request keeps what is shown (like the settings)
@@ -323,7 +317,7 @@ async function loadAdminData() {
   setUsers(
     Object.entries(uData || {}).map(([uid, data]) => {
       if (!withFinances) return { ...data, uid };
-      const linked = findLinkedPerson(uid);
+      const linked = findLinkedPerson(uid, shown);
       return {
         ...data,
         uid,
@@ -359,9 +353,9 @@ export async function loadData(silent = false, { freshUser = false } = {}) {
       apiJson<{ enabled?: boolean }>('/admin/ai-status')
         .then(data => {
           setAiEnabled(!!data.enabled);
-          flushNow();
-          // Opened at /ai (a reload in the chat): the chat once the status says it is on
-          if (takePendingAiRoute() && data.enabled && activeTab() === 'hub') switchTab('ai-chat');
+          // Opened at /ai (a reload in the chat): the chat once the status says it is on - after the update that
+          // applies it (the chat's guard reads it)
+          if (takePendingAiRoute() && data.enabled) onFlush(() => activeTab() === 'hub' && switchTab('ai-chat'));
         })
         .catch(() => takePendingAiRoute());
     }
@@ -403,7 +397,6 @@ export function clearData() {
   setUsersSignal([]);
   setInviteCodeSignal('');
   setDataLoaded(false);
-  flushNow();
 }
 
 // The owner has the books too (isOwnerUser) - re-exported for views that decide on requests

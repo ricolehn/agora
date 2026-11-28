@@ -57,7 +57,7 @@ export async function refreshGroupsAndUsers(refreshSelf = true) {
   if (refreshSelf) await refreshCurrentUser();
 }
 
-const updateUser = (uid: string, fields: Record<string, unknown>) => setUsers(users().map(u => (u.uid === uid ? { ...u, ...fields } : u)));
+const updateUser = (uid: string, fields: Record<string, unknown>) => setUsers(list => list.map(u => (u.uid === uid ? { ...u, ...fields } : u)));
 
 // --- The settings of one account, saved at once from the table ---
 async function saveUserSetting(uid: string, field: 'member-since' | 'admin' | 'pays', payload: object, applyLocal: () => void, successMsg: string, errorMsg: string, logMsg: string) {
@@ -127,7 +127,7 @@ export async function deleteUserAccount(uid: string) {
   await attempt(
     async () => {
       await apiJson(`/admin/users/${uid}`, 'DELETE', undefined, t('toast_delete_failed_short', 'Deletion failed'));
-      setUsers(users().filter(u => u.uid !== uid));
+      setUsers(list => list.filter(u => u.uid !== uid));
       showToast(t('toast_user_deleted', 'User deleted successfully'));
     },
     err => err.message || t('admin_user_delete_failed', 'Failed to delete the user')

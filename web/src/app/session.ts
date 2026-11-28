@@ -2,7 +2,6 @@
 // used in JSX (or a memo) it follows a change of the account (a reload of /auth/me, a new group).
 import { createSignal } from 'solid-js';
 import { inList } from './util';
-import { flushNow } from './flush';
 import type { PermissionFlag, PermissionId, User } from './types';
 
 export type { User };
@@ -14,21 +13,17 @@ const [aiEnabled, setAiEnabled] = createSignal(false);
 
 export { currentUser, isAuthenticated, aiEnabled, setAiEnabled };
 
-/** Replaces the account (applied at once: imperative code may read it right after). */
+/** Replaces the account. Like every signal write it shows with Solid's next update: code that needs the account right
+ *  after uses the one it wrote (the sign-in hands it to the features' hooks). */
 export function setCurrentUser(user: User | null) {
   setCurrentUserSignal(user);
-  flushNow();
 }
-/** Merges fields into the account. */
+/** Merges fields into the account (into the latest one: two changes in one go both stay). */
 export function patchCurrentUser(fields: Partial<User>) {
-  const user = currentUser();
-  if (!user) return;
-  setCurrentUserSignal({ ...user, ...fields });
-  flushNow();
+  setCurrentUserSignal(user => (user ? { ...user, ...fields } : user));
 }
 export function setIsAuthenticated(value: boolean) {
   setAuthenticated(value);
-  flushNow();
 }
 
 const hasPermission = (flag: PermissionFlag, permission: PermissionId) => {

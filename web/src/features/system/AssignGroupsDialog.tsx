@@ -50,7 +50,7 @@ async function submitAssignGroups() {
   await attempt(
     async () => {
       await apiJson(`/admin/users/${accountUid}/groups`, 'PUT', { groups }, t('admin_groups_assign_failed', 'Failed to assign the groups'));
-      setUsers(users().map(u => (u.uid === accountUid ? { ...u, groups, groupObjects: groups.map(gid => findGroup(gid) || { id: gid, name: gid }) } : u)));
+      setUsers(list => list.map(u => (u.uid === accountUid ? { ...u, groups, groupObjects: groups.map(gid => findGroup(gid) || { id: gid, name: gid }) } : u)));
       closeModal(MODAL_ID);
       showToast(t('toast_user_groups_updated', 'User groups updated successfully'), 'success');
       await refreshGroupsAndUsers(currentUser()?.uid === accountUid);

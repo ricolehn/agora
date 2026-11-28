@@ -1,7 +1,7 @@
 // The own profile picture: cropped to a square (256x256 JPEG) and uploaded.
 import { apiJson, errorMessage } from '../../app/api';
 import { t } from '../../app/i18n';
-import { forgetProfilePic, loadCurrentProfilePicture, setPictureVersion } from '../../app/pictures';
+import { forgetProfilePic, refreshOwnPicture, setPictureVersion } from '../../app/pictures';
 import { currentUid } from '../../app/session';
 import { showToast } from '../../app/toast';
 import { toFormData } from '../../app/util';
@@ -18,7 +18,7 @@ async function uploadProfilePicture(blob: Blob): Promise<boolean> {
       setPictureVersion(uid, saved?.version || Date.now());
       forgetProfilePic(uid);
     }
-    void loadCurrentProfilePicture();
+    refreshOwnPicture();
     return true;
   } catch (e) {
     console.error('Profile upload error:', e);

@@ -1,9 +1,8 @@
 // Profile pictures. Who has a picture and its version come from the server once per load: only those are requested,
 // under an address with the version, which the browser keeps until the picture changes. null = not known (yet):
 // every picture is asked for like before.
-import { createSignal } from 'solid-js';
+import { createDeferred, createMemo, createRoot, createSignal, refresh } from 'solid-js';
 import { API, api, apiJson } from './api';
-import { flushNow } from './flush';
 import { currentUid } from './session';
 
 const [pictureVersions, setPictureVersions] = createSignal<Record<string, string | number> | null>(null);
@@ -21,12 +20,9 @@ export function loadPictureVersions(): Promise<void> {
 }
 
 /** A new picture of [uid] (just uploaded): its new version gives it a new address, so no list shows the old one from
- *  the browser's cache. Applied at once (the own picture is fetched right after). Nothing while no versions are known. */
+ *  the browser's cache. Nothing while no versions are known. */
 export function setPictureVersion(uid: string, version: string | number) {
-  const versions = pictureVersions();
-  if (!versions) return;
-  setPictureVersions({ ...versions, [uid]: version });
-  flushNow();
+  setPictureVersions(versions => (versions ? { ...versions, [uid]: version } : versions));
 }
 
 /** The address of a person's picture ('' when they have none). Reactive: follows the loaded versions. */
@@ -38,8 +34,8 @@ export function profilePictureSrc(uid: string | null | undefined): string {
   return `${API}/profile/picture/${encodeURIComponent(uid)}${version ? `?v=${version}` : ''}`;
 }
 
-async function fetchProfilePicUrl(uid: string): Promise<string | null> {
-  const src = profilePictureSrc(uid);
+// An object URL of the picture at [src] (fetched with the session; null when there is none)
+async function fetchPicture(src: string): Promise<string | null> {
   if (!src) return null;
   const res = await api(src.slice(API.length));
   if (res.ok && res.status === 200) {
@@ -48,6 +44,7 @@ async function fetchProfilePicUrl(uid: string): Promise<string | null> {
   }
   return null;
 }
+const fetchProfilePicUrl = (uid: string) => fetchPicture(profilePictureSrc(uid));
 
 // Cached per uid (including requests on their way) so lists fetch each picture only once
 const profilePicCache = new Map<string, Promise<string | null>>();
@@ -61,15 +58,22 @@ export function forgetProfilePic(uid: string) {
   profilePicCache.delete(uid);
 }
 
-// The own picture (header, profile, settings): an object URL, replaced when it changes
-const [ownPicture, setOwnPictureSignal] = createSignal<string | null>(null);
+// The own picture (header, profile menu, profile page): an object URL of the picture at the own address. It follows
+// the account (signing in and out) and the address (a new version after an upload), the one before is released. It never
+// holds anything up: until the first answer there is none (the symbol shows), while a newer one is on its way the last
+// one stays.
+const ownPicture = createRoot(() => {
+  // The address alone: a reload of the versions that leaves it as it is fetches nothing
+  const src = createMemo(() => profilePictureSrc(currentUid()));
+  return createDeferred<string | null>(
+    async previous => {
+      const url = await fetchPicture(src()).catch(() => null);
+      if (previous && previous !== url) URL.revokeObjectURL(previous);
+      return url;
+    },
+    { loadingValue: null }
+  );
+});
 export { ownPicture };
-export function setOwnPicture(url: string | null) {
-  const previous = ownPicture();
-  if (previous && previous !== url) URL.revokeObjectURL(previous);
-  setOwnPictureSignal(url);
-}
-export async function loadCurrentProfilePicture() {
-  const uid = currentUid();
-  if (uid) setOwnPicture(await fetchProfilePicUrl(uid).catch(() => null));
-}
+/** Fetches the own picture again (just uploaded: without known versions its address stays the same). */
+export const refreshOwnPicture = () => void refresh(ownPicture);

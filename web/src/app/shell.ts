@@ -1,9 +1,8 @@
 // State of the app's frame that features may touch: the loading screen, the header that slides away while scrolling,
 // the scrolling page container, the profile menu, the floating action menu and the sign-in over a visitor's page.
-import { createSignal } from 'solid-js';
+import { createSignal, onFlush } from 'solid-js';
 import { activeTab, setRevealHeaderHook } from './router';
 import type { TabId } from './tabs';
-import { flushNow } from './flush';
 import { wasSignedIn } from './storage';
 
 // --- Loading screen (covers the app while data loads after signing in) ---
@@ -50,22 +49,21 @@ let profileButton: HTMLElement | null = null;
 
 /**
  * Opens the profile menu over [button]: 4px over its top right corner, at least 12px inside the window. byKeyboard:
- * the focus goes to the first entry (the button hides under the menu: the focus would be lost).
+ * the focus goes to the first entry (the button hides under the menu: the focus would be lost) - once the menu shows
+ * (a hidden one takes no focus).
  */
 export function openProfileMenu(button: HTMLElement, byKeyboard = false) {
   profileButton = button;
   const box = button.getBoundingClientRect();
   setProfileMenuPosition({ top: Math.max(4, box.top - 4), right: Math.max(12, document.documentElement.clientWidth - box.right - 4) });
   setProfileMenuOpen(true);
-  flushNow();
-  if (byKeyboard) document.querySelector<HTMLElement>('#profileDropdown [role="menuitem"]')?.focus();
+  if (byKeyboard) onFlush(() => document.querySelector<HTMLElement>('#profileDropdown [role="menuitem"]')?.focus());
 }
-/** Closes the profile menu; returnFocus: the focus goes back to the profile button (Escape). */
+/** Closes the profile menu; returnFocus: the focus goes back to the profile button (Escape), once the menu is hidden. */
 export function closeProfileMenu(returnFocus = false) {
   if (!profileMenuOpen()) return;
   setProfileMenuOpen(false);
-  flushNow();
-  if (returnFocus) profileButton?.focus();
+  if (returnFocus) onFlush(() => profileButton?.focus());
 }
 
 // --- Floating action button: its menu (open on the tab it was opened on: another tab closes it) ---

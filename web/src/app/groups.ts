@@ -3,7 +3,6 @@
 import { createSignal } from 'solid-js';
 import { api } from './api';
 import { currentUser, isSuperAdminUser } from './session';
-import { flushNow } from './flush';
 import type { Group, Permission, User } from './types';
 
 export const DEFAULT_PERMISSIONS: Permission[] = [
@@ -45,13 +44,11 @@ async function fetchSystemGroups() {
       const res = await api('/admin/groups');
       if (res.ok) {
         setSystemGroups((await res.json()) as Group[]);
-        flushNow();
         return;
       }
     }
     const res = await api('/groups');
     if (res.ok) setSystemGroups((await res.json()) as Group[]);
-    flushNow();
   } catch (err) {
     console.error('Failed to load groups:', err);
   }

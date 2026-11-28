@@ -4,7 +4,6 @@
 // t(key, fallback, params) reads the loaded texts reactively: used in JSX, a text follows a change of the language.
 import { createSignal } from 'solid-js';
 import en from '../locales/en.json';
-import { flushNow } from './flush';
 import { readStored, store } from './storage';
 import type { MemberStatus } from './types';
 
@@ -58,7 +57,6 @@ export async function loadLanguage(lang: string): Promise<void> {
     setTranslations(withTranslation(en as Record<string, string>, own));
     setUiLang(resolved);
     setLangSetting(lang);
-    flushNow();
     document.documentElement.lang = resolved;
     store('app_lang', lang);
     for (const fn of languageListeners) fn(resolved);

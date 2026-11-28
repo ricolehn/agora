@@ -1,7 +1,7 @@
 // A member's own request (user-request-modal): the choice of the kind, then the form of a payment (or a standing
 // order), a status change or an expense with receipts. The treasury decides on it in the finances tab.
 import { For, Show, createSignal } from 'solid-js';
-import { db, findLinkedPerson, loadData, people, ref, requests, set, setRequests, uploadAll } from '../../../../app/data';
+import { db, findLinkedPerson, loadData, people, ref, set, setRequests, uploadAll } from '../../../../app/data';
 import { apiJson, errorMessage } from '../../../../app/api';
 import { t } from '../../../../app/i18n';
 import { closeModal } from '../../../../app/modals';
@@ -92,7 +92,7 @@ async function sendRequest(request: CollectedRequest, receipts: File[], setBusy:
     closeModal('user-request-modal');
     showToast(t('toast_request_sent', 'Request successfully sent'));
     // Shown at once, then synced with the server
-    if (!requests().some(r => r.id === newReq.id)) setRequests([newReq, ...requests()]);
+    setRequests(list => (list.some(r => r.id === newReq.id) ? list : [newReq, ...list]));
     await loadData(true);
     apiJson('/notify-admins', 'POST', { reqType: request.type, personName }).catch(e => console.warn('Telling the treasury failed:', e));
   } catch (err) {
