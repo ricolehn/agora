@@ -110,7 +110,7 @@ export function GroupDialog() {
               <Button
                 variant="danger"
                 size="small"
-                class="border border-[rgba(239,68,68,0.3)] !rounded-[10px] !bg-[rgba(239,68,68,0.12)] !px-3.5"
+                class="border border-[rgba(239,68,68,0.3)] rounded-[10px] bg-[rgba(239,68,68,0.12)] px-3.5"
                 onClick={() => void deleteCurrentGroup()}
               >
                 {t('btn_delete_group', 'Delete Group')}

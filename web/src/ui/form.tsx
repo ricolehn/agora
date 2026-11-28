@@ -28,7 +28,7 @@ export function Label(props: { for?: string; id?: string; class?: string; childr
     <label
       for={props.for}
       id={props.id}
-      class={['block font-semibold text-text-secondary', inDialog ? 'mb-[3px] text-78' : 'mb-1.5 text-85', props.class]}
+      class={['block font-semibold text-text-secondary', inDialog ? 'weak:mb-[3px] text-78' : 'weak:mb-1.5 text-85', props.class]}
     >
       {props.children}
     </label>

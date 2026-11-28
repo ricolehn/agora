@@ -21,7 +21,7 @@ export function AmountInput(props: { id: string; value: string; onInput: (value:
         value={props.value}
         invalid={props.invalid}
         // Bigger and bold, room for the sign; it keeps the surface even with the error frame (as before)
-        class="!h-[38px] !bg-surface !pl-7 !text-115 font-bold tracking-[-0.01em]"
+        class="h-[38px] !bg-surface pl-7 text-115 font-bold tracking-[-0.01em]"
         onInput={e => props.onInput(e.currentTarget.value)}
       />
     </div>

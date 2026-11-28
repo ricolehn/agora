@@ -27,7 +27,7 @@ const BADGE: Record<string, string> = {
   status: 'bg-[#6366f1]/14 text-[#6366f1]',
   standing_order: 'bg-[#06b6d4]/14 text-[#06b6d4]'
 };
-const badgeClass = (req: FinanceRequest | undefined) => ['!size-[42px] !rounded-[13px]', BADGE[req?.type || ''] || 'bg-primary/14 text-primary'].join(' ');
+const badgeClass = (req: FinanceRequest | undefined) => ['size-[42px] rounded-[13px]', BADGE[req?.type || ''] || 'bg-primary/14 text-primary'].join(' ');
 
 /** Own request of a member who does not decide: the state instead of the name, no decision. */
 const ownView = (req: FinanceRequest) => isOwnRequest(req) && !canApproveRequests();
@@ -124,7 +124,7 @@ function Decision(props: { req: FinanceRequest }) {
       </Show>
       <Show when={rejectFormOpen()}>
         <div class="flex flex-col gap-2.5">
-          <Label for="reqd-reject-reason" class="!mb-0">
+          <Label for="reqd-reject-reason" class="mb-0">
             {t('request_reject_reason_label', 'Reason for rejecting')}
           </Label>
           <Input

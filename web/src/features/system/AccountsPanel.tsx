@@ -133,9 +133,10 @@ const BADGE = 'inline-block rounded-[8px] border border-border bg-surface-alt px
 const TH =
   'border-b border-border bg-surface-alt px-4 py-3 align-middle text-82 font-semibold uppercase tracking-[0.03em] text-text-secondary ' +
   'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-85 md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-85';
+// The cell's padding and type size are weak: a cell's own class for them wins (at every width)
 const TD =
-  'border-b border-border px-4 py-3 align-middle ' +
-  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-85 md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-85';
+  'border-b border-border weak:px-4 weak:py-3 align-middle ' +
+  'weak:md:max-xl:px-2.5 weak:md:max-xl:py-2.5 weak:md:max-xl:text-85 weak:md:max-xl:first:pl-4 weak:max-md:px-3 weak:max-md:py-2.5 weak:max-md:text-85';
 const ICON_BTN =
   'flex items-center justify-center rounded-[8px] border border-border bg-transparent p-1.5 text-text-secondary transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150 ease-[ease] max-md:min-h-[34px] max-md:min-w-[34px]';
 
@@ -172,7 +173,7 @@ function AccountRow(props: { user: User }) {
           </div>
         </div>
       </td>
-      <td class={[TD, '!text-88 text-text-secondary']}>
+      <td class={[TD, 'text-88 text-text-secondary']}>
         <Show when={props.user.email} fallback={<span class="italic opacity-50">{t('accounts_no_login', 'No login credentials')}</span>}>
           {props.user.email}
         </Show>
@@ -240,7 +241,7 @@ function AccountRow(props: { user: User }) {
 function EmptyRow(props: { text: string }) {
   return (
     <tr class="[&:last-child>td]:border-b-0">
-      <td colspan="7" class={[TD, '!p-[30px] text-center text-text-secondary']}>
+      <td colspan="7" class={[TD, 'p-[30px] text-center text-text-secondary']}>
         {props.text}
       </td>
     </tr>

@@ -80,7 +80,7 @@ export function StandingOrderDialog() {
       <Button
         block
         variant="danger"
-        class="!gap-1.5 border border-danger !bg-transparent"
+        class="gap-1.5 border border-danger bg-transparent"
         onClick={() => void deleteStandingOrderCompletely()}
       >
         <Icon name="trash" size={16} />

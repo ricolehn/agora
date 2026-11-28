@@ -113,7 +113,7 @@ export function TransactionDetailsDialog() {
           <Button
             variant="secondary"
             size="small"
-            class="mr-3 ml-auto !gap-2 !rounded-lg !p-1.5"
+            class="mr-3 ml-auto gap-2 rounded-lg p-1.5"
             aria-label={t('btn_edit', 'Edit')}
             onClick={editShown}
           >
