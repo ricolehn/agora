@@ -5,7 +5,6 @@ import { loadSystemGroups } from '../../app/groups';
 import { loadAiConfig } from './ai';
 import { loadMediaConfig } from './media';
 import { isSystemConfigLoaded, loadAdvancedSystemConfig } from './systemConfig';
-import { flushNow } from '../../app/flush';
 
 export type SysTab = 'accounts' | 'config' | 'ai' | 'media';
 
@@ -24,6 +23,5 @@ export { sysTab };
 
 export function switchSysSettingsTab(tab: SysTab) {
   setSysTab(tab);
-  flushNow();
   SYS_TAB_LOADERS[tab]();
 }

@@ -1,6 +1,5 @@
 import type { JSX } from '@solidjs/web';
 import { Show, createSignal, createStore, omit, useContext } from 'solid-js';
-import { flushNow } from '../app/flush';
 import { t } from '../app/i18n';
 import { DialogBodyContext } from './context';
 import { Icon } from './Icon';
@@ -8,8 +7,8 @@ import { Icon } from './Icon';
 // Named Tailwind text sizes also set a line height: only arbitrary sizes here, the line height stays the browser's.
 
 /**
- * The fields of a form as a store, with a setter for one field that applies at once (a save right after the change
- * reads it) and the store's own setter for many at a time (filling the form).
+ * The fields of a form as a store, with a setter for one field (an input's change) and the store's own setter for
+ * many at a time (filling the form). Like every write they show with Solid's next update.
  */
 export function createForm<T extends object>(initial: T) {
   // A form is a record of values, never a function: Solid's typing of createStore cannot tell that for any T
@@ -18,7 +17,6 @@ export function createForm<T extends object>(initial: T) {
     setForm(draft => {
       (draft as T)[key] = value;
     });
-    flushNow();
   };
   return [form, setField, setForm] as const;
 }

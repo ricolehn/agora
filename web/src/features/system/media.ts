@@ -7,7 +7,6 @@ import { t } from '../../app/i18n';
 import { isSuperAdminUser } from '../../app/session';
 import { attempt, showToast } from '../../app/toast';
 import { createForm } from '../../ui/form';
-import { flushNow } from '../../app/flush';
 
 export interface MediaForm {
   enabled: boolean;
@@ -55,7 +54,6 @@ export async function loadMediaConfig() {
       form.password = data.password || '';
       form.root = data.root ? `/${data.root}` : '';
     });
-    flushNow();
   } catch (err) {
     console.warn('Media settings could not be loaded:', err);
   }

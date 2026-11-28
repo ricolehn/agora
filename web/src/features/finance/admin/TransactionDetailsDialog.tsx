@@ -1,7 +1,6 @@
 // A booking of the history with its details and receipts (transaction-details-modal); those who manage the finances
 // edit it from here.
 import { Show, createSignal } from 'solid-js';
-import { flushNow } from '../../../app/flush';
 import { euro, formatDateFast, t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
 import { canManageFinances } from '../../../app/session';
@@ -26,7 +25,6 @@ export function showTransactionDetails(id: string, kind: string) {
   const tx = transactions()?.find(x => String(x.id) === String(id));
   if (!tx || !typeName(type)) return;
   setShown({ tx, type });
-  flushNow();
   openModal('transaction-details-modal');
 }
 

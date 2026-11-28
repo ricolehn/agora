@@ -1,4 +1,4 @@
-import { Show, createSignal } from 'solid-js';
+import { Show, createSignal, onFlush } from 'solid-js';
 import { deleteOwnAccount } from '../../../app/auth';
 import { t } from '../../../app/i18n';
 import { isOwnerUser } from '../../../app/session';
@@ -6,7 +6,6 @@ import { Button } from '../../../ui/Button';
 import { Input } from '../../../ui/form';
 import { Icon } from '../../../ui/Icon';
 import { DANGER_ROW, ROW, RowCard, RowChevron, RowIcon, RowText } from '../rows';
-import { flushNow } from '../../../app/flush';
 
 /** Delete account: a danger row that opens its form (a sheet in the Android app). */
 function DeleteAccount() {
@@ -14,9 +13,10 @@ function DeleteAccount() {
   const [password, setPassword] = createSignal('');
   let input!: HTMLInputElement;
   const toggle = () => {
-    setOpen(!open());
-    flushNow();
-    if (open()) input.focus();
+    const opening = !open();
+    setOpen(opening);
+    // The password field takes the cursor once it shows
+    if (opening) onFlush(() => input.focus());
   };
   const remove = async () => {
     if (await deleteOwnAccount(password())) setPassword('');

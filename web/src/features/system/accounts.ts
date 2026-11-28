@@ -8,7 +8,6 @@ import { findGroup, loadSystemGroups } from '../../app/groups';
 import { t } from '../../app/i18n';
 import { currentUser, isSuperAdminUser } from '../../app/session';
 import { attempt, confirmAction, showToast } from '../../app/toast';
-import { flushNow } from '../../app/flush';
 import type { User } from '../../app/types';
 
 // --- Filter and search of the accounts table ---
@@ -18,7 +17,6 @@ export { groupFilter, accountSearch, setAccountSearch };
 
 export function filterByGroup(groupId: string | null) {
   setGroupFilter(groupId);
-  flushNow();
 }
 
 const rawName = (u: User) => `${u.firstName || ''} ${u.lastName || ''}`;

@@ -14,7 +14,6 @@ import { MODAL_TINTS, Modal, ModalSection } from '../../ui/Modal';
 import { refreshGroupsAndUsers } from './accounts';
 import { openGroupModal } from './GroupDialog';
 import { CheckItem, CheckList, DialogActions } from './parts';
-import { flushNow } from '../../app/flush';
 
 const MODAL_ID = 'assign-group-modal';
 
@@ -29,7 +28,6 @@ export function openAssignGroupModal(accountUid: string) {
   setUid(accountUid);
   setUserDisplay(`${fullName(user) || user.email || t('admin_user_fallback', 'User')} (${user.email || t('admin_no_login', 'No login')})`);
   setTicked(Array.isArray(user.groups) ? [...user.groups] : []);
-  flushNow();
   openModal(MODAL_ID);
 }
 

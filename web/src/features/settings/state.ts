@@ -2,7 +2,7 @@
 // One settings tab for everyone: a page is offered when its parts are available to the person. Two pages belong to
 // other features and come from the registry (fees: finances, calendar: events) - until a feature registered its page,
 // the page is not offered.
-import { createSignal } from 'solid-js';
+import { createSignal, onFlush } from 'solid-js';
 import { t } from '../../app/i18n';
 import { settingsPages } from '../../app/registry';
 import { leaveHistoryLevels, pushHistoryLevel } from '../../app/router';
@@ -11,7 +11,6 @@ import { scrollPageToTop } from '../../app/shell';
 import { fullName } from '../../app/util';
 import type { IconName } from '../../ui/Icon';
 import { notificationSummary } from './notifications';
-import { flushNow } from '../../app/flush';
 
 /** The person as the profile row and page show them: the name, or the e-mail address without one. */
 export const profileName = () => fullName(currentUser()) || currentUser()?.email || '';
@@ -83,10 +82,12 @@ export function openSettingsPage(key: SettingsPageKey, { fromRoute = false } = {
   // From the menu to a page: a level of its own (moving between pages beside the menu is not one)
   if (!fromRoute && !openPage()) pushHistoryLevel('page');
   setOpenPage(key);
-  flushNow();
-  scrollPageToTop();
-  // The row that had the focus is gone now: keyboard and screen reader users continue at the page title
-  document.getElementById(PAGE_TITLE_ID)?.focus({ preventScroll: true });
+  // Once the page shows: from its top; the row that had the focus is gone, keyboard and screen reader users continue
+  // at the page title
+  onFlush(() => {
+    scrollPageToTop();
+    document.getElementById(PAGE_TITLE_ID)?.focus({ preventScroll: true });
+  });
 }
 
 /** Back to the menu. fromHistory: the back gesture already left the page's history level. */
@@ -94,13 +95,14 @@ export function closeSettingsPage(fromHistory = false) {
   if (!fromHistory) leaveHistoryLevels('page');
   const left = openPage();
   setOpenPage(null);
-  flushNow();
-  scrollPageToTop();
-  document.getElementById(MENU_ID)?.querySelector<HTMLElement>(`[data-key="${left}"]`)?.focus({ preventScroll: true });
+  // Once the menu shows: the focus back on the row of the page that was open
+  onFlush(() => {
+    scrollPageToTop();
+    document.getElementById(MENU_ID)?.querySelector<HTMLElement>(`[data-key="${left}"]`)?.focus({ preventScroll: true });
+  });
 }
 
 /** Entering the tab: the menu (a page left open before is closed without a step in the history). */
 export function showSettingsMenu() {
   setOpenPage(null);
-  flushNow();
 }

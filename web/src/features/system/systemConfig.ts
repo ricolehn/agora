@@ -9,7 +9,6 @@ import { attempt, showToast } from '../../app/toast';
 import { toFormData } from '../../app/util';
 import { createForm } from '../../ui/form';
 import { loadAiConfig } from './ai';
-import { flushNow } from '../../app/flush';
 
 // Members whose app has not reported a language yet get the instance's default language (English unless chosen)
 const BASE_LANGUAGE = 'en';
@@ -66,7 +65,6 @@ export async function loadAdvancedSystemConfig() {
         form.smtpPass = data.smtp?.pass || '';
         form.smtpSecure = !!data.smtp?.secure;
       });
-      flushNow();
       configLoaded = true;
       await loadAiConfig();
     },

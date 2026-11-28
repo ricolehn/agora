@@ -1,7 +1,6 @@
 // Changing or deleting a booked entry (edit-payment-modal, confirm-delete-modal): a member's payment on the latest
 // copy of the member's record, a donation or an expense (with its receipts) in the stored list.
 import { For, Match, Show, Switch, createSignal } from 'solid-js';
-import { flushNow } from '../../../app/flush';
 import { findPerson, mutateCollection, mutatePerson, replaceById, sumAmounts, uploadReceipt } from '../../../app/data';
 import { t } from '../../../app/i18n';
 import { closeModal, closeMultipleModals, openModal } from '../../../app/modals';
@@ -73,7 +72,6 @@ export function openEditPayment(tx: Transaction) {
   setIssuer(isExpense ? payment.issuer || payment.name || '' : '');
   setReceipts(isExpense ? parseReceipts(payment.receipt) : []);
   setSaving(false);
-  flushNow();
   openModal('edit-payment-modal');
 }
 

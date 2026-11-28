@@ -4,7 +4,6 @@
 import { createSignal } from 'solid-js';
 import { openModal } from '../app/modals';
 import { convertHeic, loadImage, readAsDataUrl } from '../app/util';
-import { flushNow } from '../app/flush';
 
 export type CropShape = 'square' | 'wide';
 export interface CropRequest {
@@ -43,7 +42,6 @@ async function prepare(request: CropRequest) {
   if (!size) return;
   setCropSource({ src, width: size[0], height: size[1] });
   setCropRequest(request);
-  flushNow();
   openModal(CROP_MODAL_ID);
 }
 

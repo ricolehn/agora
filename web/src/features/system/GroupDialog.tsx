@@ -10,7 +10,6 @@ import { Input } from '../../ui/form';
 import { MODAL_TINTS, Modal, ModalSection } from '../../ui/Modal';
 import { filterByGroup, groupFilter, refreshGroupsAndUsers } from './accounts';
 import { CheckItem, CheckList, DialogActions } from './parts';
-import { flushNow } from '../../app/flush';
 
 const MODAL_ID = 'manage-group-modal';
 
@@ -24,7 +23,6 @@ export function openGroupModal(group: { id: string; name: string; permissions?: 
   setGroupId(group ? group.id : '');
   setGroupName(group ? group.name : '');
   setPermissions(Array.isArray(group?.permissions) ? [...group.permissions] : []);
-  flushNow();
   openModal(MODAL_ID);
 }
 

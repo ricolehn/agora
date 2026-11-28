@@ -7,7 +7,6 @@ import { attempt, showToast } from '../../app/toast';
 import { Button } from '../../ui/Button';
 import { Field, PasswordInput } from '../../ui/form';
 import { Modal } from '../../ui/Modal';
-import { flushNow } from '../../app/flush';
 
 const MODAL_ID = 'reset-password-modal';
 
@@ -17,7 +16,6 @@ const [password, setPassword] = createSignal('');
 export function openResetPasswordModal(uid: string, name: string) {
   setTarget({ uid, name });
   setPassword('');
-  flushNow();
   openModal(MODAL_ID);
 }
 

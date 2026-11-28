@@ -9,7 +9,6 @@ import { getTodayStr } from '../../app/util';
 import { Button } from '../../ui/Button';
 import { Field, Input, PasswordInput, Select, SwitchRow, createForm } from '../../ui/form';
 import { Modal } from '../../ui/Modal';
-import { flushNow } from '../../app/flush';
 
 const MODAL_ID = 'create-user-modal';
 
@@ -30,7 +29,6 @@ export function openCreateUserModal() {
   setForm(draft => {
     Object.assign(draft, empty());
   });
-  flushNow();
   openModal(MODAL_ID);
 }
 

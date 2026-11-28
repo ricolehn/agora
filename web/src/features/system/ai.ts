@@ -5,7 +5,6 @@ import { t } from '../../app/i18n';
 import { isSuperAdminUser, setAiEnabled } from '../../app/session';
 import { showToast } from '../../app/toast';
 import { createForm } from '../../ui/form';
-import { flushNow } from '../../app/flush';
 
 export type AiProvider = 'anthropic' | 'gemini' | 'openai' | 'custom';
 export type AiEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -83,15 +82,14 @@ export function selectAiProvider(value: string) {
     if (provider !== savedProvider && form.apiKey === '***') form.apiKey = '';
     else if (provider === savedProvider && !form.apiKey) form.apiKey = '***';
   });
-  flushNow();
 }
 
 // A server of an earlier version: the service stays the OpenAI-compatible one and the effort level cannot be chosen,
-// and the note says why - with the reason the database upgrade gives when the previous backend runs in its place
-async function showAiServerSupport(supported: boolean) {
+// and the note says why - with the reason the database upgrade gives when the previous backend runs in its place.
+// [provider]: the service the form shows (just written: the form's store shows it with Solid's next update)
+async function showAiServerSupport(supported: boolean, provider = aiForm.provider) {
   setProvidersSupported(supported);
-  flushNow();
-  if (!supported && aiForm.provider !== 'custom') selectAiProvider('custom');
+  if (!supported && provider !== 'custom') selectAiProvider('custom');
   if (supported) {
     setServerNote(null);
     return;
@@ -130,8 +128,7 @@ export async function loadAiConfig({ fresh = false } = {}) {
       form.model = data.model || '';
       form.effort = isEffort(data.effort) ? data.effort : 'medium';
     });
-    flushNow();
-    void showAiServerSupport(supported);
+    void showAiServerSupport(supported, savedProvider);
   } catch (err) {
     console.error('The AI settings could not be loaded:', err);
   }

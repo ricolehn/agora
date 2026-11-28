@@ -3,7 +3,6 @@
 // receipts of a record, ReceiptFileRow is one receipt as a compact row (lists to manage receipts in).
 import type { JSX } from '@solidjs/web';
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js';
-import { flushNow } from '../../../app/flush';
 import { fetchReceiptImage } from '../../../app/data';
 import { t } from '../../../app/i18n';
 import { closeModal, openModal } from '../../../app/modals';
@@ -27,7 +26,6 @@ const [preview, setPreview] = createSignal<{ title: string; url: string; filenam
 /** Opens a receipt picture large (receipt-preview-modal), with its download. */
 export function showReceiptImage(title: string, url: string, filename: string) {
   setPreview({ title: title || t('receipt', 'Receipt'), url, filename });
-  flushNow();
   openModal('receipt-preview-modal');
 }
 
