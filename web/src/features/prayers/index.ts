@@ -5,13 +5,14 @@ import { activeTab, onTabEnter } from '../../app/router';
 import { currentUser } from '../../app/session';
 import { PrayerEditModal, PrayerOptionsModal, openPrayerEditor } from './PrayerDialogs';
 import { PrayersPage } from './PrayersPage';
-import { loadPrayers } from './store';
+import { refreshPrayers } from './store';
 
 registerTab('prayers', PrayersPage);
 registerRoot(PrayerEditModal);
 registerRoot(PrayerOptionsModal);
-onTabEnter('prayers', () => void loadPrayers());
+// Every visit brings the latest requests (the first one loads them: the page reads them)
+onTabEnter('prayers', () => void refreshPrayers());
 // The "+" opens the editor directly (one action, no menu)
 registerFab('prayers', { visible: () => !!currentUser(), action: openPrayerEditor });
 // A live update reloads the requests only while they are shown
-registerRemoteLoader('prayers', () => (activeTab() === 'prayers' ? loadPrayers() : null));
+registerRemoteLoader('prayers', () => (activeTab() === 'prayers' ? refreshPrayers() : null));

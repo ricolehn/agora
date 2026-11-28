@@ -1,10 +1,9 @@
 // Prayer requests (Extras): a calm list; a request is shared (also anonymously) and removed when it is done. The
 // server never tells who shared an anonymous request (backend/prayers.js).
-import { createSignal } from 'solid-js';
-import { apiJson, errorMessage } from '../../app/api';
+import { action, createOptimistic, createRoot, createSignal, refresh } from 'solid-js';
+import { apiJson } from '../../app/api';
 import { shortDayText, t, uiLocale } from '../../app/i18n';
-import { showToast } from '../../app/toast';
-import { flushNow } from '../../app/flush';
+import { serverData } from '../../app/serverData';
 
 export type Prayer = {
   id: string;
@@ -20,34 +19,41 @@ export type Prayer = {
 export type PrayerFilter = 'all' | 'mine';
 export type PrayerDuration = 'week' | 'month' | 'quarter';
 
-const [prayers, setPrayers] = createSignal<Prayer[]>([]);
-const [prayersLoaded, setPrayersLoaded] = createSignal(false);
-// A first load that failed: its message with "Try again" (a later failed refresh keeps the list and says so)
-const [prayersError, setPrayersError] = createSignal('');
+// The requests as the server has them: loaded when the tab first shows them, again on every visit, live update and
+// change (app/serverData.ts)
+const serverPrayers = serverData(() =>
+  apiJson<{ prayers?: Prayer[] }>('/prayers', 'GET', undefined, t('prayers_load_failed', 'Prayer requests could not be loaded')).then(data =>
+    Array.isArray(data.prayers) ? data.prayers : []
+  )
+);
+/** Loads the requests again (the list keeps showing the last ones meanwhile). */
+export const refreshPrayers = () => refresh(serverPrayers);
+
+// What the page shows: the server's requests, a removal already applied while the server is asked
+const [prayers, setShownPrayers] = createRoot(() => createOptimistic<Prayer[]>(() => serverPrayers(), { lazy: true }));
+export { prayers };
+
 const [prayerFilter, setPrayerFilter] = createSignal<PrayerFilter>('all');
-export { prayers, prayersLoaded, prayersError, prayerFilter, setPrayerFilter };
+export { prayerFilter, setPrayerFilter };
 
-export async function loadPrayers(): Promise<void> {
-  try {
-    const data = await apiJson<{ prayers?: Prayer[] }>('/prayers', 'GET', undefined, t('prayers_load_failed', 'Prayer requests could not be loaded'));
-    setPrayers(Array.isArray(data.prayers) ? data.prayers : []);
-    setPrayersLoaded(true);
-    setPrayersError('');
-  } catch (err) {
-    if (!prayersLoaded()) setPrayersError(errorMessage(err));
-    else showToast(errorMessage(err), 'error');
-  }
-  flushNow();
-}
+/** True while a new request is on its way (its button waits); back to false by itself when the sharing ends. */
+const [sharing, setSharing] = createOptimistic(false);
+export { sharing };
 
-export function replacePrayer(updated: Prayer) {
-  setPrayers(list => list.map(p => (p.id === updated.id ? updated : p)));
-  flushNow();
-}
-export function removePrayer(id: string) {
-  setPrayers(list => list.filter(p => p.id !== id));
-  flushNow();
-}
+/** Shares a request; it is in the list when this resolves. */
+export const sharePrayer = action(function* (request: { text: string; anonymous: boolean; duration: PrayerDuration }) {
+  setSharing(true);
+  yield apiJson('/prayers', 'POST', request, t('prayers_share_failed', 'The prayer request could not be shared'));
+  yield refreshPrayers();
+});
+
+/** Done (own request) or removed by a moderator: gone from the list at once, back when the server refuses. */
+export const removePrayer = action(function* (id: string) {
+  setShownPrayers(list => list.filter(p => p.id !== id));
+  yield apiJson(`/prayers/${encodeURIComponent(id)}`, 'DELETE', undefined, t('prayers_delete_failed', 'The prayer request could not be deleted'));
+  // The list as it is now ends the removal: it never shows the request again in between
+  yield refreshPrayers();
+});
 
 // --- Labels ---
 export const prayerDate = (ms: number) => shortDayText(new Date(ms));

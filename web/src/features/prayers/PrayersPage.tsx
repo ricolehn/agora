@@ -1,12 +1,12 @@
 // The prayer requests tab: each request as its own quiet card - the words first, who and when small above. Own
 // requests (and every request for moderators) open their options with a tap.
-import { For, Match, Show, Switch, createSignal, onSettled } from 'solid-js';
+import { For, Show, createSignal, onSettled } from 'solid-js';
 import { t } from '../../app/i18n';
 import { Avatar } from '../../ui/Avatar';
 import { Icon } from '../../ui/Icon';
-import { AppHead, FilterPills, ListEmpty, ListLoading } from '../../ui/pages';
+import { AppHead, FilterPills, ListEmpty, Loaded } from '../../ui/pages';
 import { openPrayerOptions } from './PrayerDialogs';
-import { type Prayer, type PrayerFilter, loadPrayers, prayerDate, prayerFilter, prayerName, prayers, prayersError, prayersLoaded, setPrayerFilter, timeAgo } from './store';
+import { type Prayer, type PrayerFilter, prayerDate, prayerFilter, prayerName, prayers, setPrayerFilter, timeAgo } from './store';
 import { onActivateKey } from '../../ui/keys';
 
 const FILTERS: Array<{ value: PrayerFilter; label: () => string }> = [
@@ -15,7 +15,6 @@ const FILTERS: Array<{ value: PrayerFilter; label: () => string }> = [
 ];
 
 export function PrayersPage() {
-  const shown = () => prayers().filter(p => (prayerFilter() === 'mine' ? p.isMine : !p.expired));
   return (
     // Reading width like the chat on desktop
     <div class="md:mx-auto md:max-w-[760px]">
@@ -26,29 +25,31 @@ export function PrayersPage() {
       </p>
       <FilterPills value={prayerFilter()} options={FILTERS} onChange={setPrayerFilter} />
       <div id="prayers-list">
-        <Switch>
-          <Match when={!prayersLoaded() && prayersError()}>
-            <ListEmpty icon="heart" tone="rose" title={prayersError()} onRetry={() => void loadPrayers()} />
-          </Match>
-          <Match when={!prayersLoaded()}>
-            <ListLoading />
-          </Match>
-          <Match when={!shown().length}>
-            <ListEmpty
-              icon="heart"
-              tone="rose"
-              title={prayerFilter() === 'mine' ? t('prayers_empty_mine', 'You have not shared a request yet') : t('prayers_empty_open', 'No prayer requests right now')}
-              hint={t('prayers_empty_hint', 'Share a request with the plus at the bottom right.')}
-            />
-          </Match>
-          <Match when={true}>
-            <div class="flex flex-col gap-2.5">
-              <For each={shown()} keyed={p => p.id}>{prayer => <PrayerRow prayer={prayer()} />}</For>
-            </div>
-          </Match>
-        </Switch>
+        <Loaded data={prayers} icon="heart" tone="rose">
+          {list => <PrayerList prayers={list().filter(p => (prayerFilter() === 'mine' ? p.isMine : !p.expired))} />}
+        </Loaded>
       </div>
     </div>
+  );
+}
+
+function PrayerList(props: { prayers: Prayer[] }) {
+  return (
+    <Show
+      when={props.prayers.length}
+      fallback={
+        <ListEmpty
+          icon="heart"
+          tone="rose"
+          title={prayerFilter() === 'mine' ? t('prayers_empty_mine', 'You have not shared a request yet') : t('prayers_empty_open', 'No prayer requests right now')}
+          hint={t('prayers_empty_hint', 'Share a request with the plus at the bottom right.')}
+        />
+      }
+    >
+      <div class="flex flex-col gap-2.5">
+        <For each={props.prayers} keyed={p => p.id}>{prayer => <PrayerRow prayer={prayer()} />}</For>
+      </div>
+    </Show>
   );
 }
 
@@ -67,7 +68,7 @@ function PrayerRow(props: { prayer: Prayer }) {
       .filter(Boolean)
       .join(' · ');
   const open = () => {
-    if (editable()) openPrayerOptions(props.prayer.id);
+    if (editable()) openPrayerOptions(props.prayer);
   };
   return (
     <div

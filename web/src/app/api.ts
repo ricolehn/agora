@@ -1,5 +1,6 @@
 // The backend API. Plain objects go out as JSON, FormData as it is; the session token comes from the compat layer
 // (pocketbase-compat.ts: the Firebase-like data and auth calls the app has always used against /api/db and /api/auth).
+import { untrack } from 'solid-js';
 import {
   initializeApp, getDatabase, getAuth, ref, set, get, child, update, query, orderByChild, equalTo, runTransaction, apiGet,
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updatePassword
@@ -22,14 +23,21 @@ export { API };
 export const getToken = async (): Promise<string> => (auth.currentUser ? auth.currentUser.getIdToken() : '');
 
 export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  // What a request takes from the app's state - the language of the answer, the texts of a failed sign-in - is the
+  // state when it is sent: read once (untracked, also from an effect or an async value) and before it waits
+  const { language, authFailed, unknownError } = untrack(() => ({
+    language: uiLang(),
+    authFailed: t('error_auth_failed', 'Authentication failed. Please sign in again.'),
+    unknownError: t('error_unknown', 'Unknown error')
+  }));
   let token: string;
   try {
     token = await auth.currentUser!.getIdToken();
   } catch (tokenError) {
     const { code, message } = asFailure(tokenError);
-    throw new Error(t('error_auth_failed', 'Authentication failed. Please sign in again.') + ' (' + (code || message || t('error_unknown', 'Unknown error')) + ')');
+    throw new Error(authFailed + ' (' + (code || message || unknownError) + ')');
   }
-  const headers: Record<string, string> = { 'Accept-Language': uiLang(), ...((options.headers as Record<string, string>) || {}), Authorization: `Bearer ${token}` };
+  const headers: Record<string, string> = { 'Accept-Language': language, ...((options.headers as Record<string, string>) || {}), Authorization: `Bearer ${token}` };
   if (typeof options.body === 'string' && !headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
   return fetch(url, { ...options, headers });
 }
@@ -69,9 +77,11 @@ export const errorStatus = (err: unknown): number | undefined => asFailure(err).
 
 /** Like api(), but resolves to the parsed JSON body and throws the backend's error message on failure. */
 export async function apiJson<T = unknown>(path: string, method = 'GET', body?: unknown, fallbackError?: string): Promise<T> {
-  // No connection: the browser's own English "Failed to fetch" reached the screen, also in German
+  // No connection: the browser's own English "Failed to fetch" reached the screen, also in German (the text is read
+  // once when the request is sent, like the language in fetchWithAuth)
+  const connectionError = untrack(() => t('error_connection', 'Connection error'));
   const res = await api(path, method, body).catch(err => {
-    throw Object.assign(new Error(t('error_connection', 'Connection error')), { cause: err, offline: true });
+    throw Object.assign(new Error(connectionError), { cause: err, offline: true });
   });
   const data = (await res.json().catch(() => ({}))) as ErrorAnswer;
   if (!res.ok) throw Object.assign(new Error(data.error || data.message || fallbackError || `HTTP ${res.status}`), { data, status: res.status }) as Failure;

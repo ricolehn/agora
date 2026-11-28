@@ -12,15 +12,13 @@ import { Icon } from '../../ui/Icon';
 import { Modal, ModalPart, PART_LABEL } from '../../ui/Modal';
 import { Pill, Pills } from '../../ui/PillTabs';
 import {
-  type Prayer, type PrayerDuration, loadPrayers, prayerDate, prayerName, prayers, removePrayer, replacePrayer, setPrayerFilter, timeAgo
+  type Prayer, type PrayerDuration, prayerDate, prayerName, prayers, refreshPrayers, removePrayer, setPrayerFilter, sharePrayer, sharing, timeAgo
 } from './store';
-import { flushNow } from '../../app/flush';
 
 // --- Share a request ---
 const [draft, setDraft] = createSignal('');
 const [anonymous, setAnonymous] = createSignal(false);
 const [duration, setDuration] = createSignal<PrayerDuration>('month');
-const [sharing, setSharing] = createSignal(false);
 let textField: HTMLTextAreaElement | undefined;
 
 // Leaving with a written request asks first (Cancel, ×, Escape, the back gesture)
@@ -31,30 +29,26 @@ export function openPrayerEditor() {
   setDraft('');
   setAnonymous(false);
   setDuration('month');
-  flushNow();
   openModal('prayer-edit-modal');
   setTimeout(() => textField?.focus(), 150);
 }
 
-async function submitPrayer() {
+function submitPrayer() {
   const text = draft().trim();
   if (text.length < 3) {
     showToast(t('prayers_too_short', 'Please write your request (at least 3 characters).'), 'error');
     textField?.focus();
     return;
   }
-  setSharing(true);
-  try {
-    await apiJson('/prayers', 'POST', { text, anonymous: anonymous(), duration: duration() }, t('prayers_share_failed', 'The prayer request could not be shared'));
-    closeModal('prayer-edit-modal', false, true);
-    showToast(t('prayers_shared', 'Your prayer request has been shared'));
-    setPrayerFilter('all');
-    await loadPrayers();
-  } catch (err) {
-    showToast(errorMessage(err), 'error');
-  } finally {
-    setSharing(false);
-  }
+  // A request the server refuses keeps the dialog open with the text
+  sharePrayer({ text, anonymous: anonymous(), duration: duration() }).then(
+    () => {
+      closeModal('prayer-edit-modal', false, true);
+      showToast(t('prayers_shared', 'Your prayer request has been shared'));
+      setPrayerFilter('all');
+    },
+    err => showToast(errorMessage(err), 'error')
+  );
 }
 
 const DURATIONS: Array<{ value: PrayerDuration; label: () => string }> = [
@@ -79,7 +73,7 @@ export function PrayerEditModal() {
           <Button variant="secondary" class="shrink-0" onClick={() => closeModal('prayer-edit-modal')}>
             {t('btn_cancel', 'Cancel')}
           </Button>
-          <Button id="prayer-submit" class="flex-auto" disabled={sharing()} onClick={() => void submitPrayer()}>
+          <Button id="prayer-submit" class="flex-auto" disabled={sharing()} onClick={submitPrayer}>
             {t('prayers_share', 'Share')}
           </Button>
         </div>
@@ -139,18 +133,17 @@ export function PrayerEditModal() {
 const [optionsId, setOptionsId] = createSignal<string | null>(null);
 
 /** The options of a request: extend and "done" for its owner, remove for moderators. */
-export function openPrayerOptions(id: string) {
-  const p = prayers().find(item => item.id === id);
-  if (!p || !(p.isMine || p.canDelete)) return;
-  setOptionsId(id);
-  flushNow();
+export function openPrayerOptions(prayer: Prayer) {
+  if (!(prayer.isMine || prayer.canDelete)) return;
+  setOptionsId(prayer.id);
   openModal('prayer-options-modal');
 }
 
 function extendPrayer(id: string) {
   return once(`prayer:${id}`, async () => {
     try {
-      replacePrayer(await apiJson<Prayer>(`/prayers/${encodeURIComponent(id)}`, 'PATCH', { extend: 'month' }, t('prayers_save_failed', 'The prayer request could not be saved')));
+      await apiJson(`/prayers/${encodeURIComponent(id)}`, 'PATCH', { extend: 'month' }, t('prayers_save_failed', 'The prayer request could not be saved'));
+      await refreshPrayers();
       closeModal('prayer-options-modal');
       showToast(t('prayers_extended', 'Shown for another month'));
     } catch (err) {
@@ -159,28 +152,27 @@ function extendPrayer(id: string) {
   });
 }
 
-/** Done (own request) or removed by a moderator; only a moderator's removal asks first. */
-function deletePrayer(id: string) {
-  return once(`prayer:${id}`, async () => {
-    const mine = prayers().find(p => p.id === id)?.isMine;
-    if (!mine && !confirmAction(t('prayers_remove_confirm', 'Remove this prayer request for everyone?'))) return;
-    try {
-      await apiJson(`/prayers/${encodeURIComponent(id)}`, 'DELETE', undefined, t('prayers_delete_failed', 'The prayer request could not be deleted'));
-      closeModal('prayer-options-modal');
-      removePrayer(id);
-      showToast(mine ? t('prayers_done_toast', 'Removed - thank you for sharing') : t('prayers_deleted', 'Prayer request deleted'));
-    } catch (err) {
-      showToast(errorMessage(err), 'error');
-    }
-  });
+/** Done (own request) or removed by a moderator; only a moderator's removal asks first. The dialog closes and the
+ *  request leaves the list at once; when the server refuses, it comes back with the reason. */
+function deletePrayer(prayer: Prayer) {
+  if (!prayer.isMine && !confirmAction(t('prayers_remove_confirm', 'Remove this prayer request for everyone?'))) return;
+  closeModal('prayer-options-modal');
+  removePrayer(prayer.id).then(
+    () => showToast(prayer.isMine ? t('prayers_done_toast', 'Removed - thank you for sharing') : t('prayers_deleted', 'Prayer request deleted')),
+    err => showToast(errorMessage(err), 'error')
+  );
 }
 
 // Full width, the symbol close to the text (.prayer-options-actions .btn)
 const ACTION = 'w-full !gap-1.5';
 
 export function PrayerOptionsModal() {
-  // A request that was just removed stays on screen while the dialog fades out
-  const prayer = createMemo<Prayer | null>(prev => prayers().find(p => p.id === optionsId()) ?? prev ?? null);
+  // A request that was just removed stays on screen while the dialog fades out. The list is read only while the
+  // dialog is open for a request (closed, the app does not load it for the dialog)
+  const prayer = createMemo<Prayer | null>(prev => {
+    const id = optionsId();
+    return (id && prayers().find(p => p.id === id)) || prev || null;
+  });
   const subtitle = () => {
     const p = prayer();
     if (!p) return '';
@@ -202,7 +194,7 @@ export function PrayerOptionsModal() {
               <Show
                 when={p().isMine}
                 fallback={
-                  <Button variant="danger" class={ACTION} onClick={() => void deletePrayer(p().id)}>
+                  <Button variant="danger" class={ACTION} onClick={() => deletePrayer(p())}>
                     <Icon name="trash" size={15} />
                     <span>{t('prayers_remove', 'Remove')}</span>
                   </Button>
@@ -212,7 +204,7 @@ export function PrayerOptionsModal() {
                   <Icon name="clock" size={15} />
                   <span>{t('prayers_extend_month', 'One more month')}</span>
                 </Button>
-                <Button class={ACTION} onClick={() => void deletePrayer(p().id)}>
+                <Button class={ACTION} onClick={() => deletePrayer(p())}>
                   <Icon name="check" size={15} strokeWidth={2.6} />
                   <span>{t('prayers_done', 'Done - remove')}</span>
                 </Button>

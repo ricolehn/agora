@@ -2,7 +2,8 @@
 // Extras, the filter pills, the empty / loading / error states of a list, and the editor pages that open over the app
 // (a new poll, a song).
 import type { JSX } from '@solidjs/web';
-import { For, Show } from 'solid-js';
+import { Errored, For, Loading, Show } from 'solid-js';
+import { errorMessage } from '../app/api';
 import { t } from '../app/i18n';
 import { switchTab } from '../app/router';
 import { Button } from './Button';
@@ -112,6 +113,23 @@ export function ListLoading() {
     <div class="flex justify-center py-12">
       <Spinner />
     </div>
+  );
+}
+
+/**
+ * The part of a page that shows server data (app/serverData.ts): the loading indicator until the first answer (and
+ * while "Try again" asks again), a failed first load with its reason and "Try again", else [children] with the data.
+ */
+export function Loaded<T>(props: { data: () => T | undefined; icon: IconName; tone: EmptyTone; children: (data: () => NonNullable<T>) => JSX.Element }) {
+  return (
+    <Errored fallback={(err, retry) => <ListEmpty icon={props.icon} tone={props.tone} title={errorMessage(err())} onRetry={retry} />}>
+      <Loading fallback={<ListLoading />}>
+        {/* "Try again" asks again without an answer to show meanwhile */}
+        <Show when={props.data()} fallback={<ListLoading />}>
+          {data => props.children(data)}
+        </Show>
+      </Loading>
+    </Errored>
   );
 }
 

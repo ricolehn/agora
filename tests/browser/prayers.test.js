@@ -1,5 +1,6 @@
 // Prayer requests in the browser: sharing (with the name or anonymously), what the others see at once, the filter,
-// extending and removing one's own, a moderator removing another's, and a share the server refuses.
+// extending and removing one's own, a moderator removing another's, a share and a removal the server refuses, a first
+// load that fails and a later one that fails.
 const { describe, test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { skipReason, startApp, until } = require('./harness');
@@ -103,5 +104,48 @@ describe('prayer requests (browser)', { skip: skipReason || false }, () => {
     await share(max.page, 'A request that does not get through');
     await max.toast('Not right now');
     assert.equal(await max.page.locator('#prayer-text').inputValue(), 'A request that does not get through');
+  });
+
+  test('a removal the server refuses: the request leaves at once and comes back with the reason', async () => {
+    const { http } = app;
+    await http.ok(http.call('max', 'POST', '/api/prayers', { text: 'Patience with my neighbours', anonymous: false, duration: 'week' }));
+    const max = await app.signIn('max');
+    await max.go('/prayers');
+    max.expectProblems(/^500 DELETE \/api\/prayers\//);
+    let answer = null;
+    await max.page.route('**/api/prayers/*', async route => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      // The answer waits until the list has been looked at
+      await new Promise(resolve => (answer = resolve));
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Not deleted' }) });
+    });
+    await list(max.page).getByRole('button', { name: /Patience with my neighbours/ }).click();
+    await max.page.getByRole('button', { name: 'Done - remove' }).click();
+    await until(async () => (await shown(max.page, 'Patience with my neighbours')) === 0, 'the request to leave at once');
+    await until(() => answer !== null, 'the removal to be asked');
+    answer();
+    await max.toast('Not deleted');
+    await list(max.page).getByText('Patience with my neighbours').waitFor();
+  });
+
+  test('a first load that fails shows its reason; "Try again" brings the requests, a later failed one keeps them', async () => {
+    const max = await app.signIn('max');
+    max.expectProblems(/^500 GET \/api\/prayers$/);
+    let refuse = 1;
+    await max.page.route('**/api/prayers', route => {
+      if (route.request().method() !== 'GET' || !refuse) return route.fallback();
+      refuse -= 1;
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'The list is resting' }) });
+    });
+    await max.go('/prayers');
+    await list(max.page).getByText('The list is resting').waitFor();
+    await list(max.page).getByRole('button', { name: 'Try again' }).click();
+    await list(max.page).getByText('Patience with my neighbours').waitFor();
+    // Another visit of the tab asks again: refused, the list stays and the reason shows
+    refuse = 1;
+    await max.page.locator('#desktop-nav').getByRole('button', { name: 'Extras' }).click();
+    await max.page.getByRole('button', { name: /Prayer requests/ }).click();
+    await max.toast('The list is resting');
+    assert.equal(await shown(max.page, 'Patience with my neighbours'), 1);
   });
 });
