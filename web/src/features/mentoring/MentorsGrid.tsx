@@ -1,42 +1,50 @@
 // "Find mentors": the approved mentors as cards - contact one anonymously, go to the own conversation with them,
 // or edit the own profile. Managers also see fully booked mentors and everyone's capacity.
-import { For, Match, Show, Switch } from 'solid-js';
+import { Errored, For, Loading, Match, Show, Switch } from 'solid-js';
+import { errorStatus } from '../../app/api';
 import { t } from '../../app/i18n';
 import { canManageMentoring } from '../../app/session';
 import { Avatar } from '../../ui/Avatar';
 import { Button } from '../../ui/Button';
 import {
-  isOwnMentorCard, mentorCapacity, mentorsState, openChatDirect, openMentorApplicationModal, openMentorContactModal, threadWithMentor,
+  isOwnMentorCard, mentorCapacity, mentorsList, openChatDirect, openMentorApplicationModal, openMentorContactModal, threadWithMentor,
   visibleMentors, type Mentor
 } from './store';
 
 export function MentorsGrid() {
   return (
     <div id="mentors-grid" class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-[18px] max-md:grid-cols-[minmax(0,1fr)]">
-      <Switch>
-        <Match when={mentorsState() === 'failed'}>
-          <div class="col-span-full p-[30px] text-center text-text-secondary">{t('mentoring_load_error', 'Mentors could not be loaded.')}</div>
-        </Match>
-        <Match when={mentorsState() === 'offline'}>
-          <div class="col-span-full p-[30px] text-center text-danger">{t('mentoring_network_error', 'Network error while loading mentors.')}</div>
-        </Match>
-        <Match when={mentorsState() === 'loaded' && !visibleMentors().length}>
-          <div class="col-span-full px-5 py-10 text-center text-text-secondary">
-            <div class="mb-2.5 text-[2.5rem]">👥</div>
-            <div class="mb-1.5 text-[1.1rem] font-semibold">{t('mentoring_no_mentors_title', 'No mentors currently available')}</div>
-            <div class="text-[0.9rem]">
-              {canManageMentoring()
-                ? t('mentoring_no_mentors_desc_manager', 'Once applications are approved, mentors will appear here.')
-                : t('mentoring_no_mentors_desc_user', 'All mentors are currently fully booked or no approved profiles are available.')}
-            </div>
-          </div>
-        </Match>
-        <Match when={mentorsState() === 'loaded'}>
-          <For each={visibleMentors()} keyed={mentor => mentor.id}>
-            {mentor => <MentorCard mentor={mentor()} />}
-          </For>
-        </Match>
-      </Switch>
+      {/* A refused request and no connection read differently; the next visit of "Find mentors" asks again */}
+      <Errored
+        fallback={err =>
+          errorStatus(err()) ? (
+            <div class="col-span-full p-[30px] text-center text-text-secondary">{t('mentoring_load_error', 'Mentors could not be loaded.')}</div>
+          ) : (
+            <div class="col-span-full p-[30px] text-center text-danger">{t('mentoring_network_error', 'Network error while loading mentors.')}</div>
+          )
+        }
+      >
+        <Loading>
+          <Show
+            when={visibleMentors(mentorsList()).length}
+            fallback={
+              <div class="col-span-full px-5 py-10 text-center text-text-secondary">
+                <div class="mb-2.5 text-[2.5rem]">👥</div>
+                <div class="mb-1.5 text-[1.1rem] font-semibold">{t('mentoring_no_mentors_title', 'No mentors currently available')}</div>
+                <div class="text-[0.9rem]">
+                  {canManageMentoring()
+                    ? t('mentoring_no_mentors_desc_manager', 'Once applications are approved, mentors will appear here.')
+                    : t('mentoring_no_mentors_desc_user', 'All mentors are currently fully booked or no approved profiles are available.')}
+                </div>
+              </div>
+            }
+          >
+            <For each={visibleMentors(mentorsList())} keyed={mentor => mentor.id}>
+              {mentor => <MentorCard mentor={mentor()} />}
+            </For>
+          </Show>
+        </Loading>
+      </Errored>
     </div>
   );
 }

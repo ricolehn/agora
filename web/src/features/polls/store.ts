@@ -3,7 +3,7 @@
 import { action, createOptimistic, createRoot, createSignal, refresh } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { formatDateFast, t, timeText } from '../../app/i18n';
-import { serverData } from '../../app/serverData';
+import { createServerData } from '../../app/serverData';
 import { readStoredJson, store } from '../../app/storage';
 import { toDateStr } from '../../app/util';
 
@@ -27,7 +27,7 @@ export type PollFilter = 'open' | 'closed' | 'mine';
 
 // The polls as the server has them: loaded when the tab first shows them, again on every visit, live update, change
 // and when a running poll ends (app/serverData.ts)
-const serverPolls = serverData(() =>
+const serverPolls = createServerData(() =>
   apiJson<Poll[]>('/polls', 'GET', undefined, t('polls_load_failed', 'Polls could not be loaded')).then(list => (Array.isArray(list) ? list : []))
 );
 /** Loads the polls again (the list keeps showing the last ones meanwhile). */

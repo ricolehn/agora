@@ -1,6 +1,6 @@
 // Mentoring in the browser: applying and being approved, contacting a mentor, the chat in both directions (the mentor
 // sees a pseudonym, never the name), contacting again, the contact search, reporting, ending and reopening, blocking,
-// and a fully booked mentor.
+// a fully booked mentor, the review's filter and a list of mentors that failed to load.
 const { describe, test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { skipReason, startApp, until } = require('./harness');
@@ -132,5 +132,34 @@ describe('mentoring (browser)', { skip: skipReason || false }, () => {
     const full = owner.page.locator('#mentors-grid > div', { hasText: 'Mila Test' }).getByRole('button', { name: 'Fully booked' });
     await full.waitFor();
     assert.ok(await full.isDisabled());
+  });
+
+  test('the review filters by status: the approved mentor under "Approved", none left pending', async () => {
+    const owner = await app.signIn('owner');
+    await owner.go('/mentoring');
+    await tab(owner.page, 'Applications');
+    const list = owner.page.locator('#mentoring-review-list');
+    await list.getByText('No applications with status "Pending" found.').waitFor();
+    await owner.page.locator('#mentor-review-filter').selectOption('approved');
+    await list.getByText('Max Test').waitFor();
+    assert.equal(await list.getByRole('button', { name: '✓ Approve' }).count(), 0);
+    await owner.page.locator('#mentor-review-filter').selectOption('pending');
+    await list.getByText('No applications with status "Pending" found.').waitFor();
+  });
+
+  test('mentors that failed to load say so; the next visit of "Find mentors" shows them', async () => {
+    const mia = await app.signIn('mia');
+    mia.expectProblems(/^500 GET \/api\/mentoring\/mentors/);
+    let refuse = true;
+    await mia.page.route('**/api/mentoring/mentors*', route =>
+      refuse ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Not now' }) }) : route.fallback()
+    );
+    await mia.go('/mentoring');
+    await tab(mia.page, 'Find mentors');
+    await mia.page.locator('#mentors-grid').getByText('Mentors could not be loaded.').waitFor();
+    refuse = false;
+    await tab(mia.page, 'Messages');
+    await tab(mia.page, 'Find mentors');
+    await mia.page.locator('#mentors-grid > div', { hasText: 'Max Test' }).waitFor();
   });
 });

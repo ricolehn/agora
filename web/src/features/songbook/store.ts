@@ -4,7 +4,7 @@ import { action, createOptimistic, createRoot, refresh, until } from 'solid-js';
 import { apiJson, errorMessage } from '../../app/api';
 import { t, uiLocale } from '../../app/i18n';
 import { itemSlug } from '../../app/router';
-import { serverData } from '../../app/serverData';
+import { createServerData } from '../../app/serverData';
 import { searchText } from '../../lib/songbook';
 
 /** A song of the songbook (backend/songbook.js): the lyrics in ChordPro with its key, capo and tempo. */
@@ -39,7 +39,7 @@ export const sortSongs = (list: Song[]) => list.sort((a, b) => songCollator().co
 // Loaded when something first reads it - the songbook tab, a song's address, an event's plan with songs - and again
 // on every visit, live update and change (app/serverData.ts). Other parts read the songs on the way: until the first
 // answer there is none (null), and a failed first load is a value too
-const serverSongbook = serverData<Songbook | null>(
+const serverSongbook = createServerData<Songbook | null>(
   () =>
     apiJson<{ songs?: Song[]; canManage?: boolean; ccliLicense?: string }>('/songs', 'GET', undefined, t('songbook_load_failed', 'Songbook could not be loaded')).then(
       data => ({ songs: sortSongs([...(data.songs || [])]), canManage: data.canManage === true, license: data.ccliLicense || '' })

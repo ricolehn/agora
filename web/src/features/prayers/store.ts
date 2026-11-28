@@ -3,7 +3,7 @@
 import { action, createOptimistic, createRoot, createSignal, refresh } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { shortDayText, t, uiLocale } from '../../app/i18n';
-import { serverData } from '../../app/serverData';
+import { createServerData } from '../../app/serverData';
 
 export type Prayer = {
   id: string;
@@ -21,7 +21,7 @@ export type PrayerDuration = 'week' | 'month' | 'quarter';
 
 // The requests as the server has them: loaded when the tab first shows them, again on every visit, live update and
 // change (app/serverData.ts)
-const serverPrayers = serverData(() =>
+const serverPrayers = createServerData(() =>
   apiJson<{ prayers?: Prayer[] }>('/prayers', 'GET', undefined, t('prayers_load_failed', 'Prayer requests could not be loaded')).then(data =>
     Array.isArray(data.prayers) ? data.prayers : []
   )

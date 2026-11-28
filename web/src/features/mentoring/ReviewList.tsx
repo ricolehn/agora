@@ -1,11 +1,11 @@
 // Review of the mentor applications (mentoring managers): filter by status, approve or reject.
-import { For, Match, Show, Switch } from 'solid-js';
+import { Errored, For, Loading, Show, isPending } from 'solid-js';
 import { t, uiLocale } from '../../app/i18n';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
 import { Icon } from '../../ui/Icon';
 import { Select } from '../../ui/form';
-import { changeReviewFilter, loadMentoringReviewList, review, reviewFilter, setMentorStatus, type Mentor, type ReviewFilter } from './store';
+import { refreshReview, reviewFilter, reviewList, setMentorStatus, setReviewFilter, type Mentor, type ReviewFilter } from './store';
 
 // Tint, text key and English text of each status
 const STATUS_STYLES: Record<string, [string, string, string]> = {
@@ -15,14 +15,7 @@ const STATUS_STYLES: Record<string, [string, string, string]> = {
 };
 
 export function ReviewList() {
-  const emptyStatus = () => {
-    const shown = review();
-    return shown.state === 'empty' ? shown.status : null;
-  };
-  const applications = () => {
-    const shown = review();
-    return shown.state === 'list' ? shown.list : null;
-  };
+  const loadingText = () => <div class="p-5 text-center text-text-secondary">{t('mentoring_review_loading', 'Loading applications...')}</div>;
   return (
     <Card class="!rounded-[18px] !border-border-light" bodyClass="p-0">
       <div class="flex flex-wrap items-center justify-between gap-2.5 px-5 py-[18px]">
@@ -35,37 +28,40 @@ export function ReviewList() {
             id="mentor-review-filter"
             class="!w-auto !px-3 !py-[5px] !text-[0.85rem]"
             value={reviewFilter()}
-            onChange={e => changeReviewFilter(e.currentTarget.value as ReviewFilter)}
+            onChange={e => setReviewFilter(e.currentTarget.value as ReviewFilter)}
           >
             <option value="pending">{t('mentoring_filter_pending', 'Pending')}</option>
             <option value="approved">{t('mentoring_filter_approved', 'Approved')}</option>
             <option value="rejected">{t('mentoring_filter_rejected', 'Rejected')}</option>
             <option value="all">{t('mentoring_filter_all', 'All')}</option>
           </Select>
-          <Button variant="secondary" size="small" onClick={() => void loadMentoringReviewList()}>
+          <Button variant="secondary" size="small" onClick={() => void refreshReview()}>
             {t('mentoring_btn_refresh', 'Refresh')}
           </Button>
         </div>
       </div>
       <div id="mentoring-review-list" class="p-4">
-        <Switch>
-          <Match when={review().state === 'loading'}>
-            <div class="p-5 text-center text-text-secondary">{t('mentoring_review_loading', 'Loading applications...')}</div>
-          </Match>
-          <Match when={review().state === 'failed'}>
-            <div class="p-5 text-center text-danger">{t('mentoring_review_load_error', 'Failed to load applications.')}</div>
-          </Match>
-          <Match when={emptyStatus()}>
-            {status => (
-              <div class="p-[30px] text-center text-text-secondary">
-                {t('mentoring_review_none', 'No applications with status "{status}" found.', { status: t(`mentoring_filter_${status()}`, status()) })}
-              </div>
-            )}
-          </Match>
-          <Match when={applications()}>
-            {list => <For each={list()} keyed={mentor => mentor.id}>{mentor => <Application mentor={mentor()} />}</For>}
-          </Match>
-        </Switch>
+        {/* A failed load says so ("Refresh" asks again); another filter shows "Loading" until its applications are there */}
+        <Errored fallback={<div class="p-5 text-center text-danger">{t('mentoring_review_load_error', 'Failed to load applications.')}</div>}>
+          <Loading fallback={loadingText()}>
+            <Show when={!isPending(() => reviewList())} fallback={loadingText()}>
+              <Show
+                when={reviewList().list.length}
+                fallback={
+                  <div class="p-[30px] text-center text-text-secondary">
+                    {t('mentoring_review_none', 'No applications with status "{status}" found.', {
+                      status: t(`mentoring_filter_${reviewList().status}`, reviewList().status)
+                    })}
+                  </div>
+                }
+              >
+                <For each={reviewList().list} keyed={mentor => mentor.id}>
+                  {mentor => <Application mentor={mentor()} />}
+                </For>
+              </Show>
+            </Show>
+          </Loading>
+        </Errored>
       </div>
     </Card>
   );

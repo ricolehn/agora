@@ -21,7 +21,7 @@ export interface Placeholder<T> {
   failed: (err: unknown) => T;
 }
 
-export function serverData<T>(load: () => Promise<T>, placeholder?: Placeholder<T>) {
+export function createServerData<T>(load: () => Promise<T>, placeholder?: Placeholder<T>) {
   // Whether an answer came in: until then a failure is the first load's (later ones keep what is shown)
   let answered = false;
   return createRoot(() =>
@@ -45,3 +45,33 @@ export function serverData<T>(load: () => Promise<T>, placeholder?: Placeholder<
     )
   );
 }
+
+/**
+ * The same for data that depends on [source] (a filter, an id): asked again when it changes - the last answer stays on
+ * screen meanwhile and isPending() tells the change is on its way. A failed load for a new source throws to the page's
+ * <Errored> (the last answer belongs to another one); a failed refresh of the same keeps what is shown and says so.
+ */
+export function createServerDataFor<S, T>(source: () => S, load: (source: S) => Promise<T>) {
+  // The source of the latest answer that came in (a load that was overtaken by a newer one does not count)
+  let answered: { source: S } | null = null;
+  let flights = 0;
+  return createRoot(() =>
+    createDeferred<T>(
+      async previous => {
+        const current = source();
+        const flight = ++flights;
+        try {
+          const data = await untrack(() => load(current));
+          if (flight === flights) answered = { source: current };
+          return data;
+        } catch (err) {
+          if (!answered || answered.source !== current) throw err;
+          showToast(errorMessage(err), 'error');
+          return previous as T;
+        }
+      },
+      { lazy: true }
+    )
+  );
+}
+

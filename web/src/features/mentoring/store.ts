@@ -1,19 +1,18 @@
 // Mentoring: anonymous, confidential 1:1 support - mentors, conversations, applications and their review.
 // State and logic of the area (the previous app.js, function by function); the components read these signals and
 // call the actions. The chat pane replaces the list on phones and then has a history entry of its own.
-import { createSignal } from 'solid-js';
+import { createSignal, onFlush, refresh } from 'solid-js';
 import { apiJson, asFailure, errorMessage, errorStatus } from '../../app/api';
-import { flushNow } from '../../app/flush';
 import { programmaticBack } from '../../app/history';
 import { shortDayText, t, timeText } from '../../app/i18n';
 import { closeModal, openModal } from '../../app/modals';
-import { setNavBadge } from '../../app/nav';
 import { whenPicturesReady } from '../../app/pictures';
 import { sendReport } from '../../app/reports';
 import { HOME_TAB, activeTab, forgetTabHistory, switchTab } from '../../app/router';
+import { createServerData, createServerDataFor } from '../../app/serverData';
 import { canManageMentoring, canUseMentoring, currentUid, isCurrentUser } from '../../app/session';
 import { confirmAction, showToast } from '../../app/toast';
-import { isMobile, newestWins, once } from '../../app/util';
+import { isMobile, once } from '../../app/util';
 
 export interface Thread {
   id: string;
@@ -66,7 +65,6 @@ export interface MentorProfile {
 }
 export type SubTab = 'chats' | 'find' | 'review';
 export type ReviewFilter = 'pending' | 'approved' | 'rejected' | 'all';
-export type ReviewState = { state: 'loading' } | { state: 'failed' } | { state: 'empty'; status: ReviewFilter } | { state: 'list'; list: Mentor[] };
 /** A message shown while it is on its way to the server. */
 export interface SendingMessage {
   key: number;
@@ -91,12 +89,9 @@ const [chatFullscreen, setChatFullscreen] = createSignal(false);
 const [menuOpen, setMenuOpen] = createSignal(false);
 const [threadSearch, setThreadSearch] = createSignal('');
 const [draft, setDraft] = createSignal('');
-const [mentors, setMentors] = createSignal<Mentor[]>([]);
-const [mentorsState, setMentorsState] = createSignal<'idle' | 'loaded' | 'failed' | 'offline'>('idle');
 const [myMentorProfile, setMyMentorProfile] = createSignal<MentorProfile | null>(null);
 const [pendingApplications, setPendingApplications] = createSignal(0);
 const [reviewFilter, setReviewFilter] = createSignal<ReviewFilter>('pending');
-const [review, setReview] = createSignal<ReviewState>({ state: 'loading' });
 // The dialogs' forms
 const [contactTarget, setContactTarget] = createSignal<{ userId: string; name: string } | null>(null);
 const [contactMessage, setContactMessage] = createSignal('');
@@ -105,10 +100,16 @@ const [applicationMax, setApplicationMax] = createSignal('3');
 
 export {
   subTab, threads, threadsLoaded, activeThreadId, pane, sending, inChat, chatFullscreen, menuOpen, setMenuOpen, threadSearch,
-  setThreadSearch, draft, setDraft, mentorsState, myMentorProfile, pendingApplications, reviewFilter, review, contactTarget,
-  contactMessage, setContactMessage, applicationBio, setApplicationBio, applicationMax, setApplicationMax
+  setThreadSearch, draft, setDraft, myMentorProfile, pendingApplications, reviewFilter, setReviewFilter, contactTarget, contactMessage,
+  setContactMessage, applicationBio, setApplicationBio, applicationMax, setApplicationMax
 };
 
+// The open conversation as the chat's own steps know it at once (activeThreadId shows with Solid's next update)
+let openThreadId: string | null = null;
+const setOpenThread = (id: string | null) => {
+  openThreadId = id;
+  setActiveThreadId(id);
+};
 let openingDirectChat = false;
 let chatHistoryPushed = false;
 let chatReturnHome = false;
@@ -179,12 +180,6 @@ export const paneMessageList = () => {
   return shown && shown.threadId === pane()?.id ? shown.list : null;
 };
 
-function applyThreads(list: Thread[]) {
-  setThreads(list);
-  flushNow();
-  // The mentoring entry of both navigations (the sub-tab and the start page follow the list)
-  setNavBadge('mentoring', unreadTotal());
-}
 
 // The chat pane is on screen: mentoring tab with the "Messages" sub-tab, in a visible browser tab
 const isChatVisible = () => activeTab() === 'mentoring' && subTab() === 'chats' && !document.hidden;
@@ -192,10 +187,10 @@ const isChatVisible = () => activeTab() === 'mentoring' && subTab() === 'chats' 
 /** New message, new chat or changed chat status elsewhere: refresh the list and counts, plus what is on screen. */
 export async function refreshMentoringFromRemote() {
   if (!canUseMentoring()) return;
-  const openThread = isChatVisible() ? activeThreadId() : null;
+  const openThread = isChatVisible() ? openThreadId : null;
   await loadMentoringThreads(false, null, false);
-  if (openThread && openThread === activeThreadId()) void loadMentoringMessages(openThread, true);
-  if (activeTab() === 'mentoring' && subTab() === 'find') void loadMentorsList();
+  if (openThread && openThread === openThreadId) void loadMentoringMessages(openThread, true);
+  if (activeTab() === 'mentoring' && subTab() === 'find') void refreshMentors();
 }
 
 function closeMobileChatPane() {
@@ -204,18 +199,17 @@ function closeMobileChatPane() {
 }
 
 const SUBTAB_LOADERS: Record<SubTab, () => void> = {
-  find: () => void loadMentorsList(),
+  find: () => void refreshMentors(),
   chats: () => {
-    if (!openingDirectChat && !activeThreadId() && isMobile()) closeMobileChatPane();
-    void loadMentoringThreads(false, activeThreadId());
+    if (!openingDirectChat && !openThreadId && isMobile()) closeMobileChatPane();
+    void loadMentoringThreads(false, openThreadId);
   },
-  review: () => void loadMentoringReviewList()
+  review: () => void refreshReview()
 };
 const isSubTab = (value: string | undefined): value is SubTab => !!value && Object.hasOwn(SUBTAB_LOADERS, value);
 
 export function switchMentoringSubTab(sub: SubTab) {
   setSubTab(sub);
-  flushNow();
   SUBTAB_LOADERS[sub]();
 }
 
@@ -224,7 +218,6 @@ export async function loadMentoringData() {
   const isManager = canManageMentoring();
   try {
     setMyMentorProfile((await apiJson<{ mentor?: MentorProfile | null }>('/mentoring/my-profile')).mentor || null);
-    flushNow();
   } catch (err) {
     console.warn('Failed to load my mentor profile:', err);
   }
@@ -240,16 +233,12 @@ export async function loadMentoringData() {
 }
 
 // --- Mentors ---
-export async function loadMentorsList() {
-  try {
-    const list = await apiJson<Mentor[]>('/mentoring/mentors?status=approved');
-    setMentors(Array.isArray(list) ? list : []);
-    setMentorsState('loaded');
-  } catch (err) {
-    console.warn('Failed to load mentors:', err);
-    setMentorsState(errorStatus(err) ? 'failed' : 'offline');
-  }
-}
+// The approved mentors: loaded when "Find mentors" first shows, again on every visit of it and with a live update
+// there (app/serverData.ts)
+export const mentorsList = createServerData(() =>
+  apiJson<Mentor[]>('/mentoring/mentors?status=approved').then(list => (Array.isArray(list) ? list : []))
+);
+const refreshMentors = () => refresh(mentorsList);
 
 export function mentorCapacity(m: Mentor) {
   const max = typeof m.max_mentees === 'number' ? m.max_mentees : 3;
@@ -263,7 +252,7 @@ export const isOwnMentorCard = (m: Mentor) => {
 };
 
 /** Regular members don't see fully booked mentors (except their own card). */
-export const visibleMentors = () => mentors().filter(m => canManageMentoring() || isOwnMentorCard(m) || !mentorCapacity(m).isFull);
+export const visibleMentors = (list: Mentor[]) => list.filter(m => canManageMentoring() || isOwnMentorCard(m) || !mentorCapacity(m).isFull);
 
 /** The member's own conversation with the mentor of a card. */
 export function threadWithMentor(m: Mentor) {
@@ -326,26 +315,27 @@ export async function loadMentoringThreads(shouldSelect = false, selectThreadId:
   try {
     const data = await apiJson<Thread[]>('/mentoring/threads');
     await whenPicturesReady();
+    const list = Array.isArray(data) ? data : [];
     setOpenedThreads(new Set<string>());
     setThreadsLoaded(true);
-    applyThreads(Array.isArray(data) ? data : []);
-    const list = threads();
+    setThreads(list);
     if (list.length === 0 || generation !== chatGeneration) return;
     if (selectThreadId) {
-      await openMentoringThread(selectThreadId);
-    } else if (shouldSelect || (autoSelect && !isMobile() && !activeThreadId() && isChatVisible())) {
+      await openMentoringThread(selectThreadId, list);
+    } else if (shouldSelect || (autoSelect && !isMobile() && !openThreadId && isChatVisible())) {
       // Desktop shows list and chat side by side. Only open a chat the user can see: opening marks its
       // messages as read, which used to clear the unread counts right after login
-      await openMentoringThread(list[0].id);
+      await openMentoringThread(list[0].id, list);
     }
   } catch (err) {
     console.warn('Failed to load mentoring threads:', err);
   }
 }
 
-export async function openMentoringThread(threadId: string) {
+/** Opens the conversation [threadId] in the chat pane; [list]: the conversations just loaded (else the shown ones). */
+export async function openMentoringThread(threadId: string, list: Thread[] = threads()) {
   if (!threadId) return;
-  setActiveThreadId(threadId);
+  setOpenThread(threadId);
   setInChat(true);
   if (isMobile()) {
     setChatFullscreen(true);
@@ -355,30 +345,29 @@ export async function openMentoringThread(threadId: string) {
     }
   }
   setOpenedThreads(prev => new Set(prev).add(threadId));
-  flushNow();
 
-  let thread = findThread(threadId);
+  let thread = list.find(th => th.id === threadId);
   if (!thread) {
     try {
       const data = await apiJson<Thread[]>('/mentoring/threads');
-      applyThreads(Array.isArray(data) ? data : []);
-      thread = findThread(threadId);
+      const fresh = Array.isArray(data) ? data : [];
+      setThreads(fresh);
+      thread = fresh.find(th => th.id === threadId);
     } catch (err) {
       console.warn('Failed to reload threads in openMentoringThread:', err);
     }
     // Another chat opened while the list came (or this one was left): that one keeps the pane - a late answer put
     // this conversation on screen while messages went to the other one
-    if (activeThreadId() !== threadId) return;
+    if (openThreadId !== threadId) return;
   }
   setMenuOpen(false);
   setPane({ id: threadId, fallback: thread ?? null });
-  flushNow();
   await loadMentoringMessages(threadId);
   // Another chat opened meanwhile (or this one was left): its own run keeps the polling
-  if (activeThreadId() !== threadId) return;
+  if (openThreadId !== threadId) return;
   clearInterval(pollTimer);
   pollTimer = setInterval(() => {
-    if (activeThreadId() === threadId && isChatVisible()) void loadMentoringMessages(threadId, true);
+    if (openThreadId === threadId && isChatVisible()) void loadMentoringMessages(threadId, true);
   }, 3500);
 }
 
@@ -395,12 +384,11 @@ export function stopMentoringPoll() {
  */
 export function closeMentoringChatMobile(fromHistory = false, userBack = !fromHistory) {
   chatGeneration++;
-  const hadOpenChat = !!activeThreadId();
-  setActiveThreadId(null);
+  const hadOpenChat = !!openThreadId;
+  setOpenThread(null);
   clearInterval(pollTimer);
   pollTimer = undefined;
   closeMobileChatPane();
-  flushNow();
   const returnHome = userBack && chatReturnHome;
   chatReturnHome = false;
   // Pop the chat entry (button) and the tab entry (return home) in one step. The tab entry exists: the chat was
@@ -431,9 +419,11 @@ function showPaneMessages(threadId: string, list: ChatMessage[] | 'denied'): boo
   setPaneMessages({ threadId, list });
   // The area is drawn anew: a message on its way disappears with it (it comes back as sent or into the field)
   setSending([]);
-  flushNow();
   return true;
 }
+
+/** To the newest message, once the messages just written show. */
+const scrollToNewest = (el: HTMLElement | undefined) => el && onFlush(() => (el.scrollTop = el.scrollHeight));
 
 async function loadMentoringMessages(threadId: string, isPoll = false) {
   try {
@@ -441,15 +431,13 @@ async function loadMentoringMessages(threadId: string, isPoll = false) {
     const answer = await apiJson<ChatMessage[] | { messages?: ChatMessage[] }>(`/mentoring/threads/${threadId}/messages`);
     const messages = Array.isArray(answer) ? answer : answer?.messages;
     if (!Array.isArray(messages)) return;
-    if (threadId === activeThreadId()) activeMessages = messages;
+    if (threadId === openThreadId) activeMessages = messages;
     // Mark the thread as read locally so badges and the home card update instantly
-    if ((findThread(threadId)?.unread_count || 0) > 0) {
-      applyThreads(threads().map(th => (th.id === threadId ? { ...th, unread_count: 0 } : th)));
-    }
+    setThreads(list => (list.some(th => th.id === threadId && (th.unread_count || 0) > 0) ? list.map(th => (th.id === threadId ? { ...th, unread_count: 0 } : th)) : list));
     const el = messagesElement;
     const wasAtBottom = !!el && el.scrollHeight - el.scrollTop <= el.clientHeight + 120;
     if (!showPaneMessages(threadId, messages)) return;
-    if (el && messages.length && (!isPoll || wasAtBottom)) el.scrollTop = el.scrollHeight;
+    if (messages.length && (!isPoll || wasAtBottom)) scrollToNewest(el);
   } catch (err) {
     // The conversation is not open to this account: the pane says so instead of showing nothing
     if (errorStatus(err) === 403) showPaneMessages(threadId, 'denied');
@@ -467,24 +455,23 @@ export function chatTime(iso: string | undefined) {
 
 export async function sendMentoringMessage() {
   const text = draft().trim();
-  const threadId = activeThreadId();
+  const threadId = openThreadId;
   if (!threadId || !text) return;
   // Show the message optimistically until the server round-trip completes
   const pending: SendingMessage = { key: ++sendingSeq, text, time: timeText(new Date()) };
   setSending(list => [...list, pending]);
   setDraft('');
-  flushNow();
-  if (messagesElement) messagesElement.scrollTop = messagesElement.scrollHeight;
+  scrollToNewest(messagesElement);
   try {
     await apiJson(`/mentoring/threads/${threadId}/messages`, 'POST', { message: text, text }, t('mentoring_send_error', 'Failed to send'));
-    const open = activeThreadId();
+    const open = openThreadId;
     if (open) await loadMentoringMessages(open);
     void loadMentoringThreads(false);
   } catch (err) {
     // Like the Android app: the text is not lost - it goes back into the field to try again. Only into the field of
     // that conversation: another chat opened meanwhile must not get it (one tap would send it to the wrong person)
     setSending(list => list.filter(entry => entry !== pending));
-    if (!draft().trim() && activeThreadId() === threadId) setDraft(text);
+    if (!draft().trim() && openThreadId === threadId) setDraft(text);
     showToast(errorMessage(err) || t('mentoring_send_failed', 'The message could not be sent.'), 'error');
   }
 }
@@ -498,7 +485,7 @@ export function toggleChatMenu(e: MouseEvent) {
 
 // Menu actions on the open chat: close the menu, run with the thread, show errors
 async function withActiveThread<A extends unknown[]>(action: (thread: Thread, ...args: A) => unknown, ...args: A) {
-  const thread = findThread(activeThreadId());
+  const thread = findThread(openThreadId);
   if (!thread) return;
   setMenuOpen(false);
   try {
@@ -512,7 +499,7 @@ async function withActiveThread<A extends unknown[]>(action: (thread: Thread, ..
 async function setThreadStatus(thread: Thread, status: 'active' | 'closed' | 'blocked', toast: string) {
   await apiJson(`/mentoring/threads/${thread.id}/status`, 'PATCH', { status }, t('mentoring_status_error', 'Failed to update.'));
   const fields = status === 'blocked' ? { status: 'closed', blocked: true, blockedByMe: true } : { status };
-  applyThreads(threads().map(th => (th.id === thread.id ? { ...th, ...fields } : th)));
+  setThreads(list => list.map(th => (th.id === thread.id ? { ...th, ...fields } : th)));
   void openMentoringThread(thread.id);
   void loadMentoringThreads();
   showToast(toast, 'info');
@@ -579,29 +566,12 @@ async function submitMentorApplicationNow() {
 }
 
 // --- Review of the applications (mentoring managers) ---
-// Counts the loads: only the latest one shows (a slow answer for the filter chosen before must not replace it)
-const reviewLoad = newestWins();
-export async function loadMentoringReviewList() {
-  if (!canManageMentoring()) return;
-  const isNewest = reviewLoad();
-  const status = reviewFilter();
-  setReview({ state: 'loading' });
-  try {
-    const list = await apiJson<Mentor[]>(`/mentoring/mentors?status=${encodeURIComponent(status)}`);
-    if (!isNewest()) return;
-    setReview(Array.isArray(list) && list.length ? { state: 'list', list } : { state: 'empty', status });
-  } catch (err) {
-    console.warn('Failed to load review list:', err);
-    // Not "Loading applications..." forever
-    if (isNewest()) setReview({ state: 'failed' });
-  }
-}
-
-export function changeReviewFilter(filter: ReviewFilter) {
-  setReviewFilter(filter);
-  flushNow();
-  void loadMentoringReviewList();
-}
+// The applications of the chosen status: loaded when the review first shows, again when the filter changes (the
+// answer for an earlier filter never replaces a later one), on "Refresh" and after a decision
+export const reviewList = createServerDataFor(reviewFilter, status =>
+  apiJson<Mentor[]>(`/mentoring/mentors?status=${encodeURIComponent(status)}`).then(list => ({ status, list: Array.isArray(list) ? list : [] }))
+);
+export const refreshReview = () => refresh(reviewList);
 
 export const setMentorStatus = (mentorId: string, status: 'approved' | 'rejected') => once(`mentor:${mentorId}`, () => setMentorStatusNow(mentorId, status));
 async function setMentorStatusNow(mentorId: string, status: 'approved' | 'rejected') {
@@ -610,7 +580,7 @@ async function setMentorStatusNow(mentorId: string, status: 'approved' | 'reject
   try {
     await apiJson(`/mentoring/manage/${mentorId}/status`, 'POST', { status }, t('mentoring_status_error', 'Failed to update.'));
     showToast(status === 'approved' ? t('mentoring_toast_approved', 'Application approved successfully!') : t('mentoring_toast_rejected', 'Application rejected successfully!'), 'success');
-    void loadMentoringReviewList();
+    void refreshReview();
     void loadMentoringData();
   } catch (err) {
     showToast(errorMessage(err) || t('mentoring_status_error', 'Failed to update.'), 'error');
@@ -623,7 +593,6 @@ export async function openChatDirect(threadId: string, source?: string) {
   // Opened from the start page: going back from the chat leads there again (like the Android app)
   chatReturnHome = source === 'home' && isMobile();
   setSubTab('chats');
-  flushNow();
   switchTab('mentoring');
   switchMentoringSubTab('chats');
   await loadMentoringThreads(true, threadId || null);
@@ -635,10 +604,7 @@ export async function openChatDirect(threadId: string, source?: string) {
 
 /** The tab opens: back to the messages (unless a conversation is opened directly), then its data. */
 export function enterMentoringTab() {
-  if (!openingDirectChat) {
-    setSubTab('chats');
-    flushNow();
-  }
+  if (!openingDirectChat) setSubTab('chats');
   void loadMentoringData();
 }
 

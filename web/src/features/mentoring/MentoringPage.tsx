@@ -1,5 +1,6 @@
 // The mentoring tab: the intro with the mentor application, the sub-tabs (messages, find mentors and, for mentoring
 // managers, the applications) and their views.
+import { Show, createMemo } from 'solid-js';
 import { t } from '../../app/i18n';
 import { canManageMentoring } from '../../app/session';
 import { Button } from '../../ui/Button';
@@ -11,6 +12,9 @@ import { ThreadSidebar } from './ThreadList';
 import { inChat, myMentorProfile, openMentorApplicationModal, pendingApplications, subTab, switchMentoringSubTab, unreadTotal, type SubTab } from './store';
 
 export function MentoringPage() {
+  // "Find mentors" and the applications are drawn once they are first chosen (their data loads then), then kept
+  const findVisited = createMemo<boolean>(seen => !!seen || subTab() === 'find');
+  const reviewVisited = createMemo<boolean>(seen => !!seen || subTab() === 'review');
   return (
     <div class="flex w-full min-w-0 flex-col gap-2.5 md:gap-5">
       <Intro />
@@ -19,10 +23,14 @@ export function MentoringPage() {
         <ChatsLayout />
       </div>
       <div class={subTab() === 'find' ? 'block' : 'hidden'}>
-        <MentorsGrid />
+        <Show when={findVisited()}>
+          <MentorsGrid />
+        </Show>
       </div>
       <div class={subTab() === 'review' ? 'block' : 'hidden'}>
-        <ReviewList />
+        <Show when={reviewVisited()}>
+          <ReviewList />
+        </Show>
       </div>
     </div>
   );
