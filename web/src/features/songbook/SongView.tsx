@@ -98,11 +98,11 @@ function SongPage(props: { song: Song }) {
     <div data-song-view class="relative flex h-full w-full flex-col">
       <div
         data-song-top
-        class="flex items-start gap-3 border-b border-border-light px-5 pt-[calc(14px+env(safe-area-inset-top,0px))] pb-3.5 max-[480px]:px-3.5 md:px-6"
+        class="flex items-start gap-3 border-b border-border-light px-5 pt-[calc(14px+env(safe-area-inset-top,0px))] pb-3.5 max-mini:px-3.5 md:px-6"
       >
         <BackButton large onClick={closeSong} />
         <div class="min-w-0 flex-1 pt-0.5">
-          <h2 id="song-view-title" class="m-0 text-[1.35rem] leading-[1.25] font-extrabold text-text [overflow-wrap:anywhere] max-[480px]:text-[1.2rem]">
+          <h2 id="song-view-title" class="m-0 text-[1.35rem] leading-[1.25] font-extrabold text-text [overflow-wrap:anywhere] max-mini:text-[1.2rem]">
             {props.song.title}
           </h2>
           {/* Songwriter and the key (as before, the line keeps its small space above even when it is empty) */}
@@ -150,7 +150,7 @@ function SongPage(props: { song: Song }) {
         id="song-view-body"
         data-song-body
         ref={setSongBody}
-        class="flex-1 overflow-y-auto px-4 text-[length:var(--song-size)] leading-[1.5] text-text [--song-base:1rem] [--song-size:calc(var(--song-base)*(1+var(--song-step)*0.12))] max-[480px]:px-[18px] md:px-7 md:[--song-base:1.2rem]"
+        class="flex-1 overflow-y-auto px-4 text-[length:var(--song-size)] leading-[1.5] text-text [--song-base:1rem] [--song-size:calc(var(--song-base)*(1+var(--song-step)*0.12))] max-mini:px-[18px] md:px-7 md:[--song-base:1.2rem]"
         style={{ '--song-step': String(songSize()) }}
         onClick={songBodyTap}
         onScroll={onSongBodyScroll}

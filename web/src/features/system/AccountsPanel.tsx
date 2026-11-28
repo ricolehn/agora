@@ -27,9 +27,9 @@ import type { User } from '../../app/types';
 const GROUP_ITEM =
   'group flex w-full cursor-pointer select-none items-center justify-between rounded-[10px] border px-2.5 py-2 text-left text-[0.88rem] font-semibold ' +
   'transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150 ease-[ease] ' +
-  'max-[1280px]:w-auto max-[1280px]:flex-[0_0_auto] max-[1280px]:gap-1.5 max-[1280px]:rounded-[20px] max-[1280px]:px-3 max-[1280px]:py-[7px] max-md:max-w-[200px]';
+  'max-xl:w-auto max-xl:flex-[0_0_auto] max-xl:gap-1.5 max-xl:rounded-[20px] max-xl:px-3 max-xl:py-[7px] max-md:max-w-[200px]';
 const GROUP_ITEM_ACTIVE = 'border-primary bg-surface-alt text-primary shadow-[0_1px_3px_rgba(0,0,0,0.05)] max-md:bg-primary max-md:text-white';
-const GROUP_ITEM_IDLE = 'border-transparent bg-transparent text-text hover:bg-surface-alt max-[1280px]:border-border max-[1280px]:bg-surface-alt';
+const GROUP_ITEM_IDLE = 'border-transparent bg-transparent text-text hover:bg-surface-alt max-xl:border-border max-xl:bg-surface-alt';
 
 function GroupItem(props: { group?: { id: string; name: string; memberCount?: number }; label: string; icon: string; count: number; active: boolean }) {
   return (
@@ -77,18 +77,18 @@ function GroupsSidebar() {
     <div
       class={[
         'flex w-full min-w-0 max-w-full flex-col gap-2.5 rounded-[16px] border border-border bg-surface p-3.5 shadow-card',
-        'max-[1280px]:rounded-[14px] max-[1280px]:px-3.5 max-[1280px]:py-3',
-        'md:max-[1280px]:flex-row md:max-[1280px]:flex-wrap md:max-[1280px]:items-center md:max-[1280px]:gap-x-3.5 md:max-[1280px]:gap-y-2.5'
+        'max-xl:rounded-[14px] max-xl:px-3.5 max-xl:py-3',
+        'md:max-xl:flex-row md:max-xl:flex-wrap md:max-xl:items-center md:max-xl:gap-x-3.5 md:max-xl:gap-y-2.5'
       ]}
     >
-      <div class="flex items-center justify-between border-b border-border-light pb-2 max-md:pb-1.5 md:max-[1280px]:border-b-0 md:max-[1280px]:pb-0">
+      <div class="flex items-center justify-between border-b border-border-light pb-2 max-md:pb-1.5 md:max-xl:border-b-0 md:max-xl:pb-0">
         <div class="flex items-center gap-2 text-[0.95rem] font-bold text-text">
           <Icon name="users" size={18} />
           <span>{t('groups_sidebar_title', 'Groups')}</span>
         </div>
       </div>
 
-      <div class="flex items-center gap-1.5 md:max-[1280px]:order-3 md:max-[1280px]:flex-[0_1_280px]">
+      <div class="flex items-center gap-1.5 md:max-xl:order-3 md:max-xl:flex-[0_1_280px]">
         <Input
           id="nc-new-group-name"
           type="text"
@@ -117,7 +117,7 @@ function GroupsSidebar() {
         id="nc-groups-list"
         class={[
           'flex max-h-[480px] flex-col gap-1 overflow-y-auto',
-          'md:max-[1280px]:order-2 md:max-[1280px]:max-h-none md:max-[1280px]:flex-[1_1_100%] md:max-[1280px]:flex-row md:max-[1280px]:flex-wrap md:max-[1280px]:gap-2 md:max-[1280px]:p-0',
+          'md:max-xl:order-2 md:max-xl:max-h-none md:max-xl:flex-[1_1_100%] md:max-xl:flex-row md:max-xl:flex-wrap md:max-xl:gap-2 md:max-xl:p-0',
           'max-md:max-h-none max-md:w-full max-md:min-w-0 max-md:max-w-full max-md:flex-row max-md:gap-2 max-md:overflow-x-auto max-md:px-0.5 max-md:pb-2 max-md:pt-0.5'
         ]}
       >
@@ -132,10 +132,10 @@ function GroupsSidebar() {
 const BADGE = 'inline-block rounded-[8px] border border-border bg-surface-alt px-2 py-[3px] text-text-secondary';
 const TH =
   'border-b border-border bg-surface-alt px-4 py-3 align-middle text-[0.82rem] font-semibold uppercase tracking-[0.03em] text-text-secondary ' +
-  'md:max-[1280px]:px-2.5 md:max-[1280px]:py-2.5 md:max-[1280px]:text-[0.86rem] md:max-[1280px]:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-[0.85rem]';
+  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-[0.86rem] md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-[0.85rem]';
 const TD =
   'border-b border-border px-4 py-3 align-middle ' +
-  'md:max-[1280px]:px-2.5 md:max-[1280px]:py-2.5 md:max-[1280px]:text-[0.86rem] md:max-[1280px]:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-[0.85rem]';
+  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-[0.86rem] md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-[0.85rem]';
 const ICON_BTN =
   'flex items-center justify-center rounded-[8px] border border-border bg-transparent p-1.5 text-text-secondary transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150 ease-[ease] max-md:min-h-[34px] max-md:min-w-[34px]';
 
@@ -250,7 +250,7 @@ function EmptyRow(props: { text: string }) {
 export function AccountsPanel() {
   const rows = createMemo(shownAccounts);
   return (
-    <div class="grid w-full min-w-0 max-w-full grid-cols-[240px_minmax(0,1fr)] items-start gap-5 max-[1280px]:flex max-[1280px]:flex-col max-[1280px]:gap-3.5">
+    <div class="grid w-full min-w-0 max-w-full grid-cols-[240px_minmax(0,1fr)] items-start gap-5 max-xl:flex max-xl:flex-col max-xl:gap-3.5">
       <GroupsSidebar />
 
       <div class="w-full min-w-0 max-w-full overflow-hidden">

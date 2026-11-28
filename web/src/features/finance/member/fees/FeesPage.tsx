@@ -80,12 +80,12 @@ function FeePlanCard() {
               {sinceText(plan().since)}
             </div>
             {/* On phones three tiles side by side cut their labels short: one row per status, the amount on the right */}
-            <div class="grid grid-cols-3 gap-2 max-[480px]:grid-cols-1 max-[480px]:gap-1.5">
+            <div class="grid grid-cols-3 gap-2 max-mini:grid-cols-1 max-mini:gap-1.5">
               <For each={FEE_KEYS}>
                 {key => (
-                  <div class="flex min-w-0 flex-col gap-0.5 rounded-[14px] border border-hairline bg-surface-alt px-3.5 py-3 max-[480px]:flex-row max-[480px]:items-baseline max-[480px]:justify-between max-[480px]:gap-3 max-[480px]:py-2.5">
-                    <span class="truncate text-[0.8rem] text-text-secondary max-[480px]:text-[0.88rem]">{labels()[key]}</span>
-                    <span class="text-[1.3rem] font-[750] tracking-[-0.02em] text-text tabular-nums max-[480px]:shrink-0 max-[480px]:text-[1.1rem]">
+                  <div class="flex min-w-0 flex-col gap-0.5 rounded-[14px] border border-hairline bg-surface-alt px-3.5 py-3 max-mini:flex-row max-mini:items-baseline max-mini:justify-between max-mini:gap-3 max-mini:py-2.5">
+                    <span class="truncate text-[0.8rem] text-text-secondary max-mini:text-[0.88rem]">{labels()[key]}</span>
+                    <span class="text-[1.3rem] font-[750] tracking-[-0.02em] text-text tabular-nums max-mini:shrink-0 max-mini:text-[1.1rem]">
                       {euro(plan().current?.[key] || 0)}
                     </span>
                   </div>

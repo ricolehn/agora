@@ -212,7 +212,7 @@ function FeeChangeForm() {
   return (
     <div id="fee-change-form" class="flex flex-col gap-2.5">
       <ModalSection icon="💶" title={t('fees_form_amounts', 'Fee per month')}>
-        <div class="grid grid-cols-3 gap-2.5 max-[480px]:grid-cols-1">
+        <div class="grid grid-cols-3 gap-2.5 max-mini:grid-cols-1">
           <For each={FEE_KEYS}>
             {key => (
               <Field class="min-w-0" for={`fee-change-${key}`} label={<span class="block truncate">{`${labels()[key]} (€)`}</span>}>

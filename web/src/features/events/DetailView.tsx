@@ -74,7 +74,7 @@ function GroupsLine(props: { event: AppEvent }) {
   const quoted = (name: string) => <strong class="font-bold text-text">{t('detail_groups_quoted', '“{name}”', { name })}</strong>;
   return (
     <Show when={names().length}>
-      <div class="mt-1 flex items-center gap-1.5 text-[0.82rem] font-medium text-text-secondary max-[640px]:text-[0.76rem]">
+      <div class="mt-1 flex items-center gap-1.5 text-[0.82rem] font-medium text-text-secondary max-sm:text-[0.76rem]">
         <Icon name="users" size={13} class="shrink-0 text-[#6366f1] dark:text-[#818cf8]" />
         <span>
           {kind()} {names().length === 1 ? t('detail_groups_for_one', 'for the group') : t('detail_groups_for_many', 'for the groups')}{' '}
@@ -102,7 +102,7 @@ function TitleBlock(props: { event: AppEvent }) {
             {props.event.title}
           </h2>
           <Show when={creator()}>
-            <div class="mt-px flex items-center gap-1.5 text-[0.82rem] font-medium text-text-secondary max-[640px]:text-[0.76rem]">
+            <div class="mt-px flex items-center gap-1.5 text-[0.82rem] font-medium text-text-secondary max-sm:text-[0.76rem]">
               <Icon name="user" size={13} class="shrink-0 text-[#f59e0b]" />
               <span>
                 {t('events_organizer', 'Organizer:')}{' '}
@@ -166,7 +166,7 @@ export function InfoCells(props: { event: EventFacts }) {
     <div class="flex shrink-0 flex-col overflow-hidden rounded-[18px] border border-border-light bg-surface-alt">
       <div class={cell}>
         <div class={[icon, 'bg-[rgba(139,92,246,0.12)] text-[#7c3aed] dark:bg-[rgba(167,139,250,0.16)] dark:text-[#a78bfa]']}>
-          <Icon name="calendar" size={15} class="max-[640px]:size-3.5" />
+          <Icon name="calendar" size={15} class="max-sm:size-3.5" />
         </div>
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden [container-type:inline-size]">
           <span class={[label, '!mb-[5px]']}>{t('detail_groups_termin', 'Appointment')}</span>
@@ -181,23 +181,23 @@ export function InfoCells(props: { event: EventFacts }) {
       </div>
       <div class={[cell, 'border-t border-border-light']}>
         <div class={[icon, 'bg-[rgba(16,185,129,0.12)] text-[#059669] dark:bg-[rgba(52,211,153,0.16)] dark:text-[#34d399]']}>
-          <Icon name="location" size={15} class="max-[640px]:size-3.5" />
+          <Icon name="location" size={15} class="max-sm:size-3.5" />
         </div>
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
           <span class={label}>{t('events_where', 'Where / Address')}</span>
-          <span ref={whereEl} class="block overflow-hidden text-ellipsis whitespace-nowrap text-[0.9rem] font-[650] leading-[1.35] tracking-[-0.005em] text-text max-[640px]:leading-[1.32]" title={where()}>
+          <span ref={whereEl} class="block overflow-hidden text-ellipsis whitespace-nowrap text-[0.9rem] font-[650] leading-[1.35] tracking-[-0.005em] text-text max-sm:leading-[1.32]" title={where()}>
             {where()}
           </span>
         </div>
         <Show when={isMapPlace(location())}>
           <a
-            class="ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-full max-[640px]:size-[26px] bg-[rgba(16,185,129,0.12)] text-[#059669] transition-[transform,translate,scale,background-color,color] duration-150 hover:scale-108 hover:bg-[#059669] hover:text-white dark:bg-[rgba(52,211,153,0.16)] dark:text-[#34d399]"
+            class="ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-full max-sm:size-[26px] bg-[rgba(16,185,129,0.12)] text-[#059669] transition-[transform,translate,scale,background-color,color] duration-150 hover:scale-108 hover:bg-[#059669] hover:text-white dark:bg-[rgba(52,211,153,0.16)] dark:text-[#34d399]"
             href={mapsUrl(location())}
             target="_blank"
             rel="noopener noreferrer"
             title={t('events_open_maps', 'Open in Google Maps')}
           >
-            <Icon name="external" size={14} class="max-[640px]:size-[13px]" />
+            <Icon name="external" size={14} class="max-sm:size-[13px]" />
           </a>
         </Show>
       </div>
@@ -258,7 +258,7 @@ export function Description(props: { text: string }) {
 function AdminBar() {
   const button = 'flex min-h-[42px] w-full items-center justify-center gap-[7px] rounded-full px-3 py-[7px] text-[0.82rem] font-semibold transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-150';
   return (
-    <div class="mt-1 flex flex-col gap-2 rounded-xl max-[640px]:gap-[7px]">
+    <div class="mt-1 flex flex-col gap-2 rounded-xl max-sm:gap-[7px]">
       <div class="flex items-center justify-start">
         <div class="inline-flex items-center gap-1.5 text-[0.8rem] font-semibold text-text-secondary">
           <Icon name="gear" size={13} />

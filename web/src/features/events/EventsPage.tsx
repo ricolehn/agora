@@ -185,9 +185,9 @@ function TermineList(props: { items: ListItem[] }) {
     onFlush(() => requestAnimationFrame(() => setJumpDay(first.dataset.day || null)));
   };
   return (
-    <div class="min-[1024px]:grid min-[1024px]:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)] min-[1024px]:items-start min-[1024px]:gap-7">
+    <div class="lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)] lg:items-start lg:gap-7">
       <TermineCalendar days={calendarDays()} selected={selectedDay()} onPick={jumpTo} />
-      <div ref={list} class="min-[1024px]:flex min-[1024px]:min-w-0 min-[1024px]:flex-col min-[1024px]:gap-6">
+      <div ref={list} class="lg:flex lg:min-w-0 lg:flex-col lg:gap-6">
         <For each={byMonth(props.items)} keyed={group => group.key}>
           {group => (
             <MonthGroup title={group().title} count={group().items.length}>

@@ -171,7 +171,7 @@ function CoverStatus(props: { kind: keyof typeof COVER_STATUS; children: JSX.Ele
   return (
     <span
       class={[
-        'inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-white/90 bg-white/88 px-[7px] py-[2px] text-[0.68rem] font-semibold leading-[1.2] shadow-[0_2px_10px_rgba(0,0,0,0.25)] backdrop-blur-[12px] min-[541px]:px-[9px] min-[541px]:py-[3px] min-[541px]:text-[0.74rem]',
+        'inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-white/90 bg-white/88 px-[7px] py-[2px] text-[0.68rem] font-semibold leading-[1.2] shadow-[0_2px_10px_rgba(0,0,0,0.25)] backdrop-blur-[12px] phone:px-[9px] phone:py-[3px] phone:text-[0.74rem]',
         'dark:border-white/18 dark:bg-[rgba(28,25,23,0.72)]',
         COVER_STATUS[props.kind]
       ]}
@@ -250,7 +250,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
         <div class="absolute right-3 top-3 z-[3] flex flex-col items-end gap-1.5">
           <span
             class={[
-              'inline-flex items-center justify-center whitespace-nowrap rounded-full border px-[11px] py-1 text-[0.62rem] font-bold uppercase leading-[1.25] tracking-[0.6px] text-white shadow-[0_4px_14px_-4px_rgba(0,0,0,0.35)] backdrop-blur-[12px] backdrop-saturate-140 min-[541px]:text-[0.67rem]',
+              'inline-flex items-center justify-center whitespace-nowrap rounded-full border px-[11px] py-1 text-[0.62rem] font-bold uppercase leading-[1.25] tracking-[0.6px] text-white shadow-[0_4px_14px_-4px_rgba(0,0,0,0.35)] backdrop-blur-[12px] backdrop-saturate-140 phone:text-[0.67rem]',
               pinned() ? 'border-white/45 bg-[rgba(79,70,229,0.62)]' : 'border-white/35 bg-[rgba(28,25,23,0.38)]'
             ]}
           >
@@ -264,7 +264,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
           <div class="line-clamp-2 min-w-0 flex-1 text-[1.1rem] font-extrabold leading-[1.3] tracking-[-0.01em] text-text">{ev().title}</div>
           <Show when={registered()}>
             <span
-              class="mt-px inline-flex shrink-0 items-center gap-[5px] whitespace-nowrap rounded-full border border-[rgba(16,185,129,0.32)] bg-[rgba(16,185,129,0.12)] py-1 pl-2 pr-2.5 text-[0.68rem] font-bold leading-[1.2] text-[#059669] min-[541px]:text-[0.74rem] dark:border-[rgba(52,211,153,0.35)] dark:bg-[rgba(16,185,129,0.16)] dark:text-[#34d399]"
+              class="mt-px inline-flex shrink-0 items-center gap-[5px] whitespace-nowrap rounded-full border border-[rgba(16,185,129,0.32)] bg-[rgba(16,185,129,0.12)] py-1 pl-2 pr-2.5 text-[0.68rem] font-bold leading-[1.2] text-[#059669] phone:text-[0.74rem] dark:border-[rgba(52,211,153,0.35)] dark:bg-[rgba(16,185,129,0.16)] dark:text-[#34d399]"
               title={t('events_reg_you_are_registered', 'You are registered')}
             >
               <Icon name="check" size={12} strokeWidth={3} class="shrink-0" />

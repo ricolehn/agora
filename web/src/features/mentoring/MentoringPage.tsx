@@ -69,7 +69,7 @@ function Intro() {
 // The mentoring's segments (.mentoring-nav-segment): sharing the width; on phones a little tighter, three fit
 const TAB_SIZE =
   'flex flex-[1_1_0] min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-[0.9rem] whitespace-nowrap overflow-hidden text-ellipsis ' +
-  'max-md:gap-[5px] max-md:py-[7px] max-[480px]:px-1 max-[480px]:text-[0.82rem]';
+  'max-md:gap-[5px] max-md:py-[7px] max-mini:px-1 max-mini:text-[0.82rem]';
 
 // One set of tabs for the page's life: texts, counts and the review tab's visibility are getters, so a new count
 // changes the badge instead of building new tabs
@@ -129,7 +129,7 @@ function ChatsLayout() {
       id="mentoring-threads-layout"
       class={[
         'grid min-h-[340px] grid-cols-[360px_1fr] gap-4 h-[clamp(340px,calc(100dvh_-_var(--mentoring-desktop-chrome)),720px)]',
-        'min-[1100px]:grid-cols-[clamp(340px,26vw,460px)_minmax(0,1fr)] min-[1100px]:h-[clamp(340px,calc(100dvh_-_var(--mentoring-desktop-chrome)),980px)]',
+        'wide:grid-cols-[clamp(340px,26vw,460px)_minmax(0,1fr)] wide:h-[clamp(340px,calc(100dvh_-_var(--mentoring-desktop-chrome)),980px)]',
         'max-md:flex max-md:min-h-0 max-md:flex-col max-md:gap-0',
         inChat() ? 'max-md:h-[clamp(300px,calc(100dvh_-_var(--mentoring-mobile-chrome)),100dvh)]' : 'max-md:h-auto'
       ]}

@@ -100,9 +100,9 @@ function FeaturedTile(props: { app: FeaturedApp; index: number }) {
       <span class={[TEXTS, 'px-3.5']}>
         <AppTexts app={props.app} />
       </span>
-      <span class="inline-flex shrink-0 items-center gap-0.5 rounded-full text-[0.8rem] font-semibold whitespace-nowrap text-(--app-tone) transition-[transform,background-color] duration-[250ms] ease-app max-[601px]:opacity-75 min-[601px]:bg-[color-mix(in_srgb,var(--app-light)_22%,var(--surface))] min-[601px]:py-[7px] min-[601px]:pr-2.5 min-[601px]:pl-3.5 min-[601px]:group-hover/tile:[transform:translateX(3px)] min-[601px]:group-hover/tile:bg-[color-mix(in_srgb,var(--app-light)_34%,var(--surface))] dark:min-[601px]:bg-[color-mix(in_srgb,var(--app-light)_16%,var(--surface))]">
-        <span class="max-[601px]:hidden">{t('hub_ai_cta', 'Start chat')}</span>
-        <Icon name="chevronRight" size={16} strokeWidth={2.6} class="max-[601px]:size-[18px]" />
+      <span class="inline-flex shrink-0 items-center gap-0.5 rounded-full text-[0.8rem] font-semibold whitespace-nowrap text-(--app-tone) transition-[transform,background-color] duration-[250ms] ease-app max-phablet:opacity-75 phablet:bg-[color-mix(in_srgb,var(--app-light)_22%,var(--surface))] phablet:py-[7px] phablet:pr-2.5 phablet:pl-3.5 phablet:group-hover/tile:[transform:translateX(3px)] phablet:group-hover/tile:bg-[color-mix(in_srgb,var(--app-light)_34%,var(--surface))] dark:phablet:bg-[color-mix(in_srgb,var(--app-light)_16%,var(--surface))]">
+        <span class="max-phablet:hidden">{t('hub_ai_cta', 'Start chat')}</span>
+        <Icon name="chevronRight" size={16} strokeWidth={2.6} class="max-phablet:size-[18px]" />
       </span>
     </button>
   );

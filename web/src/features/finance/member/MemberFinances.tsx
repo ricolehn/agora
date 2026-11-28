@@ -265,13 +265,13 @@ function MyRequests(props: { class?: string }) {
 }
 
 // Wide screens: status, actions and requests on the left, the history on the right
-const LEFT = 'min-w-0 min-[1100px]:col-start-1';
+const LEFT = 'min-w-0 wide:col-start-1';
 
 /** The members' finances tab. */
 export function MemberFinancesPage() {
   const nonPaying = () => currentUser()?.pays === false;
   return (
-    <div class="min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] min-[1100px]:items-start min-[1100px]:gap-x-6">
+    <div class="wide:grid wide:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] wide:items-start wide:gap-x-6">
       <div id="user-finances-status-card" class={['mb-5', LEFT]}>
         <Show when={dataLoaded()}>
           <Switch fallback={<NoMemberRecord />}>
@@ -284,7 +284,7 @@ export function MemberFinancesPage() {
       </div>
       <RequestActions class={LEFT} />
       <MyRequests class={LEFT} />
-      <Card title={t('user_history_title', 'History')} class="min-w-0 min-[1100px]:col-start-2 min-[1100px]:row-span-3 min-[1100px]:row-start-1">
+      <Card title={t('user_history_title', 'History')} class="min-w-0 wide:col-start-2 wide:row-span-3 wide:row-start-1">
         <div id="user-payment-history">
           <Show when={dataLoaded() && !nonPaying()}>
             <Show

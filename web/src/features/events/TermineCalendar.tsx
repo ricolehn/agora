@@ -75,7 +75,7 @@ export function TermineCalendar(props: { days: Map<string, Set<EventCategory>>; 
   return (
     <aside
       class={[
-        'sticky top-0 hidden rounded-[20px] border border-border-light bg-surface p-[18px] shadow-[0_1px_2px_rgba(28,25,23,0.04),0_8px_22px_-14px_rgba(28,25,23,0.25)] transition-[top] duration-[280ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] min-[1024px]:block',
+        'sticky top-0 hidden rounded-[20px] border border-border-light bg-surface p-[18px] shadow-[0_1px_2px_rgba(28,25,23,0.04),0_8px_22px_-14px_rgba(28,25,23,0.25)] transition-[top] duration-[280ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] lg:block',
         // The header slides away while scrolling down: the calendar follows it up
         'header-hidden:top-[calc(20px-var(--desktop-header-offset))]'
       ]}

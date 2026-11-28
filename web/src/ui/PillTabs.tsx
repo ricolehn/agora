@@ -88,7 +88,7 @@ const DEFAULT_TAB = 'inline-flex flex-1 items-center justify-center gap-2 px-[14
  * The tabs are sized like the Finances and Events segments; `tabClass` replaces that sizing for the other rows, e.g.
  * - sign-in (.auth-tab-btn): 'flex-1 p-[10px] text-[0.95rem]'
  * - mentoring (.mentoring-nav-segment): 'flex flex-[1_1_0] min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-[0.9rem]
- *   whitespace-nowrap overflow-hidden text-ellipsis max-[480px]:px-1 max-[480px]:text-[0.82rem] [&_svg]:size-[15px]'
+ *   whitespace-nowrap overflow-hidden text-ellipsis max-mini:px-1 max-mini:text-[0.82rem] [&_svg]:size-[15px]'
  * - system settings (.sys-subnav-btn): 'flex items-center gap-1.5 px-[14px] py-2 text-[0.88rem]'
  */
 export function PillTabs<T extends string>(props: {

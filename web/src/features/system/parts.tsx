@@ -27,7 +27,7 @@ export function Help(props: { children: JSX.Element; class?: string }) {
 /** The scrolling list of the dialogs' check items (permissions of a group, groups of an account). */
 export function CheckList(props: { id?: string; children: JSX.Element }) {
   return (
-    <div id={props.id} class="flex max-h-[280px] flex-col gap-2 overflow-y-auto p-0.5 max-[541px]:max-h-[200px]">
+    <div id={props.id} class="flex max-h-[280px] flex-col gap-2 overflow-y-auto p-0.5 max-phone:max-h-[200px]">
       {props.children}
     </div>
   );
@@ -54,9 +54,9 @@ export function CheckItem(props: { checked: boolean; onChange: (checked: boolean
 /** The buttons under a dialog's sections: one on the left, the others on the right (stacked on small phones). */
 export function DialogActions(props: { left: JSX.Element; children: JSX.Element }) {
   return (
-    <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2.5 max-[541px]:flex-col-reverse max-[541px]:items-stretch max-[541px]:gap-2 max-[541px]:[&>button]:w-full max-[541px]:[&>button]:justify-center">
+    <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2.5 max-phone:flex-col-reverse max-phone:items-stretch max-phone:gap-2 max-phone:[&>button]:w-full max-phone:[&>button]:justify-center">
       {props.left}
-      <div class="ml-auto flex gap-2.5 max-[541px]:ml-0 max-[541px]:w-full max-[541px]:gap-2 max-[541px]:[&>button]:flex-1 max-[541px]:[&>button]:justify-center">
+      <div class="ml-auto flex gap-2.5 max-phone:ml-0 max-phone:w-full max-phone:gap-2 max-phone:[&>button]:flex-1 max-phone:[&>button]:justify-center">
         {props.children}
       </div>
     </div>

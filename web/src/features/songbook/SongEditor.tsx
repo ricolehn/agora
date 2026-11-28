@@ -122,7 +122,7 @@ export function SongEditorModal() {
           value={title()}
           onInput={e => setTitle(e.currentTarget.value)}
         />
-        <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-2.5 max-[480px]:grid-cols-1">
+        <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-2.5 max-mini:grid-cols-1">
           <input
             type="text"
             id="song-edit-artist"
@@ -166,7 +166,7 @@ export function SongEditorModal() {
         <div class="text-[0.72rem] font-extrabold tracking-[0.06em] text-text-secondary uppercase">{t('songbook_preview', 'Preview')}</div>
         <div
           id="song-edit-preview"
-          class="flex-none rounded-[14px] bg-surface-alt px-[14px] py-[14px] text-[length:var(--song-base)] leading-[1.5] text-text [--song-base:1rem] max-[480px]:px-[18px] max-[480px]:py-0 md:px-7 md:py-0 md:[--song-base:1.2rem]"
+          class="flex-none rounded-[14px] bg-surface-alt px-[14px] py-[14px] text-[length:var(--song-base)] leading-[1.5] text-text [--song-base:1rem] max-mini:px-[18px] max-mini:py-0 md:px-7 md:py-0 md:[--song-base:1.2rem]"
         >
           {/* The hint also when the text has nothing to show (only {title}, {key} ... lines), as before */}
           <Show
@@ -178,7 +178,7 @@ export function SongEditorModal() {
         </div>
       </EditorCard>
       <EditorCard tone="amber" icon={<Icon name="copyright" size={16} />} label={t('songbook_rights', 'Rights')}>
-        <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-2.5 max-[480px]:grid-cols-1">
+        <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-2.5 max-mini:grid-cols-1">
           <EditorField label={t('songbook_ccli_song', 'CCLI song number')}>
             <input
               type="text"

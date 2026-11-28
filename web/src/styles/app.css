@@ -153,7 +153,16 @@
     --background-image-gradient-hover: var(--gradient-hover);
 }
 @theme {
+    /* The widths the layout changes at (those of the previous app): max-mini: small phones, max-phone: / phone:
+       phones, phablet: large phones, sm:, md: phone and desktop, lg:, wide: and max-xl: the widths of the desktop */
+    --breakpoint-mini: 480px;
+    --breakpoint-phone: 541px;
+    --breakpoint-phablet: 601px;
+    --breakpoint-sm: 640px;
     --breakpoint-md: 769px;
+    --breakpoint-lg: 1024px;
+    --breakpoint-wide: 1100px;
+    --breakpoint-xl: 1280px;
 
     /* Entrance of a page (tab), as before: from the side the tab lies on */
     --animate-slide-in-right: slideInRight 0.4s cubic-bezier(0.25, 1, 0.5, 1);

@@ -84,12 +84,12 @@ function Welcome() {
         {admin() ? t('ai_chat_welcome_sub', 'Ask about members, finances, events or duties.') : t('ai_chat_welcome_sub_member', 'Ask about events, duties, your fee or how the app works.')}
       </p>
       {/* Wider screens: three cards side by side, the question below its sign */}
-      <div class="mt-[26px] grid w-full max-w-[420px] grid-cols-1 gap-2.5 min-[640px]:max-w-[640px] min-[640px]:grid-cols-3 min-[640px]:gap-3">
+      <div class="mt-[26px] grid w-full max-w-[420px] grid-cols-1 gap-2.5 sm:max-w-[640px] sm:grid-cols-3 sm:gap-3">
         <For each={ideas()}>
           {(idea, index) => (
             <button
               type="button"
-              class="group/idea relative flex min-w-0 animate-[aiWelcomeUp_0.55s_var(--ease)_calc(0.22s_+_var(--i)_*_0.07s)_backwards] items-center gap-3 rounded-[18px] border border-hairline bg-surface py-3 pr-3.5 pl-3 text-left text-[0.9rem] leading-[1.35] font-[550] text-text shadow-card transition-[transform,border-color,box-shadow,background-color] duration-[250ms] ease-app hover:[transform:translateY(-2px)] hover:border-[color-mix(in_srgb,var(--c)_35%,var(--hairline))] hover:shadow-card-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:[transform:scale(0.98)] active:duration-100 min-[640px]:min-h-32 min-[640px]:flex-col min-[640px]:items-start min-[640px]:gap-3.5 min-[640px]:p-4"
+              class="group/idea relative flex min-w-0 animate-[aiWelcomeUp_0.55s_var(--ease)_calc(0.22s_+_var(--i)_*_0.07s)_backwards] items-center gap-3 rounded-[18px] border border-hairline bg-surface py-3 pr-3.5 pl-3 text-left text-[0.9rem] leading-[1.35] font-[550] text-text shadow-card transition-[transform,border-color,box-shadow,background-color] duration-[250ms] ease-app hover:[transform:translateY(-2px)] hover:border-[color-mix(in_srgb,var(--c)_35%,var(--hairline))] hover:shadow-card-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:[transform:scale(0.98)] active:duration-100 sm:min-h-32 sm:flex-col sm:items-start sm:gap-3.5 sm:p-4"
               style={{ '--i': String(index()), '--c': IDEA_COLORS[index()] }}
               onClick={() => askAi(idea)}
             >
@@ -101,7 +101,7 @@ function Welcome() {
                 name="arrowUpRight"
                 size={16}
                 strokeWidth={2.2}
-                class="shrink-0 text-text-secondary opacity-50 transition-[transform,opacity,color] duration-[250ms] ease-app group-hover/idea:[transform:translate(2px,-2px)] group-hover/idea:text-(--c) group-hover/idea:opacity-100 min-[640px]:absolute min-[640px]:top-4 min-[640px]:right-3.5"
+                class="shrink-0 text-text-secondary opacity-50 transition-[transform,opacity,color] duration-[250ms] ease-app group-hover/idea:[transform:translate(2px,-2px)] group-hover/idea:text-(--c) group-hover/idea:opacity-100 sm:absolute sm:top-4 sm:right-3.5"
               />
             </button>
           )}

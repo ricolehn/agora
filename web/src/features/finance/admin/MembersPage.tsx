@@ -209,7 +209,7 @@ function PersonCard(props: { person: Person }) {
             <span
               class={[
                 'max-w-full overflow-hidden text-right text-[0.76rem] leading-[1.25] font-medium text-ellipsis text-text-secondary',
-                { 'max-[480px]:hidden': !covered() }
+                { 'max-mini:hidden': !covered() }
               ]}
             >
               {translateStatusText(meta().text)}
