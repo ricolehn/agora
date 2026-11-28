@@ -10,21 +10,18 @@ import { fileUrl, previewUrl, viewerSize } from '../../lib/media';
 import { fileMeta } from './files';
 import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerTop } from './viewerChrome';
 import type { MediaFile } from './types';
-import { flushNow } from '../../app/flush';
 
 const ID = 'media-player-modal';
-const [file, setFile] = createSignal<MediaFile | null>(null);
+// The file of the player, a new opening every time: the player is made anew for every file opened, also when it opens
+// again while the last one still fades out (that one lost its source when it closed, and only a new player starts
+// playing by itself)
+const [opening, setOpening] = createSignal<{ file: MediaFile } | null>(null);
 const [failed, setFailed] = createSignal(false);
 let player: HTMLMediaElement | undefined;
 
 export function openMediaPlayer(next: MediaFile) {
-  // A player of its own for every file opened, also when it opens again while the last one still fades out (that
-  // one lost its source when it closed, and only a new player starts playing by itself)
-  setFile(null);
-  flushNow();
-  setFile(next);
+  setOpening({ file: next });
   setFailed(false);
-  flushNow();
   onModalClosed(ID, () => {
     // Stops playing and loading at once (only taking it out of the page leaves the download running)
     player?.pause();
@@ -74,23 +71,23 @@ function Player(props: { file: MediaFile }) {
 export function MediaPlayer() {
   return (
     <Modal id={ID} plain panelClass={VIEWER_PANEL} backdropClass={VIEWER_BACKDROP} labelledBy="media-player-name">
-      <Show when={file()}>
-        {current => (
+      <Show when={opening()} keyed>
+        {({ file: current }) => (
           <div class="relative flex size-full flex-col text-[#f5f5f4]">
-            <ViewerTop id="media-player" modal={ID} name={current().name} meta={fileMeta(current())} file={current()} />
+            <ViewerTop id="media-player" modal={ID} name={current.name} meta={fileMeta(current)} file={current} />
             {/* Video as large as fits, music as a calm card */}
             <div class="flex min-h-0 flex-1 items-center justify-center px-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))]">
               <Show
                 when={!failed()}
                 fallback={
                   <ViewerError
-                    icon={current().kind === 'video' ? 'play' : 'music'}
-                    text={current().kind === 'video' ? t('media_video_failed', 'This video cannot be played in this browser.') : t('media_audio_failed', 'This file cannot be played in this browser.')}
-                    file={current()}
+                    icon={current.kind === 'video' ? 'play' : 'music'}
+                    text={current.kind === 'video' ? t('media_video_failed', 'This video cannot be played in this browser.') : t('media_audio_failed', 'This file cannot be played in this browser.')}
+                    file={current}
                   />
                 }
               >
-                <Player file={current()} />
+                <Player file={current} />
               </Show>
             </div>
           </div>

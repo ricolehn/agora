@@ -16,7 +16,6 @@ import { fileMeta, mediaTileSize } from './files';
 import { mediaShown } from './library';
 import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
 import type { MediaFile } from './types';
-import { flushNow } from '../../app/flush';
 
 const ID = 'media-viewer-modal';
 const DOUBLE_TAP_ZOOM = 2.5;
@@ -55,9 +54,9 @@ function largeUrl(file: MediaFile) {
 export function openMediaViewer(fileIndex: number) {
   const files = mediaShown().files;
   const list = files.filter(opensInViewer);
+  const at = Math.max(0, list.indexOf(files[fileIndex]));
   setPictures(list);
-  setIndex(Math.max(0, list.indexOf(files[fileIndex])));
-  flushNow();
+  setIndex(at);
   // Fingers of the last time are forgotten: one still down when it closed (the back gesture) never lifted on the
   // stage, and the next single finger would have zoomed as the second finger of a pinch
   pointers.clear();
@@ -68,7 +67,7 @@ export function openMediaViewer(fileIndex: number) {
     setSrc(null);
   });
   openModal(ID);
-  showPicture();
+  showPicture(list, at);
 }
 
 /** Shows [next] (clamped to the picture); [animate] for jumps (double tap, back to fit), not for fingers. */
@@ -80,8 +79,9 @@ function setView(next: View, animate = false) {
   setZoomed(view.scale > 1);
 }
 
-function showPicture() {
-  const file = current();
+/** Shows the picture [at] of [list] (just chosen: the signals show it with Solid's next update). */
+function showPicture(list: MediaFile[], at: number) {
+  const file = list[at];
   if (!file) return;
   const isNewest = pictureLoad();
   view = WHOLE;
@@ -117,7 +117,7 @@ function showPicture() {
   }
   // The neighbours are fetched meanwhile: swiping on shows them at once
   for (const direction of [1, -1]) {
-    const next = pictures()[neighbourIndex(pictures(), index(), direction)];
+    const next = list[neighbourIndex(list, at, direction)];
     const nextUrl = next && next !== file ? largeUrl(next) : '';
     if (nextUrl) new Image().src = nextUrl;
   }
@@ -132,8 +132,7 @@ function stepViewer(direction: number) {
   const next = neighbourIndex(pictures(), index(), direction);
   if (next < 0) return;
   setIndex(next);
-  flushNow();
-  showPicture();
+  showPicture(pictures(), next);
 }
 
 /** The magnifier: in to 2.5x around the middle, or back to the whole picture. */

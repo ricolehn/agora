@@ -1,6 +1,6 @@
 // Folder rights (extended media rights): who may do what in a folder - all members always, other groups and single
 // people only when added - and every folder with rights of its own at a glance.
-import { For, Show, createSignal, onSettled } from 'solid-js';
+import { For, Show, createSignal, onFlush, onSettled } from 'solid-js';
 import { apiJson } from '../../app/api';
 import { loadMediaStatus, mediaStatus } from '../../app/data';
 import { t } from '../../app/i18n';
@@ -17,7 +17,6 @@ import {
 } from '../../lib/media';
 import { loadMediaFolder, mediaFolder, openMediaFolder } from './library';
 import { SheetFooter } from './SheetFooter';
-import { flushNow } from '../../app/flush';
 
 const RIGHTS_ID = 'media-rights-modal';
 const RULES_ID = 'media-rules-modal';
@@ -53,7 +52,6 @@ export async function openMediaRights(path = mediaFolder()) {
       const data = await apiJson<{ choices: Choice[]; folder: FolderRules }>(`/media/rules?path=${encodeURIComponent(path)}`);
       setRights({ path, choices: data.choices, rows: rightsRows(data.choices, data.folder) });
       setAdding(false);
-      flushNow();
       openModal(RIGHTS_ID);
     },
     err => err?.message || t('media_rights_load_failed', 'The folder rights could not be loaded')
@@ -80,8 +78,8 @@ function addRow(id: string) {
   // New in the dialog: read, the most common wish; one tap changes it
   updateRows(rows => [...rows, { id: choice.id, name: choice.name, kind: choice.kind, level: 'read', inherited: null }]);
   setAdding(false);
-  flushNow();
-  list?.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  // The new row comes into view once it is there
+  onFlush(() => list?.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 }
 
 async function saveRights() {
@@ -109,7 +107,6 @@ export async function openMediaRulesOverview() {
     async () => {
       const data = await apiJson<{ choices: Choice[]; rules: Rule[] }>('/media/rules');
       setRules({ rules: data.rules, choices: data.choices });
-      flushNow();
       openModal(RULES_ID);
     },
     err => err?.message || t('media_rights_load_failed', 'The folder rights could not be loaded')

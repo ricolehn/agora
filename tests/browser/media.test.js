@@ -22,6 +22,25 @@ async function fab(page, item) {
   await page.locator('#fabMenu').getByRole('button', { name: new RegExp(item) }).click();
 }
 
+/** A short silent WAV file (a browser plays it). */
+function silentWav(seconds = 1, rate = 8000) {
+  const samples = seconds * rate;
+  const wav = Buffer.alloc(44 + samples, 0x80);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + samples, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24);
+  wav.writeUInt32LE(rate, 28);
+  wav.writeUInt16LE(1, 32);
+  wav.writeUInt16LE(8, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(samples, 40);
+  return wav;
+}
+
 describe('media (browser)', { skip: skipReason || false }, () => {
   let app;
   let cloud;
@@ -30,6 +49,7 @@ describe('media (browser)', { skip: skipReason || false }, () => {
     cloud.addFile('Agora/willkommen.pdf', '%PDF-1.4 hello', 'application/pdf');
     cloud.addFile('Agora/Fotos/Sommer.png', pngImage(400, 300), 'image/png');
     cloud.addFile('Agora/Intern/notiz.txt', 'intern', 'text/plain');
+    cloud.addFile('Agora/Glocke.wav', silentWav(), 'audio/wav');
     app = await startApp();
   });
   after(async () => {
@@ -115,5 +135,17 @@ describe('media (browser)', { skip: skipReason || false }, () => {
     await max.toast('Deleted');
     await until(async () => (await entry(max.page, 'Bild.png').count()) === 0, 'the file to go');
     assert.equal(cloud.nodes.has('Agora/Fotos/Sommerfest/Bild.png'), false);
+  });
+
+  test('music opens in a player of its own, a new one when it opens again', async () => {
+    const max = await app.signIn('max');
+    await max.go('/media');
+    await open(max.page, 'Glocke.wav');
+    const player = max.page.locator('#media-player-modal audio');
+    await player.waitFor({ state: 'attached' });
+    await player.evaluate(el => (el.dataset.seen = 'first'));
+    await max.page.keyboard.press('Escape');
+    await open(max.page, 'Glocke.wav');
+    await until(async () => (await player.count()) === 1 && (await player.evaluate(el => el.dataset.seen || 'new')) === 'new', 'a new player');
   });
 });

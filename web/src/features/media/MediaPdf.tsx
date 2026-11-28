@@ -1,6 +1,6 @@
 // PDF viewer: the browser's own on computers (search, print); pdf.js on phones and tablets, whose browsers show a
 // PDF in a page only as its first page or not at all. pdf.js is loaded the first time it is needed.
-import { For, Match, Show, Switch, createEffect, createSignal, onSettled } from 'solid-js';
+import { For, Match, Show, Switch, createEffect, createSignal, onFlush, onSettled } from 'solid-js';
 // Only the worker's address (an asset of the build); pdf.js itself is loaded when the first PDF opens
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { API } from '../../app/api';
@@ -11,7 +11,6 @@ import { Modal } from '../../ui/Modal';
 import { fileUrl, formatSize } from '../../lib/media';
 import { VIEWER_BACKDROP, VIEWER_PANEL, ViewerError, ViewerSpinner, ViewerTop, viewerButton } from './viewerChrome';
 import type { MediaFile } from './types';
-import { flushNow } from '../../app/flush';
 
 type PdfJs = typeof import('pdfjs-dist');
 type PdfDocument = Awaited<ReturnType<PdfJs['getDocument']>['promise']>;
@@ -65,7 +64,6 @@ export function openMediaPdf(next: MediaFile) {
   setNative(useNative);
   setDoc(null);
   setFailed(false);
-  flushNow();
   onModalClosed(ID, closePdfView);
   openModal(ID);
   if (!useNative) void renderWithPdfJs(next);
@@ -100,16 +98,17 @@ async function renderWithPdfJs(target: MediaFile) {
 /** Sizes the pages for the zoom (they are drawn again as they come into view). */
 function layoutPages(view: PdfView) {
   setPageWidth(Math.round(Math.min((stage?.clientWidth || 0) - 24, 960) * view.zoom));
-  flushNow();
 }
 
 function zoomPdf(direction: number) {
   const view = pdfView;
-  if (!view?.doc || !stage) return;
-  const anchor = stage.scrollTop / Math.max(1, stage.scrollHeight);
+  const area = stage;
+  if (!view?.doc || !area) return;
+  const anchor = area.scrollTop / Math.max(1, area.scrollHeight);
   view.zoom = Math.min(3, Math.max(0.5, view.zoom * (direction > 0 ? 1.25 : 0.8)));
   layoutPages(view);
-  stage.scrollTop = anchor * stage.scrollHeight;
+  // The same place of the document stays in view once the pages have their new size
+  onFlush(() => (area.scrollTop = anchor * area.scrollHeight));
 }
 
 function PdfPage(props: { number: number; ratio: number }) {
