@@ -338,7 +338,7 @@ export function MediaViewer() {
               </button>
               <div
                 id="media-viewer-count"
-                class="absolute bottom-[calc(16px+env(safe-area-inset-bottom,0px))] left-1/2 z-[2] -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-[0.78rem] font-semibold"
+                class="absolute bottom-[calc(16px+env(safe-area-inset-bottom,0px))] left-1/2 z-[2] -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-78 font-semibold"
               >
                 {index() + 1} / {pictures().length}
               </div>

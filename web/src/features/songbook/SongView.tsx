@@ -40,18 +40,18 @@ const HEAD_BUTTON =
   'inline-flex size-[42px] shrink-0 items-center justify-center rounded-full border border-border-light bg-surface text-text shadow-[0_4px_14px_rgba(28,25,23,0.12)] hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 // A row of the "Display" panel and its label
 const PANEL_ROW = 'flex min-h-[52px] items-center justify-between gap-3 border-t border-border-light py-1.5';
-const PANEL_LABEL = 'flex flex-col items-start gap-0.5 text-[0.92rem] font-bold text-text';
+const PANEL_LABEL = 'flex flex-col items-start gap-0.5 text-92 font-bold text-text';
 // Two or three buttons in one pill, and one of them
 const STEPPER = 'inline-flex shrink-0 items-center gap-0.5 rounded-[14px] border border-border-light bg-surface-alt p-0.5';
 const STEP =
   'inline-flex h-[38px] min-w-[42px] items-center justify-center rounded-xl border-0 px-2 font-extrabold text-text transition-[background-color,color] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 // Its text size: the symbols, the two "A" of the text size, the speed
-const STEP_TEXT = 'text-[0.9rem]';
+const STEP_TEXT = 'text-90';
 const STEP_IDLE = 'bg-transparent hover:bg-brand/12';
 const STEP_ACTIVE = 'bg-gradient-primary text-white';
 // The gradient pills at the bottom right (.song-pill)
 const PILL =
-  'inline-flex h-12 items-center gap-2 rounded-full border text-[0.95rem] font-extrabold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'inline-flex h-12 items-center gap-2 rounded-full border text-95 font-extrabold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 const PILL_GRADIENT = 'border-transparent bg-gradient-primary text-white shadow-[0_8px_22px_rgba(var(--glow-rgb),0.35)]';
 
 // Only the shown page takes taps: while it fades out, its floating controls must not catch them
@@ -102,11 +102,11 @@ function SongPage(props: { song: Song }) {
       >
         <BackButton large onClick={closeSong} />
         <div class="min-w-0 flex-1 pt-0.5">
-          <h2 id="song-view-title" class="m-0 text-[1.35rem] leading-[1.25] font-extrabold text-text [overflow-wrap:anywhere] max-mini:text-[1.2rem]">
+          <h2 id="song-view-title" class="m-0 text-[1.35rem] leading-[1.25] font-extrabold text-text [overflow-wrap:anywhere] max-mini:text-120">
             {props.song.title}
           </h2>
           {/* Songwriter and the key (as before, the line keeps its small space above even when it is empty) */}
-          <div id="song-view-sub" class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[0.88rem] text-text-secondary">
+          <div id="song-view-sub" class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-88 text-text-secondary">
             <Show when={props.song.artist}>
               <span class="[overflow-wrap:anywhere]">{props.song.artist}</span>
             </Show>
@@ -116,7 +116,7 @@ function SongPage(props: { song: Song }) {
                   <span
                     data-song-fact
                     class={[
-                      'rounded-full px-2.5 py-0.5 text-[0.76rem] font-bold whitespace-nowrap',
+                      'rounded-full px-2.5 py-0.5 text-75 font-bold whitespace-nowrap',
                       fact().shifted
                         ? 'bg-gradient-primary text-white'
                         : 'bg-brand/12 text-brand-deep dark:bg-[rgba(34,211,238,0.14)] dark:text-brand'
@@ -158,7 +158,7 @@ function SongPage(props: { song: Song }) {
         <div class="px-1 pt-5 md:pt-7">
           <SongLines content={props.song.content || ''} steps={songSteps()} declaredKey={props.song.key || ''} chords={songChords()} />
           <Show when={ccli().length}>
-            <div class="mt-8 flex flex-col gap-0.5 border-t border-border-light pt-3 text-[0.72rem] font-semibold text-text-secondary">
+            <div class="mt-8 flex flex-col gap-0.5 border-t border-border-light pt-3 text-72 font-semibold text-text-secondary">
               <For each={ccli()} keyed={false}>{line => <span>{line()}</span>}</For>
             </div>
           </Show>
@@ -235,7 +235,7 @@ function SongPanel(props: { songKey: string; shift: string }) {
       ]}
     >
       <div class="flex items-center justify-between gap-3 pb-1.5">
-        <span id="song-panel-title" class="text-[1rem] font-extrabold text-text">
+        <span id="song-panel-title" class="text-100 font-extrabold text-text">
           {t('songbook_display', 'Display')}
         </span>
         <button
@@ -255,7 +255,7 @@ function SongPanel(props: { songKey: string; shift: string }) {
             <button
               type="button"
               id="song-key-reset"
-              class="inline-flex items-center gap-1 border-0 bg-transparent p-0 text-[0.78rem] font-bold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="inline-flex items-center gap-1 border-0 bg-transparent p-0 text-78 font-bold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               onClick={resetSongKey}
             >
               <Glyph size={13} strokeWidth={2.4}>
@@ -276,7 +276,7 @@ function SongPanel(props: { songKey: string; shift: string }) {
             type="button"
             id="song-key"
             class={[
-              'h-[38px] min-w-12 rounded-xl border-0 px-1.5 text-[0.95rem] font-extrabold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+              'h-[38px] min-w-12 rounded-xl border-0 px-1.5 text-95 font-extrabold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
               shifted() ? 'cursor-pointer bg-brand/14 hover:bg-brand/12' : 'cursor-default bg-transparent'
             ]}
             aria-label={shifted() ? `${props.songKey || props.shift} – ${t('songbook_key_reset', 'Back to the original key')}` : props.songKey || t('songbook_key_label', 'Key')}
@@ -299,10 +299,10 @@ function SongPanel(props: { songKey: string; shift: string }) {
       <div class={PANEL_ROW}>
         <span class={PANEL_LABEL}>{t('songbook_text_size', 'Text size')}</span>
         <div class={STEPPER}>
-          <button type="button" class={[STEP, STEP_IDLE, 'text-[0.76rem]']} aria-label={t('songbook_smaller', 'Smaller text')} onClick={() => sizeSong(-1)}>
+          <button type="button" class={[STEP, STEP_IDLE, 'text-75']} aria-label={t('songbook_smaller', 'Smaller text')} onClick={() => sizeSong(-1)}>
             A
           </button>
-          <button type="button" class={[STEP, STEP_IDLE, 'text-[1.05rem]']} aria-label={t('songbook_larger', 'Larger text')} onClick={() => sizeSong(1)}>
+          <button type="button" class={[STEP, STEP_IDLE, 'text-105']} aria-label={t('songbook_larger', 'Larger text')} onClick={() => sizeSong(1)}>
             A
           </button>
         </div>
@@ -320,20 +320,20 @@ function SongPanel(props: { songKey: string; shift: string }) {
           >
             <Icon name={songScrolling() ? 'pause' : 'play'} size={16} strokeWidth={2.4} />
           </button>
-          <button type="button" id="song-speed-btn" class={[STEP, STEP_IDLE, 'text-[0.8rem]']} aria-label={t('songbook_speed', 'Speed')} onClick={cycleSongSpeed}>
+          <button type="button" id="song-speed-btn" class={[STEP, STEP_IDLE, 'text-80']} aria-label={t('songbook_speed', 'Speed')} onClick={cycleSongSpeed}>
             {songSpeed().toLocaleString(uiLocale())}×
           </button>
         </div>
       </div>
       <div class="flex gap-2 border-t border-border-light pt-3">
-        <Button variant="secondary" class="flex-1 px-3 py-2.5 text-[0.86rem]" onClick={() => void shareSong()}>
+        <Button variant="secondary" class="flex-1 px-3 py-2.5 text-85" onClick={() => void shareSong()}>
           <Glyph size={16} strokeWidth={2}>
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </Glyph>
           <span>{t('songbook_share', 'Share link')}</span>
         </Button>
-        <Button variant="secondary" class="flex-1 px-3 py-2.5 text-[0.86rem]" onClick={printSong}>
+        <Button variant="secondary" class="flex-1 px-3 py-2.5 text-85" onClick={printSong}>
           <Glyph size={16} strokeWidth={2}>
             <polyline points="6 9 6 2 18 2 18 9" />
             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />

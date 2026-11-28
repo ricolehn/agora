@@ -19,7 +19,7 @@ export function openPollDetail(id: string) {
 /** "Votes are only counted - nobody sees who chose what." (also under the create page). */
 export function PollsNote(props: { text: string; class?: string }) {
   return (
-    <p class={['m-0 mb-3.5 flex items-center gap-1.5 text-[0.8rem] text-text-secondary', props.class]}>
+    <p class={['m-0 mb-3.5 flex items-center gap-1.5 text-80 text-text-secondary', props.class]}>
       <Icon name="shield" class="shrink-0 text-[#10b981]" />
       <span>{props.text}</span>
     </p>
@@ -90,28 +90,28 @@ function PollCard(props: { poll: Poll }) {
         <Show
           when={props.poll.closed}
           fallback={
-            <span class="inline-flex items-center gap-1.5 rounded-full bg-[rgba(16,185,129,0.12)] px-2.5 py-[3px] text-[0.74rem] font-extrabold text-[#059669]">
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-[rgba(16,185,129,0.12)] px-2.5 py-[3px] text-75 font-extrabold text-[#059669]">
               <span class="size-[7px] rounded-full bg-[#10b981]" />
               {t('polls_live', 'Running')}
             </span>
           }
         >
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-alt px-2.5 py-[3px] text-[0.74rem] font-extrabold text-text-secondary">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-alt px-2.5 py-[3px] text-75 font-extrabold text-text-secondary">
             {t('polls_closed', 'Finished')}
           </span>
         </Show>
-        <span class="whitespace-nowrap text-[0.78rem] font-semibold text-text-secondary">
+        <span class="whitespace-nowrap text-78 font-semibold text-text-secondary">
           {props.poll.closed ? pollEndDate(props.poll) : pollTimeLabel(props.poll)}
         </span>
       </span>
-      <span class="text-[1.08rem] leading-[1.3] font-extrabold [overflow-wrap:anywhere]">{props.poll.title}</span>
+      <span class="text-110 leading-[1.3] font-extrabold [overflow-wrap:anywhere]">{props.poll.title}</span>
       <Show when={props.poll.description}>
-        <span class="-mt-1 line-clamp-2 text-[0.86rem] leading-[1.4] text-text-secondary">{props.poll.description}</span>
+        <span class="-mt-1 line-clamp-2 text-85 leading-[1.4] text-text-secondary">{props.poll.description}</span>
       </Show>
       <Show when={leader()}>
         {lead => (
           <span class="flex flex-col gap-1.5 rounded-[14px] bg-surface-alt px-3 py-2.5">
-            <span class="flex justify-between gap-2.5 text-[0.86rem] font-bold">
+            <span class="flex justify-between gap-2.5 text-85 font-bold">
               <span class="min-w-0 truncate">
                 {lead().tie ? `${t('polls_tie', 'Tie')}: ` : ''}
                 {lead().text}
@@ -123,12 +123,12 @@ function PollCard(props: { poll: Poll }) {
         )}
       </Show>
       <span class="mt-0.5 flex items-center justify-between gap-2.5 border-t border-border-light pt-2.5">
-        <span class="inline-flex min-w-0 items-center gap-1.5 text-[0.8rem] font-semibold text-text-secondary">
+        <span class="inline-flex min-w-0 items-center gap-1.5 text-80 font-semibold text-text-secondary">
           <Icon name="users" />
           {pollVotes(props.poll)}
           {props.poll.isMine ? ` · ${t('polls_mine_badge', 'Yours')}` : ''}
         </span>
-        <span class={['inline-flex shrink-0 items-center gap-1 text-[0.84rem] font-extrabold', actionTone()]}>
+        <span class={['inline-flex shrink-0 items-center gap-1 text-85 font-extrabold', actionTone()]}>
           <Switch>
             <Match when={props.poll.closed}>{props.poll.results ? t('polls_show_result', 'See result') : t('polls_closed', 'Finished')}</Match>
             <Match when={props.poll.hasVoted}>

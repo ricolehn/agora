@@ -174,7 +174,7 @@ function EditReceiptRow(props: { filename: string }) {
         <ReceiptFileRow preview={<Spinner size={16} stroke={2} class="m-0" />} name={props.filename} muted />
       </Match>
       <Match when={state().status === 'error'}>
-        <ReceiptFileRow preview={<span class="text-[1.25rem]">⚠️</span>} name={props.filename} actions={<Remove />} />
+        <ReceiptFileRow preview={<span class="text-125">⚠️</span>} name={props.filename} actions={<Remove />} />
       </Match>
       <Match when={state().urls[0]}>
         {url => (
@@ -204,12 +204,12 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
     <>
       <ModalSection icon="💶" title={t('modal_section_amount_date', 'Amount & date')}>
         <div class="relative flex items-center">
-          <span class="pointer-events-none absolute left-3 z-[1] text-[1.1rem] leading-none font-bold text-primary">€</span>
+          <span class="pointer-events-none absolute left-3 z-[1] text-110 leading-none font-bold text-primary">€</span>
           <Input
             type="text"
             inputmode="decimal"
             id="edit-payment-amount"
-            class="h-[38px] rounded-[9px] bg-surface pl-7 text-[1.15rem] font-bold tracking-[-0.01em] text-text"
+            class="h-[38px] rounded-[9px] bg-surface pl-7 text-115 font-bold tracking-[-0.01em] text-text"
             value={amount()}
             onInput={e => setAmount(e.currentTarget.value)}
           />
@@ -243,7 +243,7 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
         {/* Its parts sit close together, without the sections' gaps (as before) */}
         <ModalSection icon="📎" title={t('manage_receipts', 'Manage Receipts')} class="!block">
           <div class="mb-1.5 flex flex-col gap-2">
-            <For each={receipts()} fallback={<div class="text-[0.85rem] text-text-secondary">{t('no_receipts', 'No receipts available.')}</div>}>
+            <For each={receipts()} fallback={<div class="text-85 text-text-secondary">{t('no_receipts', 'No receipts available.')}</div>}>
               {name => <EditReceiptRow filename={name} />}
             </For>
           </div>
@@ -295,11 +295,11 @@ export function EditPaymentDialog() {
       </Modal>
       <Modal id="confirm-delete-modal" plain maxWidth="380px" labelledBy="title-confirm-delete">
         <div class="p-5 text-center">
-          <div class="mb-3 text-[2.2rem] text-danger">⚠️</div>
-          <h3 id="title-confirm-delete" class="mb-2 text-[1.15rem] font-bold text-text">
+          <div class="mb-3 text-220 text-danger">⚠️</div>
+          <h3 id="title-confirm-delete" class="mb-2 text-115 font-bold text-text">
             {t('modal_delete_trans_title', 'Delete Transaction?')}
           </h3>
-          <p class="mb-5 text-[0.86rem] leading-[1.4] text-text-secondary">
+          <p class="mb-5 text-85 leading-[1.4] text-text-secondary">
             {t('modal_delete_trans_desc', 'Are you sure you want to permanently delete this payment? This cannot be undone.')}
           </p>
           <div class="flex gap-2.5">

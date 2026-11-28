@@ -247,7 +247,7 @@ function FeeChangeForm() {
         </Show>
         <p
           id="fee-change-hint"
-          class={['mt-2 text-[0.82rem] leading-[1.45]', monthHint().warning ? 'text-[color-mix(in_srgb,var(--warning)_70%,var(--text))]' : 'text-text-secondary']}
+          class={['mt-2 text-82 leading-[1.45]', monthHint().warning ? 'text-[color-mix(in_srgb,var(--warning)_70%,var(--text))]' : 'text-text-secondary']}
         >
           {monthHint().text}
         </p>
@@ -303,11 +303,11 @@ function FeeChangeReview(props: { impact: Impact }) {
             <For each={stretches()}>
               {stretch => (
                 <div class="flex flex-col gap-0.5 rounded-xl border border-hairline bg-surface px-3 py-2.5">
-                  <strong class="mb-px text-[0.9rem] font-bold text-text">{stretchWhen(stretch)}</strong>
+                  <strong class="mb-px text-90 font-bold text-text">{stretchWhen(stretch)}</strong>
                   {/* Every fee that differs on a line of its own - "Full earner   €50.00 → €60.00" */}
                   <For each={FEE_KEYS.filter(key => (stretch.before?.[key] || 0) !== (stretch.after?.[key] || 0))}>
                     {key => (
-                      <span class="flex justify-between gap-3 text-[0.84rem] leading-[1.45] text-text-secondary">
+                      <span class="flex justify-between gap-3 text-85 leading-[1.45] text-text-secondary">
                         {labels()[key]}
                         <b class="shrink-0 font-semibold text-text tabular-nums">{`${euro(stretch.before?.[key] || 0)} → ${euro(stretch.after?.[key] || 0)}`}</b>
                       </span>

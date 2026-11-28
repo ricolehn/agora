@@ -22,9 +22,9 @@ export function ProfilePage() {
   return (
     <Card bodyClass="flex flex-col items-center px-5 pt-5 pb-6 text-center">
       <Avatar uid={currentUid()} name={profileName()} size={96} ring={avatarRing(currentUser())} src={ownPicture() ?? ''} initialsClass="text-[1.9rem]" />
-      <div class="mt-3.5 text-[1.2rem] font-extrabold text-text [overflow-wrap:anywhere]">{profileName()}</div>
+      <div class="mt-3.5 text-120 font-extrabold text-text [overflow-wrap:anywhere]">{profileName()}</div>
       <Show when={email() !== profileName() && email()}>
-        <div class="text-[0.9rem] text-text-secondary [overflow-wrap:anywhere]">{email()}</div>
+        <div class="text-90 text-text-secondary [overflow-wrap:anywhere]">{email()}</div>
       </Show>
       <Button variant="secondary" class="mt-[18px]" onClick={() => fileInput.click()}>
         <Icon name="camera" size={16} />
@@ -38,7 +38,7 @@ export function ProfilePage() {
         class="hidden"
         onChange={e => onFile(e.currentTarget)}
       />
-      <div class="mt-2 max-w-[320px] text-[0.78rem] leading-[1.45] text-text-secondary">
+      <div class="mt-2 max-w-[320px] text-78 leading-[1.45] text-text-secondary">
         {t('profile_pic_desc', 'JPG, PNG, HEIC – will be saved as 256×256 JPEG.')}
       </div>
     </Card>

@@ -26,8 +26,8 @@ function GuestMessage(props: { view: GuestView }) {
       <span class="mb-1 inline-flex size-12 items-center justify-center rounded-full bg-surface-alt text-text-secondary">
         <Icon name="lock" size={22} />
       </span>
-      <strong class="text-[1.08rem] text-text">{message()[0]}</strong>
-      <span class="max-w-[34ch] text-[0.9rem] leading-normal text-text-secondary">{message()[1]}</span>
+      <strong class="text-110 text-text">{message()[0]}</strong>
+      <span class="max-w-[34ch] text-90 leading-normal text-text-secondary">{message()[1]}</span>
     </div>
   );
 }
@@ -35,7 +35,7 @@ function GuestMessage(props: { view: GuestView }) {
 /** Whose page this is, sign in for members, privacy. */
 function GuestFooter(props: { view: GuestView }) {
   return (
-    <div class="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-t border-border-light px-0.5 pt-[14px] text-[0.84rem] text-text-secondary">
+    <div class="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-t border-border-light px-0.5 pt-[14px] text-85 text-text-secondary">
       <span class="inline-flex min-w-0 items-center gap-2 font-bold text-text">
         <img src="/assets/church-logo.svg" alt="" class="size-6 shrink-0 object-contain" />
         <span>{appName()}</span>
@@ -72,7 +72,7 @@ function GuestEvent(props: { view: GuestView }) {
           <>
             <TopBadges event={event()} onImage={hasImage()} />
             <div class="flex items-center gap-3">
-              <h2 id="guest-event-title" class="m-0 min-w-0 flex-1 text-[1.6rem] leading-[1.25] font-extrabold tracking-[-0.022em] break-words text-text">
+              <h2 id="guest-event-title" class="m-0 min-w-0 flex-1 text-160 leading-[1.25] font-extrabold tracking-[-0.022em] break-words text-text">
                 {event().title}
               </h2>
               <Show when={props.view.token}>

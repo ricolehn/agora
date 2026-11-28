@@ -64,13 +64,13 @@ export function HomeGreeting() {
   useFitOneLine(() => title, greeting, 14);
   return (
     <div class="mb-[26px] px-0.5 pt-0.5 pb-1">
-      <div id="home-greeting-date" class="text-[0.76rem] font-semibold tracking-[0.08em] text-brand-deep uppercase">
+      <div id="home-greeting-date" class="text-75 font-semibold tracking-[0.08em] text-brand-deep uppercase">
         {intlFormatter(Intl.DateTimeFormat, { weekday: 'long', day: 'numeric', month: 'long' }).format(greetingTime())}
       </div>
       <h1
         ref={title}
         id="home-greeting-title"
-        class="mt-1.5 overflow-hidden text-[1.6rem] leading-[1.15] font-[750] tracking-[-0.03em] whitespace-nowrap text-text dark:text-[#e4ded6]"
+        class="mt-1.5 overflow-hidden text-160 leading-[1.15] font-[750] tracking-[-0.03em] whitespace-nowrap text-text dark:text-[#e4ded6]"
       >
         {greeting()}
       </h1>
@@ -81,7 +81,7 @@ export function HomeGreeting() {
 function SectionHead(props: { title: string; children?: JSX.Element }) {
   return (
     <div class="mb-3.5 flex items-center justify-between">
-      <h2 class="m-0 text-[1.2rem] font-bold tracking-[-0.02em] text-text">{props.title}</h2>
+      <h2 class="m-0 text-120 font-bold tracking-[-0.02em] text-text">{props.title}</h2>
       {props.children}
     </div>
   );
@@ -119,7 +119,7 @@ function homeDayLabel(day: string, today: string) {
 }
 
 const NEXT_CAT: Record<EventCategory, string> = { event: '[--cat:var(--brand)]', termin: '[--cat:#78716c]', pinned: '[--cat:#6366f1]' };
-const CHIP = 'mt-auto inline-flex items-center gap-1 self-start rounded-full border px-[9px] py-[3px] text-[0.72rem] font-bold';
+const CHIP = 'mt-auto inline-flex items-center gap-1 self-start rounded-full border px-[9px] py-[3px] text-72 font-bold';
 
 function NextCard(props: { ev: AppEvent; day: string }) {
   // A picture that does not load leaves the spheres (a new picture gets its chance)
@@ -157,7 +157,7 @@ function NextCard(props: { ev: AppEvent; day: string }) {
         </Show>
         <span
           class={[
-            'absolute top-2 left-2 rounded-full border px-2.5 py-1 text-[0.74rem] font-semibold text-white backdrop-blur-[10px]',
+            'absolute top-2 left-2 rounded-full border px-2.5 py-1 text-75 font-semibold text-white backdrop-blur-[10px]',
             props.day <= getTodayStr() ? 'border-white/45 bg-gradient-primary' : 'border-white/22 bg-[rgba(26,25,23,0.55)]'
           ]}
         >
@@ -165,13 +165,13 @@ function NextCard(props: { ev: AppEvent; day: string }) {
         </span>
       </div>
       <div class="flex flex-1 basis-0 flex-col gap-1.5 px-2.5 pt-2.5 pb-2">
-        <div class="flex min-w-0 items-center gap-[5px] text-[0.78rem] font-bold text-[var(--cat)]">
+        <div class="flex min-w-0 items-center gap-[5px] text-78 font-bold text-[var(--cat)]">
           <Icon name={isMultiDay(props.ev) ? 'calendar' : 'clock'} size={12} class="shrink-0" />
           <span class="truncate">{time()}</span>
         </div>
-        <div class="line-clamp-2 text-[1rem] leading-[1.3] font-bold tracking-[-0.015em] text-text">{props.ev.title}</div>
+        <div class="line-clamp-2 text-100 leading-[1.3] font-bold tracking-[-0.015em] text-text">{props.ev.title}</div>
         <Show when={props.ev.location}>
-          <div class="flex min-w-0 items-center gap-[5px] text-[0.78rem] text-text-secondary">
+          <div class="flex min-w-0 items-center gap-[5px] text-78 text-text-secondary">
             <Icon name="location" size={12} class="shrink-0" />
             <span class="truncate">{props.ev.location}</span>
           </div>
@@ -224,7 +224,7 @@ export function HomeUpcoming() {
           </Match>
           <Match when={!upcoming().length}>
             <SectionHead title={t('home_next', 'Up next')} />
-            <div class="rounded-[18px] border border-dashed border-border bg-surface p-[18px] text-center text-[0.9rem] text-text-secondary">
+            <div class="rounded-[18px] border border-dashed border-border bg-surface p-[18px] text-center text-90 text-text-secondary">
               {t('home_next_empty', 'Nothing coming up right now – enjoy the free time! 🌿')}
             </div>
           </Match>
@@ -233,7 +233,7 @@ export function HomeUpcoming() {
               {/* The events tab opens on its appointments list */}
               <button
                 type="button"
-                class="flex cursor-pointer items-center gap-0.5 border-none bg-transparent px-1 py-1.5 text-[0.9rem] font-semibold text-primary"
+                class="flex cursor-pointer items-center gap-0.5 border-none bg-transparent px-1 py-1.5 text-90 font-semibold text-primary"
                 onClick={() => {
                   switchTab('events');
                   switchEventsSubTab('termine');

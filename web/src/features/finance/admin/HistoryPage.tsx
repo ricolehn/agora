@@ -51,7 +51,7 @@ function TransactionIcon(props: { tx: Transaction }) {
     >
       {uid => (
         <div class="relative mr-4 size-10 shrink-0">
-          <Avatar uid={uid()} name={props.tx.who} size={40} initialsClass="text-[0.85rem]" />
+          <Avatar uid={uid()} name={props.tx.who} size={40} initialsClass="text-85" />
           {/* Expenses keep a small red badge on the picture, so they stay recognisable at a glance */}
           <Show when={props.tx.type === 'exp'}>
             <span class="absolute -right-[3px] -bottom-[3px] flex size-[18px] items-center justify-center rounded-full border-2 border-surface bg-danger text-white">
@@ -65,7 +65,7 @@ function TransactionIcon(props: { tx: Transaction }) {
 }
 
 const TRANS_ITEM =
-  'relative z-[2] mb-3 flex items-center justify-between rounded-2xl border border-hairline bg-surface p-4 text-[0.95rem] shadow-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),var(--shadow)]';
+  'relative z-[2] mb-3 flex items-center justify-between rounded-2xl border border-hairline bg-surface p-4 text-95 shadow-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),var(--shadow)]';
 
 function TransactionRow(props: { tx: Transaction }) {
   const open = () => showTransactionDetails(props.tx.id, props.tx.type);
@@ -92,7 +92,7 @@ function TransactionRow(props: { tx: Transaction }) {
         <div class="flex min-w-0 flex-1 flex-col">
           <span class="truncate font-semibold">{props.tx.who}</span>
           <Show when={props.tx.description?.trim() || props.tx.receipt}>
-            <div class="mt-1 flex min-w-0 items-center text-[0.8rem] text-text-secondary">
+            <div class="mt-1 flex min-w-0 items-center text-80 text-text-secondary">
               <Show when={props.tx.description?.trim()}>
                 <span class="min-w-0 truncate">{props.tx.description}</span>
               </Show>
@@ -106,7 +106,7 @@ function TransactionRow(props: { tx: Transaction }) {
         </div>
       </div>
       <div class="ml-3 flex shrink-0 items-center">
-        <div class={['text-[1.1rem] font-bold tracking-[-0.01em]', txColor(props.tx)]}>
+        <div class={['text-110 font-bold tracking-[-0.01em]', txColor(props.tx)]}>
           {txSign(props.tx)}
           {euro(props.tx.amount)}
         </div>
@@ -154,7 +154,7 @@ function TransactionList() {
           {(tx, i) => (
             <>
               <Show when={i() === 0 || txDateLabel(list()[i() - 1]) !== txDateLabel(tx())}>
-                <div class={['mb-2 ml-2.5 text-[0.9rem] font-bold tracking-[0.5px] text-text-secondary uppercase', i() === 0 ? 'mt-0' : 'mt-5']}>
+                <div class={['mb-2 ml-2.5 text-90 font-bold tracking-[0.5px] text-text-secondary uppercase', i() === 0 ? 'mt-0' : 'mt-5']}>
                   {txDateLabel(tx())}
                 </div>
               </Show>
@@ -164,7 +164,7 @@ function TransactionList() {
         </For>
         <Show when={list().length < transactionTotal()}>
           <div class="p-5 text-center">
-            <div class="mb-3 text-[0.85rem] text-text-secondary">
+            <div class="mb-3 text-85 text-text-secondary">
               {t('showing_transactions_count', 'Showing {count} of {total} transactions.', { count: list().length, total: transactionTotal() })}
             </div>
             <Button variant="secondary" onClick={loadMoreHistory}>
@@ -188,7 +188,7 @@ function BalanceHero() {
         "after:absolute after:-right-5 after:-bottom-5 after:size-[100px] after:rounded-full after:bg-white/15 after:content-['']"
       ]}
     >
-      <span class="mb-3 inline-block rounded-[20px] bg-black/15 px-3.5 py-1.5 text-[0.75rem] font-bold tracking-[0.08em] uppercase backdrop-blur-[6px]">
+      <span class="mb-3 inline-block rounded-[20px] bg-black/15 px-3.5 py-1.5 text-75 font-bold tracking-[0.08em] uppercase backdrop-blur-[6px]">
         {t('total_balance', 'Total Balance')}
       </span>
       <div class="mb-1.5 text-[2.8rem] leading-[1.1] font-extrabold tracking-[-0.03em] text-white tabular-nums">{euro(balance() ?? 0)}</div>
@@ -206,7 +206,7 @@ export function HistoryPage() {
       </Show>
       <BalanceHero />
       <div class="mb-5 flex items-center justify-between">
-        <h2 class="text-[1.2rem] font-extrabold">{t('nav_history', 'History')}</h2>
+        <h2 class="text-120 font-extrabold">{t('nav_history', 'History')}</h2>
         <Button id="btn-open-export-report" variant="secondary" size="small" class="gap-1.5" onClick={() => void openExportReport()}>
           <Icon name="document" size={16} />
           <span>{t('btn_create_report', 'Create Report')}</span>

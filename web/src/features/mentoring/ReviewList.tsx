@@ -19,14 +19,14 @@ export function ReviewList() {
   return (
     <Card class="rounded-[18px] border-border-light" bodyClass="p-0">
       <div class="flex flex-wrap items-center justify-between gap-2.5 px-5 py-[18px]">
-        <div class="flex items-center gap-2 text-[1.05rem] font-bold">
+        <div class="flex items-center gap-2 text-105 font-bold">
           <Icon name="shield" size={20} />
           <span>{t('mentoring_review_title', 'Review Mentor Applications')}</span>
         </div>
         <div class="flex items-center gap-2">
           <Select
             id="mentor-review-filter"
-            class="w-auto px-3 py-[5px] text-[0.85rem]"
+            class="w-auto px-3 py-[5px] text-85"
             value={reviewFilter()}
             onChange={e => setReviewFilter(e.currentTarget.value as ReviewFilter)}
           >
@@ -77,11 +77,11 @@ function Application(props: { mentor: Mentor }) {
     <Card class="mb-3 rounded-xl border-border" bodyClass="p-4">
       <div class="mb-2.5 flex flex-wrap items-start justify-between gap-2.5">
         <div>
-          <div class="flex items-center gap-2 text-[1.05rem] font-bold">
+          <div class="flex items-center gap-2 text-105 font-bold">
             <span>{props.mentor.name || props.mentor.mentorName || t('mentoring_applicant_fallback', 'Applicant')}</span>
-            <span class={['rounded-full px-2 py-0.5 text-[0.75rem] font-bold', style()[0]]}>{t(style()[1], style()[2])}</span>
+            <span class={['rounded-full px-2 py-0.5 text-75 font-bold', style()[0]]}>{t(style()[1], style()[2])}</span>
           </div>
-          <div class="mt-0.5 text-[0.85rem] text-text-secondary">
+          <div class="mt-0.5 text-85 text-text-secondary">
             {email() ? `${email()} • ` : ''}
             {t('mentoring_review_submitted', 'Submitted: {date} • Capacity: max. {max} mentees', { date: submitted(), max: props.mentor.max_mentees || 3 })}
           </div>
@@ -99,8 +99,8 @@ function Application(props: { mentor: Mentor }) {
           </Show>
         </div>
       </div>
-      <div class="rounded-lg bg-surface-alt px-3.5 py-3 text-[0.92rem] leading-normal">
-        <div class="mb-1 text-[0.8rem] font-semibold uppercase tracking-[0.5px] text-text-secondary">{t('mentoring_review_bio_label', 'About me / Self-description:')}</div>
+      <div class="rounded-lg bg-surface-alt px-3.5 py-3 text-92 leading-normal">
+        <div class="mb-1 text-80 font-semibold uppercase tracking-[0.5px] text-text-secondary">{t('mentoring_review_bio_label', 'About me / Self-description:')}</div>
         {props.mentor.bio || t('mentoring_no_bio', 'No description provided.')}
       </div>
     </Card>

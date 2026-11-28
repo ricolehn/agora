@@ -41,7 +41,7 @@ export function closeMediaMenu() {
 }
 
 const ITEM =
-  'flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-[9px] text-left text-[0.88rem] font-semibold ' +
+  'flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-[9px] text-left text-88 font-semibold ' +
   'enabled:hover:bg-surface-alt focus-visible:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ' +
   'disabled:cursor-not-allowed disabled:opacity-45';
 
@@ -93,7 +93,7 @@ export function MediaMenu() {
           style={{ left: `${place()?.left ?? state().x}px`, top: `${place()?.top ?? state().y}px` }}
         >
           <Show when={state().title}>
-            <div class="mb-1 truncate border-b border-border-light px-2.5 pt-1.5 pb-2 text-[0.76rem] font-bold text-text-secondary">{state().title}</div>
+            <div class="mb-1 truncate border-b border-border-light px-2.5 pt-1.5 pb-2 text-75 font-bold text-text-secondary">{state().title}</div>
           </Show>
           <For each={state().items}>
             {item => (

@@ -21,7 +21,7 @@ function DesktopNavButton(props: { entry: NavEntry }) {
       type="button"
       data-tab={props.entry.tab}
       class={[
-        'nav-btn inline-flex h-10 cursor-pointer items-center gap-2 self-center rounded-full border-0 px-[14px] text-[0.95rem] whitespace-nowrap',
+        'nav-btn inline-flex h-10 cursor-pointer items-center gap-2 self-center rounded-full border-0 px-[14px] text-95 whitespace-nowrap',
         '[transition:background-color_0.2s_ease,color_0.2s_ease,box-shadow_0.2s_ease,border-color_0.2s_ease,opacity_0.2s_ease,transform_0.2s_ease]',
         'focus-visible:shadow-ring focus-visible:outline-none',
         active() ? 'bg-nav-pill font-semibold text-nav-pill-text' : 'bg-transparent font-medium text-[var(--desktop-nav-text)] hover:bg-surface-alt hover:text-text'

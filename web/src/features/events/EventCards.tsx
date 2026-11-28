@@ -41,9 +41,9 @@ function CalendarLeaf(props: { day: string | undefined; category: EventCategory;
   const parts = () => eventDateParts(props.day);
   return (
     <div class={['flex w-11 shrink-0 flex-col items-center overflow-hidden bg-surface text-center leading-none', props.class]} aria-hidden="true">
-      <span class={['w-full pb-[2px] pt-[3px] text-[0.56rem] font-extrabold uppercase tracking-[0.08em] text-white', LEAF_MONTH[props.category]]}>{parts().monthStr}</span>
-      <span class="pt-[3px] text-[1.12rem] font-extrabold tracking-[-0.03em] text-text">{parts().dayNum}</span>
-      <span class="pb-1 pt-px text-[0.6rem] font-semibold text-text-secondary">{parts().weekdayStr}</span>
+      <span class={['w-full pb-[2px] pt-[3px] text-56 font-extrabold uppercase tracking-[0.08em] text-white', LEAF_MONTH[props.category]]}>{parts().monthStr}</span>
+      <span class="pt-[3px] text-110 font-extrabold tracking-[-0.03em] text-text">{parts().dayNum}</span>
+      <span class="pb-1 pt-px text-62 font-semibold text-text-secondary">{parts().weekdayStr}</span>
     </div>
   );
 }
@@ -101,7 +101,7 @@ export function EventCard(props: { event: AppEvent; day?: string; jumping?: bool
   return (
     <div
       class={[
-        'group relative z-[2] flex cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-hairline bg-surface py-2 pl-3.5 pr-3 text-[0.95rem] shadow-card',
+        'group relative z-[2] flex cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-hairline bg-surface py-2 pl-3.5 pr-3 text-95 shadow-card',
         'transition-[transform,translate,scale,box-shadow,border-color,background-color] duration-250 ease-app hover:-translate-y-px hover:shadow-card-md active:scale-[0.985] active:duration-100',
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),var(--shadow)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.4)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
@@ -122,10 +122,10 @@ export function EventCard(props: { event: AppEvent; day?: string; jumping?: bool
     >
       <CalendarLeaf day={day()} category={category()} class="rounded-[11px] border border-hairline shadow-card" />
       <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div class="truncate text-[0.97rem] font-[650] leading-[1.25] tracking-[-0.015em] text-text">{props.event.title}</div>
-        <div class="flex min-w-0 items-center gap-1.5 text-[0.82rem] font-[550] text-text">
+        <div class="truncate text-95 font-[650] leading-[1.25] tracking-[-0.015em] text-text">{props.event.title}</div>
+        <div class="flex min-w-0 items-center gap-1.5 text-82 font-[550] text-text">
           <Show when={isToday()}>
-            <span class={['rounded-full px-[7px] py-px text-[0.68rem] font-bold', TODAY_TAG[category()]]}>{t('home_today', 'Today')}</span>
+            <span class={['rounded-full px-[7px] py-px text-66 font-bold', TODAY_TAG[category()]]}>{t('home_today', 'Today')}</span>
           </Show>
           <Icon name={multiDay() ? 'calendar' : 'clock'} size={12} class="shrink-0 opacity-65" />
           <span class="shrink-0 whitespace-nowrap">{when()}</span>
@@ -142,7 +142,7 @@ export function EventCard(props: { event: AppEvent; day?: string; jumping?: bool
           </Show>
         </div>
         <Show when={props.event.location}>
-          <div class="flex min-w-0 items-center gap-1.5 text-[0.8rem] text-text-secondary">
+          <div class="flex min-w-0 items-center gap-1.5 text-80 text-text-secondary">
             <Icon name="location" size={12} class="shrink-0 opacity-65" />
             <span class="truncate">{props.event.location}</span>
           </div>
@@ -171,7 +171,7 @@ function CoverStatus(props: { kind: keyof typeof COVER_STATUS; children: JSX.Ele
   return (
     <span
       class={[
-        'inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-white/90 bg-white/88 px-[7px] py-[2px] text-[0.68rem] font-semibold leading-[1.2] shadow-[0_2px_10px_rgba(0,0,0,0.25)] backdrop-blur-[12px] phone:px-[9px] phone:py-[3px] phone:text-[0.74rem]',
+        'inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-white/90 bg-white/88 px-[7px] py-[2px] text-66 font-semibold leading-[1.2] shadow-[0_2px_10px_rgba(0,0,0,0.25)] backdrop-blur-[12px] phone:px-[9px] phone:py-[3px] phone:text-75',
         'dark:border-white/18 dark:bg-[rgba(28,25,23,0.72)]',
         COVER_STATUS[props.kind]
       ]}
@@ -250,7 +250,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
         <div class="absolute right-3 top-3 z-[3] flex flex-col items-end gap-1.5">
           <span
             class={[
-              'inline-flex items-center justify-center whitespace-nowrap rounded-full border px-[11px] py-1 text-[0.62rem] font-bold uppercase leading-[1.25] tracking-[0.6px] text-white shadow-[0_4px_14px_-4px_rgba(0,0,0,0.35)] backdrop-blur-[12px] backdrop-saturate-140 phone:text-[0.67rem]',
+              'inline-flex items-center justify-center whitespace-nowrap rounded-full border px-[11px] py-1 text-62 font-bold uppercase leading-[1.25] tracking-[0.6px] text-white shadow-[0_4px_14px_-4px_rgba(0,0,0,0.35)] backdrop-blur-[12px] backdrop-saturate-140 phone:text-66',
               pinned() ? 'border-white/45 bg-[rgba(79,70,229,0.62)]' : 'border-white/35 bg-[rgba(28,25,23,0.38)]'
             ]}
           >
@@ -261,10 +261,10 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
       </div>
       <div class="flex flex-1 flex-col gap-2.5 px-2 pb-1.5 pt-3.5">
         <div class="flex items-start justify-between gap-2.5">
-          <div class="line-clamp-2 min-w-0 flex-1 text-[1.1rem] font-extrabold leading-[1.3] tracking-[-0.01em] text-text">{ev().title}</div>
+          <div class="line-clamp-2 min-w-0 flex-1 text-110 font-extrabold leading-[1.3] tracking-[-0.01em] text-text">{ev().title}</div>
           <Show when={registered()}>
             <span
-              class="mt-px inline-flex shrink-0 items-center gap-[5px] whitespace-nowrap rounded-full border border-[rgba(16,185,129,0.32)] bg-[rgba(16,185,129,0.12)] py-1 pl-2 pr-2.5 text-[0.68rem] font-bold leading-[1.2] text-[#059669] phone:text-[0.74rem] dark:border-[rgba(52,211,153,0.35)] dark:bg-[rgba(16,185,129,0.16)] dark:text-[#34d399]"
+              class="mt-px inline-flex shrink-0 items-center gap-[5px] whitespace-nowrap rounded-full border border-[rgba(16,185,129,0.32)] bg-[rgba(16,185,129,0.12)] py-1 pl-2 pr-2.5 text-66 font-bold leading-[1.2] text-[#059669] phone:text-75 dark:border-[rgba(52,211,153,0.35)] dark:bg-[rgba(16,185,129,0.16)] dark:text-[#34d399]"
               title={t('events_reg_you_are_registered', 'You are registered')}
             >
               <Icon name="check" size={12} strokeWidth={3} class="shrink-0" />
@@ -272,12 +272,12 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
             </span>
           </Show>
         </div>
-        <div class="flex flex-col gap-1.5 text-[0.84rem] text-text-secondary">
+        <div class="flex flex-col gap-1.5 text-85 text-text-secondary">
           <Show when={multiDay()}>{metaRow('calendar', formatEventDateSpanShort(ev().date, ev().endDate!), true)}</Show>
           <Show when={!multiDay() && eventTimeRange(ev())}>{metaRow('clock', eventTimeRange(ev()))}</Show>
           <Show when={ev().location}>{metaRow('location', ev().location ?? '')}</Show>
         </div>
-        <div class="mt-auto flex items-center justify-between gap-2 pt-1 text-[0.8rem]">
+        <div class="mt-auto flex items-center justify-between gap-2 pt-1 text-80">
           <div>
             <Show
               when={ev().requiresRegistration}
@@ -285,14 +285,14 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
             >
               <Show when={max() > 0} fallback={<FooterPill>{t('events_registered_count', '{count} registered', { count: count() })}</FooterPill>}>
                 <div class="flex min-w-[120px] flex-col gap-[5px]" title={t('events_capacity_taken', '{count} of {max} places taken', { count: count(), max: max() })}>
-                  <span class="text-[0.76rem] font-semibold text-text">{t('events_capacity_short', '{count}/{max} places', { count: count(), max: max() })}</span>
+                  <span class="text-75 font-semibold text-text">{t('events_capacity_short', '{count}/{max} places', { count: count(), max: max() })}</span>
                   <ProgressBar class="w-full" percent={(count() / max()) * 100} />
                 </div>
               </Show>
             </Show>
           </div>
           <div
-            class="flex size-10 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border border-border-light bg-surface-alt text-[0.76rem] font-bold text-text transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:border-transparent group-hover:bg-gradient-primary group-hover:text-white group-hover:shadow-[0_6px_16px_-4px_rgba(var(--glow-rgb),0.55)] group-active:border-transparent group-active:bg-gradient-primary group-active:text-white"
+            class="flex size-10 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border border-border-light bg-surface-alt text-75 font-bold text-text transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:border-transparent group-hover:bg-gradient-primary group-hover:text-white group-hover:shadow-[0_6px_16px_-4px_rgba(var(--glow-rgb),0.55)] group-active:border-transparent group-active:bg-gradient-primary group-active:text-white"
             title={t('modal_details_title', 'Details')}
             aria-hidden="true"
           >
@@ -306,7 +306,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
 
 function FooterPill(props: { children: JSX.Element }) {
   return (
-    <span class="inline-flex items-center rounded-full border border-border-light bg-surface-alt px-[11px] py-[5px] text-[0.76rem] font-semibold text-text-secondary">
+    <span class="inline-flex items-center rounded-full border border-border-light bg-surface-alt px-[11px] py-[5px] text-75 font-semibold text-text-secondary">
       {props.children}
     </span>
   );

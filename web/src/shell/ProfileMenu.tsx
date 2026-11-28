@@ -45,7 +45,7 @@ function MenuItem(props: { icon: IconName; danger?: boolean; onClick: () => void
       type="button"
       role="menuitem"
       class={[
-        'flex min-h-12 w-full cursor-pointer items-center gap-[calc(var(--profile-pic)/2)] rounded-[20px] border-0 bg-transparent pr-3 pl-[calc(var(--profile-pic)/2-12px)] text-left text-[0.95rem] font-bold',
+        'flex min-h-12 w-full cursor-pointer items-center gap-[calc(var(--profile-pic)/2)] rounded-[20px] border-0 bg-transparent pr-3 pl-[calc(var(--profile-pic)/2-12px)] text-left text-95 font-bold',
         'hover:bg-[rgba(28,25,23,0.07)] active:bg-[rgba(28,25,23,0.07)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
         'dark:hover:bg-white/8 dark:active:bg-white/8',
         props.danger ? 'text-danger' : 'text-text'
@@ -89,8 +89,8 @@ export function ProfileMenu() {
             </span>
           </span>
           <div class="min-w-0 flex-1 pr-2">
-            <div class="truncate text-[0.95rem] font-extrabold text-text">{fullName(currentUser()) || currentUser()?.name || ''}</div>
-            <div class="mt-px truncate text-[0.8rem] text-text-secondary">{currentUser()?.email || ''}</div>
+            <div class="truncate text-95 font-extrabold text-text">{fullName(currentUser()) || currentUser()?.name || ''}</div>
+            <div class="mt-px truncate text-80 text-text-secondary">{currentUser()?.email || ''}</div>
           </div>
         </div>
         <div class="mt-2 mb-1 h-px bg-border-light" />

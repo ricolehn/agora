@@ -18,7 +18,7 @@ function Choice<T extends string>(props: { id: string; label: string; value: T; 
   };
   return (
     <div class={['mb-[15px]', props.class]}>
-      <div id={`${props.id}-label`} class="mb-2 text-[0.72rem] font-extrabold uppercase tracking-[0.06em] text-text-secondary">
+      <div id={`${props.id}-label`} class="mb-2 text-72 font-extrabold uppercase tracking-[0.06em] text-text-secondary">
         {props.label}
       </div>
       <Pills kind="radio" aria-labelledby={`${props.id}-label`} class="flex gap-1 rounded-[14px] border border-border-light bg-surface-alt p-1">
@@ -28,7 +28,7 @@ function Choice<T extends string>(props: { id: string; label: string; value: T; 
             <Pill
               chosen={props.value === option().value}
               class={[
-                'inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-2 text-[0.88rem] font-bold',
+                'inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-2 text-88 font-bold',
                 'transition-[background-color,color,box-shadow] duration-200 ease-[ease] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
                 props.value === option().value
                   ? 'bg-surface text-primary shadow-[0_1px_2px_rgba(28,25,23,0.08),0_4px_12px_-6px_rgba(28,25,23,0.25)] dark:bg-bg'

@@ -262,14 +262,14 @@ function RequestChoice() {
             onClick={() => startRequestForm(choice.kind)}
           >
             <div
-              class="mr-[11px] flex size-[34px] shrink-0 items-center justify-center rounded-[9px] text-[1.05rem]"
+              class="mr-[11px] flex size-[34px] shrink-0 items-center justify-center rounded-[9px] text-105"
               style={{ background: choice.bg, color: choice.color }}
             >
               {choice.emoji}
             </div>
             <div class="min-w-0 flex-1">
-              <div class="text-[0.88rem] font-bold text-text">{t(...choice.title)}</div>
-              <div class="mt-px text-[0.76rem] text-text-secondary">{t(...choice.desc)}</div>
+              <div class="text-88 font-bold text-text">{t(...choice.title)}</div>
+              <div class="mt-px text-75 text-text-secondary">{t(...choice.desc)}</div>
             </div>
           </button>
         )}
@@ -301,7 +301,7 @@ function RequestHeadBadge() {
           <span class="max-md:hidden">{t('btn_back', 'Back')}</span>
         </Button>
       </Show>
-      <span class={['flex size-9 shrink-0 items-center justify-center rounded-[9px] text-[1.1rem] leading-[normal]', head().tint]}>{head().emoji}</span>
+      <span class={['flex size-9 shrink-0 items-center justify-center rounded-[9px] text-110 leading-[normal]', head().tint]}>{head().emoji}</span>
     </>
   );
 }

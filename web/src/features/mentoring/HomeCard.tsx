@@ -30,11 +30,11 @@ export function HomeMentoringCard() {
             <span class="inline-flex size-[34px] shrink-0 items-center justify-center rounded-[11px] bg-[rgba(124,58,237,0.12)] text-[#7c3aed]">
               <Icon name="chat" size={18} />
             </span>
-            <span class="text-[1rem] font-extrabold text-text">{t('home_messages_title', 'New messages')}</span>
-            <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[#7c3aed] px-[7px] text-[0.75rem] font-extrabold leading-none text-white">
+            <span class="text-100 font-extrabold text-text">{t('home_messages_title', 'New messages')}</span>
+            <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[#7c3aed] px-[7px] text-75 font-extrabold leading-none text-white">
               {badgeText(total())}
             </span>
-            <button type="button" class="ml-auto inline-flex items-center gap-0.5 px-0.5 py-1 text-[0.85rem] font-bold text-primary" onClick={() => switchTab('mentoring')}>
+            <button type="button" class="ml-auto inline-flex items-center gap-0.5 px-0.5 py-1 text-85 font-bold text-primary" onClick={() => switchTab('mentoring')}>
               {t('home_messages_all', 'All')}
               <Icon name="chevronRight" size={14} strokeWidth={2.5} />
             </button>
@@ -45,7 +45,7 @@ export function HomeMentoringCard() {
             </For>
           </div>
           <Show when={more() > 0}>
-            <div class="border-t border-border-light px-4 pt-2.5 pb-3 text-[0.8rem] text-text-secondary">
+            <div class="border-t border-border-light px-4 pt-2.5 pb-3 text-80 text-text-secondary">
               +{more()} {t('home_mentoring_more_unread', 'more unread conversations')}
             </div>
           </Show>
@@ -64,16 +64,16 @@ function MessageRow(props: { thread: Thread }) {
       onClick={() => void openChatDirect(props.thread.id, 'home')}
     >
       {/* Seekers see their mentor's picture; mentors only know the anonymous alias */}
-      <Avatar uid={isCurrentUser(props.thread.mentor) ? null : props.thread.mentor} name={partner().name} size={44} initialsClass="text-[0.95rem]" />
+      <Avatar uid={isCurrentUser(props.thread.mentor) ? null : props.thread.mentor} name={partner().name} size={44} initialsClass="text-95" />
       <span class="flex min-w-0 flex-1 flex-col gap-px">
         <span class="flex min-w-0 items-center gap-2">
           <span class="min-w-0 flex-1 truncate font-extrabold text-text">{partner().name}</span>
-          <span class="shrink-0 text-[0.75rem] font-bold text-primary">{when(props.thread.lastMessage?.created || props.thread.updated)}</span>
+          <span class="shrink-0 text-75 font-bold text-primary">{when(props.thread.lastMessage?.created || props.thread.updated)}</span>
         </span>
-        <span class="text-[0.68rem] font-extrabold uppercase tracking-[0.05em] text-text-secondary">{partner().role}</span>
+        <span class="text-66 font-extrabold uppercase tracking-[0.05em] text-text-secondary">{partner().role}</span>
         <span class="flex min-w-0 items-center gap-2">
-          <span class="min-w-0 flex-1 truncate text-[0.9rem] text-text">{props.thread.last_message || t('home_mentoring_new_message', 'New confidential message')}</span>
-          <span class="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[0.7rem] font-extrabold leading-none text-white">
+          <span class="min-w-0 flex-1 truncate text-90 text-text">{props.thread.last_message || t('home_mentoring_new_message', 'New confidential message')}</span>
+          <span class="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-70 font-extrabold leading-none text-white">
             {badgeText(props.thread.unread_count || 0)}
           </span>
         </span>

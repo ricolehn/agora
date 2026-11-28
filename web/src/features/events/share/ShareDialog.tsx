@@ -72,7 +72,7 @@ export function ShareDialog() {
             </span>
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class={PART_LABEL}>{t('events_share_public', 'Visible without an account')}</span>
-              <span class="-mt-0.5 text-[0.78rem] text-text-secondary">
+              <span class="-mt-0.5 text-78 text-text-secondary">
                 {shareTarget()?.ev.requiresRegistration
                   ? t('events_share_public_desc_reg', 'Anyone with the link sees the event and can sign up – no account needed.')
                   : t('events_share_public_desc', 'Anyone with the link sees the event – no account needed.')}
@@ -94,7 +94,7 @@ export function ShareDialog() {
           value={shareTarget()?.url || ''}
           onFocus={e => e.currentTarget.select()}
         />
-        <p class={['m-0 flex items-center gap-1.5 text-[0.78rem] leading-[1.4]', isPublic() ? 'text-primary-dark dark:text-primary' : 'text-text-secondary']}>
+        <p class={['m-0 flex items-center gap-1.5 text-78 leading-[1.4]', isPublic() ? 'text-primary-dark dark:text-primary' : 'text-text-secondary']}>
           <Icon name={isPublic() ? 'eye' : 'lock'} size={14} class="shrink-0" />
           <span>{isPublic() ? t('events_share_hint_public', 'Anyone with this link can see the event.') : t('events_share_hint_members', 'Only members can open this link.')}</span>
         </p>

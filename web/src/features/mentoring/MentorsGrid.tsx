@@ -30,8 +30,8 @@ export function MentorsGrid() {
             fallback={
               <div class="col-span-full px-5 py-10 text-center text-text-secondary">
                 <div class="mb-2.5 text-[2.5rem]">👥</div>
-                <div class="mb-1.5 text-[1.1rem] font-semibold">{t('mentoring_no_mentors_title', 'No mentors currently available')}</div>
-                <div class="text-[0.9rem]">
+                <div class="mb-1.5 text-110 font-semibold">{t('mentoring_no_mentors_title', 'No mentors currently available')}</div>
+                <div class="text-90">
                   {canManageMentoring()
                     ? t('mentoring_no_mentors_desc_manager', 'Once applications are approved, mentors will appear here.')
                     : t('mentoring_no_mentors_desc_user', 'All mentors are currently fully booked or no approved profiles are available.')}
@@ -55,21 +55,21 @@ function MentorCard(props: { mentor: Mentor }) {
   return (
     <div class="flex min-w-0 flex-col gap-3.5 rounded-[18px] border border-border-light bg-surface p-5 shadow-card transition-[transform,translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-card-lg">
       <div class="flex min-w-0 items-center gap-3">
-        <Avatar ring="mentor" size={46} uid={props.mentor.user_id} src={props.mentor.avatar_url || null} name={name()} initialsClass="text-[0.88rem]" />
+        <Avatar ring="mentor" size={46} uid={props.mentor.user_id} src={props.mentor.avatar_url || null} name={name()} initialsClass="text-88" />
         <div class="flex min-w-0 flex-col gap-0.5">
-          <h3 class="m-0 text-[1.05rem] font-bold text-text [overflow-wrap:anywhere]">{name()}</h3>
-          <span class="text-[0.74rem] font-bold text-primary-dark dark:text-primary">{t('mentoring_verified_badge', 'Verified Mentor')}</span>
+          <h3 class="m-0 text-105 font-bold text-text [overflow-wrap:anywhere]">{name()}</h3>
+          <span class="text-75 font-bold text-primary-dark dark:text-primary">{t('mentoring_verified_badge', 'Verified Mentor')}</span>
         </div>
       </div>
-      <div class="grow whitespace-pre-wrap rounded-xl border border-border-light bg-surface-alt px-3.5 py-3 text-[0.88rem] leading-normal text-text [overflow-wrap:anywhere] [word-break:break-word]">
+      <div class="grow whitespace-pre-wrap rounded-xl border border-border-light bg-surface-alt px-3.5 py-3 text-88 leading-normal text-text [overflow-wrap:anywhere] [word-break:break-word]">
         {props.mentor.bio || t('mentoring_no_bio', 'No description provided.')}
       </div>
       <div class="flex items-center justify-between gap-2.5 pt-1 max-md:flex-wrap">
         <Show when={canManageMentoring() || isOwnMentorCard(props.mentor)}>
-          <div class="flex items-center gap-1 whitespace-nowrap text-[0.8rem] font-semibold text-text-secondary" title={t('mentoring_capacity_title', 'Capacity: mentoring relationships')}>
+          <div class="flex items-center gap-1 whitespace-nowrap text-80 font-semibold text-text-secondary" title={t('mentoring_capacity_title', 'Capacity: mentoring relationships')}>
             <span>{t('mentoring_capacity_active', '👥 {active} / {max} active', { active: capacity().active, max: capacity().max })}</span>
             <Show when={capacity().isFull}>
-              <span class="ml-1.5 inline-flex items-center rounded-md bg-[rgba(239,68,68,0.15)] px-[7px] py-0.5 text-[0.72rem] font-bold text-[#ef4444]">
+              <span class="ml-1.5 inline-flex items-center rounded-md bg-[rgba(239,68,68,0.15)] px-[7px] py-0.5 text-72 font-bold text-[#ef4444]">
                 {t('mentoring_badge_full', 'Fully booked')}
               </span>
             </Show>

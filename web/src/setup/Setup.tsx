@@ -10,7 +10,7 @@ const TOTAL_STEPS = 3;
 
 /** A short explanation under a field (the setup page's own size). */
 function Hint(props: { children: string }) {
-  return <div class="mt-[5px] mb-[15px] text-[0.85rem] text-text-secondary">{props.children}</div>;
+  return <div class="mt-[5px] mb-[15px] text-85 text-text-secondary">{props.children}</div>;
 }
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -147,7 +147,7 @@ export function Setup() {
     <div class="mx-auto my-10 max-w-[600px] p-5">
       <div class="mb-[30px] text-center">
         <img src="/assets/church-logo.svg" alt="Logo" class="mx-auto mb-2.5 size-[60px]" />
-        <h1 class="text-[2rem] font-extrabold">{t('setup_heading', 'Initial Setup')}</h1>
+        <h1 class="text-200 font-extrabold">{t('setup_heading', 'Initial Setup')}</h1>
         <p class="text-text-secondary">{t('setup_subheading', 'Agora configures PocketBase automatically in a Docker container.')}</p>
       </div>
 
@@ -189,7 +189,7 @@ export function Setup() {
 
         <div class={stepClass(2)}>
           <h2 class="mb-5 text-2xl font-bold">{t('setup_step2_title', '2. Create Administrator Account (Owner)')}</h2>
-          <p class="mb-5 text-[0.9rem] text-text-secondary">{t('setup_step2_desc', 'This user is automatically created as Owner and System Administrator.')}</p>
+          <p class="mb-5 text-90 text-text-secondary">{t('setup_step2_desc', 'This user is automatically created as Owner and System Administrator.')}</p>
           <div class="flex gap-[15px]">
             <Field class="flex-1" label={t('setup_admin_first_name', 'First Name')} for="adminFirstName">
               <Input type="text" id="adminFirstName" name="adminFirstName" placeholder={t('setup_admin_first_name_placeholder', 'e.g., John')} required />
@@ -223,7 +223,7 @@ export function Setup() {
 
         <div class={stepClass(3)}>
           <h2 class="mb-5 text-2xl font-bold">{t('setup_step3_title', '3. Email Settings (Optional)')}</h2>
-          <p class="mb-5 text-[0.9rem] text-text-secondary">{t('setup_step3_desc', 'These settings are required for email notifications. You can skip this step.')}</p>
+          <p class="mb-5 text-90 text-text-secondary">{t('setup_step3_desc', 'These settings are required for email notifications. You can skip this step.')}</p>
           <Field label={t('setup_smtp_host', 'SMTP Server')} for="smtpHost">
             <Input type="text" id="smtpHost" name="smtpHost" placeholder={t('setup_smtp_host_placeholder', 'e.g., smtp.gmail.com')} />
           </Field>

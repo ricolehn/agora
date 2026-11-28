@@ -90,7 +90,7 @@ export function PrayerEditModal() {
         value={draft()}
         onInput={e => setDraft(e.currentTarget.value)}
       />
-      <span id="prayer-counter" class="-mt-1.5 self-end text-[0.74rem] text-text-secondary">
+      <span id="prayer-counter" class="-mt-1.5 self-end text-75 text-text-secondary">
         {draft().length} / 1000
       </span>
       <ModalPart ruled>
@@ -103,7 +103,7 @@ export function PrayerEditModal() {
               <Pill
                 chosen={duration() === pill.value}
                 class={[
-                  'inline-flex min-h-[34px] min-w-0 flex-[1_1_0] items-center justify-center gap-1.5 rounded-[10px] border-0 px-2.5 py-1.5 text-[0.84rem] font-bold transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                  'inline-flex min-h-[34px] min-w-0 flex-[1_1_0] items-center justify-center gap-1.5 rounded-[10px] border-0 px-2.5 py-1.5 text-85 font-bold transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
                   duration() === pill.value
                     ? 'bg-surface text-primary shadow-[0_1px_2px_rgba(28,25,23,0.08),0_4px_12px_-6px_rgba(28,25,23,0.25)] dark:bg-bg'
                     : 'bg-transparent text-text-secondary hover:text-text'
@@ -120,7 +120,7 @@ export function PrayerEditModal() {
         <div class="flex items-center justify-between gap-3">
           <label for="prayer-anonymous" class="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5">
             <span class={PART_LABEL}>{t('prayers_anonymous', 'Share anonymously')}</span>
-            <span class="-mt-0.5 text-[0.78rem] text-text-secondary">{t('prayers_anonymous_desc', 'Nobody sees who it is from, not even the leaders.')}</span>
+            <span class="-mt-0.5 text-78 text-text-secondary">{t('prayers_anonymous_desc', 'Nobody sees who it is from, not even the leaders.')}</span>
           </label>
           <Switch id="prayer-anonymous" checked={anonymous()} onChange={setAnonymous} />
         </div>
@@ -214,7 +214,7 @@ export function PrayerOptionsModal() {
         </Show>
       }
     >
-      <p class="m-0 text-[0.95rem] leading-[1.55] whitespace-pre-wrap text-text [overflow-wrap:anywhere]">{prayer()?.text}</p>
+      <p class="m-0 text-95 leading-[1.55] whitespace-pre-wrap text-text [overflow-wrap:anywhere]">{prayer()?.text}</p>
     </Modal>
   );
 }

@@ -34,7 +34,7 @@ function AiServerNote() {
       id="super-admin-ai-server-note"
       role="status"
       hidden={!serverNote()}
-      class="mb-[15px] flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-[9px] text-[0.8rem] leading-[1.45] text-text"
+      class="mb-[15px] flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-[9px] text-80 leading-[1.45] text-text"
     >
       <Icon name="alert" size={14} strokeWidth={2.4} class="mt-0.5 shrink-0 text-warning" />
       <span>{text()}</span>

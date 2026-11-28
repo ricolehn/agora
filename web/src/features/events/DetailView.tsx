@@ -50,7 +50,7 @@ export function TopBadges(props: { event: EventFacts; onImage: boolean }) {
         <Show when={props.event.isPinned}>
           <span
             class={[
-              'inline-flex items-center gap-[5px] rounded-full border px-2.5 py-[3px] text-[0.72rem] font-bold uppercase tracking-[0.5px]',
+              'inline-flex items-center gap-[5px] rounded-full border px-2.5 py-[3px] text-72 font-bold uppercase tracking-[0.5px]',
               props.onImage
                 ? 'border-[rgba(253,224,71,0.5)] bg-[rgba(180,83,9,0.75)] text-[#fef08a] shadow-[0_4px_12px_rgba(0,0,0,0.35)] backdrop-blur-[10px] dark:bg-[rgba(245,158,11,0.2)] dark:text-[#fbbf24]'
                 : 'border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.12)] text-[#d97706] dark:bg-[rgba(245,158,11,0.2)] dark:text-[#fbbf24]'
@@ -74,7 +74,7 @@ function GroupsLine(props: { event: AppEvent }) {
   const quoted = (name: string) => <strong class="font-bold text-text">{t('detail_groups_quoted', '“{name}”', { name })}</strong>;
   return (
     <Show when={names().length}>
-      <div class="mt-1 flex items-center gap-1.5 text-[0.82rem] font-medium text-text-secondary max-sm:text-[0.76rem]">
+      <div class="mt-1 flex items-center gap-1.5 text-82 font-medium text-text-secondary max-sm:text-75">
         <Icon name="users" size={13} class="shrink-0 text-[#6366f1] dark:text-[#818cf8]" />
         <span>
           {kind()} {names().length === 1 ? t('detail_groups_for_one', 'for the group') : t('detail_groups_for_many', 'for the groups')}{' '}
@@ -98,11 +98,11 @@ function TitleBlock(props: { event: AppEvent }) {
     <div class="flex flex-col gap-1.5">
       <div class="flex items-center gap-3">
         <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h2 id="detail-modal-title" class="m-0 break-words text-[1.6rem] font-extrabold leading-[1.25] tracking-[-0.022em] text-text">
+          <h2 id="detail-modal-title" class="m-0 break-words text-160 font-extrabold leading-[1.25] tracking-[-0.022em] text-text">
             {props.event.title}
           </h2>
           <Show when={creator()}>
-            <div class="mt-px flex items-center gap-1.5 text-[0.82rem] font-medium text-text-secondary max-sm:text-[0.76rem]">
+            <div class="mt-px flex items-center gap-1.5 text-82 font-medium text-text-secondary max-sm:text-75">
               <Icon name="user" size={13} class="shrink-0 text-[#f59e0b]" />
               <span>
                 {t('events_organizer', 'Organizer:')}{' '}
@@ -161,7 +161,7 @@ export function InfoCells(props: { event: EventFacts }) {
   });
   const cell = 'flex items-center gap-3 px-3.5 py-2.5';
   const icon = 'flex size-[34px] shrink-0 items-center justify-center rounded-[10px]';
-  const label = 'mb-0.5 text-[0.74rem] font-medium leading-[1.15] text-text-secondary';
+  const label = 'mb-0.5 text-75 font-medium leading-[1.15] text-text-secondary';
   return (
     <div class="flex shrink-0 flex-col overflow-hidden rounded-[18px] border border-border-light bg-surface-alt">
       <div class={cell}>
@@ -173,7 +173,7 @@ export function InfoCells(props: { event: EventFacts }) {
           <div class="flex items-baseline gap-x-[5px] overflow-hidden text-ellipsis whitespace-nowrap text-[min(0.9rem,4.95cqw)] font-[650] leading-[1.25] tracking-[-0.01em] text-text">
             <span class="whitespace-nowrap" title={date()}>{date()}</span>
             <Show when={!multi()}>
-              <span class="whitespace-nowrap text-[0.75rem] font-normal text-text-secondary opacity-60">•</span>
+              <span class="whitespace-nowrap text-75 font-normal text-text-secondary opacity-60">•</span>
               <span class="whitespace-nowrap" title={time()}>{time()}</span>
             </Show>
           </div>
@@ -185,7 +185,7 @@ export function InfoCells(props: { event: EventFacts }) {
         </div>
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
           <span class={label}>{t('events_where', 'Where / Address')}</span>
-          <span ref={whereEl} class="block overflow-hidden text-ellipsis whitespace-nowrap text-[0.9rem] font-[650] leading-[1.35] tracking-[-0.005em] text-text max-sm:leading-[1.32]" title={where()}>
+          <span ref={whereEl} class="block overflow-hidden text-ellipsis whitespace-nowrap text-90 font-[650] leading-[1.35] tracking-[-0.005em] text-text max-sm:leading-[1.32]" title={where()}>
             {where()}
           </span>
         </div>
@@ -222,7 +222,7 @@ export function Description(props: { text: string }) {
   const nodes = createMemo(() => renderMarkdown(props.text));
   return (
     <div class="rounded-[18px] border border-hairline bg-surface px-4 py-3.5 shadow-card">
-      <div class="mb-2.5 flex items-center gap-2 text-[0.95rem] font-[650] text-text">
+      <div class="mb-2.5 flex items-center gap-2 text-95 font-[650] text-text">
         <Icon name="text" size={15} class="shrink-0 text-text-secondary" />
         <span>{t('events_about', 'About this appointment')}</span>
       </div>
@@ -236,12 +236,12 @@ export function Description(props: { text: string }) {
           }
         ]}
       >
-        <div class="event-markdown break-words text-[0.9rem] leading-[1.6] text-text">{nodes()}</div>
+        <div class="event-markdown break-words text-90 leading-[1.6] text-text">{nodes()}</div>
       </div>
       <Show when={clamp() !== 'off'}>
         <button
           type="button"
-          class="mt-2 inline-flex items-center gap-1.5 border-0 bg-transparent py-[3px] text-[0.8rem] font-bold text-primary transition-[opacity] duration-150 hover:opacity-85"
+          class="mt-2 inline-flex items-center gap-1.5 border-0 bg-transparent py-[3px] text-80 font-bold text-primary transition-[opacity] duration-150 hover:opacity-85"
           onClick={() => setClamp(clamp() === 'clamped' ? 'open' : 'clamped')}
         >
           <span>{clamp() === 'open' ? t('events_show_less', 'Show less') : t('events_show_more', 'Show more')}</span>
@@ -256,11 +256,11 @@ export function Description(props: { text: string }) {
 
 /** Edit and delete, for those who may edit the event. */
 function AdminBar() {
-  const button = 'flex min-h-[42px] w-full items-center justify-center gap-[7px] rounded-full px-3 py-[7px] text-[0.82rem] font-semibold transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-150';
+  const button = 'flex min-h-[42px] w-full items-center justify-center gap-[7px] rounded-full px-3 py-[7px] text-82 font-semibold transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-150';
   return (
     <div class="mt-1 flex flex-col gap-2 rounded-xl max-sm:gap-[7px]">
       <div class="flex items-center justify-start">
-        <div class="inline-flex items-center gap-1.5 text-[0.8rem] font-semibold text-text-secondary">
+        <div class="inline-flex items-center gap-1.5 text-80 font-semibold text-text-secondary">
           <Icon name="gear" size={13} />
           <span>{t('events_admin_bar', 'Management')}</span>
         </div>

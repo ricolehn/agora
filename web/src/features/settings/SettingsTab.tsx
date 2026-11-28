@@ -42,7 +42,7 @@ function PageHead() {
         >
           <Icon name="chevronLeft" size={20} strokeWidth={2.5} />
         </button>
-        <h2 id={PAGE_TITLE_ID} tabindex="-1" class="m-0 text-[1.3rem] font-extrabold text-text outline-none">
+        <h2 id={PAGE_TITLE_ID} tabindex="-1" class="m-0 text-130 font-extrabold text-text outline-none">
           {openPageDef()?.title()}
         </h2>
       </div>

@@ -34,7 +34,7 @@ function DeleteAccount() {
         />
       </button>
       <div id="delete-account-body" hidden={!open()} class="border-t border-border-light px-4 pt-1 pb-4">
-        <p class="my-3 text-[0.84rem] leading-[1.5] text-text-secondary">
+        <p class="my-3 text-85 leading-[1.5] text-text-secondary">
           {t(
             'delete_account_desc',
             'Deletes your login and your personal data: profile, profile picture, registrations, mentoring conversations, open requests and notifications. Booked payments stay with your organisation for bookkeeping reasons. This cannot be undone.'

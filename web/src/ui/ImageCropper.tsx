@@ -226,25 +226,25 @@ function CropContent(props: { request: CropRequest; source: CropSource }) {
                 {zoomSlider('')}
                 <Icon name="zoomIn" size={18} class="text-text-secondary" />
               </div>
-              <p class="mt-2.5 text-center text-[0.82rem] text-text-secondary">
+              <p class="mt-2.5 text-center text-82 text-text-secondary">
                 {props.request.subtitle || t('profile_crop_desc', 'Drag and zoom image to choose crop area')}
               </p>
             </>
           }
         >
           <div class="mt-3.5 flex items-center gap-3 px-1">
-            <span class="flex items-center text-[0.85rem] text-text-secondary">
+            <span class="flex items-center text-85 text-text-secondary">
               <Icon name="zoomOut" size={16} />
             </span>
             {zoomSlider('cursor-pointer accent-primary')}
-            <span class="flex items-center text-[0.85rem] text-text-secondary">
+            <span class="flex items-center text-85 text-text-secondary">
               <Icon name="zoomIn" size={16} />
             </span>
             <Button variant="secondary" size="tiny" title={t('crop_zoom_reset', 'Reset zoom')} onClick={() => setZoom(1)}>
               1:1
             </Button>
           </div>
-          <p class="mt-2.5 text-center text-[0.8rem] text-text-secondary">{t('event_crop_hint', 'Move and zoom the crop area with your mouse or finger.')}</p>
+          <p class="mt-2.5 text-center text-80 text-text-secondary">{t('event_crop_hint', 'Move and zoom the crop area with your mouse or finger.')}</p>
         </Show>
       </div>
       <div class={square() ? 'mt-[15px] flex gap-2.5' : 'mt-4 flex justify-end gap-2.5'}>

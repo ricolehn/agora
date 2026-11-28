@@ -10,9 +10,9 @@ export const SUPER_ADMIN_BTN = 'border border-[rgba(239,68,68,0.2)] bg-[rgba(239
 export function SettingsGroup(props: { title: JSX.Element; desc?: JSX.Element; children: JSX.Element }) {
   return (
     <div class="mb-5 rounded-[16px] border border-border bg-surface p-5 shadow-[0_2px_8px_rgba(0,0,0,0.02)] last:mb-0 max-md:w-full max-md:max-w-full max-md:rounded-[14px] max-md:px-3.5 max-md:py-4">
-      <div class="mb-2 flex items-center gap-2 text-[1.05rem] font-extrabold text-text">{props.title}</div>
+      <div class="mb-2 flex items-center gap-2 text-105 font-extrabold text-text">{props.title}</div>
       <Show when={props.desc}>
-        <div class="mb-[15px] text-[0.85rem] leading-[1.4] text-text-secondary">{props.desc}</div>
+        <div class="mb-[15px] text-85 leading-[1.4] text-text-secondary">{props.desc}</div>
       </Show>
       {props.children}
     </div>
@@ -21,7 +21,7 @@ export function SettingsGroup(props: { title: JSX.Element; desc?: JSX.Element; c
 
 /** The grey line under a field that explains it. */
 export function Help(props: { children: JSX.Element; class?: string }) {
-  return <div class={['text-[0.8rem] text-text-secondary', props.class ?? 'mt-1.5']}>{props.children}</div>;
+  return <div class={['text-80 text-text-secondary', props.class ?? 'mt-1.5']}>{props.children}</div>;
 }
 
 /** The scrolling list of the dialogs' check items (permissions of a group, groups of an account). */
@@ -44,8 +44,8 @@ export function CheckItem(props: { checked: boolean; onChange: (checked: boolean
         onChange={e => props.onChange(e.currentTarget.checked)}
       />
       <div class="flex flex-1 flex-col gap-0.5">
-        <span class="text-[0.9rem] font-bold text-text">{props.name}</span>
-        <span class="text-[0.78rem] leading-[1.35] text-text-secondary">{props.desc}</span>
+        <span class="text-90 font-bold text-text">{props.name}</span>
+        <span class="text-78 leading-[1.35] text-text-secondary">{props.desc}</span>
       </div>
     </label>
   );

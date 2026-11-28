@@ -33,9 +33,9 @@ export function RowIcon(props: { name: IconName }) {
 export function RowText(props: { title: JSX.Element; desc?: JSX.Element }) {
   return (
     <span class="flex min-w-0 flex-1 flex-col gap-px">
-      <span class="truncate text-[0.95rem] font-bold">{props.title}</span>
+      <span class="truncate text-95 font-bold">{props.title}</span>
       <Show when={props.desc}>
-        <span class="line-clamp-2 text-[0.8rem] text-text-secondary">{props.desc}</span>
+        <span class="line-clamp-2 text-80 text-text-secondary">{props.desc}</span>
       </Show>
     </span>
   );

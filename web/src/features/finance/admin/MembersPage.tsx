@@ -36,7 +36,7 @@ const PAY_PILL: Record<PayState, string> = {
 const statusLabel = (status: string) => getStatusLabels(false)[status as MemberStatus] || status;
 
 const SECTION_LABEL =
-  "flex items-center gap-2 text-[0.74rem] font-bold tracking-[0.1em] text-text-secondary uppercase after:h-px after:flex-1 after:bg-border after:opacity-50 after:content-['']";
+  "flex items-center gap-2 text-75 font-bold tracking-[0.1em] text-text-secondary uppercase after:h-px after:flex-1 after:bg-border after:opacity-50 after:content-['']";
 
 // --- The opened member ---
 function MemberHero(props: { person: Person }) {
@@ -59,16 +59,16 @@ function MemberHero(props: { person: Person }) {
           <PayStateIcon state={state()} size={20} />
         </span>
         <div class="min-w-0">
-          <div class="text-[1.12rem] leading-[1.2] font-bold tracking-[-0.02em] text-[var(--hero-accent)]">{translateStatusText(meta().text)}</div>
-          <div class="text-[0.86rem] text-text-secondary">
+          <div class="text-110 leading-[1.2] font-bold tracking-[-0.02em] text-[var(--hero-accent)]">{translateStatusText(meta().text)}</div>
+          <div class="text-85 text-text-secondary">
             {t('paid_until', 'Paid until')} <strong class="font-[650] text-text">{paidUntilText(props.person._paidUntil)}</strong>
           </div>
         </div>
       </div>
       <Show when={meta().isOverdue}>
-        <div class="mb-3 flex items-center justify-between gap-2.5 rounded-[14px] bg-[color-mix(in_srgb,var(--danger)_9%,var(--surface))] px-3.5 py-2.5 text-[0.86rem] font-semibold text-danger">
+        <div class="mb-3 flex items-center justify-between gap-2.5 rounded-[14px] bg-[color-mix(in_srgb,var(--danger)_9%,var(--surface))] px-3.5 py-2.5 text-85 font-semibold text-danger">
           <span>{t('overdue_amount_label', 'Outstanding Amount')}</span>
-          <strong class="text-[1.15rem] font-[750] tracking-[-0.02em] tabular-nums">{euro(props.person._overdueAmount || 0)}</strong>
+          <strong class="text-115 font-[750] tracking-[-0.02em] tabular-nums">{euro(props.person._overdueAmount || 0)}</strong>
         </div>
       </Show>
       {/* Status and fee as of today (a change dated ahead shows in the history) */}
@@ -106,7 +106,7 @@ function StandingOrders(props: { person: Person }) {
                     <Icon name="rotate" size={16} strokeWidth={2.2} />
                   </span>
                   <div class="min-w-0 flex-auto">
-                    <div class="text-[0.92rem] text-text-secondary">
+                    <div class="text-92 text-text-secondary">
                       <BoldParam text={t('user_fee_per_month', '{amount} a month')} name="amount" value={euro(so.amount)} class="font-bold text-text" />
                     </div>
                     <div class={[ROW_FACTS, 'line-clamp-2']}>{facts()}</div>
@@ -142,7 +142,7 @@ function MemberAction(props: { icon: IconName; color: string; label: string; onC
         <Icon name={props.icon} size={15} />
       </span>
       <span class="flex min-w-0 flex-1 basis-0 flex-col items-center gap-0.5">
-        <span class="text-left text-[0.8rem] leading-[1.15] font-[650] tracking-[-0.01em] text-text">{props.label}</span>
+        <span class="text-left text-80 leading-[1.15] font-[650] tracking-[-0.01em] text-text">{props.label}</span>
       </span>
     </button>
   );
@@ -194,21 +194,21 @@ function PersonCard(props: { person: Person }) {
         onKeyDown={e => onActivateKey(e, () => toggle())}
       >
         <div class="flex w-full items-center justify-start gap-3">
-          <Avatar uid={props.person.uid || props.person.data?.uid} name={props.person.name} size={42} initialsClass="text-[0.82rem]" />
+          <Avatar uid={props.person.uid || props.person.data?.uid} name={props.person.name} size={42} initialsClass="text-82" />
           <div class="flex min-w-0 flex-auto flex-col gap-0.5">
-            <div class="line-clamp-2 text-[0.98rem] leading-[1.25] font-[650] tracking-[-0.01em] [overflow-wrap:anywhere] text-text">{props.person.name}</div>
-            <span class="text-[0.8rem] font-medium text-text-secondary">{statusLabel(currentStatusOf(props.person))}</span>
+            <div class="line-clamp-2 text-100 leading-[1.25] font-[650] tracking-[-0.01em] [overflow-wrap:anywhere] text-text">{props.person.name}</div>
+            <span class="text-80 font-medium text-text-secondary">{statusLabel(currentStatusOf(props.person))}</span>
           </div>
           <div class="flex max-w-[34%] min-w-0 flex-none flex-col items-end gap-[3px]">
             <Show when={!covered()}>
-              <span class={['inline-block rounded-[99px] px-2.5 py-[3px] text-[0.76rem] font-[650] whitespace-nowrap', PAY_PILL[payStateOf(props.person)]]}>
+              <span class={['inline-block rounded-[99px] px-2.5 py-[3px] text-75 font-[650] whitespace-nowrap', PAY_PILL[payStateOf(props.person)]]}>
                 {paidUntilText(props.person._paidUntil)}
               </span>
             </Show>
             {/* Phones: the coloured date already tells the state, so its repeat in words gives way to the name */}
             <span
               class={[
-                'max-w-full overflow-hidden text-right text-[0.76rem] leading-[1.25] font-medium text-ellipsis text-text-secondary',
+                'max-w-full overflow-hidden text-right text-75 leading-[1.25] font-medium text-ellipsis text-text-secondary',
                 { 'max-mini:hidden': !covered() }
               ]}
             >
@@ -217,7 +217,7 @@ function PersonCard(props: { person: Person }) {
           </div>
           <span
             class={[
-              'inline-block shrink-0 text-[1.25rem] leading-none transition-transform duration-300 ease-[ease]',
+              'inline-block shrink-0 text-125 leading-none transition-transform duration-300 ease-[ease]',
               open() ? 'rotate-90 text-primary opacity-100' : 'text-text-secondary opacity-55'
             ]}
             aria-hidden="true"
@@ -248,7 +248,7 @@ function PeopleColumn(props: { people: Person[]; title: string; color: string })
     <div>
       <Show when={props.people.length}>
         <h3
-          class="mx-0.5 mt-3.5 mb-2.5 flex items-center gap-2 text-[0.74rem] font-bold tracking-[0.1em] uppercase after:h-px after:flex-1 after:bg-hairline after:content-['']"
+          class="mx-0.5 mt-3.5 mb-2.5 flex items-center gap-2 text-75 font-bold tracking-[0.1em] uppercase after:h-px after:flex-1 after:bg-hairline after:content-['']"
           style={{ color: props.color }}
         >
           {props.title} (<span>{props.people.length}</span>)
@@ -281,7 +281,7 @@ function UnlinkedUser(props: { user: User; options: Person[] }) {
         <div class="font-bold">
           {props.user.firstName || '?'} {props.user.lastName || ''}
         </div>
-        <div class="text-[0.85rem] text-text-secondary">{props.user.email || ''}</div>
+        <div class="text-85 text-text-secondary">{props.user.email || ''}</div>
       </div>
       <Select id={`link-select-${props.user.uid}`} class="min-w-[220px] flex-1" value={choice()} onChange={e => setChoice(e.currentTarget.value)}>
         <option value="">{t('unlinked_select_person', 'Select Person')}</option>
@@ -319,7 +319,7 @@ export function MembersPage() {
   return (
     <div>
       <div class="mb-5 flex items-center justify-between">
-        <h2 class="text-[1.2rem] font-extrabold">{t('nav_people', 'Members')}</h2>
+        <h2 class="text-120 font-extrabold">{t('nav_people', 'Members')}</h2>
       </div>
       <SearchInput
         id="people-search"
@@ -335,7 +335,7 @@ export function MembersPage() {
           <PeopleColumn people={current()} title={t('current_members_header', 'Current Members')} color="var(--success)" />
         </div>
         <Show when={peopleTerm() && !overdue().length && !current().length}>
-          <p class="my-2 px-3 py-6 text-center text-[0.9rem] text-text-secondary">{t('people_no_match', 'No member matches your search.')}</p>
+          <p class="my-2 px-3 py-6 text-center text-90 text-text-secondary">{t('people_no_match', 'No member matches your search.')}</p>
         </Show>
       </Show>
       <Show when={dataLoaded() && !paying().length}>

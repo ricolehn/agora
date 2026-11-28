@@ -11,7 +11,7 @@ import type { PublicEvent } from '../types';
 
 /** The quiet text buttons of the page ("Member? Sign in", "Sign up another person"). */
 export const GUEST_LINK =
-  'inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[0.86rem] font-bold text-primary no-underline hover:underline';
+  'inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-85 font-bold text-primary no-underline hover:underline';
 
 /** focus: opened with "Sign up another person" (the cursor goes to the name). */
 function GuestForm(props: { full: boolean; focus: boolean }) {
@@ -33,11 +33,11 @@ function GuestForm(props: { full: boolean; focus: boolean }) {
     setError(await submitGuestRegistration({ name: field('guest-reg-name'), email: field('guest-reg-email'), age: field('guest-reg-age'), website: field('guest-reg-hp') }));
     setBusy(false);
   };
-  const label = 'flex min-w-0 flex-col gap-[5px] text-[0.74rem] font-bold text-text-secondary';
+  const label = 'flex min-w-0 flex-col gap-[5px] text-75 font-bold text-text-secondary';
   return (
     <form ref={form} class="m-0 flex flex-col gap-2.5" onSubmit={e => void submit(e)}>
       <Show when={props.full}>
-        <p class="m-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-[#d97706]">
+        <p class="m-0 flex items-center gap-1.5 text-82 font-semibold text-[#d97706]">
           <Icon name="clock" size={14} />
           <span>{t('guest_reg_full', 'Fully booked: you can join the waiting list.')}</span>
         </p>
@@ -67,11 +67,11 @@ function GuestForm(props: { full: boolean; focus: boolean }) {
       </div>
       <input type="text" name="guest-reg-hp" class="pointer-events-none absolute -left-[10000px] size-px opacity-0" tabindex="-1" autocomplete="off" aria-hidden="true" />
       <Show when={error()}>
-        <p class="m-0 text-[0.84rem] font-semibold text-danger" role="alert">
+        <p class="m-0 text-85 font-semibold text-danger" role="alert">
           {error()}
         </p>
       </Show>
-      <p class="m-0 text-[0.76rem] leading-[1.45] text-text-secondary">
+      <p class="m-0 text-75 leading-[1.45] text-text-secondary">
         {t('guest_reg_note', 'Your details are only used for this event and deleted {days} days after it.', { days: GUEST_RETENTION_DAYS })}{' '}
         <a href="/privacy" target="_blank" rel="noopener" class="font-semibold text-primary underline">
           {t('guest_privacy', 'Privacy')}

@@ -86,7 +86,7 @@ function removeSong() {
   );
 }
 
-const HELP = 'm-0 text-[0.82rem] leading-[1.5] text-text-secondary';
+const HELP = 'm-0 text-82 leading-[1.5] text-text-secondary';
 
 export function SongEditorModal() {
   const editing = () => !!editSongId();
@@ -153,7 +153,7 @@ export function SongEditorModal() {
         </p>
         <textarea
           id="song-edit-content"
-          class={[EDITOR_FIELD, 'min-h-[260px] resize-y py-3 font-[family-name:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace] text-[0.92rem] leading-[1.6]']}
+          class={[EDITOR_FIELD, 'min-h-[260px] resize-y py-3 font-[family-name:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace] text-92 leading-[1.6]']}
           rows="14"
           maxlength="20000"
           placeholder={'# Verse 1\n[G]Amazing [C]grace, how [G]sweet the sound'}
@@ -163,7 +163,7 @@ export function SongEditorModal() {
             updatePreview(e.currentTarget.value, songKey());
           }}
         />
-        <div class="text-[0.72rem] font-extrabold tracking-[0.06em] text-text-secondary uppercase">{t('songbook_preview', 'Preview')}</div>
+        <div class="text-72 font-extrabold tracking-[0.06em] text-text-secondary uppercase">{t('songbook_preview', 'Preview')}</div>
         <div
           id="song-edit-preview"
           class="flex-none rounded-[14px] bg-surface-alt px-[14px] py-[14px] text-[length:var(--song-base)] leading-[1.5] text-text [--song-base:1rem] max-mini:px-[18px] max-mini:py-0 md:px-7 md:py-0 md:[--song-base:1.2rem]"
@@ -171,7 +171,7 @@ export function SongEditorModal() {
           {/* The hint also when the text has nothing to show (only {title}, {key} ... lines), as before */}
           <Show
             when={parseSong(preview().content, { declaredKey: preview().key }).length}
-            fallback={<span class="text-[0.86rem] text-text-secondary">{t('songbook_preview_empty', 'The song appears here as it will be shown.')}</span>}
+            fallback={<span class="text-85 text-text-secondary">{t('songbook_preview_empty', 'The song appears here as it will be shown.')}</span>}
           >
             <SongLines content={preview().content} declaredKey={preview().key} />
           </Show>

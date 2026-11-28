@@ -120,14 +120,14 @@ function SuggestOption(props: { song?: boolean; title: string; songKey?: string;
         <Icon name={props.song ? 'music' : 'plus'} size={15} strokeWidth={props.song ? 2 : 2.5} />
       </span>
       <span class="flex min-w-0 flex-col">
-        <span class="flex min-w-0 items-center gap-1.5 text-[0.9rem] font-bold">
+        <span class="flex min-w-0 items-center gap-1.5 text-90 font-bold">
           <span class="truncate">{props.title}</span>
           <Show when={props.songKey}>
             <ProgramKey value={props.songKey!} />
           </Show>
         </span>
         <Show when={props.sub}>
-          <span class="text-[0.76rem] text-text-secondary">{props.sub}</span>
+          <span class="text-75 text-text-secondary">{props.sub}</span>
         </Show>
       </span>
     </button>
@@ -146,7 +146,7 @@ function WhoSection(props: { ruled: boolean }) {
         <div id="plan-entry-person" class="flex flex-wrap gap-1.5">
           <For each={existing()} keyed={duty => duty.id}>
             {duty => (
-              <span class="inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border border-border-light bg-surface-alt py-[3px] pr-[3px] pl-1.5 text-[0.86rem] font-semibold text-text">
+              <span class="inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border border-border-light bg-surface-alt py-[3px] pr-[3px] pl-1.5 text-85 font-semibold text-text">
                 <PlanPerson duty={duty()} />
                 <RemoveButton label={t('duty_remove_entry', 'Remove entry')} class="size-6 hover:bg-surface" onClick={() => void removePlanPerson(duty().id)} />
               </span>
@@ -154,7 +154,7 @@ function WhoSection(props: { ruled: boolean }) {
           </For>
           <For each={assignees()}>
             {(a, i) => (
-              <span class="inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border border-brand/30 bg-brand/10 py-[3px] pr-[3px] pl-1.5 text-[0.86rem] font-semibold text-text">
+              <span class="inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border border-brand/30 bg-brand/10 py-[3px] pr-[3px] pl-1.5 text-85 font-semibold text-text">
                 <ChosenPerson uid={a.data.targetUserId} group={!!a.data.targetGroupId} label={a.label} />
                 <RemoveButton label={t('btn_remove', 'Remove')} class="size-6 hover:bg-surface" onClick={() => clearPlanPerson(i())} />
               </span>
@@ -163,7 +163,7 @@ function WhoSection(props: { ruled: boolean }) {
           <Show when={!pickerOpen()}>
             <button
               type="button"
-              class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-full border-[1.5px] border-dashed border-border bg-transparent py-[3px] pr-3 pl-2.5 text-[0.86rem] font-bold text-primary hover:border-primary hover:bg-brand/6"
+              class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-full border-[1.5px] border-dashed border-border bg-transparent py-[3px] pr-3 pl-2.5 text-85 font-bold text-primary hover:border-primary hover:bg-brand/6"
               onClick={() => pickPlanPerson()}
             >
               <Icon name="plus" size={13} strokeWidth={2.6} />
@@ -184,9 +184,9 @@ function WhoSection(props: { ruled: boolean }) {
             onInput={setWhoSearch}
           />
           <div id="plan-who-list" class="flex max-h-[220px] flex-col overflow-y-auto">
-            <Show when={!candidatesLoading()} fallback={<div class="p-3 text-center text-[0.82rem] text-text-secondary">{t('loading_short', 'Loading...')}</div>}>
+            <Show when={!candidatesLoading()} fallback={<div class="p-3 text-center text-82 text-text-secondary">{t('loading_short', 'Loading...')}</div>}>
               {/* Keyed by person or group: choosing one keeps the list (and the keyboard's place in it) */}
-              <For each={whoOptions()} keyed={o => o.key} fallback={<div class="p-3 text-center text-[0.82rem] text-text-secondary">{t('plan_who_none', 'Nobody found')}</div>}>
+              <For each={whoOptions()} keyed={o => o.key} fallback={<div class="p-3 text-center text-82 text-text-secondary">{t('plan_who_none', 'Nobody found')}</div>}>
                 {option => (
                   <button
                     type="button"
@@ -197,11 +197,11 @@ function WhoSection(props: { ruled: boolean }) {
                     onClick={() => togglePlanWho(option())}
                   >
                     <Show when={!option().group} fallback={<GroupBadge class="size-8 dark:text-[#a5b4fc]" size={15} />}>
-                      <Avatar uid={option().data.targetUserId} name={option().label} size={32} initialsClass="text-[0.72rem]" />
+                      <Avatar uid={option().data.targetUserId} name={option().label} size={32} initialsClass="text-72" />
                     </Show>
                     <span class="flex min-w-0 flex-1 flex-col">
-                      <span class="truncate text-[0.9rem] font-semibold">{option().label}</span>
-                      <span class="text-[0.75rem] text-text-secondary">{option().done ? t('plan_who_already', 'Already on this entry') : option().sub}</span>
+                      <span class="truncate text-90 font-semibold">{option().label}</span>
+                      <span class="text-75 text-text-secondary">{option().done ? t('plan_who_already', 'Already on this entry') : option().sub}</span>
                     </span>
                     <span
                       class={[
@@ -256,15 +256,15 @@ function OrderList() {
             >
               <div
                 ref={slot}
-                class="flex min-h-[38px] items-center gap-2.5 rounded-xl border-2 border-dashed border-primary bg-brand/8 px-2.5 text-[0.86rem] font-bold text-primary-dark"
+                class="flex min-h-[38px] items-center gap-2.5 rounded-xl border-2 border-dashed border-primary bg-brand/8 px-2.5 text-85 font-bold text-primary-dark"
               >
                 <span class="w-[42px] shrink-0 font-extrabold text-[#0284c7] tabular-nums dark:text-[#38bdf8]">{planOrder()!.when(planOrder()!.place)}</span>
                 <span class="min-w-0 flex-1 truncate">{planEntryName() || t('plan_this_entry', 'This entry')}</span>
-                <span class="text-[0.78rem] font-bold">{t('plan_here', 'here')}</span>
+                <span class="text-78 font-bold">{t('plan_here', 'here')}</span>
               </div>
             </Show>
             <Show when={p < planOrder()!.others.length}>
-              <div class="flex min-h-[30px] items-center gap-2.5 px-3 text-[0.86rem] text-text-secondary">
+              <div class="flex min-h-[30px] items-center gap-2.5 px-3 text-85 text-text-secondary">
                 <span class="w-[42px] shrink-0 font-extrabold text-[#0284c7] tabular-nums dark:text-[#38bdf8]">{planOrder()!.when(p < planOrder()!.place ? p : p + 1)}</span>
                 <span class="min-w-0 flex-1 truncate">{programItemTitle(planOrder()!.others[p])}</span>
               </div>
@@ -283,7 +283,7 @@ function WhenTab(props: { order: boolean; label: string }) {
     <Pill
       chosen={on()}
       class={[
-        'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[0.82rem] whitespace-nowrap transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150',
+        'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-82 whitespace-nowrap transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150',
         on()
           ? 'bg-surface font-bold text-primary-dark shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-[#44403c] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
           : 'font-semibold text-text-secondary'
@@ -302,7 +302,7 @@ function DurationPill(props: { label: string; active: boolean; onClick: () => vo
       type="button"
       aria-pressed={props.active ? 'true' : 'false'}
       class={[
-        'h-[34px] min-w-11 cursor-pointer rounded-full border-[1.5px] px-3 text-[0.86rem] font-semibold',
+        'h-[34px] min-w-11 cursor-pointer rounded-full border-[1.5px] px-3 text-85 font-semibold',
         props.active ? 'border-primary bg-brand/10 text-primary-dark' : 'border-border-light bg-surface text-text hover:border-border'
       ]}
       onClick={() => props.onClick()}
@@ -354,11 +354,11 @@ function WhenSection() {
               />
             </Show>
             <Show when={order().hint}>
-              <p class="-mt-0.5 text-[0.78rem] text-text-secondary">{order().hint}</p>
+              <p class="-mt-0.5 text-78 text-text-secondary">{order().hint}</p>
             </Show>
             <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-2.5 gap-y-2">
               <Show when={entry()?.songId}>
-                <label class="flex min-w-0 flex-col gap-1 text-[0.74rem] font-bold text-text-secondary">
+                <label class="flex min-w-0 flex-col gap-1 text-75 font-bold text-text-secondary">
                   <span>{t('songbook_key_label', 'Key')}</span>
                   <Input class={PLAN_INPUT} maxlength={3} value={songKey()} onInput={e => setSongKey(e.currentTarget.value)} />
                 </label>

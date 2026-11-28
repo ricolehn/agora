@@ -66,7 +66,7 @@ function ChatHeader() {
           'hidden items-center justify-center gap-1.5 border bg-surface text-text shadow-card transition-[transform,scale,box-shadow,background-color] duration-200 hover:bg-surface-alt active:scale-[0.97]',
           { 'max-md:inline-flex': inChat() },
           // Full screen: a round button with an arrow; else the small one with the chevron
-          chatFullscreen() ? 'size-[42px] min-w-[42px] rounded-full border-border-light p-0' : 'h-9 min-w-9 rounded-lg border-hairline px-2.5 py-1.5 text-[0.82rem] font-bold'
+          chatFullscreen() ? 'size-[42px] min-w-[42px] rounded-full border-border-light p-0' : 'h-9 min-w-9 rounded-lg border-hairline px-2.5 py-1.5 text-82 font-bold'
         ]}
         onClick={() => closeMentoringChatMobile()}
       >
@@ -74,10 +74,10 @@ function ChatHeader() {
         <Icon name="arrowLeft" size={20} strokeWidth={2.5} class={chatFullscreen() ? 'block' : 'hidden'} />
       </button>
       <div class={['flex flex-1 flex-col gap-px', { 'max-md:min-w-0 max-md:items-start max-md:text-left': chatFullscreen() }]}>
-        <div id="mentoring-chat-title" class={['text-[1.05rem] font-extrabold text-text', { 'max-md:text-[1.1rem]': chatFullscreen() }]}>
+        <div id="mentoring-chat-title" class={['text-105 font-extrabold text-text', { 'max-md:text-110': chatFullscreen() }]}>
           {pane() ? partner().name : t('mentoring_no_chat_selected_title', 'No conversation selected')}
         </div>
-        <div class="text-[0.78rem] text-text-secondary">{subtitle()}</div>
+        <div class="text-78 text-text-secondary">{subtitle()}</div>
       </div>
       <Show when={pane()}>
         <ChatMenu />
@@ -87,7 +87,7 @@ function ChatHeader() {
 }
 
 const MENU_ITEM =
-  'flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-left text-[0.88rem] font-semibold transition-[background] duration-150 ' +
+  'flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-left text-88 font-semibold transition-[background] duration-150 ' +
   'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary';
 const MENU_DANGER = 'text-danger hover:bg-[rgba(239,68,68,0.12)]';
 
@@ -195,24 +195,24 @@ function MessageList() {
 function Notice(props: { icon: string; title: string; text: string }) {
   return (
     <div class="m-auto px-5 py-[30px] text-center text-text-secondary">
-      <div class="mb-2 text-[2rem]">{props.icon}</div>
+      <div class="mb-2 text-200">{props.icon}</div>
       <div class="mb-1 font-semibold">{props.title}</div>
-      <div class="text-[0.85rem] text-text-secondary">{props.text}</div>
+      <div class="text-85 text-text-secondary">{props.text}</div>
     </div>
   );
 }
 
 const MESSAGE = 'flex max-w-[78%] flex-col max-md:max-w-[88%]';
-const BUBBLE = 'whitespace-pre-wrap px-[15px] py-2.5 text-[0.92rem] leading-[1.45] [word-break:break-word]';
+const BUBBLE = 'whitespace-pre-wrap px-[15px] py-2.5 text-92 leading-[1.45] [word-break:break-word]';
 const MINE = 'rounded-[18px_18px_4px_18px] bg-gradient-primary text-white shadow-[0_2px_6px_rgba(var(--glow-rgb),0.22)]';
-const TIME = 'mt-[3px] px-1 text-[0.68rem] text-text-secondary';
+const TIME = 'mt-[3px] px-1 text-66 text-text-secondary';
 
 function Bubble(props: { message: ChatMessage }) {
   const mine = () => isCurrentUser(props.message.sender);
   return (
     <div class={[MESSAGE, mine() ? 'items-end self-end' : 'items-start self-start']}>
       <Show when={!mine()}>
-        <div class="mb-0.5 px-1 text-[0.74rem] font-bold text-primary-dark dark:text-primary">
+        <div class="mb-0.5 px-1 text-75 font-bold text-primary-dark dark:text-primary">
           {props.message.sender_name || t('mentoring_partner_generic', 'Conversation partner')}
         </div>
       </Show>
@@ -253,7 +253,7 @@ function ChatInput() {
           value={draft()}
           placeholder={t('mentoring_chat_input_placeholder', 'Write a confidential message…')}
           title={t('chat_enter_hint', 'Enter for new line, Ctrl+Enter to send')}
-          class="m-0 block h-6 max-h-[110px] min-h-6 flex-1 resize-none border-none bg-transparent p-0 font-[inherit] text-[0.95rem] leading-6 text-text shadow-none outline-none"
+          class="m-0 block h-6 max-h-[110px] min-h-6 flex-1 resize-none border-none bg-transparent p-0 font-[inherit] text-95 leading-6 text-text shadow-none outline-none"
           onInput={e => setDraft(e.currentTarget.value)}
           onKeyDown={e => onChatInputKey(e, () => void sendMentoringMessage())}
         />
@@ -289,7 +289,7 @@ function ClosedBar() {
         chatFullscreen() ? 'max-md:shrink-0 max-md:px-3.5 max-md:py-2.5' : 'max-md:px-3.5 max-md:py-3'
       ]}
     >
-      <div class="flex items-center gap-2 text-[0.88rem] font-medium text-text-secondary max-md:justify-center max-md:text-center">
+      <div class="flex items-center gap-2 text-88 font-medium text-text-secondary max-md:justify-center max-md:text-center">
         <Icon name="alert" size={18} class="shrink-0 text-[#f59e0b]" />
         <span>{text()}</span>
       </div>

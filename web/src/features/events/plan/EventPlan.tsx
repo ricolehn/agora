@@ -86,23 +86,23 @@ function PlanRow(props: {
       <Show when={inOrder()}>
         <span
           class={[
-            'flex flex-col pt-px text-[0.86rem] leading-[1.35] font-extrabold tabular-nums',
+            'flex flex-col pt-px text-85 leading-[1.35] font-extrabold tabular-nums',
             /:/.test(props.row.time!) ? 'text-[#0284c7] dark:text-[#38bdf8]' : 'text-text-secondary',
             { 'pl-4': props.timeline }
           ]}
         >
           {props.row.time}
           <Show when={props.row.minutes}>
-            <small class="text-[0.7rem] font-semibold text-text-secondary">{programMinutes(props.row.minutes!)}</small>
+            <small class="text-70 font-semibold text-text-secondary">{programMinutes(props.row.minutes!)}</small>
           </Show>
         </span>
       </Show>
       <span class="flex min-w-0 flex-col gap-0.5">
-        <span class="min-w-0 text-[0.95rem] font-bold break-words text-text">
+        <span class="min-w-0 text-95 font-bold break-words text-text">
           <Show when={song()} fallback={title()}>
             <button
               type="button"
-              class="inline-flex max-w-full cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-left text-[0.95rem] font-bold text-text"
+              class="inline-flex max-w-full cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-left text-95 font-bold text-text"
               onClick={e => {
                 e.stopPropagation();
                 openProgramSong(props.row.item!);
@@ -115,12 +115,12 @@ function PlanRow(props: {
             </button>
           </Show>
         </span>
-        <span class="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[0.84rem] text-text">
+        <span class="flex flex-wrap gap-x-2.5 gap-y-0.5 text-85 text-text">
           <Show
             when={props.row.role}
             fallback={
-              <Show when={props.row.who} fallback={<span class="text-[0.8rem] text-text-secondary opacity-80">{t('plan_open_short', 'open')}</span>}>
-                <span class="inline-flex items-center gap-[5px] whitespace-nowrap text-[0.82rem] font-semibold text-text-secondary">{props.row.who}</span>
+              <Show when={props.row.who} fallback={<span class="text-80 text-text-secondary opacity-80">{t('plan_open_short', 'open')}</span>}>
+                <span class="inline-flex items-center gap-[5px] whitespace-nowrap text-82 font-semibold text-text-secondary">{props.row.who}</span>
               </Show>
             }
           >
@@ -128,7 +128,7 @@ function PlanRow(props: {
           </Show>
         </span>
         <Show when={props.row.note}>
-          <span class="text-[0.8rem] whitespace-pre-wrap text-text-secondary italic [overflow-wrap:anywhere]">{props.row.note}</span>
+          <span class="text-80 whitespace-pre-wrap text-text-secondary italic [overflow-wrap:anywhere]">{props.row.note}</span>
         </Show>
         <PlanAnswer duties={props.row.duties} onAnswered={props.onAnswered} />
       </span>
@@ -138,7 +138,7 @@ function PlanRow(props: {
 
 /** The key of a song (a small pill). */
 export function ProgramKey(props: { value: string }) {
-  return <span class="shrink-0 rounded-full bg-brand/12 px-2 py-px text-[0.72rem] font-extrabold text-brand-deep">{props.value}</span>;
+  return <span class="shrink-0 rounded-full bg-brand/12 px-2 py-px text-72 font-extrabold text-brand-deep">{props.value}</span>;
 }
 
 /** The plan of an event (duty roster and order of service) for those who may see it. */
@@ -177,8 +177,8 @@ export function EventPlan(props: { event: AppEvent }) {
               <Icon name="roster" size={18} />
             </div>
             <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span class="text-[1rem] font-extrabold text-text">{header().title}</span>
-              <span class="text-[0.82rem] text-text-secondary">{header().meta}</span>
+              <span class="text-100 font-extrabold text-text">{header().title}</span>
+              <span class="text-82 text-text-secondary">{header().meta}</span>
             </div>
             <span class={['inline-flex text-text-secondary transition-transform duration-200 ease-in-out', { 'rotate-180': open() }]}>
               <Icon name="chevronDown" size={14} strokeWidth={2.5} />
@@ -195,7 +195,7 @@ export function EventPlan(props: { event: AppEvent }) {
             <Show
               when={rows().order.length || rows().tasks.length}
               fallback={
-                <div class="pt-2.5 pb-1 text-[0.86rem] text-text-secondary">
+                <div class="pt-2.5 pb-1 text-85 text-text-secondary">
                   {editable() ? t('plan_empty_manager', 'Add what happens and who helps – with “+” below.') : t('duty_empty_member', 'No duties for this event.')}
                 </div>
               }
@@ -204,7 +204,7 @@ export function EventPlan(props: { event: AppEvent }) {
                 <Show when={rows().order.length}>
                   <div class="flex flex-col">
                     <Show when={both()}>
-                      <div class="mb-1 flex items-center gap-2 text-[0.74rem] font-extrabold tracking-[0.06em] text-[#0284c7] uppercase dark:text-[#38bdf8]">
+                      <div class="mb-1 flex items-center gap-2 text-75 font-extrabold tracking-[0.06em] text-[#0284c7] uppercase dark:text-[#38bdf8]">
                         <Icon name="clock" size={15} strokeWidth={2.2} class="shrink-0" />
                         <span>{t('plan_group_program', 'Order of service')}</span>
                       </div>
@@ -249,7 +249,7 @@ export function EventPlan(props: { event: AppEvent }) {
               <button
                 type="button"
                 id="detail-btn-add-duty"
-                class="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border-[1.5px] border-dashed border-border bg-transparent p-2.5 text-[0.88rem] font-bold text-text-secondary hover:border-primary hover:text-primary"
+                class="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border-[1.5px] border-dashed border-border bg-transparent p-2.5 text-88 font-bold text-text-secondary hover:border-primary hover:text-primary"
                 onClick={() => openPlanEntry(ev(), { mode: 'new' })}
               >
                 <Icon name="plus" size={15} strokeWidth={2.5} />

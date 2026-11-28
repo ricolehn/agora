@@ -35,13 +35,13 @@ function ChatHeader() {
       >
         <Icon name="chevronLeft" size={20} strokeWidth={2.4} />
       </button>
-      <span class="flex min-w-0 flex-1 items-center gap-2.5 text-[1.15rem] font-bold tracking-[-0.02em]">
+      <span class="flex min-w-0 flex-1 items-center gap-2.5 text-115 font-bold tracking-[-0.02em]">
         <AiSign size={28} state={headerSign()} class="inline-flex size-7 shrink-0" />
         <span>{t('nav_ai', 'AI Support')}</span>
       </span>
       <button
         type="button"
-        class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-[0.86rem] font-semibold text-text shadow-card hover:bg-surface-alt"
+        class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-hairline bg-surface px-3.5 py-1.5 text-85 font-semibold text-text shadow-card hover:bg-surface-alt"
         title={t('ai_new_chat', 'New chat')}
         onClick={() => clearAiChat()}
       >
@@ -76,11 +76,11 @@ function Welcome() {
       <AiSign size={76} class="mb-[22px] flex animate-[aiWelcomeSign_0.45s_cubic-bezier(0.4,0,0.2,1)_backwards]" />
       <h2 class="m-0 flex animate-[aiWelcomeUp_0.6s_var(--ease)_0.08s_backwards] flex-col gap-0.5 text-[1.75rem] leading-[1.2] font-[750] tracking-[-0.03em] text-text">
         <Show when={firstName()}>
-          <span class="text-[1.05rem] font-semibold tracking-[-0.01em] text-text-secondary">{t('ai_chat_hi_name', 'Hi {name},', { name: firstName() })}</span>
+          <span class="text-105 font-semibold tracking-[-0.01em] text-text-secondary">{t('ai_chat_hi_name', 'Hi {name},', { name: firstName() })}</span>
         </Show>
         <span class="pb-0.5 text-text dark:text-[#e4ded6]">{t('ai_chat_hello', 'How can I help?')}</span>
       </h2>
-      <p class="mt-2.5 mb-0 max-w-[360px] animate-[aiWelcomeUp_0.6s_var(--ease)_0.14s_backwards] text-[0.93rem] leading-[1.5]">
+      <p class="mt-2.5 mb-0 max-w-[360px] animate-[aiWelcomeUp_0.6s_var(--ease)_0.14s_backwards] text-92 leading-[1.5]">
         {admin() ? t('ai_chat_welcome_sub', 'Ask about members, finances, events or duties.') : t('ai_chat_welcome_sub_member', 'Ask about events, duties, your fee or how the app works.')}
       </p>
       {/* Wider screens: three cards side by side, the question below its sign */}
@@ -89,7 +89,7 @@ function Welcome() {
           {(idea, index) => (
             <button
               type="button"
-              class="group/idea relative flex min-w-0 animate-[aiWelcomeUp_0.55s_var(--ease)_calc(0.22s_+_var(--i)_*_0.07s)_backwards] items-center gap-3 rounded-[18px] border border-hairline bg-surface py-3 pr-3.5 pl-3 text-left text-[0.9rem] leading-[1.35] font-[550] text-text shadow-card transition-[transform,border-color,box-shadow,background-color] duration-[250ms] ease-app hover:[transform:translateY(-2px)] hover:border-[color-mix(in_srgb,var(--c)_35%,var(--hairline))] hover:shadow-card-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:[transform:scale(0.98)] active:duration-100 sm:min-h-32 sm:flex-col sm:items-start sm:gap-3.5 sm:p-4"
+              class="group/idea relative flex min-w-0 animate-[aiWelcomeUp_0.55s_var(--ease)_calc(0.22s_+_var(--i)_*_0.07s)_backwards] items-center gap-3 rounded-[18px] border border-hairline bg-surface py-3 pr-3.5 pl-3 text-left text-90 leading-[1.35] font-[550] text-text shadow-card transition-[transform,border-color,box-shadow,background-color] duration-[250ms] ease-app hover:[transform:translateY(-2px)] hover:border-[color-mix(in_srgb,var(--c)_35%,var(--hairline))] hover:shadow-card-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:[transform:scale(0.98)] active:duration-100 sm:min-h-32 sm:flex-col sm:items-start sm:gap-3.5 sm:p-4"
               style={{ '--i': String(index()), '--c': IDEA_COLORS[index()] }}
               onClick={() => askAi(idea)}
             >
@@ -122,7 +122,7 @@ function ChatInput() {
         <textarea
           ref={el => (chatElements.input = el)}
           rows={1}
-          class="m-0 block h-6 min-h-6 flex-1 resize-none border-none bg-transparent p-0 text-[0.95rem] leading-6 text-text shadow-none outline-none"
+          class="m-0 block h-6 min-h-6 flex-1 resize-none border-none bg-transparent p-0 text-95 leading-6 text-text shadow-none outline-none"
           placeholder={t('ai_chat_input_placeholder', 'Type a message…')}
           title={t('chat_enter_hint', 'Enter for new line, Ctrl+Enter to send')}
           aria-label={t('ai_chat_input_aria', 'Enter a message for the AI')}
@@ -165,7 +165,7 @@ export function AiChatPage() {
             entry.role === 'user' ? (
               <div
                 class={[
-                  'max-w-[82%] origin-bottom-right self-end rounded-[20px_20px_6px_20px] border border-[rgba(var(--brand-rgb),0.16)] bg-[color-mix(in_srgb,var(--brand)_13%,var(--surface))] px-[15px] py-2.5 text-[0.95rem] leading-[1.6] break-words whitespace-pre-wrap text-text',
+                  'max-w-[82%] origin-bottom-right self-end rounded-[20px_20px_6px_20px] border border-[rgba(var(--brand-rgb),0.16)] bg-[color-mix(in_srgb,var(--brand)_13%,var(--surface))] px-[15px] py-2.5 text-95 leading-[1.6] break-words whitespace-pre-wrap text-text',
                   entry.afterWelcome ? 'animate-[aiMsgIn_0.36s_var(--ease)_0.14s_backwards]' : 'animate-[aiMsgIn_0.36s_var(--ease)_backwards]'
                 ]}
               >

@@ -52,7 +52,7 @@ export function ConfigPanel() {
       </Field>
 
       <div class="mb-[15px] mt-[25px]">
-        <div class="mb-1.5 text-[1rem] font-bold">{t('superadmin_logo_title', 'Replace Logo')}</div>
+        <div class="mb-1.5 text-100 font-bold">{t('superadmin_logo_title', 'Replace Logo')}</div>
         <Field label={t('superadmin_logo_desc', 'church-icon.svg / church-logo.svg (.svg format)')} for="super-admin-logo-file" class="mb-0">
           <div class="flex flex-wrap gap-2.5">
             <Input id="super-admin-logo-file" type="file" accept=".svg,image/svg+xml" class="min-w-[200px] flex-1" ref={el => (logoInput = el)} />
@@ -63,7 +63,7 @@ export function ConfigPanel() {
         </Field>
       </div>
 
-      <div class="mb-[15px] mt-[25px] text-[1rem] font-bold">{t('smtp_title', 'SMTP Server (Optional)')}</div>
+      <div class="mb-[15px] mt-[25px] text-100 font-bold">{t('smtp_title', 'SMTP Server (Optional)')}</div>
       <div class={FIELD_ROW}>
         <Field label={t('smtp_host', 'Host')} for="super-admin-smtp-host" class={`${ROW_FIELD} min-w-[150px] flex-[2]`}>
           <Input

@@ -28,7 +28,7 @@ export function Card(props: {
       <Show when={props.title || props.action}>
         <div
           class={[
-            'text-[1.1rem] font-extrabold text-text weak:px-5 weak:pt-5 weak:pb-[5px]',
+            'text-110 font-extrabold text-text weak:px-5 weak:pt-5 weak:pb-[5px]',
             { 'flex items-center justify-between gap-3': !!props.action },
             props.headerClass
           ]}

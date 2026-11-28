@@ -33,7 +33,7 @@ function FeePlanRow(props: { entry: FeePlanEntry; previous: FeePlanEntry | null 
   return (
     <Row ended={feeStateOf(props.entry.state) === 'ended'}>
       <div class="min-w-0 flex-auto">
-        <div class="mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.92rem] text-text-secondary">
+        <div class="mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-92 text-text-secondary">
           <strong class="font-bold text-text">{props.entry.from ? monthText(props.entry.from) : t('fees_from_start', 'From the beginning')}</strong>
           <StateBadge state={props.entry.state} />
         </div>
@@ -76,7 +76,7 @@ function FeePlanCard() {
       <Show when={feePlan()}>
         {plan => (
           <>
-            <div class="mb-[7px] text-[0.72rem] font-[650] tracking-[0.04em] text-text-secondary uppercase">
+            <div class="mb-[7px] text-72 font-[650] tracking-[0.04em] text-text-secondary uppercase">
               {sinceText(plan().since)}
             </div>
             {/* On phones three tiles side by side cut their labels short: one row per status, the amount on the right */}
@@ -84,8 +84,8 @@ function FeePlanCard() {
               <For each={FEE_KEYS}>
                 {key => (
                   <div class="flex min-w-0 flex-col gap-0.5 rounded-[14px] border border-hairline bg-surface-alt px-3.5 py-3 max-mini:flex-row max-mini:items-baseline max-mini:justify-between max-mini:gap-3 max-mini:py-2.5">
-                    <span class="truncate text-[0.8rem] text-text-secondary max-mini:text-[0.88rem]">{labels()[key]}</span>
-                    <span class="text-[1.3rem] font-[750] tracking-[-0.02em] text-text tabular-nums max-mini:shrink-0 max-mini:text-[1.1rem]">
+                    <span class="truncate text-80 text-text-secondary max-mini:text-88">{labels()[key]}</span>
+                    <span class="text-130 font-[750] tracking-[-0.02em] text-text tabular-nums max-mini:shrink-0 max-mini:text-110">
                       {euro(plan().current?.[key] || 0)}
                     </span>
                   </div>
@@ -95,7 +95,7 @@ function FeePlanCard() {
             {/* The change that is still to come next: only the fees that will differ */}
             <Show when={plan().next}>
               {next => (
-                <div class="mt-2.5 flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-[9px] text-[0.84rem] leading-[1.45] text-text">
+                <div class="mt-2.5 flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-[9px] text-85 leading-[1.45] text-text">
                   <Icon name="calendar" size={14} strokeWidth={2.2} class="mt-[3px] shrink-0 text-warning" />
                   <span>{t('fees_next', 'From {month}: {fees}', { month: monthText(next().from), fees: nextFees(plan().current, next().fees) })}</span>
                 </div>
@@ -112,7 +112,7 @@ function FeePlanCard() {
             {/* One fee for all time and nobody to change it: the tiles say it all */}
             <Show when={rows().length > 0 && (admin() || entries().length > 1)}>
               <div class="mt-5">
-                <div class="mb-2 text-[0.86rem] font-bold text-text">{t('fees_history_title', 'Fees over time')}</div>
+                <div class="mb-2 text-85 font-bold text-text">{t('fees_history_title', 'Fees over time')}</div>
                 <Rows>
                   {/* By the month a change counts from (one change per month): every load brings the plan anew */}
                   <For each={rows()} keyed={row => row.entry.from ?? ''}>
@@ -149,14 +149,14 @@ function FeeResetCard() {
           desc={t('fee_reset_desc', 'On the chosen day, open fees are dropped and credit is carried over.')}
         />
         <div id="fee-reset-list">
-          <Show when={resets().length > 0} fallback={<p class="m-0 mb-3.5 text-[0.86rem] text-text-secondary">{t('fee_reset_none', 'No fresh start yet.')}</p>}>
+          <Show when={resets().length > 0} fallback={<p class="m-0 mb-3.5 text-85 text-text-secondary">{t('fee_reset_none', 'No fresh start yet.')}</p>}>
             <Rows class="mb-3.5">
               {/* By day (one fresh start per day): every load of the data brings the list anew */}
               <For each={resets()} keyed={reset => reset.date}>
                 {reset => (
                   <Row ended={feeStateOf(reset().state) === 'ended'}>
                     <div class="min-w-0 flex-auto">
-                      <div class="text-[0.92rem] text-text-secondary">
+                      <div class="text-92 text-text-secondary">
                         <strong class="font-bold text-text">{longDateText(reset().date)}</strong>
                       </div>
                       <Show when={reset().setByName}>

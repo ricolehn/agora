@@ -46,7 +46,7 @@ export function AppHead(props: { title: JSX.Element; sticky?: boolean; class?: s
       ]}
     >
       <BackButton onClick={() => switchTab('hub')} />
-      <h1 class="m-0 min-w-0 flex-1 text-[1.25rem] font-extrabold text-text md:text-[1.45rem] dark:text-[#e4ded6]">{props.title}</h1>
+      <h1 class="m-0 min-w-0 flex-1 text-125 font-extrabold text-text md:text-145 dark:text-[#e4ded6]">{props.title}</h1>
     </div>
   );
 }
@@ -65,7 +65,7 @@ export function FilterPills<T extends string>(props: { value: T; options: Filter
           <Pill
             chosen={props.value === option.value}
             class={[
-              'rounded-full px-4 py-[7px] text-[0.86rem] font-semibold',
+              'rounded-full px-4 py-[7px] text-85 font-semibold',
               props.value === option.value
                 ? 'bg-surface text-text shadow-[0_1px_2px_rgba(48,38,26,0.1),0_0_0_0.5px_rgba(48,38,26,0.06)]'
                 : 'bg-transparent text-text-secondary'
@@ -183,7 +183,7 @@ export function EditorPage(props: {
       <div class="flex h-full w-full flex-col gap-4 overflow-y-auto px-5 pt-[calc(12px+env(safe-area-inset-top,0px))] [--pe-field:var(--surface-alt)] dark:[--pe-field:rgba(28,25,23,0.55)]">
         <div class="sticky top-[calc(-12px-env(safe-area-inset-top,0px))] z-[5] -mx-5 -mt-3 flex items-center gap-3 bg-[var(--frost-bg)] px-5 pt-3 pb-2 backdrop-blur-[14px] backdrop-saturate-150">
           <BackButton large onClick={() => props.onBack()} />
-          <h2 id={titleId()} class="m-0 text-[1.15rem] font-extrabold text-text">
+          <h2 id={titleId()} class="m-0 text-115 font-extrabold text-text">
             {props.title}
           </h2>
         </div>
@@ -212,7 +212,7 @@ const CHIP_TONES: Record<ChipTone, string> = {
 export function EditorCard(props: { icon: JSX.Element; tone: ChipTone; label: JSX.Element; children: JSX.Element }) {
   return (
     <section class="flex flex-col gap-3 rounded-[18px] border border-border-light bg-surface p-4 shadow-[0_1px_2px_rgba(28,25,23,0.04),0_6px_18px_-14px_rgba(28,25,23,0.25)]">
-      <div class="flex items-center gap-2.5 text-[0.98rem] font-bold text-text">
+      <div class="flex items-center gap-2.5 text-100 font-bold text-text">
         <span class={['inline-flex size-[34px] shrink-0 items-center justify-center rounded-[11px]', CHIP_TONES[props.tone]]}>{props.icon}</span>
         <span>{props.label}</span>
       </div>
@@ -228,14 +228,14 @@ export function EditorCard(props: { icon: JSX.Element; tone: ChipTone; label: JS
 export const EDITOR_FIELD =
   'm-0 w-full rounded-[13px] border-[1.5px] border-border-light bg-[var(--pe-field)] px-3.5 text-text transition-[border-color,box-shadow,background-color] duration-150 ease-[ease] ' +
   'placeholder:text-text-secondary placeholder:opacity-75 focus:border-primary focus:bg-surface focus:shadow-[0_0_0_4px_rgba(var(--brand-rgb),0.16)] focus:outline-none';
-export const EDITOR_INPUT = `${EDITOR_FIELD} min-h-12 text-[1rem]`;
-export const TITLE_INPUT = `${EDITOR_FIELD} min-h-[54px] text-[1.15rem] font-bold`;
-export const TEXT_AREA = `${EDITOR_FIELD} min-h-24 resize-y py-3 text-[1rem] leading-[1.55]`;
+export const EDITOR_INPUT = `${EDITOR_FIELD} min-h-12 text-100`;
+export const TITLE_INPUT = `${EDITOR_FIELD} min-h-[54px] text-115 font-bold`;
+export const TEXT_AREA = `${EDITOR_FIELD} min-h-24 resize-y py-3 text-100 leading-[1.55]`;
 
 /** A labelled field of an editor page (.poll-field). */
 export function EditorField(props: { label: JSX.Element; children: JSX.Element }) {
   return (
-    <label class="flex min-w-0 flex-col gap-1.5 text-[0.8rem] font-semibold text-text-secondary">
+    <label class="flex min-w-0 flex-col gap-1.5 text-80 font-semibold text-text-secondary">
       <span>{props.label}</span>
       {props.children}
     </label>

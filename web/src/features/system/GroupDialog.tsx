@@ -92,7 +92,7 @@ export function GroupDialog() {
         </ModalSection>
         <ModalSection icon="🛡️" title={t('group_permissions_title', 'Permission Flags')}>
           <CheckList id="manage-group-permissions-list">
-            <For each={systemPermissions()} fallback={<div class="text-[0.85rem] text-text-secondary">{t('admin_no_permissions', 'No permission definitions found.')}</div>}>
+            <For each={systemPermissions()} fallback={<div class="text-85 text-text-secondary">{t('admin_no_permissions', 'No permission definitions found.')}</div>}>
               {p => (
                 <CheckItem
                   checked={permissions().includes(p.id)}

@@ -60,7 +60,7 @@ function LoginForm() {
         {back => (
           <button
             type="button"
-            class="mx-auto mt-3.5 flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[0.86rem] font-bold text-primary no-underline hover:underline"
+            class="mx-auto mt-3.5 flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-85 font-bold text-primary no-underline hover:underline"
             onClick={() => back()()}
           >
             <Icon name="arrowLeft" size={15} strokeWidth={2.5} />
@@ -88,7 +88,7 @@ function RegisterForm() {
   };
   return (
     <form id="register-form" onSubmit={submit}>
-      <div class="mb-4 rounded-[12px] border border-dashed border-border bg-surface-alt p-3 text-center text-[0.9rem]">
+      <div class="mb-4 rounded-[12px] border border-dashed border-border bg-surface-alt p-3 text-center text-90">
         <p id="reg-code-desc" class="text-text-secondary">
           {t('register_code_desc', 'Please enter the current 6-digit registration code.')}
         </p>
@@ -206,17 +206,17 @@ export function Login() {
         <div class="mb-6 pt-2.5 text-center">
           <div class="mb-2 flex items-center justify-center gap-3">
             <img src={logoSrc()} alt="App Logo" id="login-app-logo" class="h-10 w-auto" />
-            <h2 id="login-app-name" class="m-0 bg-gradient-primary bg-clip-text text-[2rem] font-extrabold [-webkit-text-fill-color:transparent]">
+            <h2 id="login-app-name" class="m-0 bg-gradient-primary bg-clip-text text-200 font-extrabold [-webkit-text-fill-color:transparent]">
               {appName()}
             </h2>
           </div>
-          <p id="auth-subtitle" class="m-0 text-[0.9rem] font-medium text-text-secondary">
+          <p id="auth-subtitle" class="m-0 text-90 font-medium text-text-secondary">
             {isLogin() ? t('login_subtitle', 'Sign in to continue') : t('register_subtitle', 'Create a new account')}
           </p>
         </div>
         <PillTabs
           class="mb-6"
-          tabClass="flex-1 p-[10px] text-[0.95rem]"
+          tabClass="flex-1 p-[10px] text-95"
           value={isLogin() ? 'login' : 'register'}
           onChange={view => showAuthForm(view === 'login')}
           options={[

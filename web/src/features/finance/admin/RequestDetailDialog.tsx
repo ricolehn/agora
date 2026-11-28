@@ -34,7 +34,7 @@ const ownView = (req: FinanceRequest) => isOwnRequest(req) && !canApproveRequest
 
 function DetailRow(props: { icon: IconName; label: string; children: JSX.Element }) {
   return (
-    <div class="grid grid-cols-[20px_auto_minmax(0,1fr)] items-start gap-2.5 bg-surface px-3.5 py-[11px] text-[0.92rem] [&+&]:border-t [&+&]:border-border-light">
+    <div class="grid grid-cols-[20px_auto_minmax(0,1fr)] items-start gap-2.5 bg-surface px-3.5 py-[11px] text-92 [&+&]:border-t [&+&]:border-border-light">
       <span class="inline-flex pt-0.5 text-text-secondary">
         <Icon name={props.icon} size={16} />
       </span>
@@ -54,7 +54,7 @@ function RequestBody(props: { req: FinanceRequest }) {
     <div style={{ '--req-color': requestColor(props.req) }}>
       <div class="mb-3.5 flex flex-col items-center gap-1 rounded-[18px] border border-[color-mix(in_srgb,var(--req-color)_22%,transparent)] bg-[color-mix(in_srgb,var(--req-color)_8%,var(--surface-alt))] px-3 pt-[18px] pb-5 text-center">
         <span class="text-[1.9rem] leading-[1.15] font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere] text-text">{requestAmount(props.req)}</span>
-        <span class="text-[0.88rem] font-semibold text-text-secondary">{requestDateLabel(props.req)}</span>
+        <span class="text-88 font-semibold text-text-secondary">{requestDateLabel(props.req)}</span>
       </div>
       <div class="flex flex-col overflow-hidden rounded-[14px] border border-border-light">
         <Show when={!ownView(props.req)}>

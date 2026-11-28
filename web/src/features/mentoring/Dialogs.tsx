@@ -56,7 +56,7 @@ function MentorApplicationDialog() {
         <ModalSection icon="👥" title={t('mentor_app_section_cap', 'Capacity')}>
           <Field class="mb-0">
             <Input type="number" id="mentor-app-max" min="1" max="10" required value={applicationMax()} onInput={e => setApplicationMax(e.currentTarget.value)} />
-            <span class="mt-[3px] block text-[0.75rem] text-text-secondary">
+            <span class="mt-[3px] block text-75 text-text-secondary">
               {t('mentor_app_help_cap', 'How many mentees would you like to guide at most at the same time?')}
             </span>
           </Field>
@@ -95,7 +95,7 @@ function MentorContactDialog() {
           void submitMentorContact();
         }}
       >
-        <div class="mb-4 flex items-center gap-2.5 rounded-xl border border-[rgba(14,165,233,0.2)] bg-[rgba(14,165,233,0.08)] px-3.5 py-2.5 text-[0.84rem] text-text">
+        <div class="mb-4 flex items-center gap-2.5 rounded-xl border border-[rgba(14,165,233,0.2)] bg-[rgba(14,165,233,0.08)] px-3.5 py-2.5 text-85 text-text">
           <Icon name="shield" size={16} strokeWidth={2.5} class="shrink-0 text-[#0284c7]" />
           {/* eslint-disable-next-line solid/no-innerhtml -- a translation with <strong>/<em> markup, parameters escaped (tHtml) */}
           <span innerHTML={tHtml('mentor_contact_anon_note', '<strong>100% Anonymous:</strong> Your mentor only sees a pseudonym (e.g. <em>Seeker #714</em>).')} />

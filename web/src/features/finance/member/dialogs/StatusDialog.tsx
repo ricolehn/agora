@@ -27,7 +27,7 @@ export function StatusOptions() {
 export function StatusDayNote() {
   return (
     <div
-      class="mt-[5px] text-[0.75rem] leading-[1.35] text-text-secondary"
+      class="mt-[5px] text-75 leading-[1.35] text-text-secondary"
       // eslint-disable-next-line solid/no-innerhtml -- the app's own translation, its only markup is <strong> and <br>
       innerHTML={tHtml(
         'modal_status_desc',

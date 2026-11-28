@@ -60,8 +60,8 @@ export function RegBanner(props: { kind: keyof typeof BANNER; icon: IconName; ti
       <span class={['flex size-[30px] shrink-0 items-center justify-center rounded-full text-white', BANNER[props.kind].icon]}>
         <Icon name={props.icon} size={16} strokeWidth={2.5} />
       </span>
-      <div class="flex min-w-0 flex-1 flex-col text-[0.8rem] text-text-secondary">
-        <strong class="text-[0.92rem] font-bold text-text">{props.title}</strong>
+      <div class="flex min-w-0 flex-1 flex-col text-80 text-text-secondary">
+        <strong class="text-92 font-bold text-text">{props.title}</strong>
         <Show when={props.sub}>
           <span>{props.sub}</span>
         </Show>
@@ -76,7 +76,7 @@ export function RegBannerAction(props: { onClick: () => void; children: JSX.Elem
   return (
     <button
       type="button"
-      class="cursor-pointer rounded-lg border-0 bg-transparent px-1.5 py-2 text-[0.84rem] font-bold text-text-secondary hover:bg-[rgba(239,68,68,0.08)] hover:text-danger"
+      class="cursor-pointer rounded-lg border-0 bg-transparent px-1.5 py-2 text-85 font-bold text-text-secondary hover:bg-[rgba(239,68,68,0.08)] hover:text-danger"
       onClick={() => props.onClick()}
     >
       {props.children}
@@ -107,23 +107,23 @@ function AttendeeRow(props: { event: AppEvent; attendee: Attendee; waiting: bool
         uid={att().guest ? null : att().userId}
         name={att().name}
         size={32}
-        initialsClass="text-[0.72rem]"
+        initialsClass="text-72"
         class={props.waiting ? '!bg-[rgba(245,158,11,0.15)] !bg-none' : undefined}
       />
       <Show
         when={att().guest}
-        fallback={<span class="min-w-0 flex-1 truncate text-[0.9rem] font-semibold text-text">{att().name}</span>}
+        fallback={<span class="min-w-0 flex-1 truncate text-90 font-semibold text-text">{att().name}</span>}
       >
         {/* Guests signed up without an account (shared link): marked; the e-mail address and age only reach editors */}
         <span class="flex min-w-0 flex-1 flex-col gap-px">
-          <span class="truncate text-[0.9rem] font-semibold text-text">
+          <span class="truncate text-90 font-semibold text-text">
             {att().name}{' '}
-            <span class="ml-1 inline-block rounded-full bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-[7px] py-px align-[1px] text-[0.66rem] font-extrabold uppercase tracking-[0.04em] text-primary-dark dark:text-primary">
+            <span class="ml-1 inline-block rounded-full bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-[7px] py-px align-[1px] text-66 font-extrabold uppercase tracking-[0.04em] text-primary-dark dark:text-primary">
               {t('events_attendee_guest', 'Guest')}
             </span>
           </span>
           <Show when={att().email}>
-            <span class="truncate text-[0.76rem] font-medium text-text-secondary">
+            <span class="truncate text-75 font-medium text-text-secondary">
               <a href={`mailto:${att().email}`} class="text-inherit underline">{att().email}</a>
               {ageText(att().age)}
             </span>
@@ -156,19 +156,19 @@ function AttendeesList(props: { event: AppEvent; attendees: Attendees | null }) 
         <Show when={stack().length}>
           <div class="flex items-center pl-1.5">
             <For each={stack()} keyed={att => att.userId}>
-              {att => <Avatar uid={att().guest ? null : att().userId} name={att().name} size={28} initialsClass="text-[0.65rem]" class="-ml-1.5 border-2 border-surface" />}
+              {att => <Avatar uid={att().guest ? null : att().userId} name={att().name} size={28} initialsClass="text-66" class="-ml-1.5 border-2 border-surface" />}
             </For>
             <Show when={registered().length > stack().length}>
-              <span class="-ml-1.5 inline-flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-surface bg-surface-alt px-1.5 text-[0.7rem] font-extrabold text-text-secondary">
+              <span class="-ml-1.5 inline-flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-surface bg-surface-alt px-1.5 text-70 font-extrabold text-text-secondary">
                 +{registered().length - stack().length}
               </span>
             </Show>
           </div>
         </Show>
-        <span class="inline-flex min-w-0 flex-1 items-center gap-2 text-[0.9rem] font-bold text-text">
+        <span class="inline-flex min-w-0 flex-1 items-center gap-2 text-90 font-bold text-text">
           <span>{list() && !registered().length ? t('events_attendees_none', 'Nobody registered yet') : t('events_attendees', 'Participants')}</span>
           <Show when={registered().length}>
-            <span class="inline-flex h-5 min-w-[22px] items-center justify-center rounded-full border border-border-light bg-surface-alt px-[7px] text-[0.72rem] font-extrabold text-text-secondary">
+            <span class="inline-flex h-5 min-w-[22px] items-center justify-center rounded-full border border-border-light bg-surface-alt px-[7px] text-72 font-extrabold text-text-secondary">
               {registered().length}
             </span>
           </Show>
@@ -180,13 +180,13 @@ function AttendeesList(props: { event: AppEvent; attendees: Attendees | null }) 
       <div class="flex flex-col pt-2">
         <Show
           when={registered().length || waitlist().length}
-          fallback={<div class="px-0.5 py-2 text-[0.84rem] text-text-secondary">{t('events_attendees_empty', 'As soon as someone registers, they will appear here.')}</div>}
+          fallback={<div class="px-0.5 py-2 text-85 text-text-secondary">{t('events_attendees_empty', 'As soon as someone registers, they will appear here.')}</div>}
         >
           <For each={registered()} keyed={att => att.userId}>
             {att => <AttendeeRow event={props.event} attendee={att()} waiting={false} />}
           </For>
           <Show when={waitlist().length}>
-            <div class="mx-0.5 mb-0.5 mt-2.5 text-[0.72rem] font-extrabold uppercase tracking-[0.6px] text-[#d97706]">
+            <div class="mx-0.5 mb-0.5 mt-2.5 text-72 font-extrabold uppercase tracking-[0.6px] text-[#d97706]">
               {t('home_waitlist', 'Waiting list')} · {waitlist().length}
             </div>
             <For each={waitlist()} keyed={att => att.userId}>
@@ -264,8 +264,8 @@ export function RegistrationHead(props: { event: EventFacts }) {
           <Icon name="users" size={18} />
         </div>
         <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span class="text-[1rem] font-extrabold text-text">{t('events_registration', 'Registration')}</span>
-          <span class="text-[0.82rem] text-text-secondary">{capacityText(props.event)}</span>
+          <span class="text-100 font-extrabold text-text">{t('events_registration', 'Registration')}</span>
+          <span class="text-82 text-text-secondary">{capacityText(props.event)}</span>
         </div>
       </div>
       <CapacityBar event={props.event} />

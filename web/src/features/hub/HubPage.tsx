@@ -74,8 +74,8 @@ const TEXTS = 'flex min-w-0 flex-1 flex-col gap-[3px]';
 function AppTexts(props: { app: HubApp }) {
   return (
     <>
-      <span class="overflow-hidden text-[1.02rem] font-bold tracking-[-0.015em] text-ellipsis whitespace-nowrap">{t(...props.app.title)}</span>
-      <span class="text-[0.84rem] leading-[1.4] text-text-secondary">{t(...props.app.desc)}</span>
+      <span class="overflow-hidden text-100 font-bold tracking-[-0.015em] text-ellipsis whitespace-nowrap">{t(...props.app.title)}</span>
+      <span class="text-85 leading-[1.4] text-text-secondary">{t(...props.app.desc)}</span>
     </>
   );
 }
@@ -100,7 +100,7 @@ function FeaturedTile(props: { app: FeaturedApp; index: number }) {
       <span class={[TEXTS, 'px-3.5']}>
         <AppTexts app={props.app} />
       </span>
-      <span class="inline-flex shrink-0 items-center gap-0.5 rounded-full text-[0.8rem] font-semibold whitespace-nowrap text-(--app-tone) transition-[transform,background-color] duration-[250ms] ease-app max-phablet:opacity-75 phablet:bg-[color-mix(in_srgb,var(--app-light)_22%,var(--surface))] phablet:py-[7px] phablet:pr-2.5 phablet:pl-3.5 phablet:group-hover/tile:[transform:translateX(3px)] phablet:group-hover/tile:bg-[color-mix(in_srgb,var(--app-light)_34%,var(--surface))] dark:phablet:bg-[color-mix(in_srgb,var(--app-light)_16%,var(--surface))]">
+      <span class="inline-flex shrink-0 items-center gap-0.5 rounded-full text-80 font-semibold whitespace-nowrap text-(--app-tone) transition-[transform,background-color] duration-[250ms] ease-app max-phablet:opacity-75 phablet:bg-[color-mix(in_srgb,var(--app-light)_22%,var(--surface))] phablet:py-[7px] phablet:pr-2.5 phablet:pl-3.5 phablet:group-hover/tile:[transform:translateX(3px)] phablet:group-hover/tile:bg-[color-mix(in_srgb,var(--app-light)_34%,var(--surface))] dark:phablet:bg-[color-mix(in_srgb,var(--app-light)_16%,var(--surface))]">
         <span class="max-phablet:hidden">{t('hub_ai_cta', 'Start chat')}</span>
         <Icon name="chevronRight" size={16} strokeWidth={2.6} class="max-phablet:size-[18px]" />
       </span>
@@ -141,8 +141,8 @@ export function HubPage() {
   return (
     <>
       <div class="mb-5">
-        <h1 class="m-0 text-[1.6rem] font-[750] text-text dark:text-[#e4ded6]">{t('hub_title', 'Extras')}</h1>
-        <p class="mt-1 mb-0 text-[0.92rem] text-text-secondary">{t('hub_subtitle', 'More offers of the community in one place.')}</p>
+        <h1 class="m-0 text-160 font-[750] text-text dark:text-[#e4ded6]">{t('hub_title', 'Extras')}</h1>
+        <p class="mt-1 mb-0 text-92 text-text-secondary">{t('hub_subtitle', 'More offers of the community in one place.')}</p>
       </div>
       <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3.5">
         <For each={apps()}>

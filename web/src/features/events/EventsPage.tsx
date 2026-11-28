@@ -82,9 +82,9 @@ function byMonth(items: ListItem[]) {
 function MonthGroup(props: { title: string; count: number; children: JSX.Element }) {
   return (
     <div class="flex flex-col gap-2.5">
-      <div class="flex items-center gap-2 px-0.5 pb-1 pt-2.5 text-[0.74rem] font-bold uppercase tracking-[0.1em] text-text after:h-px after:flex-1 after:bg-hairline after:content-['']">
+      <div class="flex items-center gap-2 px-0.5 pb-1 pt-2.5 text-75 font-bold uppercase tracking-[0.1em] text-text after:h-px after:flex-1 after:bg-hairline after:content-['']">
         <span>{props.title}</span>
-        <span class="text-[0.76rem] font-semibold tracking-normal text-text-secondary opacity-80">({props.count})</span>
+        <span class="text-75 font-semibold tracking-normal text-text-secondary opacity-80">({props.count})</span>
       </div>
       {props.children}
     </div>
@@ -109,10 +109,10 @@ function PastEvents(props: { events: AppEvent[] }) {
     <div class="mt-9 flex w-full flex-col items-center border-t border-dashed border-border pt-6">
       <button
         type="button"
-        class="inline-flex items-center gap-2 rounded-[20px] border border-border bg-surface-alt px-[18px] py-2 text-[0.84rem] font-semibold text-text-secondary transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-200 hover:border-primary hover:bg-surface hover:text-text"
+        class="inline-flex items-center gap-2 rounded-[20px] border border-border bg-surface-alt px-[18px] py-2 text-85 font-semibold text-text-secondary transition-[transform,translate,scale,opacity,box-shadow,background-color,border-color,color] duration-200 hover:border-primary hover:bg-surface hover:text-text"
         onClick={() => setShowPast(!showPast())}
       >
-        <span class="text-[0.72rem]">{showPast() ? '▲' : '▼'}</span>
+        <span class="text-72">{showPast() ? '▲' : '▼'}</span>
         <span>
           {showPast()
             ? t('events_past_hide', 'Hide past events ({count})', { count: props.events.length })
@@ -122,8 +122,8 @@ function PastEvents(props: { events: AppEvent[] }) {
       <Show when={showPast()}>
         <div class="mt-[22px] w-full">
           <div class="mb-3 flex items-center justify-between px-1">
-            <span class="text-[0.84rem] font-bold uppercase tracking-[0.5px] text-text-secondary">{t('events_past_title', 'Past events ({count})', { count: props.events.length })}</span>
-            <span class="text-[0.76rem] text-text-secondary">{t('events_past_hint', 'Hidden until deleted manually')}</span>
+            <span class="text-85 font-bold uppercase tracking-[0.5px] text-text-secondary">{t('events_past_title', 'Past events ({count})', { count: props.events.length })}</span>
+            <span class="text-75 text-text-secondary">{t('events_past_hint', 'Hidden until deleted manually')}</span>
           </div>
           <CoverGrid items={props.events.map(ev => ({ ev, day: ev.date }))} past />
         </div>
@@ -136,12 +136,12 @@ function EmptyList(props: { eventsTab: boolean }) {
   const newType = () => (props.eventsTab || !canManageEvents() ? 'event' : 'termin');
   return (
     <Card class="mb-0 rounded-2xl" bodyClass="px-5 py-12 text-center text-text-secondary">
-      <div class="mb-2 text-[2.2rem]">📅</div>
-      <div class="mb-1 text-[1.05rem] font-bold text-text">
+      <div class="mb-2 text-220">📅</div>
+      <div class="mb-1 text-105 font-bold text-text">
         {props.eventsTab ? t('events_empty_events', 'No upcoming events found') : t('events_empty_termine', 'No matching appointments found')}
       </div>
       <Show when={query()}>
-        <div class="mb-3.5 text-[0.88rem]">{t('events_empty_search', 'Try a different search.')}</div>
+        <div class="mb-3.5 text-88">{t('events_empty_search', 'Try a different search.')}</div>
       </Show>
       <Show when={currentUser()}>
         <div class={{ 'mt-3.5': !query() }}>

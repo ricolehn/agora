@@ -54,7 +54,7 @@ export function EmptyState(props: { icon?: JSX.Element; iconClass?: string; titl
         <span class="font-[650] tracking-[-0.015em] text-text">{props.title}</span>
       </Show>
       <Show when={props.text}>
-        <span class="text-[0.84rem]">{props.text}</span>
+        <span class="text-85">{props.text}</span>
       </Show>
       {props.action}
     </div>
@@ -93,7 +93,7 @@ export function SearchInput(props: {
         placeholder={props.placeholder}
         aria-label={props['aria-label'] ?? props.placeholder}
         class={[
-          'w-full rounded-full border border-hairline bg-surface-alt py-2.5 pl-[42px] text-[0.92rem] text-text shadow-card outline-none',
+          'w-full rounded-full border border-hairline bg-surface-alt py-2.5 pl-[42px] text-92 text-text shadow-card outline-none',
           '[transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)] focus:shadow-[inset_0_0_0_1px_var(--primary)]',
           // Room for the ✕
           props.value ? 'pr-10' : 'pr-4'
@@ -147,7 +147,7 @@ export function CountBadge(props: { count: number; danger?: boolean; class?: str
       <span
         class={[
           'inline-flex shrink-0 items-center justify-center rounded-full leading-none font-bold whitespace-nowrap text-white tabular-nums',
-          'weak:h-[18px] weak:min-w-[18px] weak:px-[5px] weak:text-[0.7rem] weak:shadow-[0_2px_5px_rgba(var(--glow-rgb),0.35)]',
+          'weak:h-[18px] weak:min-w-[18px] weak:px-[5px] weak:text-70 weak:shadow-[0_2px_5px_rgba(var(--glow-rgb),0.35)]',
           props.danger ? 'bg-[#ef4444]' : 'bg-primary',
           props.class
         ]}

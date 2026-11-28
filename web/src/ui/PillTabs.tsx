@@ -81,15 +81,15 @@ export interface PillOption<T extends string> {
 }
 
 // The segments of Finances and Events (.finance-subnav-btn / .events-subnav-segment): sharing the width
-const DEFAULT_TAB = 'inline-flex flex-1 items-center justify-center gap-2 px-[14px] py-[7px] text-[0.88rem] [&_svg]:size-[15px]';
+const DEFAULT_TAB = 'inline-flex flex-1 items-center justify-center gap-2 px-[14px] py-[7px] text-88 [&_svg]:size-[15px]';
 
 /**
  * Segmented pill tabs (.pill-tabs / .pill-tab): a soft track, the chosen tab as a raised white pill.
  * The tabs are sized like the Finances and Events segments; `tabClass` replaces that sizing for the other rows, e.g.
- * - sign-in (.auth-tab-btn): 'flex-1 p-[10px] text-[0.95rem]'
- * - mentoring (.mentoring-nav-segment): 'flex flex-[1_1_0] min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-[0.9rem]
- *   whitespace-nowrap overflow-hidden text-ellipsis max-mini:px-1 max-mini:text-[0.82rem] [&_svg]:size-[15px]'
- * - system settings (.sys-subnav-btn): 'flex items-center gap-1.5 px-[14px] py-2 text-[0.88rem]'
+ * - sign-in (.auth-tab-btn): 'flex-1 p-[10px] text-95'
+ * - mentoring (.mentoring-nav-segment): 'flex flex-[1_1_0] min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-90
+ *   whitespace-nowrap overflow-hidden text-ellipsis max-mini:px-1 max-mini:text-82 [&_svg]:size-[15px]'
+ * - system settings (.sys-subnav-btn): 'flex items-center gap-1.5 px-[14px] py-2 text-88'
  */
 export function PillTabs<T extends string>(props: {
   value: T;

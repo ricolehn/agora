@@ -116,8 +116,8 @@ export async function openMediaRulesOverview() {
 // --- The rights of a folder ---
 const PILLS = 'flex gap-1 rounded-[14px] border border-border-light bg-surface-alt p-1 [@media(max-width:480px)]:gap-0.5 [@media(max-width:480px)]:p-[3px]';
 const PILL =
-  'inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-2 text-[0.88rem] font-bold transition-[background-color,color,box-shadow] duration-200 ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [@media(max-width:480px)]:px-0.5 [@media(max-width:480px)]:text-[0.78rem] ' +
+  'inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-2 text-88 font-bold transition-[background-color,color,box-shadow] duration-200 ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [@media(max-width:480px)]:px-0.5 [@media(max-width:480px)]:text-78 ' +
   '[&>span]:truncate [@media(max-width:480px)]:[&>span]:whitespace-normal [@media(max-width:480px)]:[&>span]:text-center [@media(max-width:480px)]:[&>span]:leading-[1.15] [@media(max-width:480px)]:[&>span]:[overflow-wrap:anywhere]';
 const PILL_ACTIVE = 'bg-surface shadow-[0_1px_2px_rgba(28,25,23,0.08),0_4px_12px_-6px_rgba(28,25,23,0.25)] dark:bg-bg';
 const ROUND_REMOVE =
@@ -146,13 +146,13 @@ function RightsRowView(props: { row: RightsRow }) {
   const name = () => groupName(props.row);
   return (
     <div class="flex flex-col gap-1.5 border-b border-border-light pb-3 last:border-b-0 last:pb-0">
-      <div class="flex min-w-0 items-center gap-2.5 text-[0.9rem] font-bold">
+      <div class="flex min-w-0 items-center gap-2.5 text-90 font-bold">
         <span class="inline-flex min-w-0 flex-1 items-center gap-2">
           <Icon name={TARGET_ICONS[props.row.kind] || 'users'} size={15} strokeWidth={2.2} class={props.row.kind === 'person' ? 'shrink-0 text-[#2563eb]' : 'shrink-0 text-text-secondary'} />
           <span class="truncate">{name()}</span>
         </span>
         <Show when={from()}>
-          <span class="shrink-0 text-right text-[0.76rem] font-medium text-text-secondary">{from()}</span>
+          <span class="shrink-0 text-right text-75 font-medium text-text-secondary">{from()}</span>
         </Show>
         <Show when={removableRow(props.row)}>
           <button
@@ -217,7 +217,7 @@ function AddPanel() {
         <For
           each={found()}
           fallback={
-            <p class="mx-1 my-1.5 text-[0.82rem] text-text-secondary">
+            <p class="mx-1 my-1.5 text-82 text-text-secondary">
               {query().trim() ? t('media_rights_no_match', 'Nobody found') : t('media_rights_all_added', 'All groups and people are listed already')}
             </p>
           }
@@ -236,8 +236,8 @@ function AddPanel() {
               >
                 <Icon name={TARGET_ICONS[choice.kind] || 'users'} size={15} strokeWidth={2.2} />
               </span>
-              <span class="min-w-0 flex-1 truncate text-[0.9rem] font-semibold">{choice.name}</span>
-              <span class="shrink-0 text-[0.74rem] text-text-secondary">
+              <span class="min-w-0 flex-1 truncate text-90 font-semibold">{choice.name}</span>
+              <span class="shrink-0 text-75 text-text-secondary">
                 {choice.kind === 'person' ? t('media_kind_person', 'Person') : t('media_kind_group', 'Group')}
               </span>
             </button>
@@ -253,12 +253,12 @@ function RightsDialog() {
     <Modal
       id={RIGHTS_ID}
       title={t('media_rights_title', 'Folder rights')}
-      subtitle={<span class="font-mono text-[0.8rem] break-all">{folderLabel(rights()?.path ?? '')}</span>}
+      subtitle={<span class="font-mono text-80 break-all">{folderLabel(rights()?.path ?? '')}</span>}
       maxWidth="560px"
       bodyClass="gap-3.5"
       footer={<SheetFooter modal={RIGHTS_ID} id="media-rights-save" label={t('btn_save', 'Save')} busy={saving()} onConfirm={() => void saveRights()} />}
     >
-      <p class="m-0 mb-3.5 text-[0.82rem] leading-[1.5] text-text-secondary">
+      <p class="m-0 mb-3.5 text-82 leading-[1.5] text-text-secondary">
         {t(
           'media_rights_hint',
           "A right applies to this folder and every folder in it, until a folder below sets its own. Read: open and download. Write: also upload, create folders and delete. No access: does not see the folder. The most specific right counts: a person's goes before their groups', a group's before the one for all members (someone in several groups gets the most of these). Whoever has no access to the base folder does not see the media library at all. Write also allows deleting (in Nextcloud it goes to the trash bin, if switched on there); a folder only for whoever may write everywhere in it."
@@ -276,7 +276,7 @@ function RightsDialog() {
             <button
               type="button"
               id="media-rights-add-btn"
-              class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3.5 py-[11px] text-[0.88rem] font-bold text-primary hover:border-primary hover:bg-brand/6"
+              class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3.5 py-[11px] text-88 font-bold text-primary hover:border-primary hover:bg-brand/6"
               onClick={() => {
                 setQuery('');
                 setAdding(true);
@@ -313,7 +313,7 @@ function RulesDialog() {
       <Show
         when={rules()?.rules.length}
         fallback={
-          <p class="m-0 mb-3.5 text-[0.82rem] leading-[1.5] text-text-secondary">
+          <p class="m-0 mb-3.5 text-82 leading-[1.5] text-text-secondary">
             {t('media_rules_none', 'No folder has rights yet: only members with extended media rights see the library. Open a folder and set its rights with the shield.')}
           </p>
         }
@@ -325,7 +325,7 @@ function RulesDialog() {
                 <div class="flex items-center gap-2">
                   <button
                     type="button"
-                    class="flex min-w-0 flex-1 items-center gap-2 p-0 text-left text-[0.88rem] font-bold break-all text-[#2563eb] [&:hover>span]:underline"
+                    class="flex min-w-0 flex-1 items-center gap-2 p-0 text-left text-88 font-bold break-all text-[#2563eb] [&:hover>span]:underline"
                     onClick={() => openFolder(rule.path)}
                   >
                     <Icon name="folder" size={15} strokeWidth={2.2} />
@@ -346,7 +346,7 @@ function RulesDialog() {
                     {entry => (
                       <span
                         class={[
-                          'rounded-full border border-border-light bg-surface px-[9px] py-[3px] text-[0.74rem] font-semibold',
+                          'rounded-full border border-border-light bg-surface px-[9px] py-[3px] text-75 font-semibold',
                           { 'text-primary': entry[1] === 'write', 'text-warning': entry[1] === 'hide' }
                         ]}
                       >

@@ -112,7 +112,7 @@ function MediaHead() {
       </button>
       <h1
         id="media-title"
-        class="relative m-0 min-w-0 flex-1 overflow-hidden text-[1.25rem] font-extrabold tracking-[-0.022em] text-text md:text-[1.45rem] dark:text-[#e4ded6]"
+        class="relative m-0 min-w-0 flex-1 overflow-hidden text-125 font-extrabold tracking-[-0.022em] text-text md:text-145 dark:text-[#e4ded6]"
       >
         <For each={mediaTitles()} keyed={title => title.id}>
           {title => <TitleText title={title()} />}
@@ -191,7 +191,7 @@ function TitleText(props: { title: MediaTitle }) {
 // While entries are selected their bar takes the header's place, as high as the header, so nothing below moves: the
 // close sign where the back button was, how many in the title's place, all / none, download and delete
 const SELECT_BTN =
-  'inline-flex h-[34px] shrink-0 items-center justify-center gap-1.5 rounded-full border text-[0.84rem] font-semibold transition-[background-color,border-color] duration-150 ' +
+  'inline-flex h-[34px] shrink-0 items-center justify-center gap-1.5 rounded-full border text-85 font-semibold transition-[background-color,border-color] duration-150 ' +
   'enabled:hover:border-border disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 // With its label beside the sign (phones: the sign only)
 const SELECT_BTN_WIDE = 'px-3 [@media(max-width:600px)]:w-[34px] [@media(max-width:600px)]:px-0 [@media(max-width:600px)]:[&>span]:hidden';
@@ -217,7 +217,7 @@ function SelectBar() {
       </button>
       <span
         id="media-selectbar-count"
-        class="ml-2 min-w-0 flex-1 truncate text-[1.25rem] font-extrabold tracking-[-0.022em] text-text tabular-nums md:text-[1.45rem]"
+        class="ml-2 min-w-0 flex-1 truncate text-125 font-extrabold tracking-[-0.022em] text-text tabular-nums md:text-145"
         aria-live="polite"
       >
         {count() === 1 ? t('media_selected_one', '1 selected') : t('media_selected', '{count} selected', { count: count() })}
@@ -263,7 +263,7 @@ function SelectBar() {
 // fades in ---
 
 const PILL =
-  'inline-flex min-h-8 max-w-[228px] items-center gap-1.5 whitespace-nowrap rounded-full border py-[5px] text-[0.875rem] leading-[1.25] ' +
+  'inline-flex min-h-8 max-w-[228px] items-center gap-1.5 whitespace-nowrap rounded-full border py-[5px] text-88 leading-[1.25] ' +
   '[transition:background-color_0.2s_ease,color_0.2s_ease,transform_0.2s_cubic-bezier(0.34,1.4,0.64,1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 const PILL_WAY = 'border-hairline bg-surface font-medium text-text-secondary hover:bg-surface-alt hover:text-text active:[transform:scale(0.96)]';
 const PILL_OPEN =
@@ -384,7 +384,7 @@ function UploadProgress() {
       {state => (
         <div id="media-upload" class="mb-3.5 flex items-center gap-3 rounded-[14px] border border-border-light bg-surface px-3.5 py-2.5">
           <ProgressBar class="flex-1" fill="bg-primary" fillId="media-upload-fill" percent={state().percent ?? 0} />
-          <span id="media-upload-text" class="whitespace-nowrap text-[0.8rem] font-semibold text-text-secondary">
+          <span id="media-upload-text" class="whitespace-nowrap text-80 font-semibold text-text-secondary">
             {text(state())}
           </span>
         </div>
@@ -522,7 +522,7 @@ function MediaMessage(props: { title: string; hints?: Array<string | false>; act
       <MotifSvg motif="folder" class="mb-1.5 block size-[76px]" />
       <span class="text-base font-semibold text-text">{props.title}</span>
       <For each={(props.hints || []).filter((hint): hint is string => !!hint)}>
-        {hint => <span class="max-w-[38ch] text-[0.875rem] leading-[1.45] text-text-secondary">{hint}</span>}
+        {hint => <span class="max-w-[38ch] text-88 leading-[1.45] text-text-secondary">{hint}</span>}
       </For>
       {props.action}
     </div>
@@ -573,7 +573,7 @@ function AccessNote(props: { access: MediaAccess; hasFolders: boolean }) {
         <div class="mt-1 mb-0.5 flex">
           <span
             class={[
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[0.72rem] font-semibold',
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-72 font-semibold',
               current().write ? 'bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] text-primary' : 'bg-surface-alt text-text-secondary'
             ]}
           >
@@ -588,9 +588,9 @@ function AccessNote(props: { access: MediaAccess; hasFolders: boolean }) {
 
 function SectionLabel(props: { label: string; count: number }) {
   return (
-    <h2 class="mt-5 mb-3 ml-0.5 flex items-baseline gap-2 text-[0.75rem] font-bold tracking-[0.067em] text-text-secondary uppercase first:mt-3">
+    <h2 class="mt-5 mb-3 ml-0.5 flex items-baseline gap-2 text-75 font-bold tracking-[0.067em] text-text-secondary uppercase first:mt-3">
       {props.label}
-      <span class="text-[0.75rem] font-semibold tracking-normal text-text-secondary tabular-nums opacity-60">{props.count}</span>
+      <span class="text-75 font-semibold tracking-normal text-text-secondary tabular-nums opacity-60">{props.count}</span>
     </h2>
   );
 }
@@ -679,9 +679,9 @@ function FolderRow(props: { folder: MediaFolder }) {
           <MotifSvg motif="folder" class="block size-[64%] [grid-area:1/1]" />
         </PaintedField>
         <span class="flex min-w-0 flex-1 flex-col gap-0.5 pr-2 pl-3.5">
-          <span class="line-clamp-2 min-w-0 text-[0.875rem] leading-[1.43] font-semibold [overflow-wrap:anywhere]">{props.folder.name}</span>
+          <span class="line-clamp-2 min-w-0 text-88 leading-[1.43] font-semibold [overflow-wrap:anywhere]">{props.folder.name}</span>
           <Show when={folderMeta(props.folder)}>
-            {meta => <span class="truncate text-[0.6875rem] text-text-secondary tabular-nums">{meta()}</span>}
+            {meta => <span class="truncate text-70 text-text-secondary tabular-nums">{meta()}</span>}
           </Show>
         </span>
         <span class={['mr-2 inline-flex shrink-0 text-[var(--media-accent)] opacity-80 group-hover:invisible', { invisible: selecting() }]} aria-hidden="true">
@@ -747,14 +747,14 @@ function FileTile(props: { file: MediaFile }) {
             </span>
           </Show>
           <Show when={type() && !preview()}>
-            <span class="absolute top-2 left-2 z-[2] rounded-[5px] bg-[color-mix(in_srgb,var(--field-deep)_92%,transparent)] px-[5px] py-px text-[0.5625rem] leading-[1.5] font-extrabold tracking-[0.04em] text-white">
+            <span class="absolute top-2 left-2 z-[2] rounded-[5px] bg-[color-mix(in_srgb,var(--field-deep)_92%,transparent)] px-[5px] py-px text-56 leading-[1.5] font-extrabold tracking-[0.04em] text-white">
               {type()}
             </span>
           </Show>
         </PaintedField>
-        <span class="truncate px-0.5 pt-1.5 text-[0.75rem] leading-[1.35] font-semibold">{shownName(props.file.name)}</span>
+        <span class="truncate px-0.5 pt-1.5 text-75 leading-[1.35] font-semibold">{shownName(props.file.name)}</span>
         <Show when={meta()}>
-          <span class="truncate px-0.5 text-[0.6875rem] leading-[1.35] text-text-secondary tabular-nums">{meta()}</span>
+          <span class="truncate px-0.5 text-70 leading-[1.35] text-text-secondary tabular-nums">{meta()}</span>
         </Show>
       </button>
       <CheckMark name={props.file.name} selected={selected()} tile />

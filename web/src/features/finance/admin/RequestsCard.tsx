@@ -23,13 +23,13 @@ function RequestRow(props: { req: FinanceRequest }) {
       style={{ '--req-color': requestColor(props.req) }}
       onClick={() => openRequestDetail(props.req.id)}
     >
-      <Avatar uid={requestPersonUid(props.req)} name={requestPersonName(props.req)} size={44} initialsClass="text-[0.95rem]" />
+      <Avatar uid={requestPersonUid(props.req)} name={requestPersonName(props.req)} size={44} initialsClass="text-95" />
       <span class="flex min-w-0 flex-1 flex-col gap-px">
         <span class="flex min-w-0 items-center gap-2">
           <span class="min-w-0 flex-1 truncate font-extrabold text-text">{requestPersonName(props.req)}</span>
-          <span class="shrink-0 text-[0.95rem] font-extrabold text-text">{requestAmount(props.req)}</span>
+          <span class="shrink-0 text-95 font-extrabold text-text">{requestAmount(props.req)}</span>
         </span>
-        <span class="inline-flex items-center gap-1.5 text-[0.68rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase">
+        <span class="inline-flex items-center gap-1.5 text-66 font-extrabold tracking-[0.05em] text-text-secondary uppercase">
           <span class="size-[7px] shrink-0 rounded-full bg-[var(--req-color)]" />
           {requestTypeLabel(props.req)}
           <Show when={data().receipt}>
@@ -38,7 +38,7 @@ function RequestRow(props: { req: FinanceRequest }) {
           </Show>
         </span>
         <span class="flex min-w-0 items-center gap-2">
-          <span class="min-w-0 flex-1 truncate text-[0.9rem] text-text">{text()}</span>
+          <span class="min-w-0 flex-1 truncate text-90 text-text">{text()}</span>
         </span>
       </span>
       <Icon name="chevronRight" size={16} strokeWidth={2.5} class="shrink-0 text-text-secondary opacity-60" />
@@ -56,13 +56,13 @@ export function RequestsCard(props: { context: 'fin' | 'home'; items: FinanceReq
           <Icon name="fileText" size={18} />
         </span>
         <span class="font-extrabold text-text">{t('requests_open_title', 'Open requests')}</span>
-        <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[#f59e0b] px-[7px] text-[0.75rem] leading-none font-extrabold text-white">
+        <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[#f59e0b] px-[7px] text-75 leading-none font-extrabold text-white">
           {badgeText(props.total)}
         </span>
         <Show when={props.context === 'home'}>
           <button
             type="button"
-            class="ml-auto inline-flex items-center gap-0.5 px-0.5 py-1 text-[0.85rem] font-bold text-primary"
+            class="ml-auto inline-flex items-center gap-0.5 px-0.5 py-1 text-85 font-bold text-primary"
             onClick={() => switchTab('finances')}
           >
             {t('home_messages_all', 'All')}

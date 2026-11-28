@@ -48,7 +48,7 @@ function ReplyStep(props: { step: StepView; live: boolean }) {
         </span>
         <div class="min-w-0">
           <div class={['font-medium [overflow-wrap:anywhere]', props.live && props.step.running ? ['[--shimmer:var(--text)]', SHIMMER] : 'text-text']}>{props.step.title}</div>
-          <div class="mt-px text-[0.78rem] text-text-secondary [overflow-wrap:anywhere] empty:hidden">{props.step.detail}</div>
+          <div class="mt-px text-78 text-text-secondary [overflow-wrap:anywhere] empty:hidden">{props.step.detail}</div>
         </div>
       </Show>
     </div>
@@ -76,7 +76,7 @@ function ThinkingLine(props: { reply: AiReply }) {
         ref={el => (props.reply.els.summary = el)}
         class={[
           // One line whatever it says: a long title ends in "…", the seconds and the arrow never move to a second line
-          'relative box-border inline-flex min-h-[30px] max-w-full touch-manipulation list-none items-center gap-1.5 whitespace-nowrap rounded-full border border-hairline bg-surface py-1 pr-2.5 pl-[11px] text-[0.8rem] leading-[1.5] font-semibold text-text-secondary select-none transition-[background-color,color,scale] duration-200 ease-app [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+          'relative box-border inline-flex min-h-[30px] max-w-full touch-manipulation list-none items-center gap-1.5 whitespace-nowrap rounded-full border border-hairline bg-surface py-1 pr-2.5 pl-[11px] text-80 leading-[1.5] font-semibold text-text-secondary select-none transition-[background-color,color,scale] duration-200 ease-app [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
           // A finger needs more room than the line is high
           "before:absolute before:-inset-x-1.5 before:-top-2 before:-bottom-1.5 before:content-['']",
           ARROW,
@@ -121,7 +121,7 @@ function ThinkingLine(props: { reply: AiReply }) {
         <div
           ref={el => (props.reply.els.steps = el)}
           class={[
-            'mt-2.5 ml-1.5 flex flex-col gap-2.5 border-l-2 border-[rgba(210,164,110,0.6)] py-0.5 pl-3.5 text-[0.84rem] leading-[1.55] text-text-secondary [scrollbar-width:thin] dark:border-[rgba(217,188,143,0.5)]',
+            'mt-2.5 ml-1.5 flex flex-col gap-2.5 border-l-2 border-[rgba(210,164,110,0.6)] py-0.5 pl-3.5 text-85 leading-[1.55] text-text-secondary [scrollbar-width:thin] dark:border-[rgba(217,188,143,0.5)]',
             '[mask-image:linear-gradient(to_bottom,transparent_0,#000_var(--fade-above),#000_calc(100%_-_var(--fade-below)),transparent_100%)]',
             view().fadeAbove ? '[--fade-above:26px]' : '[--fade-above:0px]',
             view().fadeBelow ? '[--fade-below:26px]' : '[--fade-below:0px]',
@@ -138,7 +138,7 @@ function ThinkingLine(props: { reply: AiReply }) {
           hidden={view().moreHidden}
           aria-expanded={view().expanded ? 'true' : 'false'}
           class={[
-            "relative mt-2 ml-[22px] inline-flex touch-manipulation items-center gap-[7px] border-0 bg-transparent py-0.5 text-[0.8rem] leading-[1.5] font-semibold text-text-secondary transition-colors duration-200 ease-app before:absolute before:-inset-x-3 before:-inset-y-2.5 before:content-[''] hover:text-text active:text-text focus-visible:rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary",
+            "relative mt-2 ml-[22px] inline-flex touch-manipulation items-center gap-[7px] border-0 bg-transparent py-0.5 text-80 leading-[1.5] font-semibold text-text-secondary transition-colors duration-200 ease-app before:absolute before:-inset-x-3 before:-inset-y-2.5 before:content-[''] hover:text-text active:text-text focus-visible:rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary",
             ARROW,
             ARROW_SHOWN,
             'after:size-[5px]',
@@ -168,7 +168,7 @@ function ReportButton(props: { answer: string; prompt: string }) {
     <button
       type="button"
       disabled={sent()}
-      class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-hairline bg-transparent px-2.5 py-1 text-[0.75rem] leading-[normal] font-semibold text-text-secondary opacity-70 transition-[color,border-color] duration-150 enabled:hover:border-danger enabled:hover:text-danger disabled:cursor-default"
+      class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-hairline bg-transparent px-2.5 py-1 text-75 leading-[normal] font-semibold text-text-secondary opacity-70 transition-[color,border-color] duration-150 enabled:hover:border-danger enabled:hover:text-danger disabled:cursor-default"
       onClick={report}
     >
       <Icon name="flag" size={13} />
@@ -190,7 +190,7 @@ export function AiReplyRow(props: { reply: AiReply; seed: number; afterWelcome: 
       <AiSign size={28} seed={props.seed} state={view().sign} class="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-primary" />
       <div
         class={[
-          'ai-chat-bubble-assistant min-w-0 flex-1 pt-1 text-[0.95rem] leading-[1.6] break-words',
+          'ai-chat-bubble-assistant min-w-0 flex-1 pt-1 text-95 leading-[1.6] break-words',
           view().error
             ? 'self-start rounded-2xl border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,var(--surface))] px-3.5 pb-2.5 text-danger'
             : 'text-text'

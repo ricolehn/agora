@@ -12,14 +12,14 @@ import { switchSysSettingsTab, sysTab } from './nav';
 // The tabs of this page (.sys-subnav-btn): as wide as their text on desktop; on phones a row that scrolls sideways,
 // each tab at least its text wide and 40px high
 const SUBNAV_TAB =
-  'flex items-center gap-1.5 px-[14px] py-2 text-[0.88rem] ' +
-  'max-md:min-h-10 max-md:flex-[1_0_auto] max-md:justify-center max-md:whitespace-nowrap max-md:py-[9px] max-md:text-[0.85rem]';
+  'flex items-center gap-1.5 px-[14px] py-2 text-88 ' +
+  'max-md:min-h-10 max-md:flex-[1_0_auto] max-md:justify-center max-md:whitespace-nowrap max-md:py-[9px] max-md:text-85';
 
 export function SystemPage() {
   return (
     <>
       <div class="mb-5 flex flex-wrap items-center justify-between gap-3 max-md:mb-4 max-md:flex-col max-md:items-stretch">
-        <h2 class="m-0 text-[1.3rem] font-extrabold">{t('nav_superadmin_settings', 'System settings')}</h2>
+        <h2 class="m-0 text-130 font-extrabold">{t('nav_superadmin_settings', 'System settings')}</h2>
         <PillTabs
           class="max-md:w-full max-md:overflow-x-auto"
           tabClass={SUBNAV_TAB}

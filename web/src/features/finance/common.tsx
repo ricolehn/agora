@@ -130,7 +130,7 @@ export function FeeResetNote(props: { text: string; id?: string; class?: string 
         id={props.id}
         class={[
           'flex items-start gap-2 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))]',
-          'px-3 py-[9px] text-[0.8rem] leading-[1.45] text-text',
+          'px-3 py-[9px] text-80 leading-[1.45] text-text',
           props.class ?? 'mt-2'
         ]}
       >
@@ -152,7 +152,7 @@ export function PayStateIcon(props: { state: PayState; size: number }) {
 }
 
 /** A chip below the state (.user-finance-chip). */
-export const FEE_CHIP = 'flex min-w-0 items-center justify-center truncate rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-[0.86rem]';
+export const FEE_CHIP = 'flex min-w-0 items-center justify-center truncate rounded-[14px] border border-hairline bg-surface-alt px-2.5 py-[9px] text-85';
 
 /** A chip that only tells (a value in it in bold). */
 export function FeeChip(props: { class?: string; children: JSX.Element }) {
@@ -195,14 +195,14 @@ export function Rows(props: { class?: string; children?: JSX.Element }) {
 export function Row(props: { ended: boolean; class?: string; children?: JSX.Element }) {
   return <div class={['flex items-center gap-3 py-[11px] pr-3', props.class ?? 'pl-4', { 'opacity-60': props.ended }]}>{props.children}</div>;
 }
-export const ROW_FACTS = 'text-[0.78rem] text-text-secondary';
+export const ROW_FACTS = 'text-78 text-text-secondary';
 
 /** The state of a row as a small pill (.so-row-state): in effect, still to come, or over. */
 export function StatePill(props: { look: 'active' | 'planned' | 'ended'; children: JSX.Element }) {
   return (
     <span
       class={[
-        'shrink-0 rounded-full px-[9px] py-[3px] text-[0.72rem] font-[650]',
+        'shrink-0 rounded-full px-[9px] py-[3px] text-72 font-[650]',
         {
           active: 'bg-[color-mix(in_srgb,var(--success)_13%,var(--surface))] text-[color-mix(in_srgb,var(--success)_85%,var(--text))]',
           planned: 'bg-[color-mix(in_srgb,var(--warning)_15%,var(--surface))] text-[color-mix(in_srgb,var(--warning)_70%,var(--text))]',

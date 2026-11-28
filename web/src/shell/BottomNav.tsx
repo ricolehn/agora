@@ -32,7 +32,7 @@ function BottomNavItem(props: { entry: NavEntry }) {
       />
       <span
         class={[
-          'nav-label max-w-full overflow-hidden text-[0.75rem] leading-[1.1] text-ellipsis whitespace-nowrap [transition:color_0.2s_ease,font-weight_0.2s_ease]',
+          'nav-label max-w-full overflow-hidden text-75 leading-[1.1] text-ellipsis whitespace-nowrap [transition:color_0.2s_ease,font-weight_0.2s_ease]',
           active() ? 'font-semibold text-text' : 'font-medium'
         ]}
       >
@@ -40,7 +40,7 @@ function BottomNavItem(props: { entry: NavEntry }) {
       </span>
       <CountBadge
         count={props.entry.badge?.() ?? 0}
-        class="absolute top-0 left-[calc(50%+5px)] h-5 min-w-5 border-2 border-surface px-1 text-[0.64rem] shadow-none"
+        class="absolute top-0 left-[calc(50%+5px)] h-5 min-w-5 border-2 border-surface px-1 text-62 shadow-none"
       />
     </button>
   );

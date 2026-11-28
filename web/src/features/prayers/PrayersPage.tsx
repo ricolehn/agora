@@ -19,7 +19,7 @@ export function PrayersPage() {
     // Reading width like the chat on desktop
     <div class="md:mx-auto md:max-w-[760px]">
       <AppHead sticky title={t('prayers_title', 'Prayer requests')} />
-      <p class="m-0 mb-4 flex items-start gap-2.5 rounded-2xl border border-[color-mix(in_srgb,#e11d48_12%,var(--border-light))] bg-[color-mix(in_srgb,#e11d48_5%,var(--surface))] px-3.5 py-3 text-[0.86rem] leading-[1.45] text-text-secondary">
+      <p class="m-0 mb-4 flex items-start gap-2.5 rounded-2xl border border-[color-mix(in_srgb,#e11d48_12%,var(--border-light))] bg-[color-mix(in_srgb,#e11d48_5%,var(--surface))] px-3.5 py-3 text-85 leading-[1.45] text-text-secondary">
         <Icon name="heart" class="mt-0.5 shrink-0 text-[#e11d48] opacity-80" />
         <span>{t('prayers_note', 'Share what is on your heart, with your name or anonymously. When it is done, simply remove it.')}</span>
       </p>
@@ -93,12 +93,12 @@ function PrayerRow(props: { prayer: Prayer }) {
           </span>
         }
       >
-        {author => <Avatar uid={author().uid} name={prayerName(props.prayer)} size={36} initialsClass="text-[0.76rem]" />}
+        {author => <Avatar uid={author().uid} name={prayerName(props.prayer)} size={36} initialsClass="text-75" />}
       </Show>
       <span class={['flex min-w-0 flex-col gap-1.5', { 'col-[2/4]': !editable() }]}>
         <span class="flex min-w-0 items-baseline gap-1.5">
-          <span class="max-w-[62%] shrink-0 truncate text-[0.86rem] font-[650] text-text">{prayerName(props.prayer)}</span>
-          <span class="min-w-0 truncate text-[0.78rem] text-text-secondary before:mr-1.5 before:opacity-60 before:content-['·']">{meta()}</span>
+          <span class="max-w-[62%] shrink-0 truncate text-85 font-[650] text-text">{prayerName(props.prayer)}</span>
+          <span class="min-w-0 truncate text-78 text-text-secondary before:mr-1.5 before:opacity-60 before:content-['·']">{meta()}</span>
         </span>
         <PrayerText text={props.prayer.text} />
       </span>
@@ -127,7 +127,7 @@ function PrayerText(props: { text: string }) {
       <span
         ref={el}
         class={[
-          'text-[0.97rem] leading-[1.6] tracking-[-0.005em] whitespace-pre-wrap text-text [overflow-wrap:anywhere]',
+          'text-95 leading-[1.6] tracking-[-0.005em] whitespace-pre-wrap text-text [overflow-wrap:anywhere]',
           expanded() ? 'block' : 'line-clamp-4'
         ]}
       >
@@ -136,7 +136,7 @@ function PrayerText(props: { text: string }) {
       <Show when={clamped()}>
         <button
           type="button"
-          class="-mt-0.5 self-start border-0 bg-transparent py-0.5 text-[0.86rem] font-semibold text-primary"
+          class="-mt-0.5 self-start border-0 bg-transparent py-0.5 text-85 font-semibold text-primary"
           onClick={e => {
             e.stopPropagation();
             setExpanded(open => !open);

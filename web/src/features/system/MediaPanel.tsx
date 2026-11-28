@@ -32,7 +32,7 @@ function TestResultText(props: { result: MediaTestResult }) {
               {name => (
                 <>
                   {' '}
-                  <code class="rounded-[6px] bg-surface-alt px-1.5 py-px font-sans text-[0.78rem]">{name}</code>
+                  <code class="rounded-[6px] bg-surface-alt px-1.5 py-px font-sans text-78">{name}</code>
                 </>
               )}
             </For>
@@ -117,7 +117,7 @@ export function MediaPanel() {
         role="status"
         hidden={!mediaTestResult()}
         class={[
-          'mb-3.5 mt-1 rounded-xl border px-3.5 py-3 text-[0.84rem] leading-[1.5] text-text',
+          'mb-3.5 mt-1 rounded-xl border px-3.5 py-3 text-85 leading-[1.5] text-text',
           mediaTestResult()?.ok ? 'border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)]' : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)]'
         ]}
       >

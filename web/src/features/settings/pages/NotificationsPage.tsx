@@ -15,7 +15,7 @@ import { allowPushOnDevice, isInstalledApp, pushPermission, sendTestPush } from 
 const LIST = 'flex flex-col overflow-hidden rounded-card border border-border-light bg-surface shadow-[0_1px_2px_rgba(28,25,23,0.04),0_8px_22px_-16px_rgba(28,25,23,0.25)]';
 const ROW = 'flex min-w-0 items-center gap-3 bg-surface px-3.5 py-3';
 const TEXT = 'flex min-w-0 flex-1 flex-col gap-px';
-const DESC = 'text-[0.78rem] leading-[1.4] text-text-secondary [overflow-wrap:anywhere]';
+const DESC = 'text-78 leading-[1.4] text-text-secondary [overflow-wrap:anywhere]';
 
 const channelLabel = (channel: NotificationChannel) => (channel === 'push' ? t('notif_tab_push', 'Push') : t('notif_tab_email', 'E-mail'));
 const channelIcon = (channel: NotificationChannel): IconName => (channel === 'push' ? 'bell' : 'mail');
@@ -33,7 +33,7 @@ function ChannelRow(props: { channel: NotificationChannel; title: string; desc: 
         <Icon name={channelIcon(props.channel)} size={18} />
       </span>
       <span class={TEXT}>
-        <span class="text-[0.93rem] font-bold text-text">{props.title}</span>
+        <span class="text-92 font-bold text-text">{props.title}</span>
         <span class={DESC}>{props.desc}</span>
       </span>
       <Switch checked={on()} onChange={checked => setNotificationChannel(props.channel, checked)} aria-label={props.title} />
@@ -60,7 +60,7 @@ function DeviceRow() {
     <div class="flex min-w-0 items-center gap-3 bg-surface px-3.5 pt-2.5 pb-3">
       <span aria-hidden="true" class={['mx-[13px] size-2 shrink-0 rounded-full', pushPermission() === 'granted' ? 'bg-success' : 'bg-border']} />
       <span class={TEXT}>
-        <span class="text-[0.93rem] font-bold text-text">{t('notif_device_title', 'This device')}</span>
+        <span class="text-92 font-bold text-text">{t('notif_device_title', 'This device')}</span>
         <span class={DESC}>{status()}</span>
       </span>
       <Show when={pushPermission() === 'granted'}>
@@ -88,7 +88,7 @@ function KindRow(props: { type: NotificationType }) {
         <Icon name={kind().icon} size={16} />
       </span>
       <span class={TEXT}>
-        <span class="text-[0.9rem] font-bold text-text">{kind().title()}</span>
+        <span class="text-90 font-bold text-text">{kind().title()}</span>
         <span class={DESC}>{kind().desc()}</span>
       </span>
       <Switch
@@ -107,7 +107,7 @@ function ChannelPicker() {
     <Show
       when={channels().push && channels().email}
       fallback={
-        <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-alt px-2.5 py-1 text-[0.78rem] font-bold text-text-secondary">
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-alt px-2.5 py-1 text-78 font-bold text-text-secondary">
           <Icon name={channelIcon(shownChannel())} size={14} />
           {channelLabel(shownChannel())}
         </span>
@@ -119,7 +119,7 @@ function ChannelPicker() {
             <Pill
               chosen={shownChannel() === channel}
               class={[
-                'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.82rem] font-bold',
+                'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-82 font-bold',
                 shownChannel() === channel ? 'bg-surface text-text shadow-[0_1px_3px_rgba(28,25,23,0.12)]' : 'text-text-secondary'
               ]}
               onSelect={() => setNotificationTab(channel)}
@@ -140,7 +140,7 @@ export function NotificationsPage() {
   const email = () => currentUser()?.email;
   return (
     <div class="mb-5 flex flex-col gap-3.5">
-      <p class="mt-0.5 px-1 text-[0.9rem] leading-[1.45] text-text-secondary">
+      <p class="mt-0.5 px-1 text-90 leading-[1.45] text-text-secondary">
         {t('notif_channels_desc', 'Choose how you are notified and which messages you get.')}
       </p>
       <div class={LIST}>
@@ -163,14 +163,14 @@ export function NotificationsPage() {
       <Show
         when={channels().push || channels().email}
         fallback={
-          <div class="flex items-center gap-2.5 rounded-[14px] border border-dashed border-border bg-surface-alt px-3.5 py-3 text-[0.85rem] text-text-secondary">
+          <div class="flex items-center gap-2.5 rounded-[14px] border border-dashed border-border bg-surface-alt px-3.5 py-3 text-85 text-text-secondary">
             <Icon name="bellOff" size={18} />
             <span>{t('notif_all_off', 'You get no notifications. Turn on push or e-mail above.')}</span>
           </div>
         }
       >
         <div class="mt-1 flex flex-wrap items-center justify-between gap-2.5 px-1">
-          <span class="text-[0.72rem] font-extrabold uppercase tracking-[0.06em] text-text-secondary">{t('notif_kinds_title', 'What would you like to get?')}</span>
+          <span class="text-72 font-extrabold uppercase tracking-[0.06em] text-text-secondary">{t('notif_kinds_title', 'What would you like to get?')}</span>
           <ChannelPicker />
         </div>
         <div class={[LIST, '[&>*+*]:border-t [&>*+*]:border-border-light']}>

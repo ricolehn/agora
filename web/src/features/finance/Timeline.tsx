@@ -55,9 +55,9 @@ function TimelineItem(props: { event: TimelineEvent; settled: boolean; person: P
             <div class="rounded-xl border border-[color-mix(in_srgb,var(--warning)_28%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,var(--surface))] px-3 py-2">
               <div class="flex items-baseline justify-between gap-2.5 font-bold">
                 <span>{t('fee_reset_timeline_title', 'Fresh start')}</span>
-                <span class="shrink-0 text-[0.8rem] font-semibold text-text-secondary tabular-nums">{date()}</span>
+                <span class="shrink-0 text-80 font-semibold text-text-secondary tabular-nums">{date()}</span>
               </div>
-              <div class="text-[0.85rem] text-text-secondary">{feeResetOutcome(props.person)}</div>
+              <div class="text-85 text-text-secondary">{feeResetOutcome(props.person)}</div>
             </div>
           </>
         }
@@ -65,7 +65,7 @@ function TimelineItem(props: { event: TimelineEvent; settled: boolean; person: P
         <div class={[DOT, '-left-[31px] top-1.5 size-3', props.settled ? 'bg-border' : 'bg-primary']} />
         <div class={{ 'opacity-60': props.settled }}>
           <div class="font-semibold">{title()}</div>
-          <div class="text-[0.85rem] text-text-secondary">{meta()}</div>
+          <div class="text-85 text-text-secondary">{meta()}</div>
         </div>
       </Show>
     </div>
@@ -80,7 +80,7 @@ export function Timeline(props: { person: Person }) {
   return (
     <Show
       when={events().length}
-      fallback={<div class="text-[0.8rem] text-text-secondary italic">{t('timeline_no_entries', 'No entries found.')}</div>}
+      fallback={<div class="text-80 text-text-secondary italic">{t('timeline_no_entries', 'No entries found.')}</div>}
     >
       <div class="relative my-[15px] ml-2 border-l-2 border-border-light pl-6">
         {/* By position: every load of the data brings the record anew, and its entries (fresh objects for the same

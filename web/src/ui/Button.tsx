@@ -36,9 +36,9 @@ const BASE =
   'disabled:cursor-not-allowed disabled:opacity-50';
 
 const SIZE: Record<ButtonSize, string> = {
-  md: 'weak:px-5 weak:py-3 weak:text-[0.95rem]',
-  small: 'weak:px-4 weak:py-2 weak:text-[0.85rem]',
-  tiny: 'weak:px-1.5 weak:py-0.5 weak:text-[0.74rem]'
+  md: 'weak:px-5 weak:py-3 weak:text-95',
+  small: 'weak:px-4 weak:py-2 weak:text-85',
+  tiny: 'weak:px-1.5 weak:py-0.5 weak:text-75'
 };
 
 const VARIANT: Record<ButtonVariant, string> = {
@@ -59,13 +59,13 @@ const VARIANT: Record<ButtonVariant, string> = {
 // The primary button's light edge and soft shadow (in the dark: a plain shadow)
 const PRIMARY_SHADOW = 'shadow-[inset_0_1px_0_rgba(255,255,255,0.18),var(--shadow-brand)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.45)]';
 // A block button in a dialog's body: one even height, a little smaller (the primary keeps its dark shadow)
-const COMPACT = 'weak:h-10 weak:min-h-10 weak:px-5 weak:py-3 weak:text-[0.9rem] weak:rounded-[10px] weak:mt-0.5';
+const COMPACT = 'weak:h-10 weak:min-h-10 weak:px-5 weak:py-3 weak:text-90 weak:rounded-[10px] weak:mt-0.5';
 const COMPACT_SHADOW = 'shadow-[0_2px_6px_rgba(var(--glow-rgb),0.2)]';
 
 /** The classes of a button (for links and labels that look like one: <a class={buttonClass({ variant: 'secondary' })}>). */
 export function buttonClass(look: ButtonLook = {}): JSX.ClassValue {
   const variant = look.variant ?? 'primary';
-  if (variant === 'premium') return ['btn btn-premium', BASE, VARIANT.premium, 'weak:rounded-[10px] weak:px-4 weak:py-2.5 weak:text-[0.88rem]', { 'w-full': !!look.block }];
+  if (variant === 'premium') return ['btn btn-premium', BASE, VARIANT.premium, 'weak:rounded-[10px] weak:px-4 weak:py-2.5 weak:text-88', { 'w-full': !!look.block }];
   return [
     // .btn / .btn-<variant>: markers only (a dialog's body compacts the buttons placed straight in it)
     `btn btn-${variant}`,

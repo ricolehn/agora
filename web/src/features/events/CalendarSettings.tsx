@@ -72,12 +72,12 @@ export function CalendarSettings() {
   // ".ics" and "Renew link" side by side
   return (
     <Card bodyClass="pt-5">
-      <p class="mb-3 text-[0.84rem] text-text-secondary">
+      <p class="mb-3 text-85 text-text-secondary">
         {t('calendar_sub_desc_short', 'Sync your appointments and duties automatically with Apple Calendar, Google Calendar or Outlook.')}
       </p>
       <Field label={t('calendar_sub_feed_url', 'Personal iCal link')} for="user-cal-feed-url" class="mb-3">
         <div class="flex gap-2">
-          <Input ref={field} id="user-cal-feed-url" type="text" readonly value={feedUrl()} class="font-[monospace] text-[0.8rem]" />
+          <Input ref={field} id="user-cal-feed-url" type="text" readonly value={feedUrl()} class="font-[monospace] text-80" />
           <Button variant="secondary" class="whitespace-nowrap" onClick={() => void copy()}>
             {t('copy_btn', 'Copy')}
           </Button>
@@ -97,7 +97,7 @@ export function CalendarSettings() {
         <Button variant="secondary" class="w-full" title={t('calendar_sub_btn_download', 'Download .ics file')} onClick={withUrl(url => window.open(url, '_blank', 'noopener'))}>
           .ics
         </Button>
-        <Button variant="ghost" size="small" class="w-full text-[0.8rem] text-text-secondary" onClick={() => void resetFeedToken()}>
+        <Button variant="ghost" size="small" class="w-full text-80 text-text-secondary" onClick={() => void resetFeedToken()}>
           {t('calendar_sub_btn_reset', 'Renew link')}
         </Button>
       </div>

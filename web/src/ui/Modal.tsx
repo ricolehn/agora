@@ -76,7 +76,7 @@ export function CloseButton(props: { onClick: () => void; class?: string; label?
     <button
       type="button"
       class={[
-        'flex shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent px-1 py-0 text-[1.8rem] leading-none font-normal text-text-secondary',
+        'flex shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent px-1 py-0 text-180 leading-none font-normal text-text-secondary',
         'transition-colors duration-200 focus:text-danger focus:outline-none focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-danger',
         props.class
       ]}
@@ -108,14 +108,14 @@ export function ModalHeader(props: {
     >
       <div class="flex items-center gap-2.5">
         <Show when={props.icon}>
-          <div class={['flex weak:size-9 shrink-0 items-center justify-center weak:rounded-[9px] weak:text-[1.1rem]', props.iconClass]}>{props.icon}</div>
+          <div class={['flex weak:size-9 shrink-0 items-center justify-center weak:rounded-[9px] weak:text-110', props.iconClass]}>{props.icon}</div>
         </Show>
         <div>
-          <div id={props.id ? `${props.id}-title` : undefined} class="text-[1.05rem] leading-[1.2] font-bold text-text">
+          <div id={props.id ? `${props.id}-title` : undefined} class="text-105 leading-[1.2] font-bold text-text">
             {props.title}
           </div>
           <Show when={props.subtitle}>
-            <div class="mt-0.5 text-[0.74rem] font-normal text-text-secondary">{props.subtitle}</div>
+            <div class="mt-0.5 text-75 font-normal text-text-secondary">{props.subtitle}</div>
           </Show>
         </div>
       </div>
@@ -129,7 +129,7 @@ export function ModalHeader(props: {
 
 // Buttons placed straight in the body: one even height, a little smaller (the primary keeps its dark shadow)
 const BODY_BUTTONS =
-  '[&>.btn]:mt-0.5 [&>.btn]:h-10 [&>.btn]:min-h-10 [&>.btn]:rounded-[10px] [&>.btn]:text-[0.9rem] [&>.btn]:font-semibold ' +
+  '[&>.btn]:mt-0.5 [&>.btn]:h-10 [&>.btn]:min-h-10 [&>.btn]:rounded-[10px] [&>.btn]:text-90 [&>.btn]:font-semibold ' +
   '[&>.btn]:shadow-[0_2px_6px_rgba(var(--glow-rgb),0.2)] dark:[&>.btn-primary]:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.45)]';
 
 /** The scrolling body of a dialog (.modal-body-enhanced): fields, labels, block buttons and buttons placed straight in
@@ -258,7 +258,7 @@ export function Modal(props: ModalProps) {
                 when={!props.classic}
                 fallback={
                   <>
-                    <div class="sticky top-0 z-10 mb-5 flex justify-between bg-[var(--frost-surface)] pt-6 text-[1.2rem] font-extrabold text-text [backdrop-filter:var(--frost)]">
+                    <div class="sticky top-0 z-10 mb-5 flex justify-between bg-[var(--frost-surface)] pt-6 text-120 font-extrabold text-text [backdrop-filter:var(--frost)]">
                       <h3 id={`${props.id}-title`} class={props.titleClass ?? 'text-[1.17em] font-bold'}>
                         {props.title}
                       </h3>
@@ -284,7 +284,7 @@ export function Modal(props: ModalProps) {
 }
 
 /** The small capitalised label above a part of a dialog's body (a field, a choice). */
-export const PART_LABEL = 'text-[0.72rem] font-extrabold tracking-[0.05em] text-text-secondary uppercase';
+export const PART_LABEL = 'text-72 font-extrabold tracking-[0.05em] text-text-secondary uppercase';
 
 /** A part of a dialog's body without a card: its label and fields 8px apart; [ruled]: a line 14px above it. */
 export function ModalPart(props: { ruled?: boolean; children: JSX.Element }) {
@@ -302,7 +302,7 @@ export function ModalSection(props: { icon?: JSX.Element; title?: JSX.Element; c
       ]}
     >
       <Show when={props.title || props.icon}>
-        <div class="flex items-center gap-1.5 text-[0.7rem] font-bold tracking-[0.05em] text-text-secondary uppercase">
+        <div class="flex items-center gap-1.5 text-70 font-bold tracking-[0.05em] text-text-secondary uppercase">
           <Show when={props.icon}>
             <span>{props.icon}</span>
           </Show>

@@ -81,7 +81,7 @@ export function AssignGroupsDialog() {
       >
         <ModalSection icon="👥" title={t('groups_sidebar_title', 'Groups')}>
           <CheckList id="assign-group-checklist">
-            <For each={groupList()} fallback={<div class="py-2.5 text-[0.85rem] text-text-secondary">{t('admin_no_groups', 'No groups yet. Create a group first.')}</div>}>
+            <For each={groupList()} fallback={<div class="py-2.5 text-85 text-text-secondary">{t('admin_no_groups', 'No groups yet. Create a group first.')}</div>}>
               {g => (
                 <CheckItem
                   checked={isTicked(g)}
@@ -99,7 +99,7 @@ export function AssignGroupsDialog() {
         </ModalSection>
         <DialogActions
           left={
-            <Button variant="secondary" size="small" class="gap-1 text-[0.82rem]" onClick={openCreateGroupFromAssignModal}>
+            <Button variant="secondary" size="small" class="gap-1 text-82" onClick={openCreateGroupFromAssignModal}>
               <Icon name="plus" size={14} />
               <span>{t('admin_new_group', 'New group')}</span>
             </Button>

@@ -25,7 +25,7 @@ import type { User } from '../../app/types';
 // --- Groups ---
 // Desktop: a list in the sidebar; below 1280px chips (a wrapping row on tablets, a scrolling row on phones)
 const GROUP_ITEM =
-  'group flex w-full cursor-pointer select-none items-center justify-between rounded-[10px] border px-2.5 py-2 text-left text-[0.88rem] font-semibold ' +
+  'group flex w-full cursor-pointer select-none items-center justify-between rounded-[10px] border px-2.5 py-2 text-left text-88 font-semibold ' +
   'transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150 ease-[ease] ' +
   'max-xl:w-auto max-xl:flex-[0_0_auto] max-xl:gap-1.5 max-xl:rounded-[20px] max-xl:px-3 max-xl:py-[7px] max-md:max-w-[200px]';
 const GROUP_ITEM_ACTIVE = 'border-primary bg-surface-alt text-primary shadow-[0_1px_3px_rgba(0,0,0,0.05)] max-md:bg-primary max-md:text-white';
@@ -41,7 +41,7 @@ function GroupItem(props: { group?: { id: string; name: string; memberCount?: nu
       <div class="ml-1.5 flex items-center gap-1">
         <span
           class={[
-            'rounded-[10px] border px-[7px] py-0.5 text-[0.75rem] font-bold',
+            'rounded-[10px] border px-[7px] py-0.5 text-75 font-bold',
             props.active ? 'border-primary bg-primary text-white max-md:border-transparent max-md:bg-white/25' : 'border-border bg-surface-alt text-text-secondary'
           ]}
         >
@@ -82,7 +82,7 @@ function GroupsSidebar() {
       ]}
     >
       <div class="flex items-center justify-between border-b border-border-light pb-2 max-md:pb-1.5 md:max-xl:border-b-0 md:max-xl:pb-0">
-        <div class="flex items-center gap-2 text-[0.95rem] font-bold text-text">
+        <div class="flex items-center gap-2 text-95 font-bold text-text">
           <Icon name="users" size={18} />
           <span>{t('groups_sidebar_title', 'Groups')}</span>
         </div>
@@ -92,7 +92,7 @@ function GroupsSidebar() {
         <Input
           id="nc-new-group-name"
           type="text"
-          class="h-[34px] min-w-0 flex-1 rounded-[8px] px-2.5 py-1.5 text-[0.82rem]"
+          class="h-[34px] min-w-0 flex-1 rounded-[8px] px-2.5 py-1.5 text-82"
           placeholder={t('group_add_placeholder', 'New group...')}
           value={newGroupName()}
           onInput={e => setNewGroupName(e.currentTarget.value)}
@@ -131,11 +131,11 @@ function GroupsSidebar() {
 // --- Accounts ---
 const BADGE = 'inline-block rounded-[8px] border border-border bg-surface-alt px-2 py-[3px] text-text-secondary';
 const TH =
-  'border-b border-border bg-surface-alt px-4 py-3 align-middle text-[0.82rem] font-semibold uppercase tracking-[0.03em] text-text-secondary ' +
-  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-[0.86rem] md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-[0.85rem]';
+  'border-b border-border bg-surface-alt px-4 py-3 align-middle text-82 font-semibold uppercase tracking-[0.03em] text-text-secondary ' +
+  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-85 md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-85';
 const TD =
   'border-b border-border px-4 py-3 align-middle ' +
-  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-[0.86rem] md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-[0.85rem]';
+  'md:max-xl:px-2.5 md:max-xl:py-2.5 md:max-xl:text-85 md:max-xl:first:pl-4 max-md:px-3 max-md:py-2.5 max-md:text-85';
 const ICON_BTN =
   'flex items-center justify-center rounded-[8px] border border-border bg-transparent p-1.5 text-text-secondary transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-150 ease-[ease] max-md:min-h-[34px] max-md:min-w-[34px]';
 
@@ -156,15 +156,15 @@ function AccountRow(props: { user: User }) {
       <td class={TD}>
         <div class="flex items-center gap-3">
           {/* 40px with the role ring (.nc-avatar) */}
-          <Avatar uid={props.user.uid} name={name()} size={34} ring={avatarRing(props.user)} initialsClass="text-[0.78rem]" />
+          <Avatar uid={props.user.uid} name={name()} size={34} ring={avatarRing(props.user)} initialsClass="text-78" />
           <div class="flex flex-col">
             <div class="flex items-center gap-1.5 font-semibold text-text">
               <span>{name()}</span>
               <Show when={owner()}>
-                <span class="flex items-center gap-[3px] rounded-[6px] bg-[rgba(245,158,11,0.15)] px-1.5 py-0.5 text-[0.72rem] font-bold text-[#d97706]">👑 {t('badge_owner', 'Owner')}</span>
+                <span class="flex items-center gap-[3px] rounded-[6px] bg-[rgba(245,158,11,0.15)] px-1.5 py-0.5 text-72 font-bold text-[#d97706]">👑 {t('badge_owner', 'Owner')}</span>
               </Show>
               <Show when={props.user.isClaimed === false}>
-                <span class="block rounded-[8px] border border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.12)] px-1.5 py-0.5 text-[0.72rem] font-semibold text-[#d97706]">
+                <span class="block rounded-[8px] border border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.12)] px-1.5 py-0.5 text-72 font-semibold text-[#d97706]">
                   ⏳ {t('badge_unclaimed', 'Not Registered')}
                 </span>
               </Show>
@@ -172,17 +172,17 @@ function AccountRow(props: { user: User }) {
           </div>
         </div>
       </td>
-      <td class={[TD, '!text-[0.88rem] text-text-secondary']}>
+      <td class={[TD, '!text-88 text-text-secondary']}>
         <Show when={props.user.email} fallback={<span class="italic opacity-50">{t('accounts_no_login', 'No login credentials')}</span>}>
           {props.user.email}
         </Show>
       </td>
       <td class={[TD, 'cursor-pointer']} title={t('modal_assign_group_title', 'Assign Groups')} onClick={() => openAssignGroupModal(props.user.uid)}>
-        <Show when={groups().length > 0} fallback={<span class={[BADGE, 'm-0.5 border-dashed text-[0.78rem] font-semibold opacity-60']}>+ {t('admin_assign_short', 'Assign')}</span>}>
+        <Show when={groups().length > 0} fallback={<span class={[BADGE, 'm-0.5 border-dashed text-78 font-semibold opacity-60']}>+ {t('admin_assign_short', 'Assign')}</span>}>
           <For each={groups()}>
             {g => (
               <>
-                <span class={[BADGE, 'm-0.5 text-[0.78rem] font-semibold']}>{g.name}</span>{' '}
+                <span class={[BADGE, 'm-0.5 text-78 font-semibold']}>{g.name}</span>{' '}
               </>
             )}
           </For>
@@ -191,14 +191,14 @@ function AccountRow(props: { user: User }) {
       <td class={TD}>
         <Input
           type="date"
-          class="m-0 h-[30px] w-[130px] rounded-[8px] px-1.5 py-[3px] text-[0.82rem]"
+          class="m-0 h-[30px] w-[130px] rounded-[8px] px-1.5 py-[3px] text-82"
           value={memberSince()}
           onChange={e => void updateUserMemberSince(props.user.uid, e.currentTarget.value)}
         />
       </td>
       <td class={TD}>
         <Select
-          class="w-auto cursor-pointer rounded-[8px] border-border bg-surface px-2.5 py-1.5 text-[0.85rem] font-semibold"
+          class="w-auto cursor-pointer rounded-[8px] border-border bg-surface px-2.5 py-1.5 text-85 font-semibold"
           value={props.user.pays !== false ? 'yes' : 'no'}
           onChange={e => void toggleUserPays(props.user.uid, e.currentTarget.value === 'yes')}
         >
@@ -277,11 +277,11 @@ export function AccountsPanel() {
           {group => (
             <div class="mb-3.5 flex items-center justify-between rounded-xl border border-border bg-surface-alt px-3.5 py-2 max-md:w-full max-md:max-w-full max-md:flex-col max-md:items-start max-md:gap-2">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="text-[0.85rem] font-medium text-text-secondary">{t('filter_active_group', 'Filtered by group:')}</span>
-                <span class={[BADGE, 'text-[0.85rem] font-bold']}>{group().name}</span>
-                <span class="text-[0.8rem] text-text-secondary">{t('admin_group_user_count', '({count} users)', { count: rows().length })}</span>
+                <span class="text-85 font-medium text-text-secondary">{t('filter_active_group', 'Filtered by group:')}</span>
+                <span class={[BADGE, 'text-85 font-bold']}>{group().name}</span>
+                <span class="text-80 text-text-secondary">{t('admin_group_user_count', '({count} users)', { count: rows().length })}</span>
               </div>
-              <Button variant="secondary" size="small" class="px-2.5 py-1 text-[0.8rem] max-md:w-full" onClick={() => filterByGroup(null)}>
+              <Button variant="secondary" size="small" class="px-2.5 py-1 text-80 max-md:w-full" onClick={() => filterByGroup(null)}>
                 {t('btn_clear_group_filter', 'Clear filter')}
               </Button>
             </div>
@@ -289,7 +289,7 @@ export function AccountsPanel() {
         </Show>
 
         <div class="block w-full min-w-0 max-w-full overflow-x-auto rounded-[16px] border border-border bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.02)] max-md:rounded-[12px]">
-          <table class="w-full min-w-[780px] border-collapse text-left text-[0.92rem]">
+          <table class="w-full min-w-[780px] border-collapse text-left text-92">
             <thead>
               <tr>
                 <th class={[TH, 'min-w-[170px] text-left']}>{t('col_name_avatar', 'Name')}</th>

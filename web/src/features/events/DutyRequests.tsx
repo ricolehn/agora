@@ -31,16 +31,16 @@ function DutyRequestCard(props: { request: DutyRequest; onHome?: boolean }) {
         onClick={() => props.onHome && open()}
         onKeyDown={e => onActivateKey(e, () => props.onHome && open())}
       >
-        <div class="text-[0.88rem] font-bold text-text">📅 {req().eventTitle || t('detail_groups_event', 'Event')}</div>
-        <div class="text-[0.78rem] text-text-secondary">
+        <div class="text-88 font-bold text-text">📅 {req().eventTitle || t('detail_groups_event', 'Event')}</div>
+        <div class="text-78 text-text-secondary">
           <span>
             {formatEventDate(req().eventDate)}
             {atTime(req().eventStartTime)}
           </span>
         </div>
-        <div class="mt-0.5 text-[0.84rem] text-text">
+        <div class="mt-0.5 text-85 text-text">
           🛠️ <strong class="font-bold">{req().roleName}</strong>{' '}
-          <span class="text-[0.8rem] text-text-secondary">
+          <span class="text-80 text-text-secondary">
             ({inSection(req().section)}
             {t('duty_requests_requested_by', 'Requested by {name}', { name: req().requestedByName || t('duty_requests_team', 'Team') })})
           </span>
@@ -64,10 +64,10 @@ export function DutyRequestsBanner(props: { requests: DutyRequest[]; onHome?: bo
     <div class="rounded-[14px] border border-[rgba(99,102,241,0.25)] bg-[linear-gradient(135deg,rgba(99,102,241,0.08)_0%,rgba(245,158,11,0.08)_100%)] px-4 py-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.04)]">
       <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
-          <span class="text-[1.15rem]">📬</span>
-          <strong class="text-[0.95rem] font-bold text-text">{t('duty_requests_title', 'Open duty requests for you ({count})', { count: props.requests.length })}</strong>
+          <span class="text-115">📬</span>
+          <strong class="text-95 font-bold text-text">{t('duty_requests_title', 'Open duty requests for you ({count})', { count: props.requests.length })}</strong>
         </div>
-        <span class="rounded-full bg-[#b45309] px-2 py-[3px] text-[0.72rem] font-bold uppercase tracking-[0.4px] text-white">
+        <span class="rounded-full bg-[#b45309] px-2 py-[3px] text-72 font-bold uppercase tracking-[0.4px] text-white">
           {t('duty_requests_badge', 'Response requested')}
         </span>
       </div>

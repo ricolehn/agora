@@ -24,7 +24,7 @@ function CalendarDay(props: { day: string; num: number; categories?: Set<EventCa
     <button
       type="button"
       class={[
-        'relative flex aspect-square min-w-0 flex-col items-center justify-center gap-[3px] rounded-xl text-[0.9rem] transition-[background,color] duration-150',
+        'relative flex aspect-square min-w-0 flex-col items-center justify-center gap-[3px] rounded-xl text-90 transition-[background,color] duration-150',
         props.categories ? 'font-extrabold' : 'font-semibold',
         props.selected
           ? 'bg-primary text-white'
@@ -91,7 +91,7 @@ export function TermineCalendar(props: { days: Map<string, Set<EventCategory>>; 
         >
           <Icon name="chevronLeft" size={18} strokeWidth={2.5} />
         </button>
-        <span class="text-[1.02rem] font-extrabold capitalize text-text">{monthYearFormatter.format(shown())}</span>
+        <span class="text-100 font-extrabold capitalize text-text">{monthYearFormatter.format(shown())}</span>
         <button
           type="button"
           class="inline-flex size-[34px] items-center justify-center rounded-[11px] border border-border-light bg-surface-alt text-text hover:border-primary hover:text-primary"
@@ -103,13 +103,13 @@ export function TermineCalendar(props: { days: Map<string, Set<EventCategory>>; 
       </div>
       <div class="grid grid-cols-7 gap-1">
         <For each={[1, 2, 3, 4, 5, 6, 0]}>
-          {index => <span class="pb-1.5 text-center text-[0.7rem] font-extrabold uppercase tracking-[0.04em] text-text-secondary">{weekdayShort(index)}</span>}
+          {index => <span class="pb-1.5 text-center text-70 font-extrabold uppercase tracking-[0.04em] text-text-secondary">{weekdayShort(index)}</span>}
         </For>
         <For each={cells()}>
           {cell => (cell.day ? <CalendarDay day={cell.day} num={cell.num} categories={props.days.get(cell.day)} selected={cell.day === props.selected} onPick={props.onPick} /> : <span class="aspect-square min-w-0 rounded-xl" />)}
         </For>
       </div>
-      <div class="mt-3.5 flex flex-wrap gap-x-3.5 gap-y-1.5 border-t border-border-light pt-3 text-[0.78rem] font-semibold text-text-secondary">
+      <div class="mt-3.5 flex flex-wrap gap-x-3.5 gap-y-1.5 border-t border-border-light pt-3 text-78 font-semibold text-text-secondary">
         <For each={LEGEND}>
           {([category, label]) => (
             <span class="inline-flex items-center gap-1.5">

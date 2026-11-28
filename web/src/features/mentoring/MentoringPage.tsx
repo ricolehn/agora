@@ -54,7 +54,7 @@ function Intro() {
       <h2 class="m-0 flex-[1_1_100%] text-[1.7rem] leading-[1.15] font-[750] tracking-[-0.03em] text-text dark:text-[#e4ded6] md:text-[2.1rem]">
         {t('mentoring_title', 'Mentoring')}
       </h2>
-      <p class="m-0 max-w-[520px] flex-[1_1_260px] text-[0.95rem] leading-normal text-text-secondary">
+      <p class="m-0 max-w-[520px] flex-[1_1_260px] text-95 leading-normal text-text-secondary">
         {t('mentoring_subtitle', 'Personal support, open ears & anonymous conversations')}
       </p>
       <div class="mt-2 flex flex-[0_0_auto] items-center justify-start md:mt-0 md:ml-auto">
@@ -68,8 +68,8 @@ function Intro() {
 
 // The mentoring's segments (.mentoring-nav-segment): sharing the width; on phones a little tighter, three fit
 const TAB_SIZE =
-  'flex flex-[1_1_0] min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-[0.9rem] whitespace-nowrap overflow-hidden text-ellipsis ' +
-  'max-md:gap-[5px] max-md:py-[7px] max-mini:px-1 max-mini:text-[0.82rem]';
+  'flex flex-[1_1_0] min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-90 whitespace-nowrap overflow-hidden text-ellipsis ' +
+  'max-md:gap-[5px] max-md:py-[7px] max-mini:px-1 max-mini:text-82';
 
 // One set of tabs for the page's life: texts, counts and the review tab's visibility are getters, so a new count
 // changes the badge instead of building new tabs

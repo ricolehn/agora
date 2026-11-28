@@ -34,7 +34,7 @@ export function SongbookPage() {
           )}
         </Loaded>
       </div>
-      <div id="songbook-license" class="mt-2.5 max-w-[760px] text-right text-[0.78rem] font-semibold text-text-secondary">
+      <div id="songbook-license" class="mt-2.5 max-w-[760px] text-right text-78 font-semibold text-text-secondary">
         {songbookLicense() ? t('songbook_license', 'CCLI licence {number}', { number: songbookLicense() }) : ''}
       </div>
     </>
@@ -70,7 +70,7 @@ function SongList(props: { songs: Song[]; query: string }) {
           {row => (
             <>
               <Show when={row().head}>
-                <div class="border-t border-border-light bg-surface-alt px-4 pt-2.5 pb-1 text-[0.72rem] font-extrabold tracking-[0.08em] text-text-secondary first:border-t-0">
+                <div class="border-t border-border-light bg-surface-alt px-4 pt-2.5 pb-1 text-72 font-extrabold tracking-[0.08em] text-text-secondary first:border-t-0">
                   {row().head}
                 </div>
               </Show>
@@ -86,9 +86,9 @@ function SongList(props: { songs: Song[]; query: string }) {
                   <Icon name="music" size={18} />
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span class="truncate text-[0.98rem] font-bold">{row().song.title}</span>
+                  <span class="truncate text-100 font-bold">{row().song.title}</span>
                   <Show when={songMeta(row().song)}>
-                    <span class="truncate text-[0.82rem] text-text-secondary">{songMeta(row().song)}</span>
+                    <span class="truncate text-82 text-text-secondary">{songMeta(row().song)}</span>
                   </Show>
                 </span>
                 <Icon name="chevronRight" size={16} strokeWidth={2.5} class="shrink-0 text-text-secondary" />

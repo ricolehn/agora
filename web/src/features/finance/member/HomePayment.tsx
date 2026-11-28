@@ -50,19 +50,19 @@ function HomePayment(props: { overdue: boolean }) {
               <Icon name="alert" size={18} strokeWidth={2.5} />
             </span>
             <span class="flex min-w-0 flex-1 flex-col">
-              <span class={['text-[0.95rem] font-bold', current().overdue ? 'text-[#dc2626] dark:text-[#f87171]' : 'text-text']}>
+              <span class={['text-95 font-bold', current().overdue ? 'text-[#dc2626] dark:text-[#f87171]' : 'text-text']}>
                 {current().overdue
                   ? translateStatusText(current().meta.text)
                   : standingOrderCovers(current().meta)
                     ? t('user_standing_order_active', 'Standing order active')
                     : `${t('user_paid_until', 'Paid until')} ${paidUntilText(current().person._paidUntil)}`}
               </span>
-              <span class={current().overdue ? 'text-[0.88rem] font-bold text-text' : 'text-[0.78rem] text-text-secondary'}>
+              <span class={current().overdue ? 'text-88 font-bold text-text' : 'text-78 text-text-secondary'}>
                 {current().overdue ? `${euro(current().person._overdueAmount || 0)} ${t('home_fee_open', 'open')}` : translateStatusText(current().meta.text)}
               </span>
             </span>
             <Show when={current().overdue} fallback={<Icon name="chevronRight" size={16} strokeWidth={2.5} />}>
-              <span class="shrink-0 rounded-full bg-[#ef4444] px-3.5 py-[7px] text-[0.82rem] font-bold text-white">{t('home_fee_details', 'View')}</span>
+              <span class="shrink-0 rounded-full bg-[#ef4444] px-3.5 py-[7px] text-82 font-bold text-white">{t('home_fee_details', 'View')}</span>
             </Show>
           </div>
         </div>

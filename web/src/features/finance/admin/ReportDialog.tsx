@@ -62,7 +62,7 @@ const TIERS: { tier: ReportTier; label: [string, string] }[] = [
 /** A part of the settings. The parts that depend on the report type are blocks, as before: their title runs inline
  *  and the controls follow without a gap. */
 function Section(props: { title: string; for?: string; block?: boolean; children: JSX.Element }) {
-  const titleClass = 'text-[0.72rem] font-extrabold tracking-[0.06em] text-text-secondary uppercase';
+  const titleClass = 'text-72 font-extrabold tracking-[0.06em] text-text-secondary uppercase';
   return (
     <section class={props.block ? 'block' : 'flex flex-col gap-2.5'}>
       <Show when={props.for} fallback={<span class={[titleClass, { inline: !!props.block }]}>{props.title}</span>}>
@@ -77,7 +77,7 @@ function Section(props: { title: string; for?: string; block?: boolean; children
 
 function DateField(props: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label class="flex min-w-0 flex-col gap-1 text-[0.78rem] font-semibold text-text-secondary">
+    <label class="flex min-w-0 flex-col gap-1 text-78 font-semibold text-text-secondary">
       <span>{props.label}</span>
       <Input type="date" class="m-0 min-w-0" value={props.value} onChange={e => props.onChange(e.currentTarget.value)} />
     </label>
@@ -104,7 +104,7 @@ function Checklist() {
           const key = () => reportKey(tx, idx());
           return (
             <div
-              class="flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-[9px] text-[0.85rem] text-text hover:bg-surface"
+              class="flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-[9px] text-85 text-text hover:bg-surface"
               onClick={() => toggleReportTransaction(key())}
             >
               <input
@@ -119,7 +119,7 @@ function Checklist() {
               />
               <div class="flex flex-col">
                 <span class="font-semibold">{tx.who}</span>
-                <span class="text-[0.75rem] text-text-secondary">
+                <span class="text-75 text-text-secondary">
                   {tx.date ? formatDateFast(tx.date) : ''} &bull;{' '}
                   <span class={txColor(tx)}>
                     {txSign(tx)}
@@ -166,8 +166,8 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
                   >
                     {card.icon()}
                   </span>
-                  <span class="text-[0.9rem] font-bold text-text">{t(...card.title)}</span>
-                  <span class="hidden text-[0.75rem] leading-[1.35] text-text-secondary md:inline">{t(...card.desc)}</span>
+                  <span class="text-90 font-bold text-text">{t(...card.title)}</span>
+                  <span class="hidden text-75 leading-[1.35] text-text-secondary md:inline">{t(...card.desc)}</span>
                 </button>
               );
             }}
@@ -211,7 +211,7 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
               <Pill
                 chosen={reportTier() === tab.tier}
                 class={[
-                  'min-w-0 cursor-pointer truncate rounded-[9px] px-1.5 py-2 text-[0.84rem] font-bold',
+                  'min-w-0 cursor-pointer truncate rounded-[9px] px-1.5 py-2 text-85 font-bold',
                   reportTier() === tab.tier ? 'bg-surface text-text shadow-[0_1px_3px_rgba(28,25,23,0.12)]' : 'bg-transparent text-text-secondary'
                 ]}
                 onSelect={() => setReportTier(tab.tier)}
@@ -221,7 +221,7 @@ function ConfigPanel(props: { onTypeChange: () => void }) {
             )}
           </For>
         </Pills>
-        <span class="text-[0.78rem] text-text-secondary">{t(...REPORT_TIER_HINTS[reportTier()])}</span>
+        <span class="text-78 text-text-secondary">{t(...REPORT_TIER_HINTS[reportTier()])}</span>
       </Section>
     </div>
   );
@@ -287,12 +287,12 @@ function BookingRows(props: { tx: Transaction; tier: ReportTier }) {
             <Show when={tags().length}>
               <div>
                 <For each={tags()}>
-                  {tag => <span class="mr-[5px] inline-block rounded px-1.5 py-0.5 text-[0.75rem] bg-[#e0f2fe] text-[#0369a1]">{tag}</span>}
+                  {tag => <span class="mr-[5px] inline-block rounded px-1.5 py-0.5 text-75 bg-[#e0f2fe] text-[#0369a1]">{tag}</span>}
                 </For>
               </div>
             </Show>
             <Show when={props.tx.receipt}>
-              <div class="inline-flex items-center gap-1 text-[0.75rem] font-semibold text-[#0d9488]">
+              <div class="inline-flex items-center gap-1 text-75 font-semibold text-[#0d9488]">
                 <Icon name="paperclip" size={12} strokeWidth={2.5} />
                 <span>{t('report_receipt_attached', 'Receipt attached')}</span>
               </div>
@@ -393,7 +393,7 @@ function ReportPage(props: { selection: ReturnType<typeof selectReportTransactio
           <img class="size-10 object-contain" src="/assets/church-logo.svg" alt="" onError={e => e.currentTarget.remove()} />
           <span>{appName()}</span>
         </div>
-        <div class="text-right text-[0.85rem] text-[#718096]">
+        <div class="text-right text-85 text-[#718096]">
           <div class="text-[10px] font-bold tracking-[0.08em] text-[#94a3b8] uppercase">{t('report_created_on', 'Created on')}</div>
           <div class="text-[13px] font-bold text-[#334155]">{formatDateFast(getTodayStr())}</div>
         </div>
@@ -497,8 +497,8 @@ function ReportContent() {
           <Icon name="report" size={18} />
         </span>
         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span class="text-[1.15rem] font-extrabold text-text">{t('report_modal_title', 'Create financial report')}</span>
-          <span class="hidden text-[0.85rem] text-text-secondary md:block">
+          <span class="text-115 font-extrabold text-text">{t('report_modal_title', 'Create financial report')}</span>
+          <span class="hidden text-85 text-text-secondary md:block">
             {t('report_modal_subtitle', 'Choose the period and level of detail – the preview shows the PDF.')}
           </span>
         </span>
@@ -511,7 +511,7 @@ function ReportContent() {
           ref={viewport}
           class="flex flex-1 flex-col items-center justify-start gap-3 overflow-visible bg-bg px-4 pt-3.5 pb-5 md:overflow-x-hidden md:overflow-y-auto md:px-6 md:pt-[18px] md:pb-7"
         >
-          <div class="flex items-center justify-between self-stretch text-[0.72rem] font-extrabold tracking-[0.06em] text-text-secondary uppercase">
+          <div class="flex items-center justify-between self-stretch text-72 font-extrabold tracking-[0.06em] text-text-secondary uppercase">
             <span>{t('report_preview', 'Preview')}</span>
             <span class="rounded-full border border-border-light bg-surface px-2 py-0.5 tracking-[0.04em]">A4</span>
           </div>
@@ -556,7 +556,7 @@ function ReportContent() {
       </div>
 
       <div class="flex flex-col items-stretch gap-2.5 border-t border-border-light bg-surface px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] md:flex-row md:items-center md:justify-between md:gap-3 md:px-[22px] md:py-3.5">
-        <span class="min-w-0 text-center text-[0.82rem] font-bold text-text-secondary md:text-left md:text-[0.88rem]">
+        <span class="min-w-0 text-center text-82 font-bold text-text-secondary md:text-left md:text-88">
           {count() ? `${bookingsCount(count())} · ${t('report_balance', 'Balance')} ${signed(reportTotals(selection().filtered).net)}` : ''}
         </span>
         <div class="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-2.5 md:flex">

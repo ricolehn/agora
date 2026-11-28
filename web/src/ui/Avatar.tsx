@@ -15,7 +15,7 @@ export const RING_FRAME = 'rounded-full p-[3px] shadow-[0_2px_10px_rgba(48,38,26
 /**
  * A person's picture (.avatar): the initials on a soft violet-to-teal tint, the picture over them when the person has
  * one. size: the picture's diameter in px (40); the initials are 0.34 of it (initialsClass replaces that, e.g.
- * "text-[0.82rem]" for the 42px finance list). ring: the role ring around it (3px + a 2px gap: the whole is size + 6px).
+ * "text-82" for the 42px finance list). ring: the role ring around it (3px + a 2px gap: the whole is size + 6px).
  */
 export function Avatar(props: {
   uid?: string | null;

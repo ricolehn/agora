@@ -48,10 +48,10 @@ function FinanceHero(props: { person: Person }) {
           <PayStateIcon state={state()} size={26} />
         </span>
         <div class="w-full">
-          <div class="mb-0.5 text-[1.45rem] leading-[1.2] font-[750] tracking-[-0.025em] text-[var(--hero-accent)] dark:brightness-[0.92] dark:saturate-[0.75]">
+          <div class="mb-0.5 text-145 leading-[1.2] font-[750] tracking-[-0.025em] text-[var(--hero-accent)] dark:brightness-[0.92] dark:saturate-[0.75]">
             {translateStatusText(meta().text)}
           </div>
-          <div class="text-[0.92rem] font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text">
+          <div class="text-92 font-medium text-text-secondary [&_strong]:font-bold [&_strong]:text-text">
             <Show when={!standingOrderCovers(meta())} fallback={t('user_standing_order_active', 'Standing order active')}>
               {t('user_paid_until', 'Paid until')} <strong>{paidUntilText(props.person._paidUntil)}</strong>
             </Show>
@@ -60,8 +60,8 @@ function FinanceHero(props: { person: Person }) {
       </div>
       <Show when={meta().isOverdue}>
         <div class="mb-3.5 rounded-2xl border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.1)] px-4 py-3 text-left">
-          <div class="mb-1 text-[0.82rem] font-semibold text-danger">{t('user_open_amount', 'Outstanding amount')}</div>
-          <div class="text-[1.6rem] font-extrabold text-danger">{euro(props.person._overdueAmount || 0)}</div>
+          <div class="mb-1 text-82 font-semibold text-danger">{t('user_open_amount', 'Outstanding amount')}</div>
+          <div class="text-160 font-extrabold text-danger">{euro(props.person._overdueAmount || 0)}</div>
         </div>
       </Show>
       <FeeChips
@@ -88,9 +88,9 @@ function FinanceHero(props: { person: Person }) {
 function NonPayingCard() {
   return (
     <div class="mb-5 rounded-[20px] border-2 border-border bg-[rgba(16,185,129,0.05)] px-5 py-[25px] text-center shadow-card">
-      <div class="mb-2 text-[2rem]">👤</div>
-      <h2 class="mb-[5px] text-[1.25rem] font-extrabold text-text">{t('user_account_non_paying_title', 'User Account')}</h2>
-      <div class="text-[0.95rem] text-text-secondary">{t('user_account_non_paying_desc', 'Active user account (No contribution required)')}</div>
+      <div class="mb-2 text-200">👤</div>
+      <h2 class="mb-[5px] text-125 font-extrabold text-text">{t('user_account_non_paying_title', 'User Account')}</h2>
+      <div class="text-95 text-text-secondary">{t('user_account_non_paying_desc', 'Active user account (No contribution required)')}</div>
     </div>
   );
 }
@@ -145,7 +145,7 @@ const ACTIONS: Array<{ kind: string; color: string; title: [string, string]; ico
 function RequestActions(props: { class?: string }) {
   return (
     <section class={['mt-[22px] mb-6', props.class]} aria-labelledby="req-actions-title">
-      <h2 id="req-actions-title" class="mb-2.5 ml-0.5 text-[1.05rem] font-bold tracking-[-0.015em] text-text">
+      <h2 id="req-actions-title" class="mb-2.5 ml-0.5 text-105 font-bold tracking-[-0.015em] text-text">
         {t('req_actions_title', 'What would you like to submit?')}
       </h2>
       <div class="grid grid-cols-3 gap-2.5">
@@ -165,7 +165,7 @@ function RequestActions(props: { class?: string }) {
                 {action.icon()}
               </span>
               <span class="flex min-w-0 flex-1 flex-col items-center gap-0.5 md:items-start">
-                <span class="text-[0.8rem] leading-[1.25] font-[650] tracking-[-0.01em] text-text md:text-[0.9rem]">{t(...action.title)}</span>
+                <span class="text-80 leading-[1.25] font-[650] tracking-[-0.01em] text-text md:text-90">{t(...action.title)}</span>
               </span>
             </button>
           )}
@@ -198,9 +198,9 @@ function MyRequestRow(props: { req: FinanceRequest }) {
       <span class="flex min-w-0 flex-1 flex-col gap-px">
         <span class="flex min-w-0 items-center gap-2">
           <span class="min-w-0 flex-1 truncate font-extrabold text-text">{requestTypeLabel(props.req)}</span>
-          <span class="shrink-0 text-[0.95rem] font-extrabold text-text">{requestAmount(props.req)}</span>
+          <span class="shrink-0 text-95 font-extrabold text-text">{requestAmount(props.req)}</span>
         </span>
-        <span class="inline-flex items-center gap-1.5 text-[0.72rem] font-extrabold text-[var(--state-color)]">
+        <span class="inline-flex items-center gap-1.5 text-72 font-extrabold text-[var(--state-color)]">
           <span class="size-[7px] shrink-0 rounded-full bg-[var(--state-color)]" />
           {requestStateLabel(props.req)}
           {props.req.timestamp ? ` · ${formatDateFast(props.req.timestamp)}` : ''}
@@ -211,7 +211,7 @@ function MyRequestRow(props: { req: FinanceRequest }) {
         </span>
         <Show when={text()}>
           <span class="flex min-w-0 items-center gap-2">
-            <span class={['min-w-0 flex-1 truncate text-[0.9rem]', props.req.status === 'rejected' ? 'text-danger' : 'text-text']}>{text()}</span>
+            <span class={['min-w-0 flex-1 truncate text-90', props.req.status === 'rejected' ? 'text-danger' : 'text-text']}>{text()}</span>
           </span>
         </Show>
       </span>
@@ -232,7 +232,7 @@ function MyRequests(props: { class?: string }) {
           <div class="flex flex-col items-center gap-1.5 rounded-[18px] border border-dashed border-border bg-surface px-[18px] py-[22px] text-center text-text-secondary">
             <Icon name="fileText" size={22} />
             <span class="font-extrabold text-text">{t('user_no_requests_title', 'No requests yet')}</span>
-            <span class="max-w-[360px] text-[0.88rem]">{t('user_no_requests_hint', 'Above you can report a payment, submit an expense or change your status.')}</span>
+            <span class="max-w-[360px] text-88">{t('user_no_requests_hint', 'Above you can report a payment, submit an expense or change your status.')}</span>
           </div>
         }
       >
@@ -242,7 +242,7 @@ function MyRequests(props: { class?: string }) {
               <Icon name="fileText" size={18} />
             </span>
             <span class="font-extrabold text-text">{t('user_requests_title', 'My Requests')}</span>
-            <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-text-secondary px-[7px] text-[0.75rem] leading-none font-extrabold text-white">
+            <span class="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-text-secondary px-[7px] text-75 leading-none font-extrabold text-white">
               {badgeText(mine().length)}
             </span>
           </div>

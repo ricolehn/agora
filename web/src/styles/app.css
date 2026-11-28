@@ -153,6 +153,35 @@
     --background-image-gradient-hover: var(--gradient-hover);
 }
 @theme {
+    /* The type scale: text-85 is 0.85rem (the size alone - the line height stays the element's own). The sizes of the
+       previous app, each within 0.02rem of its step */
+    --text-56: 0.56rem;
+    --text-62: 0.62rem;
+    --text-66: 0.66rem;
+    --text-70: 0.7rem;
+    --text-72: 0.72rem;
+    --text-75: 0.75rem;
+    --text-78: 0.78rem;
+    --text-80: 0.8rem;
+    --text-82: 0.82rem;
+    --text-85: 0.85rem;
+    --text-88: 0.88rem;
+    --text-90: 0.9rem;
+    --text-92: 0.92rem;
+    --text-95: 0.95rem;
+    --text-100: 1rem;
+    --text-105: 1.05rem;
+    --text-110: 1.1rem;
+    --text-115: 1.15rem;
+    --text-120: 1.2rem;
+    --text-125: 1.25rem;
+    --text-130: 1.3rem;
+    --text-145: 1.45rem;
+    --text-160: 1.6rem;
+    --text-180: 1.8rem;
+    --text-200: 2rem;
+    --text-220: 2.2rem;
+
     /* The widths the layout changes at (those of the previous app): max-mini: small phones, max-phone: / phone:
        phones, phablet: large phones, sm:, md: phone and desktop, lg:, wide: and max-xl: the widths of the desktop */
     --breakpoint-mini: 480px;

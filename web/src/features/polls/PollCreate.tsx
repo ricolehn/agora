@@ -144,14 +144,14 @@ export function PollCreateModal() {
           <button
             type="button"
             id="poll-add-option"
-            class="inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-[13px] border-[1.5px] border-dashed border-border bg-transparent text-[0.92rem] font-bold text-text-secondary hover:border-primary hover:text-primary"
+            class="inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-[13px] border-[1.5px] border-dashed border-border bg-transparent text-92 font-bold text-text-secondary hover:border-primary hover:text-primary"
             onClick={() => setOptions(list => [...list, ''])}
           >
             <Icon name="plus" size={16} strokeWidth={2.5} />
             <span>{t('polls_add_option2', 'Add answer')}</span>
           </button>
         </Show>
-        <label class="inline-flex cursor-pointer items-center gap-2 self-start rounded-full bg-[var(--pe-field)] px-3.5 py-[7px] text-[0.86rem] font-semibold text-text">
+        <label class="inline-flex cursor-pointer items-center gap-2 self-start rounded-full bg-[var(--pe-field)] px-3.5 py-[7px] text-85 font-semibold text-text">
           <input
             type="checkbox"
             id="poll-multiple"
@@ -169,7 +169,7 @@ export function PollCreateModal() {
               <button
                 type="button"
                 class={[
-                  'rounded-full border px-3.5 py-[7px] text-[0.84rem] font-bold',
+                  'rounded-full border px-3.5 py-[7px] text-85 font-bold',
                   durationDays() === chip.days ? 'border-primary bg-primary text-white' : 'border-border-light bg-[var(--pe-field)] text-text-secondary'
                 ]}
                 onClick={() => setPollDuration(chip.days)}

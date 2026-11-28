@@ -43,7 +43,7 @@ export function PollDetailModal() {
       subtitle={poll() ? `${pollTimeLabel(poll()!)} · ${pollVotes(poll()!)}` : ''}
       icon={<Icon name="poll" size={20} />}
       // The poll badge (.poll-modal-badge) is larger than the dialogs' usual one
-      iconClass="size-[42px] rounded-[13px] text-[1rem] bg-surface-alt text-text-secondary"
+      iconClass="size-[42px] rounded-[13px] text-100 bg-surface-alt text-text-secondary"
       maxWidth="520px"
     >
       <Show when={poll()}>{current => <PollBody poll={current()} />}</Show>
@@ -57,7 +57,7 @@ function MyChoiceNote(props: { poll: Poll }) {
     (myPollChoice(props.poll.id) || []).map(id => props.poll.options.find(o => o.id === id)?.text).filter(Boolean).join(', ');
   return (
     <Show when={texts()}>
-      <p class="mt-2.5 mb-0 text-[0.85rem] text-text-secondary">
+      <p class="mt-2.5 mb-0 text-85 text-text-secondary">
         {t('polls_my_choice', 'Your choice (only saved on this device): {choice}', { choice: texts() })}
       </p>
     </Show>
@@ -108,7 +108,7 @@ function PollBody(props: { poll: Poll }) {
   return (
     <>
       <Show when={props.poll.description}>
-        <p class="mt-0 mb-3.5 text-[0.92rem] leading-normal whitespace-pre-wrap text-text-secondary [overflow-wrap:anywhere]">{props.poll.description}</p>
+        <p class="mt-0 mb-3.5 text-92 leading-normal whitespace-pre-wrap text-text-secondary [overflow-wrap:anywhere]">{props.poll.description}</p>
       </Show>
       <Switch>
         <Match when={!props.poll.closed && !props.poll.hasVoted}>
@@ -146,9 +146,9 @@ function PollBody(props: { poll: Poll }) {
             </For>
           </fieldset>
           <Show when={props.poll.multiple}>
-            <p class="mt-2 mb-0 text-[0.8rem] text-text-secondary">{t('polls_multiple_hint', 'Several answers possible.')}</p>
+            <p class="mt-2 mb-0 text-80 text-text-secondary">{t('polls_multiple_hint', 'Several answers possible.')}</p>
           </Show>
-          <p class="mt-3.5 mb-0 flex items-center gap-1.5 text-[0.8rem] text-text-secondary">
+          <p class="mt-3.5 mb-0 flex items-center gap-1.5 text-80 text-text-secondary">
             <Icon name="shield" class="text-[#10b981]" />
             {t('polls_anon_note', 'Your choice is only counted – nobody in the app can see what you chose.')}
           </p>
@@ -157,14 +157,14 @@ function PollBody(props: { poll: Poll }) {
           </Button>
         </Match>
         <Match when={!props.poll.closed}>
-          <div class="flex items-center gap-2.5 rounded-[14px] bg-surface-alt p-3.5 text-[0.9rem] leading-[1.45] text-text">
+          <div class="flex items-center gap-2.5 rounded-[14px] bg-surface-alt p-3.5 text-90 leading-[1.45] text-text">
             <Icon name="check" size={20} strokeWidth={2.6} class="shrink-0 text-[#10b981]" />
             <span>
               {t('polls_voted_wait', 'You have voted. The result appears on {date} at {time}.', { date: pollEndDate(props.poll), time: pollEndTime(props.poll) })}
             </span>
           </div>
           <MyChoiceNote poll={props.poll} />
-          <ul class="mt-3 mb-0 list-disc pl-5 text-[0.9rem] text-text-secondary">
+          <ul class="mt-3 mb-0 list-disc pl-5 text-90 text-text-secondary">
             <For each={props.poll.options} keyed={false}>{option => <li>{option().text}</li>}</For>
           </ul>
         </Match>
@@ -172,7 +172,7 @@ function PollBody(props: { poll: Poll }) {
           {results => <PollResults poll={props.poll} counts={results().counts} />}
         </Match>
         <Match when={true}>
-          <div class="flex items-center gap-2.5 rounded-[14px] bg-surface-alt p-3.5 text-[0.9rem] leading-[1.45] text-text-secondary">
+          <div class="flex items-center gap-2.5 rounded-[14px] bg-surface-alt p-3.5 text-90 leading-[1.45] text-text-secondary">
             <Icon name="shield" size={20} />
             <span>{t('polls_too_few', 'Too few votes: with fewer than three votes the result stays secret so nobody can draw conclusions.')}</span>
           </div>
@@ -225,7 +225,7 @@ function PollResults(props: { poll: Poll; counts: Record<string, number> }) {
                   style={{ width: `${shares()[option().id]}%` }}
                 />
                 <span class="relative min-w-0 flex-1 font-bold [overflow-wrap:anywhere]">{option().text}</span>
-                <span class={['relative shrink-0 text-[0.85rem] font-extrabold', top() ? 'text-text' : 'text-text-secondary']}>
+                <span class={['relative shrink-0 text-85 font-extrabold', top() ? 'text-text' : 'text-text-secondary']}>
                   {shares()[option().id]}% · {count(option().id)}
                 </span>
               </div>
@@ -235,7 +235,7 @@ function PollResults(props: { poll: Poll; counts: Record<string, number> }) {
       </div>
       <MyChoiceNote poll={props.poll} />
       <Show when={props.poll.multiple}>
-        <p class="mt-2 mb-0 text-[0.8rem] text-text-secondary">{t('polls_multiple_result_hint', 'Multiple choice: share of participants who chose the answer.')}</p>
+        <p class="mt-2 mb-0 text-80 text-text-secondary">{t('polls_multiple_result_hint', 'Multiple choice: share of participants who chose the answer.')}</p>
       </Show>
     </>
   );

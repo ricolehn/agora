@@ -22,10 +22,10 @@ export function ViewerTop(props: { id: string; modal: string; name: string; meta
   return (
     <div class="relative z-[2] flex items-center gap-1.5 bg-[linear-gradient(rgba(0,0,0,0.55),rgba(0,0,0,0))] pt-[calc(10px+env(safe-area-inset-top,0px))] pr-3 pb-2.5 pl-[18px]">
       <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span id={`${props.id}-name`} class="truncate text-[0.95rem] font-bold">
+        <span id={`${props.id}-name`} class="truncate text-95 font-bold">
           {props.name}
         </span>
-        <span id={`${props.id}-meta`} class="text-[0.76rem] text-[rgba(245,245,244,0.65)]">
+        <span id={`${props.id}-meta`} class="text-75 text-[rgba(245,245,244,0.65)]">
           {props.meta}
         </span>
       </div>

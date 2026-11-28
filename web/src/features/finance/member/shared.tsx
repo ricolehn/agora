@@ -12,7 +12,7 @@ import { Input } from '../../../ui/form';
 export function AmountInput(props: { id: string; value: string; onInput: (value: string) => void; invalid?: boolean }) {
   return (
     <div class="relative flex items-center">
-      <span class="pointer-events-none absolute left-3 text-[1.1rem] leading-none font-bold text-primary">€</span>
+      <span class="pointer-events-none absolute left-3 text-110 leading-none font-bold text-primary">€</span>
       <Input
         id={props.id}
         type="text"
@@ -21,7 +21,7 @@ export function AmountInput(props: { id: string; value: string; onInput: (value:
         value={props.value}
         invalid={props.invalid}
         // Bigger and bold, room for the sign; it keeps the surface even with the error frame (as before)
-        class="!h-[38px] !bg-surface !pl-7 !text-[1.15rem] font-bold tracking-[-0.01em]"
+        class="!h-[38px] !bg-surface !pl-7 !text-115 font-bold tracking-[-0.01em]"
         onInput={e => props.onInput(e.currentTarget.value)}
       />
     </div>
@@ -74,9 +74,9 @@ export function createPendingFiles() {
 export function ReceiptDropzone(props: { id: string; onChange: (input: HTMLInputElement) => void }) {
   return (
     <div class="relative cursor-pointer rounded-[10px] border-[1.5px] border-dashed border-border bg-surface px-3 py-2 text-center transition-[transform,opacity,box-shadow,background-color,border-color,color] duration-200 hover:border-primary hover:bg-brand/4">
-      <div class="mb-px text-[1.05rem] text-text-secondary">📁</div>
-      <div class="text-[0.78rem] font-semibold text-text">{t('modal_expense_receipt_text', 'Select a receipt or drag it here')}</div>
-      <div class="mt-px text-[0.68rem] text-text-secondary">JPG, PNG, HEIC, PDF</div>
+      <div class="mb-px text-105 text-text-secondary">📁</div>
+      <div class="text-78 font-semibold text-text">{t('modal_expense_receipt_text', 'Select a receipt or drag it here')}</div>
+      <div class="mt-px text-66 text-text-secondary">JPG, PNG, HEIC, PDF</div>
       <input
         type="file"
         id={props.id}
@@ -107,7 +107,7 @@ export function PendingFileList(props: { files: PendingFile[]; onRemove: (index:
               >
                 {url => <img src={url()} alt={t('receipt', 'Receipt')} class="size-10 rounded-lg border border-border object-cover" />}
               </Show>
-              <span class="truncate text-[0.85rem] font-semibold text-text">{entry.file.name}</span>
+              <span class="truncate text-85 font-semibold text-text">{entry.file.name}</span>
             </div>
             <div class="flex gap-1.5">
               <Button variant="danger" size="small" class="rounded-lg p-1.5" title={t('btn_remove', 'Remove')} onClick={() => props.onRemove(index())}>
@@ -141,7 +141,7 @@ export function createRequired<K extends string>() {
 
 /** The text below a field (the status dialogs' note, the end of a standing order). */
 export function FieldNote(props: { class?: string; children?: JSX.Element }) {
-  return <div class={['text-[0.75rem] leading-[1.35] text-text-secondary', props.class]}>{props.children}</div>;
+  return <div class={['text-75 leading-[1.35] text-text-secondary', props.class]}>{props.children}</div>;
 }
 
 export const newId = () => Date.now().toString();

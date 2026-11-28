@@ -28,7 +28,7 @@ export function Label(props: { for?: string; id?: string; class?: string; childr
     <label
       for={props.for}
       id={props.id}
-      class={['block font-semibold text-text-secondary', inDialog ? 'mb-[3px] text-[0.78rem]' : 'mb-1.5 text-[0.85rem]', props.class]}
+      class={['block font-semibold text-text-secondary', inDialog ? 'mb-[3px] text-78' : 'mb-1.5 text-85', props.class]}
     >
       {props.children}
     </label>
@@ -47,7 +47,7 @@ export function Field(props: { label?: JSX.Element; for?: string; hint?: JSX.Ele
       </Show>
       {props.children}
       <Show when={props.hint}>
-        <div class="mt-[5px] text-[0.75rem] leading-[1.35] text-text-secondary">{props.hint}</div>
+        <div class="mt-[5px] text-75 leading-[1.35] text-text-secondary">{props.hint}</div>
       </Show>
     </div>
   );
@@ -58,10 +58,10 @@ export function Field(props: { label?: JSX.Element; for?: string; hint?: JSX.Ele
 const CONTROL =
   'weak:w-full text-text outline-none [transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)] ' +
   'hover:not-focus:border-[rgba(48,38,26,0.24)] focus:border-primary dark:border-white/12 dark:hover:not-focus:border-[rgba(48,38,26,0.24)] dark:focus:border-primary';
-const ON_PAGE = 'weak:rounded-[12px] border weak:border-[rgba(48,38,26,0.14)] weak:bg-surface-alt weak:p-3 weak:text-[1rem] focus:bg-surface focus:shadow-ring';
+const ON_PAGE = 'weak:rounded-[12px] border weak:border-[rgba(48,38,26,0.14)] weak:bg-surface-alt weak:p-3 weak:text-100 focus:bg-surface focus:shadow-ring';
 // Inside a dialog's body: smaller, on the dialog's surface, a finer ring
 const IN_DIALOG =
-  'weak:rounded-[9px] border-[1.5px] border-border weak:bg-surface weak:px-[11px] weak:py-2 weak:text-[0.9rem] focus:shadow-[0_0_0_2px_rgba(var(--brand-rgb),0.12)]';
+  'weak:rounded-[9px] border-[1.5px] border-border weak:bg-surface weak:px-[11px] weak:py-2 weak:text-90 focus:shadow-[0_0_0_2px_rgba(var(--brand-rgb),0.12)]';
 // .input-error: red frame and a short shake (set it again to shake again)
 const INVALID = '!border-danger !bg-[rgba(239,68,68,0.05)] animate-shake';
 
@@ -160,7 +160,7 @@ export function SwitchRow(props: { id: string; checked: boolean; onChange: (chec
   return (
     <div class={['flex items-center', props.small ? 'gap-2 py-0.5' : 'gap-2.5', props.class ?? (props.small ? '' : 'mb-[15px]')]}>
       <Switch id={props.id} size={props.small ? 'sm' : undefined} checked={props.checked} onChange={checked => props.onChange(checked)} />
-      <label for={props.id} class={['m-0 cursor-pointer font-semibold', { 'text-[0.85rem] text-text': props.small }]}>
+      <label for={props.id} class={['m-0 cursor-pointer font-semibold', { 'text-85 text-text': props.small }]}>
         {props.label}
       </label>
     </div>

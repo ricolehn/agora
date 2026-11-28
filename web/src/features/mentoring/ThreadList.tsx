@@ -29,7 +29,7 @@ export function ThreadSidebar() {
   );
 }
 
-const PILL = 'inline-flex max-w-full items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-md border px-2 py-0.5 text-[0.7rem] font-semibold leading-[1.35]';
+const PILL = 'inline-flex max-w-full items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-md border px-2 py-0.5 text-70 font-semibold leading-[1.35]';
 
 function ThreadItem(props: { thread: Thread }) {
   const row = createMemo(() => threadRow(props.thread));
@@ -77,7 +77,7 @@ function ThreadItem(props: { thread: Thread }) {
       onKeyDown={e => onActivateKey(e, () => void openMentoringThread(props.thread.id))}
     >
       <div class="relative shrink-0">
-        <Show when={row().isMentor} fallback={<Avatar uid={props.thread.mentor} name={row().name} size={46} initialsClass="text-[0.88rem]" />}>
+        <Show when={row().isMentor} fallback={<Avatar uid={props.thread.mentor} name={row().name} size={46} initialsClass="text-88" />}>
           <div
             class="relative flex size-[46px] items-center justify-center overflow-hidden rounded-full border border-brand/25 bg-brand/12 text-primary-dark dark:border-[rgba(34,211,238,0.35)] dark:bg-[rgba(34,211,238,0.18)] dark:text-brand"
             title={row().name}
@@ -92,16 +92,16 @@ function ThreadItem(props: { thread: Thread }) {
       </div>
       <div class="flex min-w-0 flex-1 flex-col gap-[3px]">
         <div class="flex items-baseline justify-between gap-2">
-          <div class={['truncate text-[0.95rem] text-text', unread() ? 'font-extrabold' : 'font-bold']} title={row().name}>
+          <div class={['truncate text-95 text-text', unread() ? 'font-extrabold' : 'font-bold']} title={row().name}>
             {row().name}
           </div>
-          <div class="shrink-0 text-[0.75rem] font-medium text-text-secondary">{row().date}</div>
+          <div class="shrink-0 text-75 font-medium text-text-secondary">{row().date}</div>
         </div>
         <div class="flex items-center gap-1.5">
           <span class={[PILL, pillTone()]}>{row().pill}</span>
         </div>
         <div class="flex items-center justify-between gap-1.5">
-          <div class={['flex-1 truncate text-[0.82rem]', unread() ? 'font-semibold text-text' : 'text-text-secondary']} title={row().snippet}>
+          <div class={['flex-1 truncate text-82', unread() ? 'font-semibold text-text' : 'text-text-secondary']} title={row().snippet}>
             {row().snippet}
           </div>
           <Show when={unread()}>
@@ -116,9 +116,9 @@ function ThreadItem(props: { thread: Thread }) {
 function EmptyThreads() {
   return (
     <div class="mx-auto my-2 flex w-full flex-col items-center justify-center rounded-[18px] border border-border-light bg-surface px-5 py-9 text-center text-text-secondary shadow-card">
-      <div class="mb-2 text-[2.2rem] opacity-85">💬</div>
-      <div class="mb-1 text-[0.95rem] font-bold text-text">{t('mentoring_no_threads_title', 'No active conversations')}</div>
-      <div class="mb-3.5 max-w-[240px] text-[0.8rem] leading-[1.4] text-text-secondary">
+      <div class="mb-2 text-220 opacity-85">💬</div>
+      <div class="mb-1 text-95 font-bold text-text">{t('mentoring_no_threads_title', 'No active conversations')}</div>
+      <div class="mb-3.5 max-w-[240px] text-80 leading-[1.4] text-text-secondary">
         {t('mentoring_no_threads_desc', 'Contact a mentor to start a confidential conversation.')}
       </div>
       <Button variant="secondary" size="small" onClick={() => switchMentoringSubTab('find')}>

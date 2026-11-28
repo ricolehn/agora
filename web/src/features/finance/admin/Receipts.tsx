@@ -108,7 +108,7 @@ function ReceiptCard(props: { url: string; filename: string }) {
         fallback={
           <div class="flex min-w-0 items-center gap-2.5">
             <PdfThumb />
-            <span class="truncate text-[0.85rem] font-semibold text-text">{props.filename}</span>
+            <span class="truncate text-85 font-semibold text-text">{props.filename}</span>
           </div>
         }
       >
@@ -184,7 +184,7 @@ export function ReceiptList(props: ReceiptListProps) {
     <div
       class={[
         danger ? 'text-danger' : 'text-text-secondary',
-        details() ? ['text-center', { 'text-[0.9rem]': !danger }] : 'mt-2.5 text-[0.8rem]'
+        details() ? ['text-center', { 'text-90': !danger }] : 'mt-2.5 text-80'
       ]}
     >
       {text}
@@ -194,7 +194,7 @@ export function ReceiptList(props: ReceiptListProps) {
     <Switch>
       <Match when={receipts().status === 'loading'}>
         <Spinner class={details() ? 'mx-auto my-5' : 'mx-auto my-2.5'} />
-        <div class={['text-center', { 'text-[0.8rem] text-text-secondary': !details() }]}>{t('loading_receipts', 'Loading receipt(s)...')}</div>
+        <div class={['text-center', { 'text-80 text-text-secondary': !details() }]}>{t('loading_receipts', 'Loading receipt(s)...')}</div>
       </Match>
       <Match when={receipts().status === 'error'}>{note(t('error_loading_receipts', 'Receipt(s) could not be loaded.'), true)}</Match>
       <Match when={!filenames().length}>{note(t('no_receipts', 'No receipts available.'))}</Match>
@@ -216,7 +216,7 @@ export function ReceiptFileRow(props: { preview: JSX.Element; name: string; mute
     <div class="flex items-center justify-between gap-2.5 rounded-xl border border-border bg-surface-alt px-3 py-2 transition-transform duration-200">
       <div class="flex min-w-0 flex-1 items-center gap-2.5">
         {props.preview}
-        <span class={['truncate text-[0.85rem]', props.muted ? 'text-text-secondary' : 'font-semibold text-text']}>{props.name}</span>
+        <span class={['truncate text-85', props.muted ? 'text-text-secondary' : 'font-semibold text-text']}>{props.name}</span>
       </div>
       <Show when={props.actions}>
         <div class="flex gap-1.5">{props.actions}</div>

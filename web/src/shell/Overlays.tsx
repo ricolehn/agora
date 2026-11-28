@@ -25,7 +25,7 @@ export function LoadingOverlay() {
         <div id="loading-message" class="mt-5 font-semibold text-text">
           {loading().message || t('loading', 'Loading data...')}
         </div>
-        <div class="absolute bottom-5 text-[0.7rem] font-medium text-[#a8a29e]">{appName()} &copy; 2026</div>
+        <div class="absolute bottom-5 text-70 font-medium text-[#a8a29e]">{appName()} &copy; 2026</div>
       </div>
     </Show>
   );

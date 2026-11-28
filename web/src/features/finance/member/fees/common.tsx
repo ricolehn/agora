@@ -53,8 +53,8 @@ export function FeeCardHead(props: { icon: JSX.Element; tone: 'success' | 'warni
         {props.icon}
       </span>
       <div class="min-w-0">
-        <h3 class="m-0 mb-[3px] text-[1rem] font-bold tracking-[-0.01em] text-text">{props.title}</h3>
-        <p class="m-0 text-[0.84rem] leading-normal text-text-secondary">{props.desc}</p>
+        <h3 class="m-0 mb-[3px] text-100 font-bold tracking-[-0.01em] text-text">{props.title}</h3>
+        <p class="m-0 text-85 leading-normal text-text-secondary">{props.desc}</p>
       </div>
     </div>
   );
@@ -63,7 +63,7 @@ export function FeeCardHead(props: { icon: JSX.Element; tone: 'success' | 'warni
 /** The quiet line below a card's controls (.fee-reset-form-hint). */
 export function FormHint(props: { id?: string; children?: JSX.Element }) {
   return (
-    <p id={props.id} class="mt-2 text-[0.8rem] leading-[1.45] text-text-secondary">
+    <p id={props.id} class="mt-2 text-80 leading-[1.45] text-text-secondary">
       {props.children}
     </p>
   );
@@ -74,7 +74,7 @@ export function FeeLog<E extends { byName?: string; at?: number }>(props: { id: 
   const lines = () => [...props.entries].reverse().slice(0, 10);
   return (
     <Show when={lines().length > 0}>
-      <details id={props.id} class="mt-3.5 text-[0.8rem] text-text-secondary">
+      <details id={props.id} class="mt-3.5 text-80 text-text-secondary">
         <summary class="cursor-pointer font-semibold">{t('fee_reset_log_title', 'Changes')}</summary>
         <ul class="mt-2 flex flex-col gap-1.5 p-0">
           {/* By position: every load of the data brings the log anew (fresh objects for the same lines) */}
@@ -109,9 +109,9 @@ export function ImpactTile(props: { side: ImpactSide; label: string; tone: 'dang
       ]}
       style={{ '--tone': props.side.count ? `var(--${props.tone})` : 'var(--text-secondary)' }}
     >
-      <span class="text-[1.2rem] font-[750] tracking-[-0.02em] text-[color-mix(in_srgb,var(--tone)_78%,var(--text))] tabular-nums">{euro(props.side.total)}</span>
-      <span class="text-[0.8rem] font-semibold text-text">{props.label}</span>
-      <span class="text-[0.76rem] text-text-secondary">{membersText(props.side.count)}</span>
+      <span class="text-120 font-[750] tracking-[-0.02em] text-[color-mix(in_srgb,var(--tone)_78%,var(--text))] tabular-nums">{euro(props.side.total)}</span>
+      <span class="text-80 font-semibold text-text">{props.label}</span>
+      <span class="text-75 text-text-secondary">{membersText(props.side.count)}</span>
     </div>
   );
 }
@@ -119,7 +119,7 @@ export function ImpactTile(props: { side: ImpactSide; label: string; tone: 'dang
 /** A few short lines below the numbers (.fee-reset-facts). */
 export function Facts(props: { facts: string[] }) {
   return (
-    <ul class="mt-0.5 flex list-disc flex-col gap-[5px] pl-[18px] text-[0.84rem] leading-[1.45] text-text-secondary">
+    <ul class="mt-0.5 flex list-disc flex-col gap-[5px] pl-[18px] text-85 leading-[1.45] text-text-secondary">
       <For each={props.facts.filter(Boolean)}>{fact => <li>{fact}</li>}</For>
     </ul>
   );

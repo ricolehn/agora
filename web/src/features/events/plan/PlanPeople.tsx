@@ -37,11 +37,11 @@ export function PlanPerson(props: { duty: Duty }) {
   return (
     <span class="inline-flex min-w-0 items-center gap-1.5">
       <Show when={!person().group} fallback={<GroupBadge />}>
-        <Avatar uid={person().uid} name={person().name} size={20} initialsClass="text-[0.55rem]" />
+        <Avatar uid={person().uid} name={person().name} size={20} initialsClass="text-56" />
       </Show>
       <span class={['truncate', { 'text-text-secondary line-through': props.duty.status === 'declined' }]}>{person().name}</span>
       <Show when={person().state}>
-        <em class={['text-[0.74rem] font-bold not-italic', props.duty.status === 'declined' ? 'text-danger' : 'text-[#d97706]']}>{person().state}</em>
+        <em class={['text-75 font-bold not-italic', props.duty.status === 'declined' ? 'text-danger' : 'text-[#d97706]']}>{person().state}</em>
       </Show>
     </span>
   );
@@ -53,29 +53,29 @@ export function PlanNames(props: { duties: Duty[] }) {
   // More than three: the first two and "+n"
   const shown = () => (people().length > 3 ? people().slice(0, 2) : people());
   return (
-    <Show when={people().length} fallback={<span class="text-[0.8rem] text-text-secondary opacity-80">{t('plan_open_short', 'open')}</span>}>
+    <Show when={people().length} fallback={<span class="text-80 text-text-secondary opacity-80">{t('plan_open_short', 'open')}</span>}>
       <For each={shown()} keyed={d => d.id}>
         {d => {
           const person = () => dutyPerson(d());
           const declined = () => d().status === 'declined';
           return (
             <span
-              class="inline-flex items-center gap-[5px] whitespace-nowrap text-[0.82rem] font-semibold"
+              class="inline-flex items-center gap-[5px] whitespace-nowrap text-82 font-semibold"
               title={person().state ? `${person().name} · ${person().state}` : person().name}
             >
               <Show when={!person().group} fallback={<GroupBadge class="size-[18px]" />}>
-                <Avatar uid={person().uid} name={person().name} size={18} initialsClass="text-[0.55rem]" />
+                <Avatar uid={person().uid} name={person().name} size={18} initialsClass="text-56" />
               </Show>
               <span class={{ 'text-text-secondary line-through': declined() }}>{person().group ? person().name : person().name.split(/\s+/)[0]}</span>
               <Show when={person().state}>
-                <em class={['text-[0.74rem] font-bold not-italic', declined() ? 'text-danger' : 'text-[#d97706]']}>{person().state}</em>
+                <em class={['text-75 font-bold not-italic', declined() ? 'text-danger' : 'text-[#d97706]']}>{person().state}</em>
               </Show>
             </span>
           );
         }}
       </For>
       <Show when={people().length > 3}>
-        <span class="inline-flex items-center whitespace-nowrap text-[0.82rem] font-semibold text-text-secondary">+{people().length - 2}</span>
+        <span class="inline-flex items-center whitespace-nowrap text-82 font-semibold text-text-secondary">+{people().length - 2}</span>
       </Show>
     </Show>
   );
@@ -96,7 +96,7 @@ export function PlanAnswer(props: { duties: Duty[]; onAnswered?: () => void }) {
   return (
     <Show when={mine()}>
       {duty => (
-        <span class="mt-1 flex flex-col items-start gap-1.5 text-[0.8rem] font-bold text-[#b45309] dark:text-[#fbbf24]">
+        <span class="mt-1 flex flex-col items-start gap-1.5 text-80 font-bold text-[#b45309] dark:text-[#fbbf24]">
           <span>{t('duty_you_were_requested', 'You have been requested')}</span>
           <span class="flex flex-wrap gap-1.5">
             <Button size="tiny" onClick={e => void answer(e, duty().id, 'accept')}>
@@ -118,7 +118,7 @@ export function ChosenPerson(props: { uid?: string; group?: boolean; label: stri
   return (
     <span class="inline-flex min-w-0 items-center gap-1.5">
       <Show when={!props.group} fallback={<GroupBadge />}>
-        <Avatar uid={props.uid} name={props.label} size={20} initialsClass="text-[0.55rem]" />
+        <Avatar uid={props.uid} name={props.label} size={20} initialsClass="text-56" />
       </Show>
       <span class="truncate">{props.label}</span>
     </span>
