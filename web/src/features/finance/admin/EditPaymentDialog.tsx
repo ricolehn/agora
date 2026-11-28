@@ -164,7 +164,7 @@ function deleteEditReceipt(filename: string) {
 function EditReceiptRow(props: { filename: string }) {
   const state = useReceiptUrls(() => [props.filename]);
   const Remove = () => (
-    <Button variant="danger" size="small" class="!rounded-lg !p-1.5" title={t('btn_delete', 'Delete')} onClick={() => deleteEditReceipt(props.filename)}>
+    <Button variant="danger" size="small" class="rounded-lg p-1.5" title={t('btn_delete', 'Delete')} onClick={() => deleteEditReceipt(props.filename)}>
       <Icon name="trash" size={14} />
     </Button>
   );
@@ -209,7 +209,7 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
             type="text"
             inputmode="decimal"
             id="edit-payment-amount"
-            class="!h-[38px] !rounded-[9px] !bg-surface !pl-7 !text-[1.15rem] !font-bold tracking-[-0.01em] !text-text"
+            class="h-[38px] rounded-[9px] bg-surface pl-7 text-[1.15rem] font-bold tracking-[-0.01em] text-text"
             value={amount()}
             onInput={e => setAmount(e.currentTarget.value)}
           />

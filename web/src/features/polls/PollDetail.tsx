@@ -43,7 +43,7 @@ export function PollDetailModal() {
       subtitle={poll() ? `${pollTimeLabel(poll()!)} · ${pollVotes(poll()!)}` : ''}
       icon={<Icon name="poll" size={20} />}
       // The poll badge (.poll-modal-badge) is larger than the dialogs' usual one
-      iconClass="!size-[42px] !rounded-[13px] !text-[1rem] bg-surface-alt text-text-secondary"
+      iconClass="size-[42px] rounded-[13px] text-[1rem] bg-surface-alt text-text-secondary"
       maxWidth="520px"
     >
       <Show when={poll()}>{current => <PollBody poll={current()} />}</Show>

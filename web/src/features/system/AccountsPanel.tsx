@@ -92,7 +92,7 @@ function GroupsSidebar() {
         <Input
           id="nc-new-group-name"
           type="text"
-          class="!h-[34px] min-w-0 flex-1 !rounded-[8px] !px-2.5 !py-1.5 !text-[0.82rem]"
+          class="h-[34px] min-w-0 flex-1 rounded-[8px] px-2.5 py-1.5 text-[0.82rem]"
           placeholder={t('group_add_placeholder', 'New group...')}
           value={newGroupName()}
           onInput={e => setNewGroupName(e.currentTarget.value)}
@@ -104,7 +104,7 @@ function GroupsSidebar() {
           }}
         />
         <Button
-          class="!h-[34px] shrink-0 !rounded-[8px] !px-2.5 !py-0"
+          class="h-[34px] shrink-0 rounded-[8px] px-2.5 py-0"
           title={t('admin_create_group', 'Create group')}
           aria-label={t('admin_create_group', 'Create group')}
           onClick={() => void submitQuickAddGroup()}
@@ -191,7 +191,7 @@ function AccountRow(props: { user: User }) {
       <td class={TD}>
         <Input
           type="date"
-          class="!m-0 !h-[30px] !w-[130px] !rounded-[8px] !px-1.5 !py-[3px] !text-[0.82rem]"
+          class="m-0 h-[30px] w-[130px] rounded-[8px] px-1.5 py-[3px] text-[0.82rem]"
           value={memberSince()}
           onChange={e => void updateUserMemberSince(props.user.uid, e.currentTarget.value)}
         />
@@ -209,7 +209,7 @@ function AccountRow(props: { user: User }) {
       <td class={TD}>
         {/* A block in the cell: centred in the row like the old switch (its checkbox gave it a text baseline) */}
         <Switch
-          class="!block"
+          class="block"
           checked={!!props.user.admin}
           disabled={owner()}
           aria-label={t('col_system_admin', 'System Admin')}
@@ -262,7 +262,7 @@ export function AccountsPanel() {
             onInput={setAccountSearch}
             placeholder={t('accounts_search_placeholder', 'Search users...')}
           />
-          <Button size="small" class="!gap-1.5 max-md:min-h-[42px] max-md:w-full" onClick={openCreateUserModal}>
+          <Button size="small" class="gap-1.5 max-md:min-h-[42px] max-md:w-full" onClick={openCreateUserModal}>
             <LineIcon size={16}>
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
               <circle cx="9" cy="7" r="4" />
@@ -281,7 +281,7 @@ export function AccountsPanel() {
                 <span class={[BADGE, 'text-[0.85rem] font-bold']}>{group().name}</span>
                 <span class="text-[0.8rem] text-text-secondary">{t('admin_group_user_count', '({count} users)', { count: rows().length })}</span>
               </div>
-              <Button variant="secondary" size="small" class="!px-2.5 !py-1 !text-[0.8rem] max-md:w-full" onClick={() => filterByGroup(null)}>
+              <Button variant="secondary" size="small" class="px-2.5 py-1 text-[0.8rem] max-md:w-full" onClick={() => filterByGroup(null)}>
                 {t('btn_clear_group_filter', 'Clear filter')}
               </Button>
             </div>

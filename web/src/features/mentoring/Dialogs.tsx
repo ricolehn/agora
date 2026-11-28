@@ -117,7 +117,7 @@ function MentorContactDialog() {
           <Button variant="secondary" onClick={() => closeModal('mentor-contact-modal')}>
             {t('btn_cancel', 'Cancel')}
           </Button>
-          <Button type="submit" id="btn-submit-mentor-contact" class="!bg-[linear-gradient(135deg,var(--primary),var(--secondary))]">
+          <Button type="submit" id="btn-submit-mentor-contact" class="bg-[linear-gradient(135deg,var(--primary),var(--secondary))]">
             {t('mentor_contact_btn_submit', 'Send anonymous request')}
           </Button>
         </div>

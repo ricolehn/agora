@@ -48,7 +48,7 @@ export function ShareDialog() {
       icon={<Icon name="share" size={18} strokeWidth={2.2} />}
       iconClass="bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary"
       maxWidth="440px"
-      bodyClass="!gap-[14px]"
+      bodyClass="gap-[14px]"
       footer={
         <div class="flex w-full gap-2">
           <Button variant="secondary" class="flex-[1_1_0] gap-1.5" onClick={() => void copyEventShareLink(linkField)}>

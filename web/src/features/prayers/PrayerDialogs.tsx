@@ -66,7 +66,7 @@ export function PrayerEditModal() {
       title={t('prayers_new', 'Share a prayer request')}
       maxWidth="460px"
       // The sheet's parts sit a little further apart than in other dialogs (.plan-sheet-body)
-      bodyClass="!gap-3.5"
+      bodyClass="gap-3.5"
       footer={
         // Share takes the room Cancel leaves (.plan-sheet-footer)
         <div class="flex w-full items-center gap-2">
@@ -164,7 +164,7 @@ function deletePrayer(prayer: Prayer) {
 }
 
 // Full width, the symbol close to the text (.prayer-options-actions .btn)
-const ACTION = 'w-full !gap-1.5';
+const ACTION = 'w-full gap-1.5';
 
 export function PrayerOptionsModal() {
   // A request that was just removed stays on screen while the dialog fades out. The list is read only while the

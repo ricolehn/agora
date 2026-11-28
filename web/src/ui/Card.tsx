@@ -19,7 +19,7 @@ export function Card(props: {
     <div
       id={props.id}
       class={[
-        'overflow-hidden rounded-card border border-hairline bg-surface shadow-card weak:mb-5',
+        'overflow-hidden weak:rounded-card border weak:border-hairline bg-surface shadow-card weak:mb-5',
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),var(--shadow)]',
         '[transition:transform_0.3s_cubic-bezier(0.25,1,0.5,1),opacity_0.3s_cubic-bezier(0.25,1,0.5,1),box-shadow_0.3s_cubic-bezier(0.25,1,0.5,1),background-color_0.3s_cubic-bezier(0.25,1,0.5,1),border-color_0.3s_cubic-bezier(0.25,1,0.5,1),color_0.3s_cubic-bezier(0.25,1,0.5,1)]',
         props.class

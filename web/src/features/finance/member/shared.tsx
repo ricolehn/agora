@@ -110,7 +110,7 @@ export function PendingFileList(props: { files: PendingFile[]; onRemove: (index:
               <span class="truncate text-[0.85rem] font-semibold text-text">{entry.file.name}</span>
             </div>
             <div class="flex gap-1.5">
-              <Button variant="danger" size="small" class="!rounded-lg !p-1.5" title={t('btn_remove', 'Remove')} onClick={() => props.onRemove(index())}>
+              <Button variant="danger" size="small" class="rounded-lg p-1.5" title={t('btn_remove', 'Remove')} onClick={() => props.onRemove(index())}>
                 <Icon name="trash" />
               </Button>
             </div>

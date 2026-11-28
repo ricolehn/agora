@@ -135,7 +135,7 @@ function PastEvents(props: { events: AppEvent[] }) {
 function EmptyList(props: { eventsTab: boolean }) {
   const newType = () => (props.eventsTab || !canManageEvents() ? 'event' : 'termin');
   return (
-    <Card class="mb-0 !rounded-2xl" bodyClass="px-5 py-12 text-center text-text-secondary">
+    <Card class="mb-0 rounded-2xl" bodyClass="px-5 py-12 text-center text-text-secondary">
       <div class="mb-2 text-[2.2rem]">📅</div>
       <div class="mb-1 text-[1.05rem] font-bold text-text">
         {props.eventsTab ? t('events_empty_events', 'No upcoming events found') : t('events_empty_termine', 'No matching appointments found')}

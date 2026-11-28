@@ -207,7 +207,7 @@ export function HistoryPage() {
       <BalanceHero />
       <div class="mb-5 flex items-center justify-between">
         <h2 class="text-[1.2rem] font-extrabold">{t('nav_history', 'History')}</h2>
-        <Button id="btn-open-export-report" variant="secondary" size="small" class="!gap-1.5" onClick={() => void openExportReport()}>
+        <Button id="btn-open-export-report" variant="secondary" size="small" class="gap-1.5" onClick={() => void openExportReport()}>
           <Icon name="document" size={16} />
           <span>{t('btn_create_report', 'Create Report')}</span>
         </Button>

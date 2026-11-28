@@ -61,11 +61,12 @@ export interface ModalProps {
 }
 
 // The panel's frame: surface, 90% wide up to 420px, 20px corners, a soft large shadow (a plain border in the dark)
+// The panel's size and corners are weak: a dialog's own class for them wins (the report fills the screen on phones)
 const PANEL_SURFACE =
-  'w-[90%] max-w-[420px] rounded-[20px] bg-surface text-text shadow-[var(--shadow-lg),0_0_0_1px_var(--hairline)] ' +
+  'weak:w-[90%] weak:max-w-[420px] weak:rounded-[20px] bg-surface text-text shadow-[var(--shadow-lg),0_0_0_1px_var(--hairline)] ' +
   'dark:border dark:border-border dark:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.6),0_2px_12px_rgba(0,0,0,0.35)]';
-const PANEL_ENHANCED = 'flex max-h-[min(90vh,660px)] flex-col overflow-hidden';
-const PANEL_CLASSIC = 'block max-h-[88vh] overflow-y-auto px-5 pb-5';
+const PANEL_ENHANCED = 'flex weak:max-h-[min(90vh,660px)] flex-col overflow-hidden';
+const PANEL_CLASSIC = 'block weak:max-h-[88vh] overflow-y-auto px-5 pb-5';
 // It rises a little and grows into place, with a slight overshoot
 const PANEL_MOTION = '[transition:translate_0.35s_cubic-bezier(0.175,0.885,0.32,1.275),scale_0.35s_cubic-bezier(0.175,0.885,0.32,1.275)]';
 
@@ -107,7 +108,7 @@ export function ModalHeader(props: {
     >
       <div class="flex items-center gap-2.5">
         <Show when={props.icon}>
-          <div class={['flex size-9 shrink-0 items-center justify-center rounded-[9px] text-[1.1rem]', props.iconClass]}>{props.icon}</div>
+          <div class={['flex weak:size-9 shrink-0 items-center justify-center weak:rounded-[9px] weak:text-[1.1rem]', props.iconClass]}>{props.icon}</div>
         </Show>
         <div>
           <div id={props.id ? `${props.id}-title` : undefined} class="text-[1.05rem] leading-[1.2] font-bold text-text">
@@ -128,14 +129,14 @@ export function ModalHeader(props: {
 
 // Buttons placed straight in the body: one even height, a little smaller (the primary keeps its dark shadow)
 const BODY_BUTTONS =
-  '[&>.btn]:mt-0.5! [&>.btn]:h-10! [&>.btn]:min-h-10 [&>.btn]:rounded-[10px]! [&>.btn]:text-[0.9rem]! [&>.btn]:font-semibold! ' +
+  '[&>.btn]:mt-0.5 [&>.btn]:h-10 [&>.btn]:min-h-10 [&>.btn]:rounded-[10px] [&>.btn]:text-[0.9rem] [&>.btn]:font-semibold ' +
   '[&>.btn]:shadow-[0_2px_6px_rgba(var(--glow-rgb),0.2)] dark:[&>.btn-primary]:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.45)]';
 
 /** The scrolling body of a dialog (.modal-body-enhanced): fields, labels, block buttons and buttons placed straight in
  *  it are compact; 10px between its parts. */
 export function ModalBody(props: { class?: string; ref?: (el: HTMLDivElement) => void; children?: JSX.Element }) {
   return (
-    <div ref={props.ref} class={['flex flex-1 flex-col gap-2.5 overflow-y-auto overscroll-contain px-4 pt-[14px] pb-4', BODY_BUTTONS, props.class]}>
+    <div ref={props.ref} class={['flex flex-1 flex-col weak:gap-2.5 overflow-y-auto overscroll-contain px-4 pt-[14px] pb-4', BODY_BUTTONS, props.class]}>
       <DialogBodyContext value={true}>{props.children}</DialogBodyContext>
     </div>
   );

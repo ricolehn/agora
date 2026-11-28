@@ -293,7 +293,7 @@ function RequestHeadBadge() {
         <Button
           variant="secondary"
           size="small"
-          class="mr-1 !gap-1 !px-[9px] !py-[5px] max-md:!h-9 max-md:min-w-9 max-md:!px-2.5 max-md:!py-1.5"
+          class="mr-1 gap-1 px-[9px] py-[5px] max-md:h-9 max-md:min-w-9 max-md:px-2.5 max-md:py-1.5"
           title={t('btn_back', 'Back')}
           onClick={() => startRequestForm(null)}
         >
@@ -317,7 +317,7 @@ export function RequestDialog() {
       title={head().title()}
       subtitle={head().subtitle()}
       icon={<RequestHeadBadge />}
-      iconClass="!size-auto !rounded-none !bg-transparent gap-2.5"
+      iconClass="size-auto rounded-none bg-transparent gap-2.5"
     >
       {/* A new form for every opening and every change of the kind: it starts empty */}
       <Show when={requestForm()} keyed>

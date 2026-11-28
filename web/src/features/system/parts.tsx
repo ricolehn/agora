@@ -4,7 +4,7 @@ import type { JSX } from '@solidjs/web';
 import { Show } from 'solid-js';
 
 /** The quiet red button of the system settings (.btn.super-admin-btn): the colours of a Button with variant "none". */
-export const SUPER_ADMIN_BTN = 'border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.1)] text-danger !font-bold';
+export const SUPER_ADMIN_BTN = 'border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.1)] text-danger font-bold';
 
 /** A card of the system settings (.super-admin-group) with its title and an optional description. */
 export function SettingsGroup(props: { title: JSX.Element; desc?: JSX.Element; children: JSX.Element }) {

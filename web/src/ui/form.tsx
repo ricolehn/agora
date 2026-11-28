@@ -53,13 +53,15 @@ export function Field(props: { label?: JSX.Element; for?: string; hint?: JSX.Ele
   );
 }
 
-// .form-input / .form-select: a 1px hairline on the soft fill, a clear focus ring
+// .form-input / .form-select: a 1px hairline on the soft fill, a clear focus ring. The size and the fill are weak
+// (zero specificity): a caller's class for them wins without "!"
 const CONTROL =
-  'w-full text-text outline-none [transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)] ' +
+  'weak:w-full text-text outline-none [transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)] ' +
   'hover:not-focus:border-[rgba(48,38,26,0.24)] focus:border-primary dark:border-white/12 dark:hover:not-focus:border-[rgba(48,38,26,0.24)] dark:focus:border-primary';
-const ON_PAGE = 'rounded-[12px] border border-[rgba(48,38,26,0.14)] bg-surface-alt p-3 text-[1rem] focus:bg-surface focus:shadow-ring';
+const ON_PAGE = 'weak:rounded-[12px] border border-[rgba(48,38,26,0.14)] weak:bg-surface-alt weak:p-3 weak:text-[1rem] focus:bg-surface focus:shadow-ring';
 // Inside a dialog's body: smaller, on the dialog's surface, a finer ring
-const IN_DIALOG = 'rounded-[9px] border-[1.5px] border-border bg-surface px-[11px] py-2 text-[0.9rem] focus:shadow-[0_0_0_2px_rgba(var(--brand-rgb),0.12)]';
+const IN_DIALOG =
+  'weak:rounded-[9px] border-[1.5px] border-border weak:bg-surface weak:px-[11px] weak:py-2 weak:text-[0.9rem] focus:shadow-[0_0_0_2px_rgba(var(--brand-rgb),0.12)]';
 // .input-error: red frame and a short shake (set it again to shake again)
 const INVALID = '!border-danger !bg-[rgba(239,68,68,0.05)] animate-shake';
 
@@ -179,7 +181,7 @@ export function Switch(props: {
   const small = () => props.size === 'sm';
   return (
     // Disabled looks the same, as before (it was only disabled for the moment a change is saved)
-    <label class={['relative inline-block shrink-0', small() ? 'h-6 w-[42px]' : 'h-7 w-[50px]', props.class]}>
+    <label class={['relative weak:inline-block shrink-0', small() ? 'h-6 w-[42px]' : 'h-7 w-[50px]', props.class]}>
       <input
         id={props.id}
         name={props.name}

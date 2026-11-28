@@ -435,7 +435,7 @@ export function PlanEntryDialog() {
     return ev ? [ev.title, formatEventDateSpanCompact(ev.date, ev.endDate), ev.startTime].filter(Boolean).join(' · ') : '';
   };
   return (
-    <Modal id={PLAN_ENTRY_MODAL} title={title()} subtitle={subtitle()} maxWidth="460px" bodyClass="!gap-[14px]" footer={<PlanEntryFooter />}>
+    <Modal id={PLAN_ENTRY_MODAL} title={title()} subtitle={subtitle()} maxWidth="460px" bodyClass="gap-[14px]" footer={<PlanEntryFooter />}>
       <PlanEntryBody />
     </Modal>
   );

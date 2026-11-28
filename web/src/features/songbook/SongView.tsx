@@ -326,14 +326,14 @@ function SongPanel(props: { songKey: string; shift: string }) {
         </div>
       </div>
       <div class="flex gap-2 border-t border-border-light pt-3">
-        <Button variant="secondary" class="flex-1 !px-3 !py-2.5 !text-[0.86rem]" onClick={() => void shareSong()}>
+        <Button variant="secondary" class="flex-1 px-3 py-2.5 text-[0.86rem]" onClick={() => void shareSong()}>
           <Glyph size={16} strokeWidth={2}>
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </Glyph>
           <span>{t('songbook_share', 'Share link')}</span>
         </Button>
-        <Button variant="secondary" class="flex-1 !px-3 !py-2.5 !text-[0.86rem]" onClick={printSong}>
+        <Button variant="secondary" class="flex-1 px-3 py-2.5 text-[0.86rem]" onClick={printSong}>
           <Glyph size={16} strokeWidth={2}>
             <polyline points="6 9 6 2 18 2 18 9" />
             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />

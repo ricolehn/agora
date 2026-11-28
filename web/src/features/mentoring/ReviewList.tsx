@@ -17,7 +17,7 @@ const STATUS_STYLES: Record<string, [string, string, string]> = {
 export function ReviewList() {
   const loadingText = () => <div class="p-5 text-center text-text-secondary">{t('mentoring_review_loading', 'Loading applications...')}</div>;
   return (
-    <Card class="!rounded-[18px] !border-border-light" bodyClass="p-0">
+    <Card class="rounded-[18px] border-border-light" bodyClass="p-0">
       <div class="flex flex-wrap items-center justify-between gap-2.5 px-5 py-[18px]">
         <div class="flex items-center gap-2 text-[1.05rem] font-bold">
           <Icon name="shield" size={20} />
@@ -26,7 +26,7 @@ export function ReviewList() {
         <div class="flex items-center gap-2">
           <Select
             id="mentor-review-filter"
-            class="!w-auto !px-3 !py-[5px] !text-[0.85rem]"
+            class="w-auto px-3 py-[5px] text-[0.85rem]"
             value={reviewFilter()}
             onChange={e => setReviewFilter(e.currentTarget.value as ReviewFilter)}
           >
@@ -74,7 +74,7 @@ function Application(props: { mentor: Mentor }) {
   const submitted = () =>
     props.mentor.created ? new Date(props.mentor.created).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }) : '';
   return (
-    <Card class="mb-3 !rounded-xl !border-border" bodyClass="p-4">
+    <Card class="mb-3 rounded-xl border-border" bodyClass="p-4">
       <div class="mb-2.5 flex flex-wrap items-start justify-between gap-2.5">
         <div>
           <div class="flex items-center gap-2 text-[1.05rem] font-bold">
@@ -93,7 +93,7 @@ function Application(props: { mentor: Mentor }) {
             </Button>
           </Show>
           <Show when={status() !== 'rejected'}>
-            <Button variant="secondary" size="small" class="!text-danger" onClick={() => void setMentorStatus(props.mentor.id, 'rejected')}>
+            <Button variant="secondary" size="small" class="text-danger" onClick={() => void setMentorStatus(props.mentor.id, 'rejected')}>
               {t('mentoring_btn_reject', '✗ Reject')}
             </Button>
           </Show>

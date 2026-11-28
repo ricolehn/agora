@@ -99,7 +99,7 @@ export function AssignGroupsDialog() {
         </ModalSection>
         <DialogActions
           left={
-            <Button variant="secondary" size="small" class="!gap-1 !text-[0.82rem]" onClick={openCreateGroupFromAssignModal}>
+            <Button variant="secondary" size="small" class="gap-1 text-[0.82rem]" onClick={openCreateGroupFromAssignModal}>
               <Icon name="plus" size={14} />
               <span>{t('admin_new_group', 'New group')}</span>
             </Button>

@@ -100,7 +100,7 @@ function RequestBody(props: { req: FinanceRequest }) {
   );
 }
 
-const DECISION_BTN = 'min-h-[46px] w-full min-w-0 !gap-1.5 !rounded-[13px] !font-bold';
+const DECISION_BTN = 'min-h-[46px] w-full min-w-0 gap-1.5 rounded-[13px] font-bold';
 
 function Decision(props: { req: FinanceRequest }) {
   let reasonInput: HTMLInputElement | undefined;

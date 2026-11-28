@@ -560,11 +560,11 @@ function ReportContent() {
           {count() ? `${bookingsCount(count())} · ${t('report_balance', 'Balance')} ${signed(reportTotals(selection().filtered).net)}` : ''}
         </span>
         <div class="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-2.5 md:flex">
-          <Button variant="secondary" class="min-h-[46px] !px-3 whitespace-nowrap md:min-h-0 md:!px-5" onClick={() => closeModal('export-report-modal')}>
+          <Button variant="secondary" class="min-h-[46px] px-3 whitespace-nowrap md:min-h-0 md:px-5" onClick={() => closeModal('export-report-modal')}>
             {t('btn_cancel', 'Cancel')}
           </Button>
           <Button
-            class="min-h-[46px] !px-3 whitespace-nowrap md:min-h-0 md:!px-5"
+            class="min-h-[46px] px-3 whitespace-nowrap md:min-h-0 md:px-5"
             disabled={!count()}
             busy={generating()}
             busyText={t('report_generating', 'Generating...')}
@@ -585,7 +585,7 @@ export function ReportDialog() {
       id="export-report-modal"
       plain
       maxWidth="1240px"
-      class="!h-[100dvh] !max-h-[100dvh] !w-screen !rounded-none md:!h-[88vh] md:!max-h-[88vh] md:!w-[90vw] md:!rounded-[24px]"
+      class="h-[100dvh] max-h-[100dvh] w-screen rounded-none md:h-[88vh] md:max-h-[88vh] md:w-[90vw] md:rounded-[24px]"
     >
       <ReportContent />
     </Modal>
