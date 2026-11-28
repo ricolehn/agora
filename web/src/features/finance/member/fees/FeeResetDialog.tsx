@@ -147,7 +147,7 @@ export function FeeResetDialog() {
       subtitle={shown() ? longDayText(shown()!.impact.date) : ''}
       icon={<Icon name="rotate" size={18} strokeWidth={2.4} />}
       iconClass={MODAL_TINTS.feeReset}
-      class="!max-h-[min(90vh,760px)]"
+      class="max-h-[min(90vh,760px)]"
     >
       <Show when={shown()}>{view => <ResetEffects impact={view().impact} remove={view().remove} />}</Show>
       <ModalSection icon="✍️" title={t('fee_reset_modal_confirm', 'Confirm')}>

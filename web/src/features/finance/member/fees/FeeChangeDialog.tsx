@@ -358,7 +358,7 @@ export function FeeChangeDialog() {
       subtitle={subtitle()}
       icon={<Icon name="coin" size={18} strokeWidth={2.2} />}
       iconClass={MODAL_TINTS.feeChange}
-      class="!max-h-[min(90vh,760px)]"
+      class="max-h-[min(90vh,760px)]"
     >
       <Show when={step() === 'review' && impact()} fallback={<FeeChangeForm />}>
         {shown => <FeeChangeReview impact={shown()} />}

@@ -35,7 +35,8 @@ export function Avatar(props: {
     <span
       class={[
         'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full text-text',
-        'bg-surface bg-[linear-gradient(135deg,rgba(124,58,237,0.16),rgba(var(--brand-rgb),0.16))]',
+        // The fill is weak (zero specificity): a caller's class for it wins (the waiting list's amber)
+        'weak:bg-surface weak:bg-[linear-gradient(135deg,rgba(124,58,237,0.16),rgba(var(--brand-rgb),0.16))]',
         { 'border-2 border-surface': !!props.ring },
         props.class
       ]}

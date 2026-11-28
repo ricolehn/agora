@@ -296,7 +296,8 @@ export function ModalSection(props: { icon?: JSX.Element; title?: JSX.Element; c
   return (
     <div
       class={[
-        'flex flex-col gap-2 rounded-[12px] border border-border-light bg-surface-alt px-3 py-2.5 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease]',
+        // Its parts in a column (weak: a caller's display wins)
+        'weak:flex flex-col gap-2 rounded-[12px] border border-border-light bg-surface-alt px-3 py-2.5 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease]',
         'focus-within:border-primary focus-within:shadow-[0_0_0_2.5px_rgba(var(--brand-rgb),0.15)] dark:border-white/8 dark:bg-white/3 dark:focus-within:border-primary',
         props.class
       ]}

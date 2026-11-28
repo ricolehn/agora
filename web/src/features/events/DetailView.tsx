@@ -161,7 +161,7 @@ export function InfoCells(props: { event: EventFacts }) {
   });
   const cell = 'flex items-center gap-3 px-3.5 py-2.5';
   const icon = 'flex size-[34px] shrink-0 items-center justify-center rounded-[10px]';
-  const label = 'mb-0.5 text-75 font-medium leading-[1.15] text-text-secondary';
+  const label = 'weak:mb-0.5 text-75 font-medium leading-[1.15] text-text-secondary';
   return (
     <div class="flex shrink-0 flex-col overflow-hidden rounded-[18px] border border-border-light bg-surface-alt">
       <div class={cell}>
@@ -169,7 +169,7 @@ export function InfoCells(props: { event: EventFacts }) {
           <Icon name="calendar" size={15} class="max-sm:size-3.5" />
         </div>
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden [container-type:inline-size]">
-          <span class={[label, '!mb-[5px]']}>{t('detail_groups_termin', 'Appointment')}</span>
+          <span class={[label, 'mb-[5px]']}>{t('detail_groups_termin', 'Appointment')}</span>
           <div class="flex items-baseline gap-x-[5px] overflow-hidden text-ellipsis whitespace-nowrap text-[min(0.9rem,4.95cqw)] font-[650] leading-[1.25] tracking-[-0.01em] text-text">
             <span class="whitespace-nowrap" title={date()}>{date()}</span>
             <Show when={!multi()}>

@@ -101,14 +101,16 @@ export function EventCard(props: { event: AppEvent; day?: string; jumping?: bool
   return (
     <div
       class={[
-        'group relative z-[2] flex cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-hairline bg-surface py-2 pl-3.5 pr-3 text-95 shadow-card',
-        'transition-[transform,translate,scale,box-shadow,border-color,background-color] duration-250 ease-app hover:-translate-y-px hover:shadow-card-md active:scale-[0.985] active:duration-100',
-        'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),var(--shadow)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.4)]',
+        'group relative z-[2] flex cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-hairline bg-surface py-2 pl-3.5 pr-3 text-95',
+        'transition-[transform,translate,scale,box-shadow,border-color,background-color] duration-250 ease-app hover:-translate-y-px active:scale-[0.985] active:duration-100',
+        // Today's card keeps its ring on hover too; the others lift their shadow
+        isToday()
+          ? 'shadow-[var(--shadow),0_0_0_2px_rgba(var(--brand-rgb),0.55)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_0_0_1.5px_rgba(var(--brand-rgb),0.35)]'
+          : 'shadow-card hover:shadow-card-md dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),var(--shadow)] dark:hover:shadow-[0_8px_20px_rgba(0,0,0,0.4)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
         "before:absolute before:bottom-3 before:left-0 before:top-3 before:w-[3px] before:rounded-r-[3px] before:content-['']",
         STRIPE[category()],
         {
-          '!shadow-[var(--shadow),0_0_0_2px_rgba(var(--brand-rgb),0.55)] dark:!shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_0_0_1.5px_rgba(var(--brand-rgb),0.35)]': isToday(),
           'opacity-55 grayscale-25': isEventPast(props.event),
           'event-jump-target': !!props.jumping
         }
@@ -158,12 +160,14 @@ export function EventCard(props: { event: AppEvent; day?: string; jumping?: bool
 }
 
 // --- Cover card (events tab) ---
+// The frosted glass of a status on the picture; "over" is a grey pill of its own
+const FROSTED = 'border-white/90 bg-white/88 dark:border-white/18 dark:bg-[rgba(28,25,23,0.72)]';
 const COVER_STATUS: Record<string, string> = {
-  past: '!border-white/25 !bg-[rgba(120,113,108,0.85)] text-white',
-  duty: 'text-[#6366f1]',
-  requested: 'text-[#f59e0b]',
-  waitlist: 'text-[#f59e0b]',
-  full: 'text-[#ef4444]'
+  past: 'border-white/25 bg-[rgba(120,113,108,0.85)] text-white',
+  duty: `${FROSTED} text-[#6366f1]`,
+  requested: `${FROSTED} text-[#f59e0b]`,
+  waitlist: `${FROSTED} text-[#f59e0b]`,
+  full: `${FROSTED} text-[#ef4444]`
 };
 
 /** A status pill on the picture (frosted glass). */
@@ -171,8 +175,7 @@ function CoverStatus(props: { kind: keyof typeof COVER_STATUS; children: JSX.Ele
   return (
     <span
       class={[
-        'inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border border-white/90 bg-white/88 px-[7px] py-[2px] text-66 font-semibold leading-[1.2] shadow-[0_2px_10px_rgba(0,0,0,0.25)] backdrop-blur-[12px] phone:px-[9px] phone:py-[3px] phone:text-75',
-        'dark:border-white/18 dark:bg-[rgba(28,25,23,0.72)]',
+        'inline-flex items-center gap-[5px] whitespace-nowrap rounded-lg border px-[7px] py-[2px] text-66 font-semibold leading-[1.2] shadow-[0_2px_10px_rgba(0,0,0,0.25)] backdrop-blur-[12px] phone:px-[9px] phone:py-[3px] phone:text-75',
         COVER_STATUS[props.kind]
       ]}
     >
@@ -193,7 +196,7 @@ export function CoverEventCard(props: { event: AppEvent; past?: boolean }) {
   const max = () => ev().maxParticipants || 0;
   const count = () => ev().registeredCount || 0;
   const metaRow = (icon: IconName, text: string, multi = false) => (
-    <div class={['flex items-center gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap', { 'font-semibold text-primary': multi, '!text-[#6366f1] dark:!text-[#818cf8]': multi && pinned() }]}>
+    <div class={['flex items-center gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap', multi && ['font-semibold', pinned() ? 'text-[#6366f1] dark:text-[#818cf8]' : 'text-primary']]}>
       <span class={['inline-flex shrink-0', pinned() ? 'text-[#6366f1] dark:text-[#818cf8]' : 'text-primary']}>
         <Icon name={icon} size={12} />
       </span>

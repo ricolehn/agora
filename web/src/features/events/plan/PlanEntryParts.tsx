@@ -343,7 +343,7 @@ export function WhenSection() {
                 inputmode="numeric"
                 min="0"
                 max="600"
-                class={[PLAN_INPUT, '!w-[120px]']}
+                class={[PLAN_INPUT, 'w-[120px]']}
                 placeholder={t('plan_minutes_ph', 'Minutes')}
                 aria-label={t('plan_duration', 'Duration (min)')}
                 value={minutes()}

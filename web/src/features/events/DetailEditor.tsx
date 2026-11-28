@@ -127,8 +127,9 @@ function EditTopBar(props: { onImage: boolean }) {
       <span
         id="detail-edit-heading"
         class={[
-          'self-center truncate whitespace-nowrap text-115 font-extrabold tracking-[-0.01em] text-text',
-          { 'ml-2.5 rounded-full bg-[rgba(28,25,23,0.45)] px-3.5 py-2 !text-95 !text-white backdrop-blur-[10px]': props.onImage }
+          'self-center truncate whitespace-nowrap font-extrabold tracking-[-0.01em]',
+          // On the cover: smaller and white, on a dark frosted pill
+          props.onImage ? 'ml-2.5 rounded-full bg-[rgba(28,25,23,0.45)] px-3.5 py-2 text-95 text-white backdrop-blur-[10px]' : 'text-115 text-text'
         ]}
       >
         {heading()}

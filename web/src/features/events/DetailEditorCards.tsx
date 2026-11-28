@@ -12,7 +12,8 @@ import { currentDetailEvent, draft, groupChosen, setDraft, setDraftField, setDra
 import type { Group } from '../../app/types';
 
 // --- Building blocks ---
-export const CARD = 'w-full rounded-[18px] border border-border-light bg-surface p-4 shadow-[0_1px_2px_rgba(28,25,23,0.04),0_6px_18px_-14px_rgba(28,25,23,0.25)]';
+// The frame's colour is weak (zero specificity): a card that stands out sets its own
+export const CARD = 'w-full rounded-[18px] border weak:border-border-light bg-surface p-4 shadow-[0_1px_2px_rgba(28,25,23,0.04),0_6px_18px_-14px_rgba(28,25,23,0.25)]';
 
 export const FIELD_BG = 'bg-surface-alt dark:bg-[rgba(28,25,23,0.55)]';
 
@@ -29,7 +30,7 @@ const SOFT_INPUT =
 /** The head of a group of fields: the tinted symbol and the label (of its field, [for]). */
 export function FieldHead(props: { icon: JSX.Element; tint: string; for?: string; class?: string; children: JSX.Element }) {
   return (
-    <label for={props.for} class={['mb-3 flex items-center gap-2.5 text-100 font-bold text-text', props.class]}>
+    <label for={props.for} class={['weak:mb-3 flex items-center gap-2.5 text-100 font-bold text-text', props.class]}>
       <span class={['flex size-[34px] shrink-0 items-center justify-center rounded-[11px]', props.tint]}>{props.icon}</span>
       <span>{props.children}</span>
     </label>
@@ -302,7 +303,7 @@ export function GroupsCard() {
   return (
     <div class={CARD}>
       <div class="flex flex-col">
-        <FieldHead icon={<Icon name="users" size={16} />} tint="bg-[rgba(99,102,241,0.12)] text-[#6366f1] dark:text-[#a5b4fc]" class="!mb-1.5">
+        <FieldHead icon={<Icon name="users" size={16} />} tint="bg-[rgba(99,102,241,0.12)] text-[#6366f1] dark:text-[#a5b4fc]" class="mb-1.5">
           {t('events_target_groups', 'Target groups')}
         </FieldHead>
         <span class="mb-3 text-85 leading-[1.45] text-text-secondary">
@@ -342,7 +343,7 @@ function GroupChip(props: { group: Group; onToggle: (g: Group) => void }) {
 
 export function RegistrationEditCard() {
   return (
-    <div class={[CARD, 'max-w-full overflow-hidden', { '!border-[rgba(var(--brand-rgb),0.55)]': draft.requiresRegistration }]}>
+    <div class={[CARD, 'max-w-full overflow-hidden', { 'border-[rgba(var(--brand-rgb),0.55)]': draft.requiresRegistration }]}>
       <div class="flex items-center justify-between gap-3">
         <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5" for="detail-edit-requires-reg">
           <span class="flex size-[34px] shrink-0 items-center justify-center rounded-[11px] bg-brand/12 text-primary">

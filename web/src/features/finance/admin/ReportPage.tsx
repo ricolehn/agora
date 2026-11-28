@@ -24,7 +24,8 @@ const STAT_BARS: Record<string, string> = {
 
 const STAT_VALUES: Record<string, string> = { income: 'text-[#10b981]', expense: 'text-[#ef4444]', balance: 'text-[#0f172a]' };
 
-const TD = 'border-b border-[#eef2f6] px-3.5 py-2.5 align-top text-[12.5px] text-[#334155]';
+// The colour is weak (zero specificity): a cell that is muted, darker or an amount sets its own
+const TD = 'border-b border-[#eef2f6] px-3.5 py-2.5 align-top text-[12.5px] weak:text-[#334155]';
 
 const TH = 'border-b border-[#e7e5e4] bg-[#f5f5f4] px-3.5 py-2.5 text-left text-[10px] font-extrabold tracking-[0.08em] text-[#78716c] uppercase';
 
@@ -34,7 +35,7 @@ const TR = 'break-inside-avoid even:bg-[#fbfdff] [&:last-child>td]:border-b-0';
 const AMOUNT = 'text-right font-bold whitespace-nowrap tabular-nums';
 
 // The amounts always in their colour (the cells' own text colour gives way)
-const amountColor = (expense: boolean) => (expense ? '!text-[#dc2626]' : '!text-[#059669]');
+const amountColor = (expense: boolean) => (expense ? 'text-[#dc2626]' : 'text-[#059669]');
 
 export const signed = (value: number) => `${value >= 0 ? '+' : ''}${euro(value)}`;
 
@@ -58,11 +59,11 @@ function BookingRows(props: { tx: Transaction; tier: ReportTier }) {
   return (
     <>
       <tr class={TR}>
-        <td class={[TD, 'whitespace-nowrap !text-[#64748b] tabular-nums']}>{props.tx.date ? formatDateFast(props.tx.date) : ''}</td>
+        <td class={[TD, 'whitespace-nowrap text-[#64748b] tabular-nums']}>{props.tx.date ? formatDateFast(props.tx.date) : ''}</td>
         <td class={TD}>
           <TypePill type={props.tx.type} />
         </td>
-        <td class={[TD, 'font-semibold !text-[#0f172a]']}>
+        <td class={[TD, 'font-semibold text-[#0f172a]']}>
           {partner()}
           <Show when={issuer()}>
             <span class="block text-[11px] font-medium text-[#94a3b8]">{issuer()}</span>
@@ -123,7 +124,7 @@ function Breakdown(props: { filtered: Transaction[] }) {
               <td class={TD}>
                 <TypePill type={kind.type} />
               </td>
-              <td class={[TD, '!text-[#64748b]']}>{bookingsCount(kind.items.length)}</td>
+              <td class={[TD, 'text-[#64748b]']}>{bookingsCount(kind.items.length)}</td>
               <td class={[TD, AMOUNT, amountColor(kind.type === 'exp')]}>
                 {kind.type === 'exp' ? '-' : '+'}
                 {euro(sumAmounts(kind.items))}

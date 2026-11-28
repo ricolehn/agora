@@ -16,8 +16,8 @@ import { Modal } from '../../../ui/Modal';
  *  symbol. */
 export const receiptLinkClass = (compact = false): JSX.ClassValue => [
   buttonClass({ variant: 'secondary', size: 'small' }),
-  // Its fill stays on hover too
-  'rounded-lg border-border !bg-surface text-text no-underline',
+  // Its fill stays on hover too: the secondary's hover fill is for an enabled button, and a link is none
+  'rounded-lg border-border text-text no-underline',
   compact ? 'p-1.5' : 'gap-1.5 px-3 py-1.5'
 ];
 

@@ -108,7 +108,7 @@ function AttendeeRow(props: { event: AppEvent; attendee: Attendee; waiting: bool
         name={att().name}
         size={32}
         initialsClass="text-72"
-        class={props.waiting ? '!bg-[rgba(245,158,11,0.15)] !bg-none' : undefined}
+        class={props.waiting ? 'bg-[rgba(245,158,11,0.15)] bg-none' : undefined}
       />
       <Show
         when={att().guest}

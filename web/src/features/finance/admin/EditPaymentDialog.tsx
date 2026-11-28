@@ -242,7 +242,7 @@ function EditPaymentForm(props: { entry: EditedEntry }) {
       </ModalSection>
       <Show when={isExpense()}>
         {/* Its parts sit close together, without the sections' gaps (as before) */}
-        <ModalSection icon="📎" title={t('manage_receipts', 'Manage Receipts')} class="!block">
+        <ModalSection icon="📎" title={t('manage_receipts', 'Manage Receipts')} class="block">
           <div class="mb-1.5 flex flex-col gap-2">
             <For each={receipts()} fallback={<div class="text-85 text-text-secondary">{t('no_receipts', 'No receipts available.')}</div>}>
               {name => <EditReceiptRow filename={name} />}

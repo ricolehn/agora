@@ -56,18 +56,23 @@ export function Field(props: { label?: JSX.Element; for?: string; hint?: JSX.Ele
 // .form-input / .form-select: a 1px hairline on the soft fill, a clear focus ring. The size and the fill are weak
 // (zero specificity): a caller's class for them wins without "!"
 const CONTROL =
-  'weak:w-full text-text outline-none [transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)] ' +
-  'hover:not-focus:border-[rgba(48,38,26,0.24)] focus:border-primary dark:border-white/12 dark:hover:not-focus:border-[rgba(48,38,26,0.24)] dark:focus:border-primary';
-const ON_PAGE = 'weak:rounded-[12px] border weak:border-[rgba(48,38,26,0.14)] weak:bg-surface-alt weak:p-3 weak:text-100 focus:bg-surface focus:shadow-ring';
+  'weak:w-full text-text outline-none [transition:border-color_0.2s_var(--ease),box-shadow_0.2s_var(--ease),background-color_0.2s_var(--ease)]';
+const ON_PAGE = 'weak:rounded-[12px] border weak:p-3 weak:text-100 focus:shadow-ring';
 // Inside a dialog's body: smaller, on the dialog's surface, a finer ring
-const IN_DIALOG =
-  'weak:rounded-[9px] border-[1.5px] border-border weak:bg-surface weak:px-[11px] weak:py-2 weak:text-90 focus:shadow-[0_0_0_2px_rgba(var(--brand-rgb),0.12)]';
-// .input-error: red frame and a short shake (set it again to shake again)
-const INVALID = '!border-danger !bg-[rgba(239,68,68,0.05)] animate-shake';
+const IN_DIALOG = 'weak:rounded-[9px] border-[1.5px] weak:px-[11px] weak:py-2 weak:text-90 focus:shadow-[0_0_0_2px_rgba(var(--brand-rgb),0.12)]';
+// The frame and the fill of a field without an error: darker on hover, the brand's colour with the focus (on a page
+// the focus also takes the surface)
+const FRAME =
+  'hover:not-focus:border-[rgba(48,38,26,0.24)] focus:border-primary dark:border-white/12 dark:hover:not-focus:border-[rgba(48,38,26,0.24)] dark:focus:border-primary';
+const FILL_ON_PAGE = 'weak:border-[rgba(48,38,26,0.14)] weak:bg-surface-alt focus:bg-surface';
+const FILL_IN_DIALOG = 'border-border weak:bg-surface';
+// .input-error: instead of those a red frame in every state, a light red fill and a short shake (set it again to shake
+// again); the fill is weak like the others, so a field that keeps its surface (the amount) says so with its class
+const INVALID = 'border-danger weak:bg-[rgba(239,68,68,0.05)] animate-shake';
 
 /** The classes of a text field (.form-input), for inputs the components below do not cover. */
 export function controlClass(opts: { inDialog?: boolean; invalid?: boolean } = {}): JSX.ClassValue {
-  return [CONTROL, opts.inDialog ? IN_DIALOG : ON_PAGE, { [INVALID]: !!opts.invalid }];
+  return [CONTROL, opts.inDialog ? IN_DIALOG : ON_PAGE, opts.invalid ? INVALID : [FRAME, opts.inDialog ? FILL_IN_DIALOG : FILL_ON_PAGE]];
 }
 
 /** A symbol inside the field on the left (.input-with-icon): 20px icons, the field text starts at 56px. */
